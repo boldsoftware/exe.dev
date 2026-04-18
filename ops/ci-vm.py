@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
-import json
 import os
 import shlex
 import shutil
@@ -67,30 +66,6 @@ def sudo(*cmd, **kw):
     return run("sudo", *cmd, **kw)
 
 
-def cp_clone(src: Path, dst: Path) -> None:
-    """Copy src->dst using reflink when the filesystem supports it.
-
-    NOTE: coreutils 9.x rejects --reflink=always combined with --sparse=always
-    ("--reflink can be used only with --sparse=auto"), so we must not pass
-    both. Try reflink with its default sparse handling first, then fall back
-    to a plain sparse copy when the filesystem doesn't support clone_file.
-    """
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    last_err = ""
-    attempts = [
-        ["cp", "--reflink=always", "-a", str(src), str(dst)],
-        ["cp", "--sparse=always", "-a", str(src), str(dst)],
-        ["sudo", "cp", "--reflink=always", "-a", str(src), str(dst)],
-        ["sudo", "cp", "--sparse=always", "-a", str(src), str(dst)],
-    ]
-    for args in attempts:
-        r = subprocess.run(args, capture_output=True)
-        if r.returncode == 0:
-            return
-        last_err = r.stderr.decode(errors="replace").strip()
-    raise RuntimeError(f"cp_clone failed: {src} -> {dst}: {last_err}")
-
-
 # ── Snapshot / cache helpers ───────────────────────────────────────────────────
 
 def _setup_hash() -> str:
@@ -115,17 +90,14 @@ def _image_digest() -> str:
 
 
 def _snapshot_paths(s_hash: str, img_dig: str):
-    snap_dir   = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}"
-    # Per-host, one-time-converted backing images living on the same
-    # dataset where per-VM overlays are created. Both are the backing
-    # files for per-VM qcow2 overlays, so VM create is ~15 ms:
-    #   - local_base: flattened root qcow2 (also severs the transitive
-    #     dependency on the ci-rootfs cache).
-    #   - local_data: data.raw converted to qcow2 because cloud-hypervisor's
-    #     qcow2 driver only accepts qcow2 backing files, not raw.
-    local_base = WORKDIR  / f"ci-base-{s_hash[:12]}-{img_dig[:12]}.qcow2"
-    local_data = WORKDIR  / f"ci-data-{s_hash[:12]}-{img_dig[:12]}.qcow2"
-    return snap_dir, local_base, local_data
+    # The snapshot directory holds self-contained, flat qcow2 images used
+    # directly as backing files for per-VM overlays. No per-host conversion
+    # is needed: both base.qcow2 and data.qcow2 are written flat (no backing
+    # chain, no dependency on any rootfs cache) by _save_docker_snapshot,
+    # and qcow2 overlays are filesystem-agnostic so cross-dataset backing
+    # is fine.
+    snap_dir = CACHE_DIR / f"ci-vm-{s_hash[:20]}-{img_dig}"
+    return snap_dir
 
 
 # ── IP / MAC allocation ────────────────────────────────────────────────────────
@@ -552,7 +524,7 @@ def _ensure_snapshot(snap_dir: Path) -> None:
     only one builds the snapshot while the others wait.
     """
     snap_base = snap_dir / "base.qcow2"
-    snap_data = snap_dir / "data.raw"
+    snap_data = snap_dir / "data.qcow2"
     if snap_base.exists() and snap_data.exists():
         _touch_last_used(snap_dir)
         _cleanup_stale_snapshots(snap_dir)
@@ -770,10 +742,24 @@ def _build_docker_snapshot(snap_dir: Path, product_kernel: str) -> None:
         print(f"SSH ready (Docker snapshot VM) in {dt_boot:.1f}s.", flush=True)
 
         _provision_docker_vm(ip, ssh_opts, scp_opts)
-        _save_docker_snapshot(ip, disk, data_disk, snap_dir,
-                              product_kernel, ssh_opts)
-    finally:
+
+        # Export zpool, sync, and shut down CH before the save step.
+        # qemu-img convert needs exclusive access to the disk images (CH
+        # holds image locks while running).
+        run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
+            "sudo zpool export tank 2>/dev/null || true; sudo sync")
         subprocess.run(["sudo", "kill", str(pid)], capture_output=True)
+        for _ in range(50):
+            if subprocess.run(["sudo", "kill", "-0", str(pid)],
+                              capture_output=True).returncode != 0:
+                break
+            time.sleep(0.1)
+        else:
+            subprocess.run(["sudo", "kill", "-9", str(pid)], capture_output=True)
+
+        _save_docker_snapshot(disk, data_disk, snap_dir, product_kernel)
+    finally:
+        subprocess.run(["sudo", "kill", "-9", str(pid)], capture_output=True)
         for f in [disk, data_disk]:
             subprocess.run(["sudo", "rm", "-f", str(f)], capture_output=True)
         _teardown_tap(tap)
@@ -865,26 +851,31 @@ def _provision_docker_vm(ip: str, ssh_opts: list, scp_opts: list) -> None:
         "sudo /bin/bash -x /root/setup-exelet.sh")
 
 
-def _save_docker_snapshot(ip: str, disk: Path, data_disk: Path,
-                          snap_dir: Path, product_kernel: str,
-                          ssh_opts: list) -> None:
-    """Save a Docker-based snapshot: disk images + product kernel."""
+def _save_docker_snapshot(disk: Path, data_disk: Path,
+                          snap_dir: Path, product_kernel: str) -> None:
+    """Save a Docker-based snapshot: disk images + product kernel.
+
+    Caller must have shut down cloud-hypervisor and exported any zpools;
+    qemu-img convert needs exclusive access to the source images.
+    """
     staging = Path(str(snap_dir) + ".staging")
     sudo("rm", "-rf", str(staging))
     sudo("mkdir", "-p", str(staging))
     sudo("chmod", "755", str(staging))
 
-    # Export ZFS pool cleanly.
-    run("ssh", *ssh_opts, f"{USER_NAME}@{ip}",
-        "sudo zpool export tank 2>/dev/null || true; sudo sync")
-
     # Copy product kernel to snapshot dir (no initrd needed).
     sudo("cp", product_kernel, str(staging / "vmlinuz"))
     sudo("chmod", "a+r", str(staging / "vmlinuz"))
 
-    cp_clone(disk, staging / "base.qcow2")
-    cp_clone(data_disk, staging / "data.raw")
-    sudo("chmod", "a+r", str(staging / "base.qcow2"), str(staging / "data.raw"))
+    # Write flat, self-contained qcow2s (no backing chain) directly into
+    # the snapshot. Per-VM overlays point at these, so there is no per-host
+    # flatten/convert step at VM-create time. qemu-img convert without -B
+    # drops the backing-file reference, giving us a standalone image.
+    sudo("qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
+         str(disk), str(staging / "base.qcow2"))
+    sudo("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
+         str(data_disk), str(staging / "data.qcow2"))
+    sudo("chmod", "a+r", str(staging / "base.qcow2"), str(staging / "data.qcow2"))
 
     # Atomic rename.
     sudo("mkdir", "-p", str(snap_dir.parent))
@@ -947,18 +938,19 @@ def create_vm() -> Path:
     s_hash  = _setup_hash()
     img_dig = _image_digest()
 
-    snap_dir, local_base, local_data = _snapshot_paths(s_hash, img_dig)
+    snap_dir  = _snapshot_paths(s_hash, img_dig)
     snap_base = snap_dir / "base.qcow2"
-    snap_data = snap_dir / "data.raw"
+    snap_data = snap_dir / "data.qcow2"
 
     # ── Ensure snapshot exists (builds one if needed) ──
     _ensure_snapshot(snap_dir)
 
     # ── Boot from snapshot ──
-    # Both disks are qcow2 overlays: writes go to the per-VM overlay while
-    # reads fall through to the shared read-only backing file. Creation is
-    # ~15 ms (no data copy), filesystem-agnostic (no reflink/CoW required),
-    # and works across datasets/mountpoints.
+    # Both disks are qcow2 overlays backed directly by the flat qcow2s in
+    # the snapshot directory. Creation is ~15 ms (no data copy),
+    # filesystem-agnostic, and works across datasets/mountpoints -- so the
+    # snapshot can live on a different ZFS dataset than the overlays with
+    # no ZFS block_cloning or reflink dependency.
     disk      = WORKDIR / f"{NAME}.qcow2"
     data_disk = WORKDIR / f"{NAME}-data.qcow2"
     tap       = tap_name_for(NAME)
@@ -967,56 +959,13 @@ def create_vm() -> Path:
     mac = mac_for_ip(ip)
     print(f"Allocated IP: {ip}  MAC: {mac}", flush=True)
 
-    def _needs_flatten(img: Path) -> bool:
-        r = subprocess.run(
-            ["qemu-img", "info", "--output=json", str(img)],
-            capture_output=True, text=True)
-        if r.returncode != 0:
-            return True
-        info = json.loads(r.stdout)
-        return "backing-filename" in info
-
     def clone_root():
-        if not local_base.exists() or _needs_flatten(local_base):
-            tmp = Path(str(local_base) + ".converting")
-            lock = Path("/tmp") / f"{local_base.name}.lock-{os.getenv('USER', 'ci')}"
-            fd = open(lock, "w")
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX)
-                if not local_base.exists() or _needs_flatten(local_base):
-                    print("Converting snapshot base to flat qcow2 ...", flush=True)
-                    sudo("qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-                         str(snap_base), str(tmp))
-                    sudo("mv", str(tmp), str(local_base))
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                fd.close()
         sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-             "-b", str(local_base), str(disk))
+             "-b", str(snap_base), str(disk))
 
     def clone_data():
-        # First use per host: convert the snapshot's raw data disk to a
-        # flat qcow2 sitting on the same dataset as per-VM overlays.
-        # cloud-hypervisor's qcow2 driver refuses raw backing files, so a
-        # qcow2-on-raw overlay won't boot ("Invalid magic" on backing open).
-        if not local_data.exists():
-            tmp = Path(str(local_data) + ".converting")
-            lock = Path("/tmp") / f"{local_data.name}.lock-{os.getenv('USER', 'ci')}"
-            fd = open(lock, "w")
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX)
-                if not local_data.exists():
-                    print("Converting snapshot data disk to qcow2 ...", flush=True)
-                    sudo("qemu-img", "convert", "-f", "raw", "-O", "qcow2",
-                         str(snap_data), str(tmp))
-                    sudo("mv", str(tmp), str(local_data))
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                fd.close()
-        # Per-VM thin qcow2 overlay: ~15 ms, filesystem-agnostic. Writes
-        # land in data_disk only; reads fall through to local_data.
         sudo("qemu-img", "create", "-f", "qcow2", "-F", "qcow2",
-             "-b", str(local_data), str(data_disk))
+             "-b", str(snap_data), str(data_disk))
 
     def setup_tap():
         _setup_tap(tap)
@@ -1129,7 +1078,7 @@ def cmd_ensure_snapshot():
     s_hash  = _setup_hash()
     img_dig = _image_digest()
 
-    snap_dir, _, _ = _snapshot_paths(s_hash, img_dig)
+    snap_dir = _snapshot_paths(s_hash, img_dig)
     _ensure_snapshot(snap_dir)
     print(f"Snapshot ready: {snap_dir}", flush=True)
 
