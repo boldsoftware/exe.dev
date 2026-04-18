@@ -182,7 +182,11 @@ func (wp *WebProxy) boxFromHost(host string) string {
 func (wp *WebProxy) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) bool {
 	// Check the actual local address the request came in on from the context.
 	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	isLocalhost := false
 	if ok && conn != nil {
+		if tcpAddr, ok := conn.(*net.TCPAddr); ok && tcpAddr.IP.IsLoopback() {
+			isLocalhost = true
+		}
 		_, localPortStr, err := net.SplitHostPort(conn.String())
 		if err != nil {
 			wp.lg().ErrorContext(r.Context(), "failed to parse local address", "error", err, "addr", conn.String())
@@ -196,7 +200,7 @@ func (wp *WebProxy) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) 
 			return false
 		}
 		if !wp.isMainListenerPort(localPort) {
-			http.Error(w, "404 page not found", http.StatusNotFound)
+			http.NotFound(w, r)
 			return false
 		}
 	}
@@ -204,8 +208,8 @@ func (wp *WebProxy) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) 
 	// Also check the Host header if it contains a port,
 	// and it is not localhost (which is used for tests).
 	host := exeweb.RequestHost(r)
-	hostStr, hostPortStr, err := net.SplitHostPort(host)
-	if err == nil && hostStr != "localhost" && hostPortStr != "" {
+	_, hostPortStr, err := net.SplitHostPort(host)
+	if err == nil && !isLocalhost && hostPortStr != "" {
 		// Host header has an explicit port - verify it matches main port.
 		hostPort, err := strconv.Atoi(hostPortStr)
 		if err != nil {
@@ -213,7 +217,7 @@ func (wp *WebProxy) isRequestOnMainPort(w http.ResponseWriter, r *http.Request) 
 			return false
 		}
 		if !wp.isMainListenerPort(hostPort) {
-			http.Error(w, "404 page not found", http.StatusNotFound)
+			http.NotFound(w, r)
 			return false
 		}
 	}

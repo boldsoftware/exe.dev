@@ -13,7 +13,11 @@ func (s *Server) isTerminalRequest(host string) bool {
 
 // handleTerminalRequest handles requests to terminal subdomains
 func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
-	s.proxyServer().HandleTerminalRequest(w, r)
+	if !s.exeproxRedirect {
+		s.proxyServer().HandleTerminalRequest(w, r)
+		return
+	}
+	s.forwardToExeprox(w, r)
 }
 
 // parseTerminalHostname extracts box name from terminal hostname

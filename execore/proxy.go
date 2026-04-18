@@ -39,15 +39,19 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		s.proxyServer().HandleProxyRequest(w, r)
 		return
 	}
+	s.forwardToExeprox(w, r)
+}
 
+// forwardToExeprox forwards a request to exeprox.
+func (s *Server) forwardToExeprox(w http.ResponseWriter, r *http.Request) {
 	if s.exeproxAddress == "" {
-		s.slog().ErrorContext(r.Context(), "proxy request with no exeprox", "URL", r.URL, "method", r.Method, "host", r.Host)
+		s.slog().ErrorContext(r.Context(), "failed to forward to exeprox", "URL", r.URL, "method", r.Method, "host", r.Host)
 		http.Error(w, "internal forwarding failure", http.StatusInternalServerError)
 		return
 	}
 
-	// Add a header to that exeprox knows the original host.
-	// It needs the original host to know which box is being referenced.
+	// Add a header so that exeprox knows the original host,
+	// so that it knows which box is being referenced.
 	vals := r.URL.Query()
 	vals.Set("exedev_host", r.Host)
 	r.URL.RawQuery = vals.Encode()

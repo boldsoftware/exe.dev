@@ -878,6 +878,9 @@ func TestVanillaBox(t *testing.T) {
 
 		client := createAuthenticatedTerminalClient(t, boxName, cookies)
 
+		// Permit websocket to redirect.
+		client.CheckRedirect = nil
+
 		// Connect to the terminal websocket
 		conn, err := connectTerminalWebSocket(t, boxName, client, "")
 		if err != nil {
@@ -959,7 +962,15 @@ func TestVanillaBox(t *testing.T) {
 		}
 		// Pre-populate the main domain cookies so the auth dance can succeed.
 		setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", Env.HTTPPort()), cookies)
-		client := noRedirectClient(jar)
+
+		// Start without any cookies,
+		// then add them when we enter the auth dance
+		// so that it succeeds.
+		// Otherwise this test fails with -default-exeprox=false,
+		// as it winds up skipping the auth dance when
+		// it forwards to localhost because the cookies
+		// are on localhost.
+		client := noRedirectClient(nil)
 
 		// Hit the terminal subdomain at a non-root path with query params.
 		targetPath := "/some/deep/path"
@@ -989,7 +1000,20 @@ func TestVanillaBox(t *testing.T) {
 		}
 		redirectParam := location.Query().Get("redirect")
 		if redirectParam == "" {
-			t.Fatal("auth URL has no redirect parameter")
+			// May be exed forwarding to exeprox.
+			resp = followOneRedirect(t, client, resp)
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Fatalf("expected 307 from %q, got %d", location, resp.StatusCode)
+			}
+			origLocation := location
+			location, err = resp.Location()
+			if err != nil {
+				t.Fatalf("no Location header: %v", err)
+			}
+			redirectParam = location.Query().Get("redirect")
+			if redirectParam == "" {
+				t.Fatalf("no redirect parameter in auth URLs %q and %q", origLocation, location)
+			}
 		}
 
 		// The redirect param must be a relative path (no scheme, no host).
@@ -1015,6 +1039,7 @@ func TestVanillaBox(t *testing.T) {
 		t.Logf("redirect param: %s", redirectParam)
 
 		// Follow redirects through the auth flow.
+		client.Jar = jar
 		reachedTerminal := false
 		for i := range 10 {
 			req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
