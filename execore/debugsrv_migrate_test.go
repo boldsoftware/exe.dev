@@ -31,6 +31,7 @@ type fakeLiveMigrationServer struct {
 	coldBooted            bool   // controls what SendVMResult.ColdBooted returns
 	role                  string // "source" or "target"
 	sendPreMetadataStatus bool   // when true, sends a SendVMStatus before metadata
+	sendAwaitIPReconfig   bool   // when true, emits an AwaitControl event with NEED_IP_RECONFIG before Result
 	deleteErrs            []error
 	deleteCalls           int
 
@@ -122,6 +123,30 @@ func (f *fakeLiveMigrationServer) InitSendVM(_ context.Context, req *computeapi.
 			},
 		},
 	})
+
+	// Optional AwaitControl event that asks execore to reconfigure the
+	// guest IP. Only fires for live migrations (cold migrations skip IP
+	// reconfig entirely). When SSH to the guest fails, migrateVMLive
+	// returns an errLiveMigrationCanFallback-wrapped error before reaching
+	// Result, so we omit the Result entirely in that scenario. The cold
+	// re-attempt will produce a fresh InitSendVM with Live=false and take
+	// the normal Result path below.
+	if f.sendAwaitIPReconfig && req.Live {
+		f.addEvent(&computeapi.SendVMEvent{
+			Type: &computeapi.SendVMEvent_AwaitControl{
+				AwaitControl: &computeapi.SendVMAwaitControl{
+					Reason: computeapi.SendVMAwaitControl_NEED_IP_RECONFIG,
+					SourceNetwork: &computeapi.NetworkInterface{
+						IP: &computeapi.IPAddress{
+							IPV4:      "10.0.1.5/24",
+							GatewayV4: "10.0.1.1",
+						},
+					},
+				},
+			},
+		})
+		return &computeapi.InitSendVMResponse{SessionID: "test-session"}, nil
+	}
 
 	// Result event — available immediately for both live and cold paths.
 	// (The real source handles target interaction internally; execore just sees the result.)
@@ -718,6 +743,139 @@ func TestHandleDebugBoxMigrateSSHFailureFallsBackToCold(t *testing.T) {
 	}
 
 	// Maintenance email should be sent (VM was rebooted via cold migration).
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case got := <-emailCh:
+		if got.To != boxName+"@boldvm.com" {
+			t.Errorf("email to = %q, want %q", got.To, boxName+"@boldvm.com")
+		}
+		wantSubject := "exe.dev: system maintenance on " + boxName
+		if got.Subject != wantSubject {
+			t.Errorf("email subject = %q, want %q", got.Subject, wantSubject)
+		}
+	case <-timer.C:
+		t.Fatal("timed out waiting for maintenance email")
+	}
+}
+
+// TestHandleDebugBoxMigrateIPReconfigFailureFallsBackToCold exercises the
+// post-pre-check fallback. The SSH pre-check is skipped (box has no SSHPort),
+// so the live attempt starts; the source emits AwaitControl(NEED_IP_RECONFIG)
+// after some bytes have transferred; reconfigureVMIP fails because runCommandOnBox
+// rejects the box (no SSH config); migrateVMLive returns an
+// errLiveMigrationCanFallback-wrapped error; and the handler must demote to
+// cold migration and complete successfully.
+//
+// Mirrors the real-world failure observed during a live migration where
+// the guest SSH session went stale between the pre-check and IP reconfig:
+//
+//	ERROR: live migration failed: failed to reconfigure VM IP: failed to add
+//	target IP: session creation did not complete within 500ms: sshpool2:
+//	stale connection: context deadline exceeded
+func TestHandleDebugBoxMigrateIPReconfigFailureFallsBackToCold(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	const sshPort int32 = 33333
+
+	// Source emits an AwaitControl(NEED_IP_RECONFIG) for the live attempt,
+	// then a normal Result on the cold re-attempt.
+	sourceSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "source", sendAwaitIPReconfig: true}
+	sourceAddr, sourceClient := startFakeMigrationExelet(t, sourceSrv)
+
+	targetSrv := &fakeLiveMigrationServer{sshPort: sshPort, role: "target"}
+	targetAddr, targetClient := startFakeMigrationExelet(t, targetSrv)
+
+	server.exeletClients[sourceAddr] = &exeletClient{addr: sourceAddr, client: sourceClient}
+	server.exeletClients[sourceAddr].up.Store(true)
+	server.exeletClients[targetAddr] = &exeletClient{addr: targetAddr, client: targetClient}
+	server.exeletClients[targetAddr].up.Store(true)
+
+	// Capture the maintenance email to verify the cold fallback completes.
+	type capturedEmail struct {
+		To      string `json:"to"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+	emailCh := make(chan capturedEmail, 1)
+	fakeEmailSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var e capturedEmail
+		if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		emailCh <- e
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(fakeEmailSrv.Close)
+	server.fakeHTTPEmail = fakeEmailSrv.URL
+
+	const boxName = "ip-reconfig-fallback-vm"
+	userID := createTestUser(t, server, boxName+"@boldvm.com")
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       sourceAddr,
+		name:          boxName,
+		image:         "ubuntu:latest",
+		noShard:       true,
+		region:        "pdx",
+		allocatedCPUs: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the container ID and mark running, but DO NOT set SSH credentials.
+	// This causes the SSH pre-check to be skipped (it's gated on box.SSHPort
+	// being non-nil) so the live attempt actually runs and reaches the
+	// AwaitControl(NEED_IP_RECONFIG) handler. reconfigureVMIP then fails
+	// when runCommandOnBox rejects the box with "no SSH configured".
+	containerID := "container-" + boxName
+	err = server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ID:          boxID,
+			ContainerID: &containerID,
+			Status:      "running",
+			SSHPort:     nil,
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{
+		"box_name":     {boxName},
+		"target":       {targetAddr},
+		"confirm_name": {boxName},
+	}
+	req := httptest.NewRequest("POST", "/debug/vms/migrate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	server.handleDebugBoxMigrate(w, req)
+	body := w.Body.String()
+
+	if strings.Contains(body, "MIGRATION_ERROR") {
+		t.Fatalf("expected migration to succeed via cold fallback, got error:\n%s", body)
+	}
+	if !strings.Contains(body, "MIGRATION_SUCCESS") {
+		t.Fatalf("expected MIGRATION_SUCCESS in response body, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Starting live migration") {
+		t.Errorf("expected the live attempt to start, got:\n%s", body)
+	}
+	if !strings.Contains(body, "live migration aborted") {
+		t.Errorf("expected live migration aborted message, got:\n%s", body)
+	}
+	if !strings.Contains(body, "falling back to cold migration") {
+		t.Errorf("expected cold fallback message, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Starting disk transfer") {
+		t.Errorf("expected the cold path to run, got:\n%s", body)
+	}
+
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	select {

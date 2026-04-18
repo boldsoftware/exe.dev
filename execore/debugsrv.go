@@ -771,7 +771,14 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 			sudoPrefix: guestSudo,
 			guestShell: guestShell,
 		})
-		if err != nil {
+		if errors.Is(err, errLiveMigrationCanFallback) {
+			s.slog().WarnContext(ctx, "live migration failed before commit, falling back to cold migration",
+				"box", boxName, "container_id", containerID,
+				"source", box.Ctrhost, "target", targetAddr,
+				"error", err)
+			writeProgress("WARNING: live migration aborted (%v) — falling back to cold migration.", err)
+			live = false
+		} else if err != nil {
 			s.slog().ErrorContext(ctx, "live migration failed",
 				"box", boxName, "container_id", containerID,
 				"source", box.Ctrhost, "target", targetAddr,
@@ -779,13 +786,15 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 			writeError("live migration failed: %v", err)
 			restartSource(err.Error())
 			return
+		} else {
+			sshPort = &liveSshPort
+			writeProgress("Live migration complete — VM is running on target.")
+			if coldBooted {
+				writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
+			}
 		}
-		sshPort = &liveSshPort
-		writeProgress("Live migration complete — VM is running on target.")
-		if coldBooted {
-			writeProgress("WARNING: Live migration fell back to cold boot — VM was restarted.")
-		}
-	} else {
+	}
+	if !live {
 		writeProgress("Starting disk transfer from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr, "two_phase", twoPhase)
 		if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, twoPhase, &box, writeProgress); err != nil {
@@ -1095,6 +1104,13 @@ func (s *Server) migrateVM(ctx context.Context, source *exeletclient.Client, ins
 	}
 }
 
+// errLiveMigrationCanFallback signals that a live migration attempt failed
+// before the source VM was paused. The deferred AbortSendVM has already
+// unwound the source-side session, so the caller can safely retry the
+// migration in cold mode without any source recovery work. The wrapped
+// error is preserved for logging.
+var errLiveMigrationCanFallback = errors.New("live migration failed before commit; safe to fall back to cold")
+
 // migrateVMLiveParams holds the parameters for migrateVMLive.
 //
 //exe:completeinit
@@ -1219,7 +1235,12 @@ func (s *Server) migrateVMLive(ctx context.Context, p migrateVMLiveParams) (int6
 							"source_ip", sourceNetwork.IP.IPV4,
 							"target_ip", targetNetwork.IP.IPV4,
 							"error", err)
-						return 0, false, fmt.Errorf("failed to reconfigure VM IP: %w", err)
+						// Wrap with errLiveMigrationCanFallback: the source has not
+						// yet sent PROCEED_WITH_PAUSE, so the VM is still running on
+						// source and the deferred AbortSendVM will tear down the
+						// in-flight session cleanly. Callers detect this sentinel
+						// and retry the migration in cold mode.
+						return 0, false, fmt.Errorf("%w: failed to reconfigure VM IP: %w", errLiveMigrationCanFallback, err)
 					}
 				}
 
@@ -6822,7 +6843,14 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 				sudoPrefix: guestSudo,
 				guestShell: guestShell,
 			})
-			if err != nil {
+			if errors.Is(err, errLiveMigrationCanFallback) {
+				s.slog().WarnContext(ctx, "live migration failed before commit, falling back to cold migration",
+					"box", boxName, "container_id", containerID,
+					"source", box.Ctrhost, "target", targetAddr,
+					"error", err)
+				writeProgress("WARNING: VM %q live migration aborted (%v) — falling back to cold migration.", boxName, err)
+				live = false
+			} else if err != nil {
 				s.slog().ErrorContext(ctx, "live migration failed",
 					"box", boxName, "container_id", containerID,
 					"source", box.Ctrhost, "target", targetAddr,
@@ -6832,14 +6860,16 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 				failed++
 				writeProgress("")
 				continue
+			} else {
+				coldBooted = cb
+				sshPort = &liveSshPort
+				writeProgress("Live migration complete.")
+				if coldBooted {
+					writeProgress("WARNING: fell back to cold boot.")
+				}
 			}
-			coldBooted = cb
-			sshPort = &liveSshPort
-			writeProgress("Live migration complete.")
-			if coldBooted {
-				writeProgress("WARNING: fell back to cold boot.")
-			}
-		} else {
+		}
+		if !live {
 			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
 			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
 			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, &box, writeProgress); err != nil {
