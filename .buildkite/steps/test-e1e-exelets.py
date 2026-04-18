@@ -32,11 +32,15 @@ def main():
 
     print("--- :electric_plug: Run exelets tests (includes VM startup)", flush=True)
 
-    os.makedirs("e1e-logs-exelets", exist_ok=True)
-    os.environ["E1E_LOG_DIR"] = os.path.abspath("e1e-logs-exelets")
+    # Label used to name artifacts so parallel shards don't collide.
+    label = os.environ.get("E1E_EXELETS_LABEL", "exelets")
 
-    json_results = "e1e-results-exelets.json"
-    junit_results = "e1e-results-exelets.xml"
+    logs_dir = f"e1e-logs-{label}"
+    os.makedirs(logs_dir, exist_ok=True)
+    os.environ["E1E_LOG_DIR"] = os.path.abspath(logs_dir)
+
+    json_results = f"e1e-results-{label}.json"
+    junit_results = f"e1e-results-{label}.xml"
 
     vm_concurrency = os.environ.get("E1E_EXELETS_VM_CONCURRENCY", os.environ.get("E1E_VM_CONCURRENCY", "10"))
     env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
@@ -126,9 +130,10 @@ def _generate_gantt(json_results):
     """Generate a per-test gantt chart HTML artifact."""
     if not os.path.isfile(json_results):
         return
-    output = "test-gantt-exelets.html"
+    label = os.environ.get("E1E_EXELETS_LABEL", "exelets")
+    output = f"test-gantt-{label}.html"
     result = subprocess.run(
-        ["python3", "bin/ci-test-gantt", json_results, output, "e1e exelets"],
+        ["python3", "bin/ci-test-gantt", json_results, output, f"e1e {label}"],
     )
     if result.returncode != 0:
         print("WARNING: gantt chart generation failed (non-fatal)", flush=True)
@@ -159,7 +164,8 @@ def _annotate_results(json_results):
                 if action in ("pass", "fail"):
                     pkg_stats[pkg]["elapsed"] = max(pkg_stats[pkg]["elapsed"], elapsed)
 
-    lines = ["**e1e/exelets timing**\n", "| Test | Duration | Status |", "|------|----------|--------|"]
+    label = os.environ.get("E1E_EXELETS_LABEL", "exelets")
+    lines = [f"**e1e/{label} timing**\n", "| Test | Duration | Status |", "|------|----------|--------|"]
     for name, (elapsed, action) in sorted(tests.items(), key=lambda x: -x[1][0])[:20]:
         icon = {"pass": "✅", "fail": "❌"}.get(action, "⏭️")
         lines.append(f"| `{name}` | {elapsed:.1f}s | {icon} |")
@@ -168,7 +174,7 @@ def _annotate_results(json_results):
         lines.append(f"| `{pkg}` | {s['pass']} | {s['fail']} | {s['skip']} | {s['elapsed']:.1f}s |")
 
     subprocess.run(
-        ["buildkite-agent", "annotate", "--context", "e1e-timing-exelets", "--style", "info"],
+        ["buildkite-agent", "annotate", "--context", f"e1e-timing-{label}", "--style", "info"],
         input="\n".join(lines), text=True,
     )
 
@@ -181,7 +187,8 @@ def _collect_coverage():
     if not os.path.isfile(cover_file):
         print(f"WARNING: coverage file {cover_file} not found", flush=True)
         return
-    dest = "coverage-exelets.txt"
+    label = os.environ.get("E1E_EXELETS_LABEL", "exelets")
+    dest = f"coverage-{label}.txt"
     run(["cp", cover_file, dest])
     print(f"Coverage profile saved as {dest}", flush=True)
 

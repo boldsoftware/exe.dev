@@ -18,6 +18,7 @@ e1e shard steps are generated dynamically based on environment variables:
   E1E_VM_CONCURRENCY  — VMs per shard (default 12)
   E1E_GOMAXPROCS      — GOMAXPROCS for e1e tests (default: unset / Go default)
   E1E_EXELETS_VM_CONCURRENCY — VMs for exelets step (default 10)
+  E1E_MIGRATION_SHARDS       — number of exelets-migration shards (default 2)
 
 Coverage mode (commit trailer "Coverage: true" or env E1E_COVERAGE=true):
   Builds exed/exeprox with -cover, collects coverage from all test steps,
@@ -47,6 +48,18 @@ TEST_LETTER_COUNTS = [
     ("M", 13), ("N", 68), ("O", 0), ("P", 88), ("Q", 0), ("R", 187),
     ("S", 147), ("T", 276), ("U", 29), ("V", 58), ("W", 2), ("X", 0),
     ("Y", 0), ("Z", 0),
+]
+
+# e1e/exelets migration tests (TestDirectMigration*) with approximate
+# execution time weights (seconds). Used to shard the migration step.
+# Update when tests are added/removed or timing changes significantly.
+# Last updated: 2026-04-18 from build #1169 timing data.
+MIGRATION_TEST_COSTS = [
+    ("TestDirectMigration", 53),
+    ("TestDirectMigrationOrphanedDataset", 27),
+    ("TestDirectMigrationReconnect", 24),
+    ("TestDirectMigrationResumable", 24),
+    ("TestDirectMigrationResumablePhase2", 23),
 ]
 
 
@@ -167,7 +180,27 @@ def split_letters(n_shards):
     return shards
 
 
-def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, coverage=False):
+def split_migration_tests(n_shards):
+    """Split MIGRATION_TEST_COSTS into n_shards balanced groups.
+
+    Uses longest-processing-time-first greedy partitioning: assign each
+    test (in decreasing cost order) to the currently-lightest shard.
+    Produces an (up to 4/3)-approximation of the optimal makespan, which
+    is plenty for 5 items and 2 shards.
+
+    Returns a list of lists of test names.
+    """
+    tests = sorted(MIGRATION_TEST_COSTS, key=lambda t: -t[1])
+    shards = [[] for _ in range(n_shards)]
+    loads = [0] * n_shards
+    for name, cost in tests:
+        i = loads.index(min(loads))
+        shards[i].append(name)
+        loads[i] += cost
+    return shards
+
+
+def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=False):
     """Generate YAML text for e1e shard steps + exelets step."""
     shards = split_letters(n_shards)
     lines = []
@@ -227,27 +260,37 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
 
     lines.append('')
 
-    # Exelets migration step (direct migration tests, parallel with above)
-    lines.append('- label: ":arrow_right_hook: e1e migration"')
-    lines.append('  key: test-exelets-migration')
-    lines.append('  depends_on:')
-    lines.append('    - build-e1e')
-    lines.append('    - ensure-snapshot')
-    lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
-    lines.append('  timeout_in_minutes: 10')
-    lines.append('  env:')
-    lines.append('    VM_DRIVER: cloudhypervisor')
-    lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
-    lines.append('    E1E_EXELETS_RUN_FILTER: "TestDirectMigration"')
-    if coverage:
-        lines.append(f'    E1E_COVERAGE: "true"')
-    lines.append('  artifact_paths:')
-    lines.append('    - "e1e-results-exelets.json"')
-    lines.append('    - "test-gantt-exelets.html"')
-    lines.append('    - "e1e-results-exelets.xml"')
-    lines.append('    - "e1e-logs-exelets/**/*"')
-    if coverage:
-        lines.append('    - "coverage-exelets.txt"')
+    # Exelets migration steps (direct migration tests, parallel with above).
+    # Sharded because these tests are serial and dominate the critical path.
+    shards = split_migration_tests(migration_shards)
+    for i, tests in enumerate(shards):
+        shard_num = i + 1
+        label = f"migration-{shard_num}"
+        # -run filter: anchored exact-match alternation so "TestDirectMigration"
+        # doesn't accidentally match "TestDirectMigrationResumable".
+        run_filter = "^(" + "|".join(tests) + ")$"
+        lines.append(f'- label: ":arrow_right_hook: e1e migration ({shard_num}/{migration_shards})"')
+        lines.append(f'  key: test-exelets-{label}')
+        lines.append('  depends_on:')
+        lines.append('    - build-e1e')
+        lines.append('    - ensure-snapshot')
+        lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
+        lines.append('  timeout_in_minutes: 10')
+        lines.append('  env:')
+        lines.append('    VM_DRIVER: cloudhypervisor')
+        lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
+        lines.append(f'    E1E_EXELETS_RUN_FILTER: "{run_filter}"')
+        lines.append(f'    E1E_EXELETS_LABEL: "{label}"')
+        if coverage:
+            lines.append(f'    E1E_COVERAGE: "true"')
+        lines.append('  artifact_paths:')
+        lines.append(f'    - "e1e-results-{label}.json"')
+        lines.append(f'    - "test-gantt-{label}.html"')
+        lines.append(f'    - "e1e-results-{label}.xml"')
+        lines.append(f'    - "e1e-logs-{label}/**/*"')
+        if coverage:
+            lines.append(f'    - "coverage-{label}.txt"')
+        lines.append('')
 
     return '\n'.join(lines)
 
@@ -372,6 +415,7 @@ def main():
     vm_concurrency = trailers.get("e1e-vm-concurrency", os.environ.get("E1E_VM_CONCURRENCY", "12"))
     gomaxprocs = trailers.get("e1e-gomaxprocs", os.environ.get("E1E_GOMAXPROCS", ""))
     exelets_vm_concurrency = trailers.get("e1e-exelets-vm-concurrency", os.environ.get("E1E_EXELETS_VM_CONCURRENCY", "10"))
+    migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "2")))
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
@@ -380,6 +424,7 @@ def main():
           f"e1e_shards={n_shards} vm_concurrency={vm_concurrency} "
           f"gomaxprocs={gomaxprocs or '(default)'} "
           f"exelets_vm_concurrency={exelets_vm_concurrency} "
+          f"migration_shards={migration_shards} "
           f"coverage={coverage}",
           file=sys.stderr)
 
@@ -396,7 +441,7 @@ def main():
             exe_segment = _inject_coverage_env(exe_segment)
         segments.append(exe_segment)
         # Generate e1e steps dynamically
-        segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, coverage=coverage))
+        segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=coverage))
 
     # Conditional: shelley tests
     if shelley_changed:
@@ -418,7 +463,7 @@ def main():
         # Collect keys of all test steps that produce coverage.
         test_keys = collect_step_keys("\n".join(segments))
         # Filter to only test step keys (unit-*, test-e1e-*, test-exelets).
-        coverage_deps = [k for k in test_keys if k.startswith("unit-") or k.startswith("test-e1e-") or k in ("test-exelets", "test-exelets-migration")]
+        coverage_deps = [k for k in test_keys if k.startswith("unit-") or k.startswith("test-e1e-") or k == "test-exelets" or k.startswith("test-exelets-migration-")]
         segments.append(generate_coverage_merge_step(coverage_deps))
 
     # Collect all step keys for dependency lists
