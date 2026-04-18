@@ -216,6 +216,15 @@ def _ensure_nat() -> None:
 def _setup_tap(tap: str) -> None:
     """Create TAP interface and attach it to BRIDGE."""
     _ensure_bridge()
+    # Disable STP on the bridge. libvirt's default network leaves STP on
+    # with a 2s forward delay, which adds ~3s to every VM boot (port sits
+    # in "learning" state before forwarding frames). Our bridges only carry
+    # tap endpoints (no loops possible), so STP is pure overhead.
+    # Idempotent; safe to call on every VM start.
+    sudo("ip", "link", "set", BRIDGE, "type", "bridge", "stp_state", "0",
+         check=False)
+    sudo("ip", "link", "set", BRIDGE, "type", "bridge", "forward_delay", "0",
+         check=False)
     sudo("ip", "tuntap", "add", "mode", "tap", tap)
     sudo("ip", "link", "set", tap, "master", BRIDGE)
     sudo("ip", "link", "set", tap, "up")
