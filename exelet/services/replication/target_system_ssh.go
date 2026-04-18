@@ -60,6 +60,7 @@ func (t *SystemSSHTarget) runCommand(ctx context.Context, command string) ([]byt
 		// If the command failed, include stderr in the error for diagnostics.
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			out = append(out, exitErr.Stderr...)
 			return out, fmt.Errorf("%w: %s", err, exitErr.Stderr)
 		}
 		return out, err
