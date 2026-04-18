@@ -393,3 +393,11 @@ FROM users u
 LEFT JOIN accounts a ON a.created_by = u.user_id
 LEFT JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL
 WHERE u.user_id = ?1;
+
+-- name: HadTrial :one
+-- HadTrial reports whether the account ever had any kind of trial:
+-- stripeless trials (plan_id LIKE 'trial:%') or Stripe trials (trial_expires_at IS NOT NULL).
+SELECT EXISTS (
+    SELECT 1 FROM account_plans
+    WHERE account_id = ? AND (plan_id LIKE 'trial:%' OR trial_expires_at IS NOT NULL)
+) AS had_trial;

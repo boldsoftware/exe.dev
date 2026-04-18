@@ -286,20 +286,41 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 	vmImage := strings.TrimSpace(r.URL.Query().Get("image"))
 	source := r.URL.Query().Get("source")
 
-	// Get user email
-	user, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserWithDetails, userID)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to get user details", "error", err)
-		http.Error(w, "failed to get user details", http.StatusInternalServerError)
-		return
-	}
-
-	// Get or create account
-	existingAccount, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetAccountWithBillingStatus, userID)
+	// Load user details, account, and trial history in one read transaction.
+	var user exedb.User
 	var accountID string
 	var hasActiveBilling bool
-	if errors.Is(err, sql.ErrNoRows) {
-		// Create new account record
+	var hadPriorTrial bool
+	var needsAccountCreate bool
+	err = s.withRx(r.Context(), func(ctx context.Context, q *exedb.Queries) error {
+		var err error
+		user, err = q.GetUserWithDetails(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("get user details: %w", err)
+		}
+		acct, err := q.GetAccountWithBillingStatus(ctx, userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			needsAccountCreate = true
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("get account: %w", err)
+		}
+		accountID = acct.ID
+		hasActiveBilling = acct.BillingStatus == "active"
+		hadTrialInt, err := q.HadTrial(ctx, accountID)
+		if err != nil {
+			return fmt.Errorf("check trial history: %w", err)
+		}
+		hadPriorTrial = hadTrialInt != 0
+		return nil
+	})
+	if err != nil {
+		s.slog().ErrorContext(r.Context(), "failed to load billing data", "error", err)
+		http.Error(w, "failed to load billing data", http.StatusInternalServerError)
+		return
+	}
+	if needsAccountCreate {
 		accountID = "exe_" + crand.Text()[:16]
 		if err := withTx1(s, r.Context(), (*exedb.Queries).InsertAccount, exedb.InsertAccountParams{
 			ID:        accountID,
@@ -309,15 +330,6 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create account", http.StatusInternalServerError)
 			return
 		}
-		hasActiveBilling = false
-	} else if err != nil {
-		s.slog().ErrorContext(r.Context(), "failed to check existing account", "error", err)
-		http.Error(w, "failed to check billing status", http.StatusInternalServerError)
-		return
-	} else {
-		accountID = existingAccount.ID
-		// BillingStatus contains the computed status from billing_events
-		hasActiveBilling = existingAccount.BillingStatus == "active"
 	}
 
 	// Skip billing for users without active billing if SkipBilling is set (for tests)
@@ -380,7 +392,12 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 		RedirectToPortal: true,
 		PortalReturnURL:  returnURL,
 	}
-	if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
+	if hadPriorTrial {
+		s.slog().InfoContext(r.Context(), "skipping Stripe trial for user with prior trial",
+			"user_id", userID,
+			"email", user.Email,
+		)
+	} else if s.qualifiesForTrial(r.Context(), userID, user.Email, exeweb.ClientIPFromRemoteAddr(r.RemoteAddr)) {
 		// Get trial days from Individual plan quotas
 		plan, _ := plan.Get(plan.CategoryIndividual)
 		trialDays := plan.TrialDays

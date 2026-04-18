@@ -405,3 +405,110 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestHadTrial(t *testing.T) {
+	t.Parallel()
+
+	db, queries := setupAccountTestDB(t)
+	ctx := context.Background()
+
+	userID := "usr_stripeless001"
+	accountID := "exe_stripeless001"
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "stripeless@example.com"); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by) VALUES (?, ?)`, accountID, userID); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// No plan history at all — should report false.
+	had, err := queries.HadTrial(ctx, accountID)
+	if err != nil {
+		t.Fatalf("HadTrial: %v", err)
+	}
+	if had != 0 {
+		t.Fatal("expected no stripeless trial for account with no plans")
+	}
+
+	// Add a non-stripeless plan — should still report false.
+	if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID: accountID,
+		PlanID:    "basic:monthly:20260106",
+		StartedAt: time.Now(),
+		ChangedBy: strPtr("system:signup"),
+	}); err != nil {
+		t.Fatalf("InsertAccountPlan: %v", err)
+	}
+	had, err = queries.HadTrial(ctx, accountID)
+	if err != nil {
+		t.Fatalf("HadTrial: %v", err)
+	}
+	if had != 0 {
+		t.Fatal("expected no trial for account with only a basic plan")
+	}
+
+	// Close that plan, add a stripeless trial plan.
+	if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+		AccountID: accountID,
+		EndedAt:   timePtr(time.Now()),
+	}); err != nil {
+		t.Fatalf("CloseAccountPlan: %v", err)
+	}
+	if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID:      accountID,
+		PlanID:         "trial:monthly:20260106",
+		StartedAt:      time.Now(),
+		TrialExpiresAt: timePtr(time.Now().Add(7 * 24 * time.Hour)),
+		ChangedBy:      strPtr("system:stripeless_trial"),
+	}); err != nil {
+		t.Fatalf("InsertAccountPlan: %v", err)
+	}
+	had, err = queries.HadTrial(ctx, accountID)
+	if err != nil {
+		t.Fatalf("HadTrial: %v", err)
+	}
+	if had != 1 {
+		t.Fatal("expected trial to be detected")
+	}
+
+	// Close the trial plan — should still report true (checks history, not just active).
+	if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+		AccountID: accountID,
+		EndedAt:   timePtr(time.Now()),
+	}); err != nil {
+		t.Fatalf("CloseAccountPlan: %v", err)
+	}
+	had, err = queries.HadTrial(ctx, accountID)
+	if err != nil {
+		t.Fatalf("HadTrial: %v", err)
+	}
+	if had != 1 {
+		t.Fatal("expected trial to be detected even after plan closed")
+	}
+
+	// Stripe trial: individual plan with trial_expires_at set.
+	stripeUserID := "usr_stripe_trial001"
+	stripeAccountID := "exe_stripe_trial001"
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (user_id, email) VALUES (?, ?)`, stripeUserID, "stripe-trial@example.com"); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by) VALUES (?, ?)`, stripeAccountID, stripeUserID); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+	if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+		AccountID:      stripeAccountID,
+		PlanID:         "individual:monthly:20260106",
+		StartedAt:      time.Now(),
+		TrialExpiresAt: timePtr(time.Now().Add(7 * 24 * time.Hour)),
+		ChangedBy:      strPtr("stripe:event"),
+	}); err != nil {
+		t.Fatalf("InsertAccountPlan: %v", err)
+	}
+	had, err = queries.HadTrial(ctx, stripeAccountID)
+	if err != nil {
+		t.Fatalf("HadTrial: %v", err)
+	}
+	if had != 1 {
+		t.Fatal("expected Stripe trial (individual plan with trial_expires_at) to be detected")
+	}
+}

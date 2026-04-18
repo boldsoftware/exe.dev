@@ -642,6 +642,22 @@ func (q *Queries) GetUserPlanData(ctx context.Context, userID string) (GetUserPl
 	return i, err
 }
 
+const hadTrial = `-- name: HadTrial :one
+SELECT EXISTS (
+    SELECT 1 FROM account_plans
+    WHERE account_id = ? AND (plan_id LIKE 'trial:%' OR trial_expires_at IS NOT NULL)
+) AS had_trial
+`
+
+// HadTrial reports whether the account ever had any kind of trial:
+// stripeless trials (plan_id LIKE 'trial:%') or Stripe trials (trial_expires_at IS NOT NULL).
+func (q *Queries) HadTrial(ctx context.Context, accountID string) (int64, error) {
+	row := q.queryRow(ctx, q.hadTrialStmt, hadTrial, accountID)
+	var had_trial int64
+	err := row.Scan(&had_trial)
+	return had_trial, err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT OR IGNORE INTO accounts (id, created_by) VALUES (?, ?)
 `

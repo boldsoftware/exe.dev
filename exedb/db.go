@@ -759,6 +759,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.grantBillingUpgradeBonusOnceStmt, err = db.PrepareContext(ctx, grantBillingUpgradeBonusOnce); err != nil {
 		return nil, fmt.Errorf("error preparing query GrantBillingUpgradeBonusOnce: %w", err)
 	}
+	if q.hadTrialStmt, err = db.PrepareContext(ctx, hadTrial); err != nil {
+		return nil, fmt.Errorf("error preparing query HadTrial: %w", err)
+	}
 	if q.hasDripSendStmt, err = db.PrepareContext(ctx, hasDripSend); err != nil {
 		return nil, fmt.Errorf("error preparing query HasDripSend: %w", err)
 	}
@@ -2556,6 +2559,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing grantBillingUpgradeBonusOnceStmt: %w", cerr)
 		}
 	}
+	if q.hadTrialStmt != nil {
+		if cerr := q.hadTrialStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hadTrialStmt: %w", cerr)
+		}
+	}
 	if q.hasDripSendStmt != nil {
 		if cerr := q.hasDripSendStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasDripSendStmt: %w", cerr)
@@ -3785,6 +3793,7 @@ type Queries struct {
 	getUsersWithOutOfRegionBoxesStmt           *sql.Stmt
 	giftCreditsStmt                            *sql.Stmt
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
+	hadTrialStmt                               *sql.Stmt
 	hasDripSendStmt                            *sql.Stmt
 	hasPushTokensStmt                          *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
@@ -4225,6 +4234,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUsersWithOutOfRegionBoxesStmt:           q.getUsersWithOutOfRegionBoxesStmt,
 		giftCreditsStmt:                            q.giftCreditsStmt,
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
+		hadTrialStmt:                               q.hadTrialStmt,
 		hasDripSendStmt:                            q.hasDripSendStmt,
 		hasPushTokensStmt:                          q.hasPushTokensStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
