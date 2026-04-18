@@ -53,13 +53,19 @@ TEST_LETTER_COUNTS = [
 # e1e/exelets migration tests (TestDirectMigration*) with approximate
 # execution time weights (seconds). Used to shard the migration step.
 # Update when tests are added/removed or timing changes significantly.
-# Last updated: 2026-04-18 from build #1169 timing data.
+# Last updated: 2026-04-18 from build #1183 timing data, after splitting
+# TestDirectMigration into Cold + Live subtests.
+# Note: splitting TestDirectMigration into Cold+Live duplicates per-test setup
+# (register user + makeBox + exed Restart, ~10s) — that's the tradeoff for being
+# able to run them in separate shards. Weights below include that setup cost.
+# Numbers are observed wall-clock from build #1184 after the Cold/Live split.
 MIGRATION_TEST_COSTS = [
-    ("TestDirectMigration", 53),
-    ("TestDirectMigrationOrphanedDataset", 27),
-    ("TestDirectMigrationReconnect", 24),
-    ("TestDirectMigrationResumable", 24),
-    ("TestDirectMigrationResumablePhase2", 23),
+    ("TestDirectMigrationCold", 31),
+    ("TestDirectMigrationLive", 51),
+    ("TestDirectMigrationOrphanedDataset", 30),
+    ("TestDirectMigrationReconnect", 25),
+    ("TestDirectMigrationResumable", 34),
+    ("TestDirectMigrationResumablePhase2", 24),
 ]
 
 
@@ -415,7 +421,11 @@ def main():
     vm_concurrency = trailers.get("e1e-vm-concurrency", os.environ.get("E1E_VM_CONCURRENCY", "12"))
     gomaxprocs = trailers.get("e1e-gomaxprocs", os.environ.get("E1E_GOMAXPROCS", ""))
     exelets_vm_concurrency = trailers.get("e1e-exelets-vm-concurrency", os.environ.get("E1E_EXELETS_VM_CONCURRENCY", "10"))
-    migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "2")))
+    # 3 is the sweet spot: 4 parallel migration shards run into CPU
+    # contention with the 5 e1e shards + exelets step on the 48-core CI
+    # host, inflating per-test times (e.g. build #1186 saw Orphaned go
+    # 30s -> 50s). Stick with 3 until contention is reduced.
+    migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "3")))
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "

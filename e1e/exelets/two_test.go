@@ -228,7 +228,12 @@ func TestLoadedHost(t *testing.T) {
 	}
 }
 
-func TestDirectMigration(t *testing.T) {
+// setupMigrationBox is shared setup for TestDirectMigration* tests:
+// ensures 2 exelets, restarts exed, registers a user, creates a box,
+// and returns the box name, key file, source host, and target host.
+// Registers a t.Cleanup to delete the box when the test finishes.
+func setupMigrationBox(t *testing.T) (boxName, keyFile, sourceAddr, targetAddr string) {
+	t.Helper()
 	if err := ensureExeletCount(t.Context(), 2); err != nil {
 		t.Fatal(err)
 	}
@@ -241,41 +246,49 @@ func TestDirectMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pty, _, keyFile, email := register(t)
-	boxName := makeBox(t, pty, keyFile, email)
+	pty, _, kf, email := register(t)
+	bn := makeBox(t, pty, kf, email)
 	pty.Disconnect()
-	defer deleteBox(t, boxName, keyFile)
+	t.Cleanup(func() { deleteBox(t, bn, kf) })
 
-	sourceBox, ok := findBox(t, boxName)
+	sourceBox, ok := findBox(t, bn)
 	if !ok {
-		t.Fatalf("box %q not found before migration", boxName)
+		t.Fatalf("box %q not found before migration", bn)
 	}
 
-	var targetAddr string
+	var tgt string
 	switch sourceBox.Host {
 	case exeletAddrs[0]:
-		targetAddr = exeletAddrs[1]
+		tgt = exeletAddrs[1]
 	case exeletAddrs[1]:
-		targetAddr = exeletAddrs[0]
+		tgt = exeletAddrs[0]
 	default:
-		t.Fatalf("box %q created on unexpected host %q", boxName, sourceBox.Host)
+		t.Fatalf("box %q created on unexpected host %q", bn, sourceBox.Host)
 	}
+	return bn, kf, sourceBox.Host, tgt
+}
 
-	t.Run("cold", func(t *testing.T) {
-		migrateBox(t, boxName, targetAddr, false)
-		assertBoxEventuallyOnHost(t, boxName, targetAddr)
-		assertBoxSSHWorks(t, boxName, keyFile)
-	})
+// TestDirectMigrationCold exercises a cold (stopped) migration from the
+// box's source host to the opposite host.
+func TestDirectMigrationCold(t *testing.T) {
+	boxName, keyFile, _, targetAddr := setupMigrationBox(t)
+	migrateBox(t, boxName, targetAddr, false)
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+}
 
-	t.Run("live_reverse", func(t *testing.T) {
-		migrateBox(t, boxName, sourceBox.Host, true)
-		assertBoxEventuallyOnHost(t, boxName, sourceBox.Host)
-		assertBoxSSHWorks(t, boxName, keyFile)
+// TestDirectMigrationLive exercises a live migration away and back again.
+// Split out from the original TestDirectMigration to allow sharding.
+func TestDirectMigrationLive(t *testing.T) {
+	boxName, keyFile, sourceAddr, targetAddr := setupMigrationBox(t)
 
-		migrateBox(t, boxName, targetAddr, true)
-		assertBoxEventuallyOnHost(t, boxName, targetAddr)
-		assertBoxSSHWorks(t, boxName, keyFile)
-	})
+	migrateBox(t, boxName, targetAddr, true)
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+
+	migrateBox(t, boxName, sourceAddr, true)
+	assertBoxEventuallyOnHost(t, boxName, sourceAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
 }
 
 func migrateBox(t *testing.T, boxName, target string, live bool) {

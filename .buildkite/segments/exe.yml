@@ -8,15 +8,23 @@
   command: .buildkite/steps/ensure-snapshot.sh
   timeout_in_minutes: 10
 
+# non-e1e checks depend on build-e1e to stagger CPU usage: the Go compile in
+# build-e1e is CPU-hungry, and these checks (vet, build-only tests) are too.
+# Running them serially via this dep keeps wall-clock down off-critical-path.
 - label: ":white_check_mark: non-e1e checks"
   key: checks
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-checks.sh
   timeout_in_minutes: 20
 
-# Unit tests depend on format to stagger CPU usage (not a real dependency).
+# Unit tests depend on build-e1e (not format) to stagger CPU usage.
+# build-e1e saturates the CPU during its 10-12s window; delaying unit tests
+# until after it finishes reduces contention with the concurrent compile.
+# They're not on the critical path (longest unit shard ~71s, critical path
+# is e1e migration ~95-100s).
 - label: ":go: unit tests (execore A-H)"
   key: unit-a
-  depends_on: format
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -29,7 +37,7 @@
 
 - label: ":go: unit tests (other pkgs)"
   key: unit-b
-  depends_on: format
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -42,7 +50,7 @@
 
 - label: ":go: unit tests (execore I-P)"
   key: unit-c
-  depends_on: format
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
@@ -55,7 +63,7 @@
 
 - label: ":go: unit tests (execore Q-Z)"
   key: unit-d
-  depends_on: format
+  depends_on: build-e1e
   command: .buildkite/steps/test-non-e1e-tests.sh
   timeout_in_minutes: 20
   env:
