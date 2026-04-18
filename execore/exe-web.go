@@ -842,16 +842,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleGitHubCallback(w, r)
 	case "/github/setup":
 		s.handleGitHubSetup(w, r)
-	case "/github/install":
-		s.handleGitHubInstall(w, r)
-	case "/github/signin":
-		s.handleGitHubSignin(w, r)
 	case "/github/unlink":
 		s.handleGitHubUnlink(w, r)
 	case "/github/repos":
 		s.handleGitHubRepos(w, r)
 	case "/github/verify":
 		s.handleGitHubVerify(w, r)
+	case "/github/sync":
+		s.handleGitHubSync(w, r)
 
 	case "/logout":
 		s.handleLogout(w, r)

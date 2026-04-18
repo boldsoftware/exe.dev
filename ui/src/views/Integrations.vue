@@ -219,12 +219,16 @@
               <a class="btn btn-secondary" :href="'https://github.com/apps/' + data.githubAppSlug + '/installations/new'" target="_blank" rel="noopener noreferrer">
                 Install on another account
               </a>
-              <a class="btn btn-secondary" href="/github/setup">
-                Link another account
-              </a>
+              <button class="btn btn-secondary" :disabled="syncingGitHub" @click="syncGitHub">
+                <i v-if="syncingGitHub" class="pi pi-spin pi-spinner" style="font-size: 10px;"></i>
+                {{ syncingGitHub ? 'Syncing…' : 'Sync installations accessible to your GitHub account' }}
+              </button>
               <a class="btn btn-secondary" :href="'https://github.com/apps/' + data.githubAppSlug" target="_blank" rel="noopener noreferrer">
-                Configure on GitHub
+                Configure GitHub App on GitHub
               </a>
+            </div>
+            <div v-if="syncMessage" class="gh-sync-result" :class="syncMessageIsError ? 'gh-verify-error' : 'gh-verify-ok'">
+              {{ syncMessage }}
             </div>
           </template>
         </div>
@@ -871,6 +875,9 @@ const loadingRepos = ref(false)
 const unlinkingAccounts = ref<Set<number>>(new Set())
 const verifyResults = reactive<Record<number, { message: string; isError: boolean }>>({})
 const verifyingAccounts = ref<Set<number>>(new Set())
+const syncingGitHub = ref(false)
+const syncMessage = ref('')
+const syncMessageIsError = ref(false)
 const inlineMessage = ref('')
 const inlineMessageIsError = ref(false)
 
@@ -933,6 +940,8 @@ watch(() => route.hash, () => maybeScrollToHash())
 const ghSetupModal = reactive({ visible: false })
 function openGitHubSetup() {
   ghSetupModal.visible = true
+  syncMessage.value = ''
+  syncMessageIsError.value = false
 }
 
 // Unified active integrations table
@@ -2283,6 +2292,71 @@ async function runProxyCommand() {
   }
 }
 
+async function syncGitHub() {
+  syncingGitHub.value = true
+  syncMessage.value = ''
+  syncMessageIsError.value = false
+  try {
+    const res = await fetch('/github/sync', { method: 'POST' })
+    const ct = res.headers.get('content-type') || ''
+    if (!ct.includes('application/json')) {
+      const text = (await res.text()).trim() || `HTTP ${res.status}`
+      syncMessage.value = 'Sync failed: ' + text
+      syncMessageIsError.value = true
+      return
+    }
+    const result = await res.json()
+    if (result.needs_auth) {
+      window.location.href = result.auth_url || '/github/setup'
+      return
+    }
+    if (!result.success) {
+      syncMessage.value = 'Sync failed: ' + (result.error || 'unknown error')
+      syncMessageIsError.value = true
+      return
+    }
+
+    const accounts: { github_login: string; target_logins: string[] }[] = result.accounts || []
+    const added: { github_login: string; target_login: string }[] = result.added || []
+    const removed: { github_login: string; target_login: string }[] = result.removed || []
+    const authIssues: { github_login: string; error: string }[] = result.auth_issues || []
+
+    const summaryParts: string[] = []
+    if (accounts.length > 0) {
+      const s = accounts.map(a => {
+        if (a.target_logins.length === 0) return `${a.github_login} (no installations — install the app)`
+        return `${a.github_login} → ${a.target_logins.join(', ')}`
+      }).join('; ')
+      summaryParts.push(`Accessible: ${s}`)
+    }
+    if (added.length > 0) {
+      summaryParts.push(`Added: ${added.map(p => p.target_login).join(', ')}`)
+    }
+    if (removed.length > 0) {
+      summaryParts.push(`Removed: ${removed.map(p => p.target_login).join(', ')}`)
+    }
+    if (added.length === 0 && removed.length === 0) {
+      summaryParts.push('No changes.')
+    }
+
+    if (authIssues.length > 0) {
+      const issues = authIssues.map(i => `${i.github_login}: ${i.error}`).join('; ')
+      syncMessage.value = summaryParts.join(' · ') + ` — Auth issues: ${issues}`
+      syncMessageIsError.value = true
+    } else {
+      syncMessage.value = summaryParts.join(' · ')
+      syncMessageIsError.value = false
+    }
+
+    await reload()
+  } catch (err: any) {
+    syncMessage.value = 'Sync failed: ' + (err?.message || 'network error')
+    syncMessageIsError.value = true
+  } finally {
+    syncingGitHub.value = false
+  }
+}
+
 function verifyGitHub(installationID: number) {
   delete verifyResults[installationID]
   verifyingAccounts.value.add(installationID)
@@ -2570,6 +2644,13 @@ function confirmUnlinkGitHub(installationID: number) {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 3px;
+}
+
+.gh-sync-result {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
 }
 
 .gh-verify-ok {

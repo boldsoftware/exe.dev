@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"exe.dev/exedb"
@@ -26,44 +27,6 @@ func (s *Server) handleGitHubSetup(w http.ResponseWriter, r *http.Request) {
 	setup, _, err := s.registerGitHubSetup(userID, true)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "GitHub setup failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, s.githubApp.AuthorizeURL(setup.State), http.StatusFound)
-}
-
-// handleGitHubInstall initiates the GitHub App install flow from the web UI.
-// Creates a pending setup, then redirects the browser to GitHub's install page.
-func (s *Server) handleGitHubInstall(w http.ResponseWriter, r *http.Request) {
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		http.Redirect(w, r, "/auth?redirect=/integrations%23github", http.StatusTemporaryRedirect)
-		return
-	}
-
-	setup, _, err := s.registerGitHubSetup(userID, true)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "GitHub install setup failed", "error", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	http.Redirect(w, r, s.githubApp.InstallURL(setup.State), http.StatusFound)
-}
-
-// handleGitHubSignin initiates the GitHub OAuth sign-in flow from the web UI.
-// Used when the app is already installed and the user just needs to link their account.
-func (s *Server) handleGitHubSignin(w http.ResponseWriter, r *http.Request) {
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		http.Redirect(w, r, "/auth?redirect=/integrations%23github", http.StatusTemporaryRedirect)
-		return
-	}
-
-	setup, _, err := s.registerGitHubSetup(userID, true)
-	if err != nil {
-		s.slog().ErrorContext(r.Context(), "GitHub signin setup failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -380,4 +343,167 @@ func writeGitHubJSON(w http.ResponseWriter, success bool, errMsg string, data an
 		resp["repos"] = data
 	}
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleGitHubSync re-queries GitHub for the installations accessible to each
+// of the user's linked GitHub accounts, updates the database to reflect the
+// current set, and returns a summary of what changed.
+func (s *Server) handleGitHubSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+	ctx := r.Context()
+
+	type pair struct {
+		GitHubLogin string `json:"github_login"`
+		TargetLogin string `json:"target_login"`
+	}
+	type accountSummary struct {
+		GitHubLogin  string   `json:"github_login"`
+		TargetLogins []string `json:"target_logins"`
+	}
+	type authIssue struct {
+		GitHubLogin string `json:"github_login"`
+		Error       string `json:"error"`
+	}
+	writeJSON := func(status int, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(v)
+	}
+
+	tokens, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubUserTokens, userID)
+	if err != nil {
+		writeJSON(http.StatusInternalServerError, map[string]any{"success": false, "error": "failed to load linked GitHub accounts"})
+		return
+	}
+	if len(tokens) == 0 {
+		writeJSON(http.StatusOK, map[string]any{
+			"success":    false,
+			"needs_auth": true,
+			"auth_url":   "/github/setup",
+			"message":    "No GitHub account is linked yet. Sign in to GitHub to get started.",
+		})
+		return
+	}
+
+	existing, err := withRxRes1(s, ctx, (*exedb.Queries).ListGitHubInstallations, userID)
+	if err != nil {
+		writeJSON(http.StatusInternalServerError, map[string]any{"success": false, "error": "failed to load existing installations"})
+		return
+	}
+
+	var (
+		accounts   []accountSummary
+		authIssues []authIssue
+	)
+
+	// Build the desired set of installations across all linked tokens. Skip
+	// tokens that error so we don't drop installations we still know about.
+	type desiredInstall struct {
+		gitHubLogin  string
+		accountLogin string
+	}
+	desired := map[int64]desiredInstall{}
+	healthyLogins := map[string]bool{}
+
+	for _, tok := range tokens {
+		accessToken, err := s.resolveGitHubTokenWeb(ctx, userID, tok.GitHubLogin)
+		if err != nil {
+			authIssues = append(authIssues, authIssue{GitHubLogin: tok.GitHubLogin, Error: "could not resolve access token; try unlinking and re-linking this account"})
+			continue
+		}
+		installs, err := s.githubApp.GetUserInstallations(ctx, accessToken)
+		if err != nil {
+			msg := err.Error()
+			if githubapp.IsAuthError(err) || strings.Contains(msg, "returned 401") {
+				msg = "authorization expired — unlink and re-link this account"
+			} else {
+				msg = "could not query GitHub for installations"
+			}
+			authIssues = append(authIssues, authIssue{GitHubLogin: tok.GitHubLogin, Error: msg})
+			continue
+		}
+		healthyLogins[tok.GitHubLogin] = true
+		targets := make([]string, 0, len(installs))
+		for _, inst := range installs {
+			targets = append(targets, inst.Account.Login)
+			// First token wins for attribution if multiple tokens see the
+			// same installation; consistent with the existing per-row schema.
+			if _, claimed := desired[inst.ID]; !claimed {
+				desired[inst.ID] = desiredInstall{gitHubLogin: tok.GitHubLogin, accountLogin: inst.Account.Login}
+			}
+		}
+		accounts = append(accounts, accountSummary{GitHubLogin: tok.GitHubLogin, TargetLogins: targets})
+	}
+
+	// Reconcile in a single pass so we never delete a row another token just
+	// upserted, and never report a change unless the DB op succeeded.
+	existingByID := map[int64]exedb.GithubInstallation{}
+	for _, e := range existing {
+		existingByID[e.GitHubAppInstallationID] = e
+	}
+
+	var added, removed []pair
+	for id, want := range desired {
+		prior, hadPrior := existingByID[id]
+		if hadPrior && prior.GitHubLogin == want.gitHubLogin && prior.GitHubAccountLogin == want.accountLogin {
+			continue
+		}
+		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			if err := queries.DeleteGitHubInstallationByTarget(ctx, exedb.DeleteGitHubInstallationByTargetParams{
+				UserID:                  userID,
+				GitHubAccountLogin:      want.accountLogin,
+				GitHubAppInstallationID: id,
+			}); err != nil {
+				return err
+			}
+			return queries.UpsertGitHubInstallation(ctx, exedb.UpsertGitHubInstallationParams{
+				UserID:                  userID,
+				GitHubLogin:             want.gitHubLogin,
+				GitHubAppInstallationID: id,
+				GitHubAccountLogin:      want.accountLogin,
+			})
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "github sync: upsert failed", "error", err, "user_id", userID, "installation_id", id)
+			authIssues = append(authIssues, authIssue{GitHubLogin: want.gitHubLogin, Error: "failed to save installation " + want.accountLogin})
+			continue
+		}
+		added = append(added, pair{GitHubLogin: want.gitHubLogin, TargetLogin: want.accountLogin})
+	}
+
+	for id, e := range existingByID {
+		if _, stillThere := desired[id]; stillThere {
+			continue
+		}
+		// Only delete rows attributed to a token we successfully queried; if
+		// the responsible token errored, preserve the row.
+		if !healthyLogins[e.GitHubLogin] {
+			continue
+		}
+		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteGitHubInstallation(ctx, exedb.DeleteGitHubInstallationParams{
+				UserID:                  userID,
+				GitHubAppInstallationID: id,
+			})
+		}); err != nil {
+			s.slog().ErrorContext(ctx, "github sync: delete failed", "error", err, "user_id", userID, "installation_id", id)
+			continue
+		}
+		removed = append(removed, pair{GitHubLogin: e.GitHubLogin, TargetLogin: e.GitHubAccountLogin})
+	}
+
+	writeJSON(http.StatusOK, map[string]any{
+		"success":     true,
+		"accounts":    accounts,
+		"added":       added,
+		"removed":     removed,
+		"auth_issues": authIssues,
+	})
 }

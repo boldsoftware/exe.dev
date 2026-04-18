@@ -1,6 +1,7 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +15,7 @@ import (
 )
 
 // connectGitHubViaWeb connects a GitHub account through the web flow.
-// It hits /github/signin to initiate OAuth, extracts the state from the
+// It hits /github/setup to initiate OAuth, extracts the state from the
 // redirect URL, then simulates the OAuth callback with the given code.
 // Returns the callback's redirect Location (or empty if 200 OK).
 func connectGitHubViaWeb(t *testing.T, cookies []*http.Cookie, code string) string {
@@ -29,14 +30,14 @@ func connectGitHubViaWeb(t *testing.T, cookies []*http.Cookie, code string) stri
 		},
 	}
 
-	// Hit /github/signin — should redirect to GitHub OAuth URL with state.
-	resp, err := client.Get(base + "/github/signin")
+	// Hit /github/setup — should redirect to GitHub OAuth URL with state.
+	resp, err := client.Get(base + "/github/setup")
 	if err != nil {
-		t.Fatalf("signin request failed: %v", err)
+		t.Fatalf("setup request failed: %v", err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
-		t.Fatalf("expected 302 from /github/signin, got %d", resp.StatusCode)
+		t.Fatalf("expected 302 from /github/setup, got %d", resp.StatusCode)
 	}
 	loc := resp.Header.Get("Location")
 	u, err := url.Parse(loc)
@@ -281,8 +282,8 @@ func TestIntegrationsGitHubOrphanInstallCallback(t *testing.T) {
 
 	// Send an install callback with no matching pending setup.
 	// This simulates what happens when a user installs the app directly
-	// from the GitHub App page (Step 1 link) without going through
-	// /github/install which sets state.
+	// from the GitHub App page (Step 1 link) without going through a
+	// pending setup that would have registered state.
 	status, body := simulateGitHubInstallCallback(t, 117180919)
 	if status != http.StatusFound {
 		t.Fatalf("expected 302 redirect for orphan install callback, got %d: %s", status, body)
@@ -347,9 +348,9 @@ func TestIntegrationsSetupGitHubWrongAccount(t *testing.T) {
 		},
 	}
 
-	resp, err := client.Get(base + "/github/signin")
+	resp, err := client.Get(base + "/github/setup")
 	if err != nil {
-		t.Fatalf("signin request failed: %v", err)
+		t.Fatalf("setup request failed: %v", err)
 	}
 	resp.Body.Close()
 	loc := resp.Header.Get("Location")
@@ -690,4 +691,96 @@ func TestIntegrationsGitHubReinstall(t *testing.T) {
 	pty.SendLine("integrations setup github -d")
 	pty.Want("Disconnected:")
 	pty.WantPrompt()
+}
+
+// TestIntegrationsGitHubWebSync exercises the /github/sync endpoint used by
+// the Integrations page's "Sync installations accessible to your GitHub
+// account" button.
+func TestIntegrationsGitHubWebSync(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	const code = "sync-user"
+	const token = "ghu_" + code
+	Env.servers.GitHubMock.SetInstallationsForToken(token, []testinfra.MockInstallation{
+		{ID: 1001, Login: "user-org"},
+	})
+
+	_, cookies, _, _ := registerForExeDev(t)
+
+	base := fmt.Sprintf("http://localhost:%d", Env.servers.Exed.HTTPPort)
+
+	doSync := func() map[string]any {
+		t.Helper()
+		jar, _ := cookiejar.New(nil)
+		setCookiesForJar(t, jar, base, cookies)
+		resp, err := (&http.Client{Jar: jar}).Post(base+"/github/sync", "", nil)
+		if err != nil {
+			t.Fatalf("sync request: %v", err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("sync returned %d: %s", resp.StatusCode, body)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(body, &out); err != nil {
+			t.Fatalf("sync parse: %v (body=%s)", err, body)
+		}
+		return out
+	}
+
+	// No accounts linked yet: sync should prompt for auth.
+	out := doSync()
+	if out["needs_auth"] != true {
+		t.Fatalf("expected needs_auth=true, got %v", out)
+	}
+
+	// Connect the account.
+	connectGitHubViaWeb(t, cookies, code)
+
+	// First sync after connect: installation already stored during callback,
+	// so no new changes are expected.
+	out = doSync()
+	if out["success"] != true {
+		t.Fatalf("expected success, got %v", out)
+	}
+	if added, ok := out["added"].([]any); ok && len(added) != 0 {
+		t.Fatalf("expected no added on first sync, got %v", added)
+	}
+	if removed, ok := out["removed"].([]any); ok && len(removed) != 0 {
+		t.Fatalf("expected no removed on first sync, got %v", removed)
+	}
+	accounts, ok := out["accounts"].([]any)
+	if !ok || len(accounts) != 1 {
+		t.Fatalf("expected 1 account in summary, got %v", out["accounts"])
+	}
+
+	// Add a new installation on GitHub and re-sync. The sync endpoint should
+	// discover and persist it, reporting it as added.
+	Env.servers.GitHubMock.AddInstallationForToken(token, 2002, "added-org")
+	out = doSync()
+	added, _ := out["added"].([]any)
+	if len(added) != 1 {
+		t.Fatalf("expected 1 added, got %v", out["added"])
+	}
+	if m, _ := added[0].(map[string]any); m["target_login"] != "added-org" {
+		t.Fatalf("expected added target_login=added-org, got %v", added)
+	}
+
+	// Remove an installation on GitHub and re-sync. The sync endpoint should
+	// delete it locally and report it as removed.
+	Env.servers.GitHubMock.SetInstallationsForToken(token, []testinfra.MockInstallation{
+		{ID: 2002, Login: "added-org"},
+	})
+	out = doSync()
+	removed, _ := out["removed"].([]any)
+	if len(removed) != 1 {
+		t.Fatalf("expected 1 removed, got %v", out["removed"])
+	}
+	if m, _ := removed[0].(map[string]any); m["target_login"] != "user-org" {
+		t.Fatalf("expected removed target_login=user-org, got %v", removed)
+	}
 }
