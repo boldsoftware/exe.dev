@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,11 @@ import (
 const (
 	ringSize       = 86400 // 24h at 1s intervals
 	sampleInterval = 1 * time.Second
+	// Kernel USER_HZ. Hardcoded: modern Linux x86_64 kernels ship with
+	// CONFIG_HZ_100 by default (confirmed via `getconf CLK_TCK` on CI hosts).
+	clkTck = 100
+	// Maximum completed processes to retain (bounds memory).
+	maxCompletedProcs = 20000
 )
 
 //go:embed query.html
@@ -192,6 +198,290 @@ func extractAvg10(line string) float64 {
 	return 0
 }
 
+// ProcKey identifies a process uniquely across pid reuse.
+type ProcKey struct {
+	PID       int
+	StartTick uint64 // from /proc/<pid>/stat field 22 (starttime in clock ticks since boot)
+}
+
+// ProcSample is one CPU-usage measurement for a process.
+type ProcSample struct {
+	Timestamp  int64   `json:"t"`
+	CPUPercent float64 `json:"c"` // percent of one core over the last sample interval
+}
+
+// Process holds metadata + time series for one process.
+type Process struct {
+	Key       ProcKey           `json:"key"`
+	PID       int               `json:"pid"`
+	StartUnix int64             `json:"start"` // unix time of first observation
+	LastUnix  int64             `json:"end"`   // unix time of last observation
+	Comm      string            `json:"comm"`
+	Cmdline   string            `json:"cmdline"`
+	Buildkite map[string]string `json:"bk,omitempty"` // BUILDKITE_* env vars
+	Samples   []ProcSample      `json:"samples"`
+
+	// internal - not serialized.
+	prevCPUTicks uint64 `json:"-"`
+	haveLast     bool   `json:"-"`
+}
+
+type ProcStore struct {
+	mu        sync.Mutex
+	active    map[ProcKey]*Process
+	completed []*Process
+	bootUnix  int64
+}
+
+func newProcStore(bootUnix int64) *ProcStore {
+	return &ProcStore{
+		active:   make(map[ProcKey]*Process),
+		bootUnix: bootUnix,
+	}
+}
+
+// readBootTime returns the system boot time as unix seconds.
+func readBootTime() (int64, error) {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "btime ") {
+			v, err := strconv.ParseInt(strings.TrimSpace(strings.TrimPrefix(line, "btime ")), 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			return v, nil
+		}
+	}
+	return 0, fmt.Errorf("/proc/stat: no btime")
+}
+
+// parseProcStat parses fields we care about from /proc/<pid>/stat.
+// Returns comm, utime+stime (ticks), starttime (ticks).
+func parseProcStat(pid int) (comm string, cpuTicks, startTicks uint64, err error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return "", 0, 0, err
+	}
+	// comm can contain spaces and parens; find last ')' to split reliably.
+	s := string(data)
+	lp := strings.IndexByte(s, '(')
+	rp := strings.LastIndexByte(s, ')')
+	if lp < 0 || rp < 0 || rp < lp {
+		return "", 0, 0, fmt.Errorf("bad stat: %q", s)
+	}
+	comm = s[lp+1 : rp]
+	rest := strings.Fields(s[rp+1:])
+	// rest[0] = state, rest[1] = ppid ... field indices per proc(5) starting at 3.
+	// utime = field 14 -> rest index 14-3 = 11
+	// stime = field 15 -> rest index 12
+	// starttime = field 22 -> rest index 19
+	if len(rest) < 20 {
+		return "", 0, 0, fmt.Errorf("stat fields: %d", len(rest))
+	}
+	utime, err := strconv.ParseUint(rest[11], 10, 64)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	stime, err := strconv.ParseUint(rest[12], 10, 64)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	start, err := strconv.ParseUint(rest[19], 10, 64)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return comm, utime + stime, start, nil
+}
+
+func readCmdline(pid int) string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return ""
+	}
+	// NUL-separated; replace with spaces for display.
+	return strings.TrimRight(strings.ReplaceAll(string(data), "\x00", " "), " ")
+}
+
+// readBuildkiteEnv reads /proc/<pid>/environ and returns BUILDKITE_* vars that identify the task.
+func readBuildkiteEnv(pid int) map[string]string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, kv := range bytes.Split(data, []byte{0}) {
+		if len(kv) == 0 {
+			continue
+		}
+		eq := bytes.IndexByte(kv, '=')
+		if eq < 0 {
+			continue
+		}
+		k := string(kv[:eq])
+		if !isInterestingEnv(k) {
+			continue
+		}
+		out[k] = string(kv[eq+1:])
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func isInterestingEnv(k string) bool {
+	switch k {
+	case "BUILDKITE_BUILD_ID", "BUILDKITE_BUILD_NUMBER", "BUILDKITE_BUILD_URL",
+		"BUILDKITE_JOB_ID", "BUILDKITE_LABEL", "BUILDKITE_STEP_KEY",
+		"BUILDKITE_PIPELINE_SLUG", "BUILDKITE_BRANCH", "BUILDKITE_COMMIT",
+		"BUILDKITE_PARALLEL_JOB", "BUILDKITE_PARALLEL_JOB_COUNT",
+		"BUILDKITE_COMMAND", "BUILDKITE_AGENT_NAME":
+		return true
+	}
+	return false
+}
+
+func listPIDs() ([]int, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, err
+	}
+	pids := make([]int, 0, len(entries))
+	for _, e := range entries {
+		n := e.Name()
+		if n[0] < '0' || n[0] > '9' {
+			continue
+		}
+		pid, err := strconv.Atoi(n)
+		if err != nil {
+			continue
+		}
+		pids = append(pids, pid)
+	}
+	return pids, nil
+}
+
+// scan walks /proc and updates the store with a new sample at `now`.
+// totalTickDelta is the wall-clock delta in clock ticks since last scan (used to compute %).
+func (ps *ProcStore) scan(now int64, tickDelta uint64) {
+	pids, err := listPIDs()
+	if err != nil {
+		log.Printf("list pids: %v", err)
+		return
+	}
+	seen := make(map[ProcKey]bool, len(pids))
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	for _, pid := range pids {
+		comm, cpuTicks, startTicks, err := parseProcStat(pid)
+		if err != nil {
+			continue
+		}
+		key := ProcKey{PID: pid, StartTick: startTicks}
+		seen[key] = true
+		p, ok := ps.active[key]
+		if !ok {
+			p = &Process{
+				Key:       key,
+				PID:       pid,
+				StartUnix: ps.bootUnix + int64(startTicks)/clkTck,
+				Comm:      comm,
+				Cmdline:   readCmdline(pid),
+				Buildkite: readBuildkiteEnv(pid),
+			}
+			ps.active[key] = p
+			p.prevCPUTicks = cpuTicks
+			p.haveLast = false
+			p.LastUnix = now
+			// No sample yet; we need a delta to compute percent.
+			continue
+		}
+		// Compute CPU percent (of one core) over the sample interval.
+		var pct float64
+		if tickDelta > 0 && cpuTicks >= p.prevCPUTicks {
+			pct = float64(cpuTicks-p.prevCPUTicks) / float64(tickDelta) * 100.0
+		}
+		p.Samples = append(p.Samples, ProcSample{Timestamp: now, CPUPercent: pct})
+		p.prevCPUTicks = cpuTicks
+		p.LastUnix = now
+		p.haveLast = true
+		// Refresh cmdline/env if we didn't have one yet (early exec of a wrapper).
+		if p.Cmdline == "" {
+			p.Cmdline = readCmdline(pid)
+		}
+		if p.Buildkite == nil {
+			p.Buildkite = readBuildkiteEnv(pid)
+		}
+	}
+
+	// Reap gone processes.
+	for key, p := range ps.active {
+		if seen[key] {
+			continue
+		}
+		delete(ps.active, key)
+		// Require ≥1s of samples; single-sample (no delta) processes are discarded.
+		if len(p.Samples) < 1 {
+			continue
+		}
+		// Duration check: first→last sample ≥1s.
+		if p.Samples[len(p.Samples)-1].Timestamp-p.Samples[0].Timestamp < 1 {
+			continue
+		}
+		ps.completed = append(ps.completed, p)
+	}
+
+	// Bound memory.
+	if len(ps.completed) > maxCompletedProcs {
+		ps.completed = ps.completed[len(ps.completed)-maxCompletedProcs:]
+	}
+}
+
+// Range returns processes that overlap [start,end], including still-active ones.
+func (ps *ProcStore) Range(start, end int64) []*Process {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	var out []*Process
+	add := func(p *Process) {
+		if len(p.Samples) < 2 {
+			return
+		}
+		first := p.Samples[0].Timestamp
+		last := p.Samples[len(p.Samples)-1].Timestamp
+		if last < start || first > end {
+			return
+		}
+		// Clip samples to window.
+		var clipped []ProcSample
+		for _, s := range p.Samples {
+			if s.Timestamp >= start && s.Timestamp <= end {
+				clipped = append(clipped, s)
+			}
+		}
+		if len(clipped) < 2 {
+			return
+		}
+		copy := *p
+		copy.Samples = clipped
+		out = append(out, &copy)
+	}
+	for _, p := range ps.completed {
+		add(p)
+	}
+	for _, p := range ps.active {
+		add(p)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Samples[0].Timestamp < out[j].Samples[0].Timestamp
+	})
+	return out
+}
+
 func collectSample(prevCPU cpuTimes) (Sample, cpuTimes) {
 	now := time.Now().Unix()
 
@@ -224,6 +514,12 @@ func main() {
 
 	ring := &RingBuffer{}
 
+	bootUnix, err := readBootTime()
+	if err != nil {
+		log.Fatalf("read boot time: %v", err)
+	}
+	procStore := newProcStore(bootUnix)
+
 	// Seed CPU delta with two readings 100ms apart.
 	prevCPU, err := readCPUTimes()
 	if err != nil {
@@ -241,11 +537,20 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(sampleInterval)
 		defer ticker.Stop()
+		lastNanos := time.Now().UnixNano()
 		for {
 			<-ticker.C
 			s, newCPU := collectSample(prevCPU)
 			prevCPU = newCPU
 			ring.Add(s)
+
+			nowNanos := time.Now().UnixNano()
+			tickDelta := uint64((nowNanos - lastNanos) * clkTck / int64(time.Second))
+			if tickDelta == 0 {
+				tickDelta = 1
+			}
+			lastNanos = nowNanos
+			procStore.scan(s.Timestamp, tickDelta)
 		}
 	}()
 
@@ -264,6 +569,25 @@ func main() {
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(samples); err != nil {
 			log.Printf("encode metrics: %v", err)
+		}
+	})
+
+	http.HandleFunc("/processes", func(w http.ResponseWriter, r *http.Request) {
+		startStr := r.URL.Query().Get("start")
+		endStr := r.URL.Query().Get("end")
+		if startStr == "" || endStr == "" {
+			http.Error(w, "start and end query parameters required", http.StatusBadRequest)
+			return
+		}
+		startTS, _ := strconv.ParseInt(startStr, 10, 64)
+		endTS, _ := strconv.ParseInt(endStr, 10, 64)
+		procs := procStore.Range(startTS, endTS)
+		if procs == nil {
+			procs = []*Process{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(procs); err != nil {
+			log.Printf("encode processes: %v", err)
 		}
 	})
 
@@ -296,15 +620,27 @@ func main() {
 			return
 		}
 
+		procs := procStore.Range(startTS, endTS)
+		if procs == nil {
+			procs = []*Process{}
+		}
+		procsJSON, err := json.Marshal(procs)
+		if err != nil {
+			http.Error(w, "json marshal error", http.StatusInternalServerError)
+			return
+		}
+
 		startTime := time.Unix(startTS, 0).UTC().Format("2006-01-02 15:04")
 		endTime := time.Unix(endTS, 0).UTC().Format("2006-01-02 15:04")
 
 		data := struct {
-			Title       string
-			SamplesJSON template.JS
+			Title         string
+			SamplesJSON   template.JS
+			ProcessesJSON template.JS
 		}{
-			Title:       fmt.Sprintf("CI Machine Pressure — %s to %s", startTime, endTime),
-			SamplesJSON: template.JS(samplesJSON),
+			Title:         fmt.Sprintf("CI Machine Pressure — %s to %s", startTime, endTime),
+			SamplesJSON:   template.JS(samplesJSON),
+			ProcessesJSON: template.JS(procsJSON),
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

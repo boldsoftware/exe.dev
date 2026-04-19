@@ -24,7 +24,14 @@
     text-align: center;
     color: #333;
   }
-  #chart {
+  h2 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 24px 0 8px 0;
+    color: #333;
+    align-self: flex-start;
+  }
+  #chart, #procchart {
     margin: 0 auto;
   }
   .vega-embed {
@@ -33,13 +40,62 @@
   .vega-embed .vega-actions {
     display: none !important;
   }
+  .controls {
+    margin: 12px 0;
+    font-size: 13px;
+    color: #444;
+  }
+  .controls input {
+    font-size: 13px;
+    padding: 4px 8px;
+    width: 280px;
+  }
+  .stats {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+  }
 </style>
 </head>
 <body>
 <h1>{{.Title}}</h1>
 <div id="chart"></div>
+
+<h2>CPU by Buildkite step</h2>
+<div id="bkchart"></div>
+
+<h2>Process CPU Usage</h2>
+<div class="controls">
+  Filter: <input id="filter" type="text" placeholder="substring match on cmd/comm/env"> &nbsp;
+  Min peak CPU %: <input id="mincpu" type="number" value="0" min="0" style="width:70px">
+</div>
+<div id="stats" class="stats"></div>
+<div id="procgroups"></div>
+
 <script>
 const samples = {{.SamplesJSON}};
+const processes = {{.ProcessesJSON}};
+
+// Global time domain spanning every data point so every chart shares the
+// same x-axis range; otherwise Vega auto-fits each chart to its own data
+// and the pipeline-step bars no longer line up with the pressure curves.
+function globalDomain() {
+  let lo = Infinity, hi = -Infinity;
+  for (const s of samples) {
+    if (s.Timestamp < lo) lo = s.Timestamp;
+    if (s.Timestamp > hi) hi = s.Timestamp;
+  }
+  for (const p of processes) {
+    for (const s of (p.samples || [])) {
+      if (s.t < lo) lo = s.t;
+      if (s.t > hi) hi = s.t;
+    }
+  }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  // +1s on the upper end so the final 1-second tile has room.
+  return [new Date(lo * 1000).toISOString(), new Date((hi + 1) * 1000).toISOString()];
+}
+const TIME_DOMAIN = globalDomain();
 
 const data = samples.map(s => ({
   time: new Date(s.Timestamp * 1000),
@@ -53,13 +109,13 @@ const data = samples.map(s => ({
 
 function singleChart(title, yTitle, field, color) {
   return {
-    width: 700,
+    width: 900,
     height: 120,
     title: { text: title, anchor: 'start', fontSize: 13, color: '#333' },
     data: { values: data },
     mark: { type: 'area', line: { strokeWidth: 1.5, color: color }, color: { x1: 1, y1: 1, x2: 1, y2: 0, gradient: 'linear', stops: [{ offset: 0, color: 'white' }, { offset: 1, color: color }] }, opacity: 0.25, interpolate: 'monotone' },
     encoding: {
-      x: { field: 'time', type: 'temporal', title: null },
+      x: { field: 'time', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
       y: { field: field, type: 'quantitative', title: yTitle, scale: { zero: true } },
     },
   };
@@ -67,7 +123,7 @@ function singleChart(title, yTitle, field, color) {
 
 function dualChart(title, yTitle, fields, colors, legends) {
   return {
-    width: 700,
+    width: 900,
     height: 120,
     title: { text: title, anchor: 'start', fontSize: 13, color: '#333' },
     data: { values: data },
@@ -82,7 +138,7 @@ function dualChart(title, yTitle, fields, colors, legends) {
     ],
     mark: { type: 'line', strokeWidth: 1.5, interpolate: 'monotone' },
     encoding: {
-      x: { field: 'time', type: 'temporal', title: null },
+      x: { field: 'time', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
       y: { field: 'value', type: 'quantitative', title: yTitle, scale: { zero: true } },
       color: {
         field: 'label',
@@ -130,6 +186,293 @@ const spec = {
 };
 
 vegaEmbed('#chart', spec, { actions: false });
+
+// ---- Process visualization ----
+
+// Upper bound used for color scale clamp. We want to show >100% (e.g. a
+// multi-threaded process saturating several cores) distinctly. 800% covers
+// almost everything on our CI hosts.
+const CPU_COLOR_MAX = 800;
+
+// Pre-compute display fields per process.
+function prepProc(p) {
+  const samples = p.samples || [];
+  let peak = 0, sum = 0;
+  for (const s of samples) { if (s.c > peak) peak = s.c; sum += s.c; }
+  const avg = samples.length ? sum / samples.length : 0;
+  const start = samples.length ? samples[0].t : p.start;
+  const end = samples.length ? samples[samples.length - 1].t : p.end;
+  const label = (p.comm || '?') + ' [' + p.pid + ']';
+  const bk = p.bk || {};
+  const bkStr = Object.keys(bk).sort().map(k => k + '=' + bk[k]).join(' | ');
+  return {
+    key: p.pid + ':' + (p.key && p.key.StartTick),
+    pid: p.pid,
+    comm: p.comm || '',
+    cmdline: p.cmdline || '',
+    label: label,
+    bk: bkStr,
+    bkLabel: bk.BUILDKITE_LABEL || bk.BUILDKITE_STEP_KEY || '',
+    start: start,
+    end: end,
+    duration: end - start,
+    peak: peak,
+    avg: avg,
+    samples: samples,
+  };
+}
+
+const allProcs = processes.map(prepProc).filter(p => p.duration >= 1);
+
+// Greedy row packing: sort by start, assign each process the lowest-index
+// lane whose last-placed bar ended before this process starts.
+function packLanes(procs) {
+  const sorted = procs.slice().sort((a, b) => a.start - b.start || a.pid - b.pid);
+  const laneEnds = [];
+  for (const p of sorted) {
+    let placed = false;
+    for (let i = 0; i < laneEnds.length; i++) {
+      if (laneEnds[i] < p.start) {
+        p.lane = i;
+        laneEnds[i] = p.end;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      p.lane = laneEnds.length;
+      laneEnds.push(p.end);
+    }
+  }
+  return laneEnds.length;
+}
+
+// Build per-bk-label CPU time series: for each second in the window, sum CPU%
+// across all processes in that bk-label with a sample at that second.
+function bkLabelSeries(procs) {
+  if (!procs.length) return { values: [], labels: [] };
+  // Time window: min first-sample to max last-sample across all bk-labeled procs.
+  let minT = Infinity, maxT = -Infinity;
+  const byLabel = new Map();
+  for (const p of procs) {
+    if (!p.bkLabel) continue;
+    if (!byLabel.has(p.bkLabel)) byLabel.set(p.bkLabel, []);
+    byLabel.get(p.bkLabel).push(p);
+    for (const s of p.samples) {
+      if (s.t < minT) minT = s.t;
+      if (s.t > maxT) maxT = s.t;
+    }
+  }
+  if (!byLabel.size) return { values: [], labels: [] };
+  const labels = Array.from(byLabel.keys()).sort();
+  const values = [];
+  for (const lbl of labels) {
+    const bucket = new Map();
+    for (const p of byLabel.get(lbl)) {
+      for (const s of p.samples) {
+        bucket.set(s.t, (bucket.get(s.t) || 0) + s.c);
+      }
+    }
+    // Fill 0 for in-window seconds not otherwise present so the line drops to
+    // baseline instead of being interpolated across long gaps.
+    for (let t = minT; t <= maxT; t++) {
+      if (!bucket.has(t)) bucket.set(t, 0);
+    }
+    const keys = Array.from(bucket.keys()).sort((a, b) => a - b);
+    for (const t of keys) {
+      values.push({ time: new Date(t * 1000), label: lbl, cpu: bucket.get(t) });
+    }
+  }
+  return { values, labels };
+}
+
+function renderBkChart() {
+  const bk = bkLabelSeries(allProcs);
+  if (!bk.values.length) {
+    document.getElementById('bkchart').textContent =
+      '(no processes with a BUILDKITE_LABEL env var)';
+    return;
+  }
+  const spec = {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    config: {
+      background: 'white',
+      axis: {
+        domainColor: '#ccc', gridColor: '#eee', tickColor: '#ccc',
+        labelColor: '#666', titleColor: '#444',
+        titleFontSize: 11, labelFontSize: 10,
+      },
+      legend: { labelColor: '#444' },
+      view: { stroke: null },
+    },
+    width: 900,
+    height: 260,
+    data: { values: bk.values },
+    mark: { type: 'line', strokeWidth: 1.2, interpolate: 'step-after' },
+    encoding: {
+      x: { field: 'time', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
+      y: { field: 'cpu', type: 'quantitative', title: 'CPU % (sum of procs in step)' },
+      color: {
+        field: 'label', type: 'nominal', title: null,
+        legend: { orient: 'right', columns: 1, labelLimit: 280, labelFontSize: 10 },
+      },
+      tooltip: [
+        { field: 'label', title: 'bk step' },
+        { field: 'time', type: 'temporal', title: 'time', format: '%H:%M:%S' },
+        { field: 'cpu', title: 'CPU %', format: '.1f' },
+      ],
+    },
+  };
+  vegaEmbed('#bkchart', spec, { actions: false });
+}
+
+// Build a per-second colored bar chart for one group of processes.
+// Each process is split into 1-second tiles colored by that second's CPU%.
+function renderProcGroup(container, groupTitle, procs) {
+  const numLanes = packLanes(procs);
+  const tiles = [];
+  for (const p of procs) {
+    for (const s of p.samples) {
+      tiles.push({
+        label: p.label,
+        cmdline: p.cmdline,
+        comm: p.comm,
+        pid: p.pid,
+        bk: p.bk,
+        bkLabel: p.bkLabel,
+        lane: p.lane,
+        t0: new Date(s.t * 1000),
+        t1: new Date((s.t + 1) * 1000),
+        cpu: s.c,
+        duration: p.duration,
+        peak: p.peak,
+        avg: p.avg,
+      });
+    }
+  }
+  if (!tiles.length) return;
+
+  const height = Math.max(80, Math.min(numLanes * 12 + 40, 4000));
+
+  const section = document.createElement('div');
+  section.style.marginTop = '20px';
+  const h = document.createElement('h3');
+  h.style.margin = '4px 0';
+  h.style.fontSize = '0.95em';
+  h.style.color = '#333';
+  h.textContent = groupTitle + '  (' + procs.length + ' procs · ' + numLanes + ' lanes)';
+  section.appendChild(h);
+  const div = document.createElement('div');
+  section.appendChild(div);
+  container.appendChild(section);
+
+  const spec = {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    config: {
+      background: 'white',
+      axis: {
+        domainColor: '#ccc', gridColor: '#eee', tickColor: '#ccc',
+        labelColor: '#666', titleColor: '#444',
+        titleFontSize: 11, labelFontSize: 10,
+      },
+      legend: { labelColor: '#444' },
+      view: { stroke: null },
+    },
+    width: 900,
+    height: height,
+    data: { values: tiles },
+    mark: { type: 'bar' },
+    encoding: {
+      x: { field: 't0', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
+      x2: { field: 't1' },
+      y: {
+        field: 'lane', type: 'ordinal', title: null,
+        axis: { labels: false, ticks: false, grid: false },
+        scale: { paddingInner: 0.15, paddingOuter: 0.05 },
+      },
+      color: {
+        field: 'cpu', type: 'quantitative',
+        title: 'CPU % (per sec)',
+        scale: { scheme: 'yelloworangered', domain: [0, CPU_COLOR_MAX], clamp: true },
+        legend: {
+          orient: 'top-right', offset: -10, gradientLength: 120,
+          values: [0, 100, 200, 400, CPU_COLOR_MAX],
+          labelExpr: "datum.value >= " + CPU_COLOR_MAX + " ? '" + CPU_COLOR_MAX + "%+' : datum.value + '%'",
+        },
+      },
+      tooltip: [
+        { field: 'label', title: 'proc' },
+        { field: 'cmdline', title: 'cmdline' },
+        { field: 'cpu', title: 'CPU % (this sec)', format: '.1f' },
+        { field: 'peak', title: 'peak %', format: '.1f' },
+        { field: 'avg', title: 'avg %', format: '.1f' },
+        { field: 'duration', title: 'duration (s)' },
+        { field: 'bkLabel', title: 'bk label' },
+        { field: 'bk', title: 'buildkite env' },
+      ],
+    },
+  };
+  vegaEmbed(div, spec, { actions: false });
+}
+
+function render() {
+  const q = document.getElementById('filter').value.trim().toLowerCase();
+  const minCpu = parseFloat(document.getElementById('mincpu').value) || 0;
+  let procs = allProcs;
+  if (minCpu > 0) procs = procs.filter(p => p.peak >= minCpu);
+  if (q) {
+    procs = procs.filter(p =>
+      (p.cmdline && p.cmdline.toLowerCase().includes(q)) ||
+      (p.comm && p.comm.toLowerCase().includes(q)) ||
+      (p.bk && p.bk.toLowerCase().includes(q))
+    );
+  }
+
+  // Group by bk-label. Anything without a label goes into the 'other' bucket,
+  // and within that bucket we additionally drop procs whose peak CPU < 1%
+  // (too noisy to be useful, per user request).
+  const groups = new Map();
+  const other = [];
+  for (const p of procs) {
+    if (p.bkLabel) {
+      if (!groups.has(p.bkLabel)) groups.set(p.bkLabel, []);
+      groups.get(p.bkLabel).push(p);
+    } else if (p.peak >= 1) {
+      other.push(p);
+    }
+  }
+
+  const total = Array.from(groups.values()).reduce((n, arr) => n + arr.length, 0) + other.length;
+  document.getElementById('stats').textContent =
+    total + ' processes displayed  ·  ' +
+    groups.size + ' bk-steps  ·  ' +
+    other.length + ' other (≥1% peak CPU)  ·  ' +
+    '(of ' + allProcs.length + ' with duration ≥1s)';
+
+  const container = document.getElementById('procgroups');
+  container.innerHTML = '';
+
+  // Sort bk groups by earliest start time so the layout roughly matches the
+  // pipeline timeline.
+  const sortedLabels = Array.from(groups.keys()).sort((a, b) => {
+    const ea = Math.min(...groups.get(a).map(p => p.start));
+    const eb = Math.min(...groups.get(b).map(p => p.start));
+    return ea - eb;
+  });
+  for (const lbl of sortedLabels) {
+    renderProcGroup(container, lbl, groups.get(lbl));
+  }
+  if (other.length) {
+    renderProcGroup(container, '(no bk label, ≥1% peak CPU)', other);
+  }
+}
+
+renderBkChart();
+document.getElementById('filter').addEventListener('input', render);
+document.getElementById('mincpu').addEventListener('input', render);
+render();
+document.getElementById('mincpu').addEventListener('input', render);
+render();
 </script>
 </body>
 </html>
