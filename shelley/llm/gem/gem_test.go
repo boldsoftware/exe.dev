@@ -781,3 +781,354 @@ func TestCalculateUsageWithComplexFunctionCall(t *testing.T) {
 		t.Errorf("Expected output tokens with complex function call to be greater than 0, got %d", usage.OutputTokens)
 	}
 }
+
+func TestConvertResponseWithThinking(t *testing.T) {
+	// Test that Gemini responses with ThoughtSignature are converted to ContentTypeThinking
+	gemRes := &gemini.Response{
+		Candidates: []gemini.Candidate{
+			{
+				Content: gemini.Content{
+					Parts: []gemini.Part{
+						{
+							Text:             "Let me think about this problem step by step...",
+							ThoughtSignature: "signature-abc123",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Convert the response
+	content := convertGeminiResponseToContent(gemRes)
+
+	// Verify that content has thinking type
+	if len(content) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(content))
+	}
+
+	if content[0].Type != llm.ContentTypeThinking {
+		t.Fatalf("Expected content type Thinking, got %s", content[0].Type)
+	}
+
+	if content[0].Thinking != "Let me think about this problem step by step..." {
+		t.Fatalf("Expected thinking text, got '%s'", content[0].Thinking)
+	}
+
+	if content[0].Signature != "signature-abc123" {
+		t.Fatalf("Expected signature 'signature-abc123', got '%s'", content[0].Signature)
+	}
+
+	// Verify that Text field is empty for thinking content
+	if content[0].Text != "" {
+		t.Fatalf("Expected Text field to be empty for thinking content, got '%s'", content[0].Text)
+	}
+}
+
+func TestConvertResponseWithRegularText(t *testing.T) {
+	// Test that Gemini responses without ThoughtSignature are converted to ContentTypeText
+	gemRes := &gemini.Response{
+		Candidates: []gemini.Candidate{
+			{
+				Content: gemini.Content{
+					Parts: []gemini.Part{
+						{
+							Text: "This is a regular response.",
+							// No ThoughtSignature
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Convert the response
+	content := convertGeminiResponseToContent(gemRes)
+
+	// Verify that content has text type
+	if len(content) != 1 {
+		t.Fatalf("Expected 1 content item, got %d", len(content))
+	}
+
+	if content[0].Type != llm.ContentTypeText {
+		t.Fatalf("Expected content type Text, got %s", content[0].Type)
+	}
+
+	if content[0].Text != "This is a regular response." {
+		t.Fatalf("Expected text, got '%s'", content[0].Text)
+	}
+
+	// Verify that Thinking field is empty for regular text
+	if content[0].Thinking != "" {
+		t.Fatalf("Expected Thinking field to be empty for text content, got '%s'", content[0].Thinking)
+	}
+
+	// Verify that Signature field is empty for regular text
+	if content[0].Signature != "" {
+		t.Fatalf("Expected Signature field to be empty for text content, got '%s'", content[0].Signature)
+	}
+}
+
+func TestConvertResponseWithMixedContent(t *testing.T) {
+	// Test that Gemini responses with both thinking and regular text are handled correctly
+	gemRes := &gemini.Response{
+		Candidates: []gemini.Candidate{
+			{
+				Content: gemini.Content{
+					Parts: []gemini.Part{
+						{
+							Text:             "Thinking about the problem...",
+							ThoughtSignature: "sig-1",
+						},
+						{
+							Text: "Here is my answer.",
+							// No ThoughtSignature
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Convert the response
+	content := convertGeminiResponseToContent(gemRes)
+
+	// Verify that we have 2 content items
+	if len(content) != 2 {
+		t.Fatalf("Expected 2 content items, got %d", len(content))
+	}
+
+	// First should be thinking
+	if content[0].Type != llm.ContentTypeThinking {
+		t.Fatalf("Expected first content type to be Thinking, got %s", content[0].Type)
+	}
+
+	if content[0].Thinking != "Thinking about the problem..." {
+		t.Fatalf("Expected thinking text, got '%s'", content[0].Thinking)
+	}
+
+	if content[0].Signature != "sig-1" {
+		t.Fatalf("Expected signature 'sig-1', got '%s'", content[0].Signature)
+	}
+
+	// Second should be regular text
+	if content[1].Type != llm.ContentTypeText {
+		t.Fatalf("Expected second content type to be Text, got %s", content[1].Type)
+	}
+
+	if content[1].Text != "Here is my answer." {
+		t.Fatalf("Expected text, got '%s'", content[1].Text)
+	}
+}
+
+func TestBuildGeminiRequestWithThinking(t *testing.T) {
+	// Test that thinking content is properly converted when building Gemini requests
+	service := &Service{
+		Model:  DefaultModel,
+		APIKey: "test-api-key",
+	}
+
+	// Create a request with thinking content in conversation history
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role: llm.MessageRoleUser,
+				Content: []llm.Content{
+					{
+						Type: llm.ContentTypeText,
+						Text: "What is 2 + 2?",
+					},
+				},
+			},
+			{
+				Role: llm.MessageRoleAssistant,
+				Content: []llm.Content{
+					{
+						Type:      llm.ContentTypeThinking,
+						Thinking:  "Let me calculate 2 + 2...",
+						Signature: "sig-123",
+					},
+					{
+						Type: llm.ContentTypeText,
+						Text: "The answer is 4.",
+					},
+				},
+			},
+		},
+	}
+
+	// Build the Gemini request
+	gemReq, err := service.buildGeminiRequest(req)
+	if err != nil {
+		t.Fatalf("Failed to build Gemini request: %v", err)
+	}
+
+	// Verify the request structure
+	if len(gemReq.Contents) != 2 {
+		t.Fatalf("Expected 2 contents, got %d", len(gemReq.Contents))
+	}
+
+	// Verify the assistant message has 2 parts
+	assistantContent := gemReq.Contents[1]
+	if assistantContent.Role != "model" {
+		t.Fatalf("Expected role 'model', got '%s'", assistantContent.Role)
+	}
+
+	if len(assistantContent.Parts) != 2 {
+		t.Fatalf("Expected 2 parts in assistant message, got %d", len(assistantContent.Parts))
+	}
+
+	// Verify the first part is thinking content with the correct text and signature
+	thinkingPart := assistantContent.Parts[0]
+	if thinkingPart.Text != "Let me calculate 2 + 2..." {
+		t.Fatalf("Expected thinking text 'Let me calculate 2 + 2...', got '%s'", thinkingPart.Text)
+	}
+	if thinkingPart.ThoughtSignature != "sig-123" {
+		t.Fatalf("Expected signature 'sig-123', got '%s'", thinkingPart.ThoughtSignature)
+	}
+
+	// Verify the second part is regular text
+	textPart := assistantContent.Parts[1]
+	if textPart.Text != "The answer is 4." {
+		t.Fatalf("Expected text 'The answer is 4.', got '%s'", textPart.Text)
+	}
+	if textPart.ThoughtSignature != "" {
+		t.Fatalf("Expected no signature for text part, got '%s'", textPart.ThoughtSignature)
+	}
+}
+
+func TestBuildGeminiRequestWithRedactedThinking(t *testing.T) {
+	// Test that redacted thinking content is properly converted
+	service := &Service{
+		Model:  DefaultModel,
+		APIKey: "test-api-key",
+	}
+
+	// Create a request with redacted thinking content
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role: llm.MessageRoleAssistant,
+				Content: []llm.Content{
+					{
+						Type:      llm.ContentTypeRedactedThinking,
+						Data:      "<redacted>",
+						Signature: "sig-redacted",
+					},
+					{
+						Type: llm.ContentTypeText,
+						Text: "Response text",
+					},
+				},
+			},
+		},
+	}
+
+	// Build the Gemini request
+	gemReq, err := service.buildGeminiRequest(req)
+	if err != nil {
+		t.Fatalf("Failed to build Gemini request: %v", err)
+	}
+
+	// Verify the redacted thinking part
+	if len(gemReq.Contents) != 1 {
+		t.Fatalf("Expected 1 content, got %d", len(gemReq.Contents))
+	}
+
+	if len(gemReq.Contents[0].Parts) != 2 {
+		t.Fatalf("Expected 2 parts, got %d", len(gemReq.Contents[0].Parts))
+	}
+
+	redactedPart := gemReq.Contents[0].Parts[0]
+	if redactedPart.Text != "<redacted>" {
+		t.Fatalf("Expected redacted text '<redacted>', got '%s'", redactedPart.Text)
+	}
+	if redactedPart.ThoughtSignature != "sig-redacted" {
+		t.Fatalf("Expected signature 'sig-redacted', got '%s'", redactedPart.ThoughtSignature)
+	}
+}
+
+func TestRoundTripThinking(t *testing.T) {
+	// Test that thinking content survives a round trip: response -> content -> request
+
+	// Step 1: Convert a Gemini response with thinking to llm.Content
+	gemRes := &gemini.Response{
+		Candidates: []gemini.Candidate{
+			{
+				Content: gemini.Content{
+					Parts: []gemini.Part{
+						{
+							Text:             "Analyzing the problem...",
+							ThoughtSignature: "sig-abc",
+						},
+						{
+							Text: "The answer is 42.",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	contents := convertGeminiResponseToContent(gemRes)
+
+	// Verify we got thinking and text content
+	if len(contents) != 2 {
+		t.Fatalf("Expected 2 content items, got %d", len(contents))
+	}
+
+	if contents[0].Type != llm.ContentTypeThinking {
+		t.Fatalf("Expected first content to be thinking, got %s", contents[0].Type)
+	}
+
+	if contents[1].Type != llm.ContentTypeText {
+		t.Fatalf("Expected second content to be text, got %s", contents[1].Type)
+	}
+
+	// Step 2: Use this content in a new request
+	service := &Service{
+		Model:  DefaultModel,
+		APIKey: "test-api-key",
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role:    llm.MessageRoleAssistant,
+				Content: contents,
+			},
+		},
+	}
+
+	gemReq, err := service.buildGeminiRequest(req)
+	if err != nil {
+		t.Fatalf("Failed to build Gemini request: %v", err)
+	}
+
+	// Step 3: Verify the thinking content was preserved in the request
+	if len(gemReq.Contents) != 1 {
+		t.Fatalf("Expected 1 content, got %d", len(gemReq.Contents))
+	}
+
+	if len(gemReq.Contents[0].Parts) != 2 {
+		t.Fatalf("Expected 2 parts, got %d", len(gemReq.Contents[0].Parts))
+	}
+
+	// Verify thinking part preserved
+	thinkingPart := gemReq.Contents[0].Parts[0]
+	if thinkingPart.Text != "Analyzing the problem..." {
+		t.Fatalf("Expected thinking text to be preserved, got '%s'", thinkingPart.Text)
+	}
+	if thinkingPart.ThoughtSignature != "sig-abc" {
+		t.Fatalf("Expected signature to be preserved, got '%s'", thinkingPart.ThoughtSignature)
+	}
+
+	// Verify text part preserved
+	textPart := gemReq.Contents[0].Parts[1]
+	if textPart.Text != "The answer is 42." {
+		t.Fatalf("Expected text to be preserved, got '%s'", textPart.Text)
+	}
+	if textPart.ThoughtSignature != "" {
+		t.Fatalf("Expected no signature for text, got '%s'", textPart.ThoughtSignature)
+	}
+}

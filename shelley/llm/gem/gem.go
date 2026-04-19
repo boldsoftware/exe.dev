@@ -188,10 +188,21 @@ func (s *Service) buildGeminiRequest(req *llm.Request) (*gemini.Request, error) 
 		for _, c := range msg.Content {
 			switch c.Type {
 			case llm.ContentTypeText, llm.ContentTypeThinking, llm.ContentTypeRedactedThinking:
-				// Simple text content
-				content.Parts = append(content.Parts, gemini.Part{
-					Text: c.Text,
-				})
+				// Text or thinking content
+				part := gemini.Part{}
+				if c.Type == llm.ContentTypeThinking {
+					// For thinking content, use the Thinking field and preserve the signature
+					part.Text = c.Thinking
+					part.ThoughtSignature = c.Signature
+				} else if c.Type == llm.ContentTypeRedactedThinking {
+					// For redacted thinking, use the Data field (consistent with Anthropic pattern)
+					part.Text = c.Data
+					part.ThoughtSignature = c.Signature
+				} else {
+					// For regular text, use the Text field
+					part.Text = c.Text
+				}
+				content.Parts = append(content.Parts, part)
 			case llm.ContentTypeToolUse:
 				// Tool use becomes a function call
 				var args map[string]any
@@ -321,12 +332,24 @@ func convertGeminiResponseToContent(res *gemini.Response) []llm.Content {
 			"has_function_response", part.FunctionResponse != nil)
 
 		if part.Text != "" {
-			// Simple text response
-			contents = append(contents, llm.Content{
-				Type:      llm.ContentTypeText,
-				Text:      part.Text,
-				Signature: part.ThoughtSignature, // Capture thought signature for text parts too
-			})
+			// Check if this is thinking content (has a thought signature)
+			if part.ThoughtSignature != "" {
+				// This is thinking content - use ContentTypeThinking
+				contents = append(contents, llm.Content{
+					Type:      llm.ContentTypeThinking,
+					Thinking:  part.Text,
+					Signature: part.ThoughtSignature,
+				})
+				slog.DebugContext(context.Background(), "gemini_thinking_detected",
+					"signature", part.ThoughtSignature,
+					"thinking_length", len(part.Text))
+			} else {
+				// Regular text response
+				contents = append(contents, llm.Content{
+					Type: llm.ContentTypeText,
+					Text: part.Text,
+				})
+			}
 		} else if part.FunctionCall != nil {
 			// Function call (tool use)
 			args, err := json.Marshal(part.FunctionCall.Args)
