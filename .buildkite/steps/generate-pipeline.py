@@ -287,6 +287,9 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
         lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
         lines.append(f'    E1E_EXELETS_RUN_FILTER: "{run_filter}"')
         lines.append(f'    E1E_EXELETS_LABEL: "{label}"')
+        # Direct-migration tests are bottlenecked on zfs send/recv CPU inside
+        # the outer CI VM. Give these shards more vCPUs (default is 4).
+        lines.append('    VCPUS: "8"')
         if coverage:
             lines.append(f'    E1E_COVERAGE: "true"')
         lines.append('  artifact_paths:')
