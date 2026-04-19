@@ -1,5 +1,11 @@
 <template>
   <div class="integrations-page">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <router-link to="/" class="breadcrumb-link">Home</router-link>
+      <span class="breadcrumb-sep">›</span>
+      <span class="breadcrumb-current">Integrations</span>
+    </nav>
+
     <div v-if="loading" class="loading-state">
       <i class="pi pi-spin pi-spinner"></i> Loading...
     </div>
@@ -2056,5 +2062,33 @@ select.form-input {
   padding: 2px 6px;
   border-radius: 3px;
   font-family: var(--font-mono);
+}
+/* Breadcrumbs */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-color-muted);
+  margin-bottom: 12px;
+}
+
+.breadcrumb-link {
+  color: var(--text-color-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--text-color-muted);
+}
+
+.breadcrumb-current {
+  color: var(--text-color);
+  font-weight: 500;
 }
 </style>

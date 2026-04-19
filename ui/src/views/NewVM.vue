@@ -1,5 +1,13 @@
 <template>
   <div class="new-vm-page">
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <router-link to="/" class="breadcrumb-link">Home</router-link>
+      <span class="breadcrumb-sep">›</span>
+      <router-link to="/" class="breadcrumb-link">VMs</router-link>
+      <span class="breadcrumb-sep">›</span>
+      <span class="breadcrumb-current">New</span>
+    </nav>
+
     <form class="new-vm-form" @submit.prevent="createVM">
       <h1 class="form-title">Create a New VM</h1>
 
@@ -746,5 +754,33 @@ onMounted(async () => {
 .submit-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+/* Breadcrumbs */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-color-muted);
+  margin-bottom: 12px;
+}
+
+.breadcrumb-link {
+  color: var(--text-color-secondary);
+  text-decoration: none;
+}
+
+.breadcrumb-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: var(--text-color-muted);
+}
+
+.breadcrumb-current {
+  color: var(--text-color);
+  font-weight: 500;
 }
 </style>
