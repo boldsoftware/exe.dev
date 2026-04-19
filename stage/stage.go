@@ -57,16 +57,17 @@ type Env struct {
 
 	MaxMaildirEmails int // max emails allowed in ~/Maildir/new before auto-disabling receive
 
-	FakeEmail              bool // whether to log emails instead of sending them
-	SkipBilling            bool // whether to skip billing/Stripe checkout for new signups (for tests)
-	BootstrapStripeCatalog bool // whether to create Stripe products/prices on boot if missing (local/test only)
-	ReplDev                bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
-	WebDev                 bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
-	ProxyDev               bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
-	GatewayDev             bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
-	SkipBanner             bool // whether to skip showing the EXE banner on repl login
-	BehindTLSProxy         bool // whether running behind an external TLS-terminating proxy (e.g., exe.dev proxy)
-	ExedWarnProxy          bool // exed will issue an error if it sees a proxy request that should have gone to exeprox
+	FakeEmail              bool   // whether to log emails instead of sending them
+	SkipBilling            bool   // whether to skip billing/Stripe checkout for new signups (for tests)
+	BootstrapStripeCatalog bool   // whether to create Stripe products/prices on boot if missing (local/test only)
+	StripeAPIURL           string // override Stripe API base URL (e.g. local httprr proxy); empty means Stripe defaults
+	ReplDev                bool   // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
+	WebDev                 bool   // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
+	ProxyDev               bool   // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
+	GatewayDev             bool   // allow X-Exedev-Box auth even when request source IP isn't tailscale
+	SkipBanner             bool   // whether to skip showing the EXE banner on repl login
+	BehindTLSProxy         bool   // whether running behind an external TLS-terminating proxy (e.g., exe.dev proxy)
+	ExedWarnProxy          bool   // exed will issue an error if it sees a proxy request that should have gone to exeprox
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	ShowDocsPreview   bool // whether to display preview docs to all users; true for all stages except prod (sudoers always see them)
@@ -125,6 +126,7 @@ func Invalid() Env {
 		FakeEmail:              true, // something is wrong, so don't send real email
 		SkipBilling:            true, // something is wrong, so skip billing
 		BootstrapStripeCatalog: false,
+		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
 		ProxyDev:               false,
@@ -199,6 +201,7 @@ func Local() Env {
 		FakeEmail:              true,
 		SkipBilling:            envStripeKey == "",
 		BootstrapStripeCatalog: envStripeKey != "",
+		StripeAPIURL:           "",
 		ReplDev:                true,
 		WebDev:                 true,
 		ProxyDev:               true,
@@ -266,6 +269,7 @@ func Test() Env {
 		FakeEmail:              true,
 		SkipBilling:            envStripeKey == "",
 		BootstrapStripeCatalog: envStripeKey != "",
+		StripeAPIURL:           os.Getenv("STRIPE_API_URL"),
 		ReplDev:                false,
 		WebDev:                 false,
 		ProxyDev:               true,
@@ -331,6 +335,7 @@ func Staging() Env {
 		FakeEmail:              false,
 		SkipBilling:            false,
 		BootstrapStripeCatalog: false,
+		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
 		ProxyDev:               false,
@@ -412,6 +417,7 @@ func Prod() Env {
 		FakeEmail:              false,
 		SkipBilling:            false,
 		BootstrapStripeCatalog: false,
+		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
 		ProxyDev:               false,

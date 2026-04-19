@@ -1213,6 +1213,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s.billing.DB = s.db
 	s.billing.Logger = slog
 	s.billing.SlackFeed = s.slackFeed
+	s.billing.StripeAPIURL = cfg.Env.StripeAPIURL
 	s.billing.WebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
 	if s.billing.WebhookSecret != "" {
 		slog.Info("stripe webhook secret configured")

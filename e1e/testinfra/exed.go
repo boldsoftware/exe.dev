@@ -479,6 +479,15 @@ func addExedEnvKeys(env []string) []string {
 		env = append(env, "ANTHROPIC_BASE_URL="+v)
 	}
 
+	// Pass through Stripe keys for billing-enabled e1e tests.
+	// STRIPE_SECRET_KEY enables billing (SkipBilling=false in stage.Test()).
+	// STRIPE_API_URL overrides the Stripe base URL (e.g. local httprr proxy).
+	for _, key := range []string{"STRIPE_SECRET_KEY", "STRIPE_API_URL"} {
+		if v := os.Getenv(key); v != "" {
+			env = append(env, key+"="+v)
+		}
+	}
+
 	// Pass through GitHub mock server URLs for GitHub App installation tests.
 	for _, key := range []string{
 		"EXE_GITHUB_APP_CLIENT_ID",

@@ -162,6 +162,11 @@ type Manager struct {
 	WebhookSecret string
 	SlackFeed     *logging.SlackFeed
 
+	// StripeAPIURL overrides the Stripe API base URL.
+	// When non-empty, requests go to this URL instead of https://api.stripe.com.
+	// Used in e1e tests to route through an httprr proxy.
+	StripeAPIURL string
+
 	priceIDCache syncs.Map[string, func() result.Of[string]]
 
 	// OnPlanDowngrade is called when an account's plan is downgraded to basic
@@ -231,6 +236,12 @@ type SubscriptionEvent struct {
 func (m *Manager) client() *stripe.Client {
 	if m.Client != nil {
 		return m.Client
+	}
+	if m.StripeAPIURL != "" {
+		backends := stripe.NewBackendsWithConfig(&stripe.BackendConfig{
+			URL: &m.StripeAPIURL,
+		})
+		return stripe.NewClient(stripeKey, stripe.WithBackends(backends))
 	}
 	return stripe.NewClient(stripeKey)
 }

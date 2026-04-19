@@ -2,8 +2,15 @@ package testinfra
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
+
+	"exe.dev/billing/httprr"
 )
 
 // HasStripeTestKey reports whether a Stripe test key is configured.
@@ -17,6 +24,80 @@ func SkipWithoutStripe(t interface{ Skip(...any) }) {
 	if !HasStripeTestKey() {
 		t.Skip("STRIPE_SECRET_KEY not set, skipping Stripe integration test")
 	}
+}
+
+// StripeProxy is an HTTP proxy that records/replays Stripe API traffic
+// using httprr. Start it with [StartStripeProxy].
+type StripeProxy struct {
+	Port int
+	ln   net.Listener
+	rr   *httprr.RecordReplay
+}
+
+// StartStripeProxy starts an HTTP server on localhost that proxies requests
+// to api.stripe.com through an httprr recorder/replayer. In record mode
+// (-httprecord flag), requests are forwarded to real Stripe and responses
+// are saved. In replay mode, responses are served from the cassette file.
+//
+// The caller must call Close when done.
+func StartStripeProxy(cassettePath string) (*StripeProxy, error) {
+	if err := os.MkdirAll("testdata", 0o755); err != nil {
+		return nil, fmt.Errorf("mkdir testdata: %w", err)
+	}
+
+	rr, err := httprr.Open(cassettePath, http.DefaultTransport)
+	if err != nil {
+		return nil, fmt.Errorf("httprr.Open(%q): %w", cassettePath, err)
+	}
+
+	rr.ScrubReq(func(r *http.Request) error {
+		r.Header.Del("Authorization")
+		r.Header.Del("Idempotency-Key")
+		r.Header.Del("Stripe-Version")
+		r.Header.Del("User-Agent")
+		r.Header.Del("X-Stripe-Client-User-Agent")
+		r.Header.Del("X-Stripe-Client-Telemetry")
+		return nil
+	})
+
+	stripeURL, _ := url.Parse("https://api.stripe.com")
+	proxy := &httputil.ReverseProxy{
+		Transport: rr,
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(stripeURL)
+			// Preserve the original path and query.
+			pr.Out.URL.Path = pr.In.URL.Path
+			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+			pr.Out.Host = stripeURL.Host
+		},
+	}
+
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		rr.Close()
+		return nil, fmt.Errorf("listen: %w", err)
+	}
+
+	srv := &http.Server{Handler: proxy}
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("stripe proxy: %v", err)
+		}
+	}()
+
+	port := ln.Addr().(*net.TCPAddr).Port
+	return &StripeProxy{Port: port, ln: ln, rr: rr}, nil
+}
+
+// URL returns the base URL of the proxy (e.g. "http://localhost:12345").
+func (p *StripeProxy) URL() string {
+	return fmt.Sprintf("http://localhost:%d", p.Port)
+}
+
+// Close stops the proxy and flushes any httprr recordings.
+func (p *StripeProxy) Close() error {
+	p.ln.Close()
+	return p.rr.Close()
 }
 
 // CompleteStripeCheckout simulates completing a Stripe checkout by following
@@ -55,7 +136,7 @@ func (se *ServerEnv) CompleteStripeCheckout(cookies []*http.Cookie) error {
 	if err != nil {
 		return fmt.Errorf("billing update request: %w", err)
 	}
-	resp.Body.Close()
+	defer func() { _, _ = io.Copy(io.Discard, resp.Body); resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusFound {
 		return fmt.Errorf("expected redirect from /billing/update, got %d", resp.StatusCode)
