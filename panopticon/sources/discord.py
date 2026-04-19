@@ -158,6 +158,27 @@ class DiscordClient:
         # Discord returns {"threads": [...], "members": [...]}
         return data.get("threads", []) if isinstance(data, dict) else []
 
+    def list_archived_threads(self, channel_id: str, before: str | None = None) -> list[dict]:
+        """List recently archived public threads in a channel."""
+        params: dict = {"limit": "100"}
+        if before:
+            params["before"] = before
+        data = self._request(
+            f"/channels/{channel_id}/threads/archived/public", params,
+        )
+        return data.get("threads", []) if isinstance(data, dict) else []
+
+    def get_guild_roles(self, guild_id: str) -> list[dict]:
+        """List all roles in a guild."""
+        return self._request(f"/guilds/{guild_id}/roles")
+
+    def get_thread_starter_message(self, channel_id: str) -> dict | None:
+        """Get the first message of a thread (the starter message)."""
+        try:
+            return self._request(f"/channels/{channel_id}/messages/{channel_id}")
+        except urllib.error.HTTPError:
+            return None
+
     def list_messages(
         self,
         channel_id: str,
@@ -355,6 +376,7 @@ class DiscordSource(ProxyObject):
             doc=f"Discord server '{guild_name}'.\n\n"
                 "Navigate: .channels -> pick a channel -> .messages\n"
                 "         .active_threads -> pick a thread -> .messages\n"
+                "         .unresolved_help_threads(days=5) -> unanswered questions\n"
                 "Filter in Python:\n"
                 "  recent = [m for m in ch.messages if m.timestamp > 'YYYY-MM-DD']\n"
                 "  by_user = [m for m in ch.messages if m.author == 'alice']\n\n"
@@ -365,6 +387,7 @@ class DiscordSource(ProxyObject):
                 "  msgs = ch.fetch_messages(after=sf)\n\n"
                 "Discord's bot API has no search endpoint. Filter messages in Python.",
             dir_attrs=["guild_name", "channels", "active_threads",
+                        "unresolved_help_threads",
                         "snowflake_from_timestamp", "timestamp_from_snowflake"],
             attr_docs={
                 "guild_name": "Name of the Discord server",
@@ -375,6 +398,11 @@ class DiscordSource(ProxyObject):
                 "active_threads": "Active threads across the server (including forum threads). "
                                   "Separate from .channels — read both for full coverage. "
                                   "Each has: name, topic, messages, fetch_messages.",
+                "unresolved_help_threads": "unresolved_help_threads(days=5) — Find unanswered "
+                    "questions in help/support/questions channels and forum channels from the "
+                    "last N days. Returns a list of dicts with keys: channel, thread_name, "
+                    "thread_url, author, created, message_count, preview. A thread is "
+                    "'unresolved' if only the original poster has replied (no one else).",
                 "snowflake_from_timestamp": "snowflake_from_timestamp(ts) — Convert a Unix "
                     "timestamp (float) or ISO date string (e.g. '2025-03-06') to a Discord "
                     "snowflake ID string. Use with ch.fetch_messages(after=..., before=...).",
@@ -384,6 +412,7 @@ class DiscordSource(ProxyObject):
             methods={
                 "snowflake_from_timestamp": self._snowflake_from_timestamp,
                 "timestamp_from_snowflake": self._timestamp_from_snowflake,
+                "unresolved_help_threads": self._unresolved_help_threads,
             },
         )
         self._client = client
@@ -437,3 +466,124 @@ class DiscordSource(ProxyObject):
             ]
             self._active_threads_fetched_at = now
         return self._active_threads
+
+    def _unresolved_help_threads(self, days=5):
+        """Find unanswered questions in help-like channels from the last N days.
+
+        Scans channels whose names contain help/support/questions and all
+        forum channels.  A thread is "unresolved" when every message in it
+        was posted by the thread creator (no one else has replied).
+
+        Returns a list of dicts with keys:
+          channel, thread_name, thread_url, author, created, message_count,
+          preview (first ~200 chars of the opening message).
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_snowflake = str(snowflake_from_timestamp(cutoff.timestamp()))
+
+        help_patterns = {"help", "support", "question", "ask"}
+
+        # Identify help-like channels and forum channels
+        help_channel_ids: set[str] = set()
+        channel_names: dict[str, str] = {}
+        for ch in self.channels:
+            name_lower = ch.name.lower()
+            is_help = any(p in name_lower for p in help_patterns)
+            is_forum = ch.type == 15
+            if is_help or is_forum:
+                help_channel_ids.add(ch.id)
+                channel_names[ch.id] = ch.name
+
+        if not help_channel_ids:
+            return []
+
+        # Gather active threads that belong to help channels
+        candidate_threads: list[dict] = []
+        for t in self.active_threads:
+            if t.parent_id in help_channel_ids:
+                candidate_threads.append({
+                    "channel_obj": t,
+                    "raw_id": t.id,
+                    "parent_id": t.parent_id,
+                })
+
+        # Also check recently archived threads in these channels
+        for ch_id in help_channel_ids:
+            try:
+                archived = self._client.list_archived_threads(ch_id)
+            except Exception as e:
+                log.warning("Failed to fetch archived threads for #%s: %s",
+                            channel_names.get(ch_id, ch_id), e)
+                continue
+            for t in archived:
+                # Skip threads older than cutoff
+                tid = t.get("id", "")
+                if tid and tid >= cutoff_snowflake:
+                    candidate_threads.append({
+                        "channel_obj": DiscordChannel(
+                            self._client, t, guild_id=self._guild_id,
+                        ),
+                        "raw_id": tid,
+                        "parent_id": ch_id,
+                    })
+
+        unresolved: list[dict] = []
+        seen_ids: set[str] = set()
+
+        for cand in candidate_threads:
+            tid = cand["raw_id"]
+            if tid in seen_ids:
+                continue
+            seen_ids.add(tid)
+
+            # Skip threads created before cutoff
+            if tid < cutoff_snowflake:
+                continue
+
+            ch_obj = cand["channel_obj"]
+            parent_name = channel_names.get(cand["parent_id"], "unknown")
+
+            try:
+                msgs = ch_obj._fetch_messages(limit=50)
+            except Exception:
+                continue
+
+            if not msgs:
+                continue
+
+            # Filter to only user messages (type 0 = default, type 19 = reply)
+            user_msgs = [m for m in msgs if m.type in (0, 19)]
+            if not user_msgs:
+                continue
+
+            # The thread creator is the author of the oldest message
+            oldest = user_msgs[-1]  # messages are newest-first
+            creator = oldest.author
+
+            # Unresolved = only the creator has posted
+            authors = {m.author for m in user_msgs}
+            if len(authors) > 1:
+                continue
+
+            # Build preview from oldest message
+            preview = oldest.content[:200]
+            if len(oldest.content) > 200:
+                preview += "…"
+
+            thread_url = f"https://discord.com/channels/{self._guild_id}/{tid}"
+
+            unresolved.append({
+                "channel": f"#{parent_name}",
+                "thread_name": ch_obj.name,
+                "thread_url": thread_url,
+                "author": creator,
+                "created": oldest.timestamp,
+                "message_count": len(user_msgs),
+                "preview": preview,
+            })
+
+        # Sort by creation time, oldest first (longest-waiting)
+        unresolved.sort(key=lambda x: x["created"])
+        return unresolved

@@ -986,6 +986,230 @@ class TestDiscordActiveThreads:
 
 
 # ---------------------------------------------------------------------------
+# Discord unresolved help threads tests
+# ---------------------------------------------------------------------------
+
+
+class TestDiscordUnresolvedHelpThreads:
+
+    @pytest.fixture
+    def client(self, monkeypatch):
+        monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("unexpected HTTP call")))
+        return DiscordClient("bot_token")
+
+    def test_in_dir_and_methods(self, client):
+        """unresolved_help_threads appears in dir and attr_docs."""
+        source = DiscordSource(client, "guild_1", "Test")
+        assert "unresolved_help_threads" in source._proxy_dir
+        assert "unresolved_help_threads" in source._proxy_attr_docs
+        assert "unresolved_help_threads" in source._proxy_methods
+
+    def test_no_help_channels_returns_empty(self, client, monkeypatch):
+        """Returns empty list when no help-like channels exist."""
+        channels = [
+            make_discord_channel("100", "general", channel_type=0),
+            make_discord_channel("101", "dev", channel_type=0),
+        ]
+
+        def mock_urlopen(req, timeout=None):
+            url = req.full_url
+            if "/channels" in url:
+                return MockResponse(channels)
+            if "/threads/active" in url:
+                return MockResponse({"threads": [], "members": []})
+            return MockResponse([])
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = DiscordSource(client, "guild_1", "Test")
+        result = source._unresolved_help_threads(days=5)
+        assert result == []
+
+    def test_finds_unresolved_thread(self, client, monkeypatch):
+        """Detects a thread in #help where only the OP has posted."""
+        from panopticon.sources.discord import snowflake_from_timestamp
+        import datetime
+
+        # Create a recent snowflake (1 day ago)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        one_day_ago = now - datetime.timedelta(days=1)
+        thread_id = str(snowflake_from_timestamp(one_day_ago.timestamp()))
+        msg_id = str(int(thread_id) + 1)
+
+        channels = [
+            make_discord_channel("100", "help", channel_type=0),
+        ]
+        active_threads = [{
+            "id": thread_id,
+            "name": "how do I deploy?",
+            "type": 11,
+            "parent_id": "100",
+        }]
+        thread_msgs = [{
+            "id": msg_id,
+            "author": {"username": "newuser"},
+            "content": "I'm trying to deploy my app but getting errors",
+            "timestamp": one_day_ago.isoformat(),
+            "type": 0,
+        }]
+
+        def mock_urlopen(req, timeout=None):
+            url = req.full_url
+            if "/guilds/guild_1/channels" in url:
+                return MockResponse(channels)
+            if "/threads/active" in url:
+                return MockResponse({"threads": active_threads, "members": []})
+            if f"/channels/{thread_id}/messages" in url:
+                return MockResponse(thread_msgs)
+            if "/threads/archived/public" in url:
+                return MockResponse({"threads": [], "members": []})
+            return MockResponse([])
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = DiscordSource(client, "guild_1", "Test")
+        result = source._unresolved_help_threads(days=5)
+        assert len(result) == 1
+        assert result[0]["author"] == "newuser"
+        assert result[0]["channel"] == "#help"
+        assert result[0]["thread_name"] == "how do I deploy?"
+        assert "deploy" in result[0]["preview"]
+        assert thread_id in result[0]["thread_url"]
+
+    def test_resolved_thread_excluded(self, client, monkeypatch):
+        """Threads with replies from other users are not unresolved."""
+        from panopticon.sources.discord import snowflake_from_timestamp
+        import datetime
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        one_day_ago = now - datetime.timedelta(days=1)
+        thread_id = str(snowflake_from_timestamp(one_day_ago.timestamp()))
+
+        channels = [
+            make_discord_channel("100", "help", channel_type=0),
+        ]
+        active_threads = [{
+            "id": thread_id,
+            "name": "need help",
+            "type": 11,
+            "parent_id": "100",
+        }]
+        # Two users have posted — this is resolved
+        thread_msgs = [
+            {
+                "id": str(int(thread_id) + 2),
+                "author": {"username": "staff_member"},
+                "content": "Sure, try this...",
+                "timestamp": now.isoformat(),
+                "type": 0,
+            },
+            {
+                "id": str(int(thread_id) + 1),
+                "author": {"username": "newuser"},
+                "content": "Help me please",
+                "timestamp": one_day_ago.isoformat(),
+                "type": 0,
+            },
+        ]
+
+        def mock_urlopen(req, timeout=None):
+            url = req.full_url
+            if "/guilds/guild_1/channels" in url:
+                return MockResponse(channels)
+            if "/threads/active" in url:
+                return MockResponse({"threads": active_threads, "members": []})
+            if f"/channels/{thread_id}/messages" in url:
+                return MockResponse(thread_msgs)
+            if "/threads/archived/public" in url:
+                return MockResponse({"threads": [], "members": []})
+            return MockResponse([])
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = DiscordSource(client, "guild_1", "Test")
+        result = source._unresolved_help_threads(days=5)
+        assert result == []
+
+    def test_old_threads_excluded(self, client, monkeypatch):
+        """Threads older than the cutoff are excluded."""
+        from panopticon.sources.discord import snowflake_from_timestamp
+        import datetime
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ten_days_ago = now - datetime.timedelta(days=10)
+        thread_id = str(snowflake_from_timestamp(ten_days_ago.timestamp()))
+
+        channels = [
+            make_discord_channel("100", "help", channel_type=0),
+        ]
+        active_threads = [{
+            "id": thread_id,
+            "name": "old question",
+            "type": 11,
+            "parent_id": "100",
+        }]
+
+        def mock_urlopen(req, timeout=None):
+            url = req.full_url
+            if "/guilds/guild_1/channels" in url:
+                return MockResponse(channels)
+            if "/threads/active" in url:
+                return MockResponse({"threads": active_threads, "members": []})
+            if "/threads/archived/public" in url:
+                return MockResponse({"threads": [], "members": []})
+            return MockResponse([])
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = DiscordSource(client, "guild_1", "Test")
+        result = source._unresolved_help_threads(days=5)
+        assert result == []
+
+    def test_forum_channels_included(self, client, monkeypatch):
+        """Forum channels (type 15) are included even without help-like names."""
+        from panopticon.sources.discord import snowflake_from_timestamp
+        import datetime
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        one_day_ago = now - datetime.timedelta(days=1)
+        thread_id = str(snowflake_from_timestamp(one_day_ago.timestamp()))
+        msg_id = str(int(thread_id) + 1)
+
+        channels = [
+            make_discord_channel("100", "feedback", channel_type=15),
+        ]
+        active_threads = [{
+            "id": thread_id,
+            "name": "bug report",
+            "type": 11,
+            "parent_id": "100",
+        }]
+        thread_msgs = [{
+            "id": msg_id,
+            "author": {"username": "reporter"},
+            "content": "Found a bug with login",
+            "timestamp": one_day_ago.isoformat(),
+            "type": 0,
+        }]
+
+        def mock_urlopen(req, timeout=None):
+            url = req.full_url
+            if "/guilds/guild_1/channels" in url:
+                return MockResponse(channels)
+            if "/threads/active" in url:
+                return MockResponse({"threads": active_threads, "members": []})
+            if f"/channels/{thread_id}/messages" in url:
+                return MockResponse(thread_msgs)
+            if "/threads/archived/public" in url:
+                return MockResponse({"threads": [], "members": []})
+            return MockResponse([])
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+        source = DiscordSource(client, "guild_1", "Test")
+        result = source._unresolved_help_threads(days=5)
+        assert len(result) == 1
+        assert result[0]["channel"] == "#feedback"
+        assert result[0]["thread_name"] == "bug report"
+
+
+# ---------------------------------------------------------------------------
 # Discord snowflake helper tests
 # ---------------------------------------------------------------------------
 
