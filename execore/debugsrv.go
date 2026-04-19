@@ -1930,6 +1930,7 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			IsLockedOut            bool    `json:"is_locked_out"`
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
+			PlanID                 string  `json:"plan_id,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
 			BillingExemption       string  `json:"billing_exemption,omitempty"`
 			CreditAvailableUSD     float64 `json:"credit_available_usd"`
@@ -1967,9 +1968,10 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				InviteCount:            invitesByUser[u.UserID],
 				Limits:                 ptrStr(u.Limits),
 			}
-			// Derive billing exemption for display from account_plans
+			// Derive billing exemption and plan_id from account_plans.
 			if acctID != "" {
 				if activePlan, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, acctID); err == nil {
+					ui.PlanID = activePlan.PlanID
 					ui.BillingExemption = plan.DeriveExemptionDisplay(&activePlan.PlanID)
 				}
 			}

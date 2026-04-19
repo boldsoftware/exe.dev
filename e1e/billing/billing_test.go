@@ -21,7 +21,10 @@ import (
 	"exe.dev/e1e/testinfra"
 )
 
-var serverEnv *testinfra.ServerEnv
+var (
+	serverEnv   *testinfra.ServerEnv
+	stripeProxy *testinfra.StripeProxy
+)
 
 var testRunID string
 
@@ -57,12 +60,13 @@ func TestMain(m *testing.M) {
 	// are forwarded to real Stripe; in replay mode, responses come from the
 	// cassette file. If the cassette doesn't exist and we're not recording,
 	// skip the suite — the cassettes need to be recorded first.
-	cassettePath := filepath.Join("testdata", "stripe-proxy.httprr")
+	cassettePath := filepath.Join("testdata", "stripe-checkout.httprr")
 	if _, err := os.Stat(cassettePath); os.IsNotExist(err) && os.Getenv("STRIPE_SECRET_KEY") == "" {
 		fmt.Println("skipping billing e1e tests: no cassette file and STRIPE_SECRET_KEY not set")
 		return
 	}
-	stripeProxy, err := testinfra.StartStripeProxy(cassettePath)
+	var err error
+	stripeProxy, err = testinfra.StartStripeProxy(cassettePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start stripe proxy: %v\n", err)
 		exit(1)
@@ -157,12 +161,75 @@ func register(t *testing.T) (pty *testinfra.TestPTY, cookies []*http.Cookie, key
 	return pty, cookies, keyFile, email
 }
 
-// TestBillingRequired verifies that a user without billing cannot create a VM
-// when the exed instance has billing enabled (SkipBilling=false).
+// TestBillingRequired verifies that a new user starts on the basic plan
+// (no VMCreate entitlement) and is blocked from creating a VM.
 func TestBillingRequired(t *testing.T) {
-	pty, _, _, _ := register(t)
+	pty, _, _, email := register(t)
+
+	// Verify the user starts on the basic plan.
+	planID, err := serverEnv.QueryUserPlanByEmail(email)
+	if err != nil {
+		t.Fatalf("QueryUserPlanByEmail: %v", err)
+	}
+	if !strings.HasPrefix(planID, "basic:") {
+		t.Fatalf("expected basic plan, got %q", planID)
+	}
 
 	pty.SendLine("new --name=billing-test-vm")
 	pty.WantRE("Billing Required")
 	pty.Disconnect()
+}
+
+// TestStripeCheckoutE2E exercises the full Stripe checkout flow:
+//
+//	basic plan → billing gate → Stripe checkout → individual plan → VM creation
+func TestStripeCheckoutE2E(t *testing.T) {
+	pty, cookies, keyFile, email := register(t)
+
+	// User starts on basic plan — VM creation should be blocked.
+	planID, err := serverEnv.QueryUserPlanByEmail(email)
+	if err != nil {
+		t.Fatalf("QueryUserPlanByEmail (before): %v", err)
+	}
+	if !strings.HasPrefix(planID, "basic:") {
+		t.Fatalf("expected basic plan before checkout, got %q", planID)
+	}
+
+	pty.SendLine("new --name=checkout-e2e-vm")
+	pty.WantRE("Billing Required")
+
+	// Complete the Stripe checkout flow.
+	if err := serverEnv.CompleteStripeCheckout(t.Context(), cookies, stripeProxy); err != nil {
+		t.Fatalf("CompleteStripeCheckout: %v", err)
+	}
+
+	// Verify the user is now on the individual plan.
+	planID, err = serverEnv.QueryUserPlanByEmail(email)
+	if err != nil {
+		t.Fatalf("QueryUserPlanByEmail (after): %v", err)
+	}
+	if !strings.HasPrefix(planID, "individual:") {
+		t.Fatalf("expected individual plan after checkout, got %q", planID)
+	}
+
+	// Reconnect via SSH — the user should now have billing.
+	pty.Disconnect()
+	pty2, _ := testinfra.MakeTestPTY(t, "", "ssh localhost", true)
+	cmd, err := serverEnv.SSHToExeDev(t.Context(), pty2.PTY(), keyFile)
+	if err != nil {
+		t.Fatalf("SSHToExeDev: %v", err)
+	}
+	t.Cleanup(func() { _ = cmd.Wait() })
+	pty2.WantPrompt()
+
+	// Create a VM — should succeed with billing active.
+	boxName, err := serverEnv.NewBox(t.Name(), testRunID, pty2.PTY())
+	if err != nil {
+		t.Fatalf("NewBox: %v", err)
+	}
+
+	// Wait for the VM to be reachable.
+	if err := serverEnv.WaitForBoxSSHServer(t.Context(), boxName, keyFile); err != nil {
+		t.Fatalf("WaitForBoxSSHServer: %v", err)
+	}
 }
