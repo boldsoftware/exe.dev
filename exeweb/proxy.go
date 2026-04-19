@@ -1488,7 +1488,7 @@ func setForwardedHeaders(outgoing, incoming *http.Request) {
 
 	outgoing.Header.Set("X-Forwarded-Proto", getScheme(incoming))
 
-	if host := incoming.Host; host != "" {
+	if host := RequestHost(incoming); host != "" {
 		outgoing.Header.Set("X-Forwarded-Host", host)
 	}
 
