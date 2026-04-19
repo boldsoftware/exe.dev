@@ -55,8 +55,13 @@ func TestMain(m *testing.M) {
 
 	// Start the httprr Stripe proxy. In record mode (-httprecord), requests
 	// are forwarded to real Stripe; in replay mode, responses come from the
-	// cassette file.
+	// cassette file. If the cassette doesn't exist and we're not recording,
+	// skip the suite — the cassettes need to be recorded first.
 	cassettePath := filepath.Join("testdata", "stripe-proxy.httprr")
+	if _, err := os.Stat(cassettePath); os.IsNotExist(err) && os.Getenv("STRIPE_SECRET_KEY") == "" {
+		fmt.Println("skipping billing e1e tests: no cassette file and STRIPE_SECRET_KEY not set")
+		return
+	}
 	stripeProxy, err := testinfra.StartStripeProxy(cassettePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start stripe proxy: %v\n", err)
