@@ -313,3 +313,31 @@ func renderTemplate(ctx context.Context, lg *slog.Logger, templates *template.Te
 	_, err := w.Write(buf.Bytes())
 	return err
 }
+
+// AuthCookieValueFromRequest takes an HTTP request.
+// It returns the auth cookie value and domain.
+func AuthCookieValueFromRequest(r *http.Request) (cookieValue, domain string, err error) {
+	return CookieValueFromRequest(r, "exe-auth")
+}
+
+// CookieValueFromRequest takes an HTTP request and the name of an auth cookie.
+// It returns the cookie value and domain.
+func CookieValueFromRequest(r *http.Request, cookieName string) (cookieValue, domain string, err error) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
+		// so be sure to wrap the error returned from r.Cookie.
+		return "", "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
+	}
+	if cookie.Value == "" {
+		return "", "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
+	}
+
+	// Strip port from domain since cookies are per-host,
+	// not per-host:port.
+	// We don't use RequestHost here because the auth cookie
+	// is associated with exe.dev, not the user host.
+	domain = domz.StripPort(r.Host)
+
+	return cookie.Value, domain, nil
+}

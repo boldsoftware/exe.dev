@@ -934,9 +934,15 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 // It also accepts app tokens via the Authorization: Bearer header.
 func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 	// Try cookie first.
-	if userID, err := s.proxyServer().ValidateAuthCookie(r); err == nil {
-		return userID, nil
+	cookieValue, domain, err := exeweb.AuthCookieValueFromRequest(r)
+	if err == nil {
+		userID, err := s.validateCookieByValue(r.Context(), cookieValue, domain)
+		if err == nil {
+			return userID, nil
+		}
+		s.slog().InfoContext(r.Context(), "invalid cookie in HTTP request", "error", err)
 	}
+
 	// Fall back to app token in Authorization header.
 	if auth := r.Header.Get("Authorization"); len(auth) > len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
 		token := strings.TrimSpace(auth[len("Bearer "):])
@@ -944,7 +950,56 @@ func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 			return s.validateAppToken(r.Context(), token)
 		}
 	}
+
 	return "", http.ErrNoCookie
+}
+
+// validateCookie checks that a cookie is valid,
+// and returns the user ID.
+//
+// If you change this code, look at (*exeproxServer).CookieInfo
+// and (*exeweb.ProxyServer).validateNamedAuthCookie.
+func (s *Server) validateCookieByValue(ctx context.Context, cookieValue, domain string) (string, error) {
+	// App tokens can appear as cookie values (iOS web views set them
+	// as the cookie value because WKWebView can't set headers).
+	if strings.HasPrefix(cookieValue, AppTokenPrefix) {
+		return s.validateAppToken(ctx, cookieValue)
+	}
+
+	cookie, err := withRxRes1(s, ctx, (*exedb.Queries).GetAuthCookieInfo, exedb.GetAuthCookieInfoParams{
+		CookieValue: cookieValue,
+		Domain:      domain,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.cookieUsesCache.Delete(cookieValue)
+			return "", errors.New("invalid cookie")
+		}
+		return "", fmt.Errorf("database error: %w", err)
+	}
+
+	if time.Now().After(cookie.ExpiresAt) {
+		go func() {
+			s.deleteAuthCookie(context.WithoutCancel(ctx), cookieValue)
+		}()
+		return "", errors.New("cookie expired")
+	}
+
+	if s.cookieUsesCache.Touch(cookieValue) {
+		go func() {
+			ctx := context.WithoutCancel(ctx)
+			err := withTx1(s, ctx, (*exedb.Queries).UpdateAuthCookieLastUsed, cookieValue)
+			if err != nil {
+				s.slog().ErrorContext(ctx, "UpdateAuthCookieLastUsed failed", "error", err)
+
+				// Remove the cache entry so that
+				// we will try again later.
+				s.cookieUsesCache.Delete(cookieValue)
+			}
+		}()
+	}
+
+	return cookie.UserID, nil
 }
 
 // userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.
@@ -994,10 +1049,11 @@ func (s *Server) deleteAuthCookie(ctx context.Context, cookieValue string) {
 	// even if the client disconnected.
 	ctx = context.WithoutCancel(ctx)
 	if err := withTx1(s, ctx, (*exedb.Queries).DeleteAuthCookie, cookieValue); err != nil {
-		s.slog().ErrorContext(ctx, "deleting auth cookie failed", "cookievalue", cookieValue, "error", err)
+		s.slog().ErrorContext(ctx, "deleting auth cookie failed", "error", err)
 		return
 	}
 	proxyChangeDeletedCookie(cookieValue)
+	s.cookieUsesCache.Delete(cookieValue)
 }
 
 // deleteAuthCookiesForUser deletes all cookies for a user.

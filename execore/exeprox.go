@@ -146,6 +146,8 @@ func (es *exeproxServer) BoxInfo(ctx context.Context, req *proxyapi.BoxInfoReque
 }
 
 // CookieInfo takes a cookie value and returns information about it.
+//
+// If you change this code, look at (*Server).validateCookieByValue.
 func (es *exeproxServer) CookieInfo(ctx context.Context, req *proxyapi.CookieInfoRequest) (*proxyapi.CookieInfoResponse, error) {
 	// App tokens can appear as cookie values (iOS web views set them
 	// as the cookie value because WKWebView can't set headers).

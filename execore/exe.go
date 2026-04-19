@@ -270,9 +270,9 @@ type Server struct {
 	// Piper plugin for SSH proxy authentication
 	piperPlugin *PiperPlugin
 
-	// cookieAtimes is the shared cookie-atime dedup cache,
-	// passed to each per-request ProxyServer.
-	cookieAtimes sync.Map
+	// cookieUsesCache is the shared cookie-atime dedup cache.
+	cookieUsesCache exeweb.CookieUsesCache
+	cookieCancel    context.CancelFunc
 
 	// sshKeyAtimes deduplicates UpdateSSHKeyLastUsed writes
 	// to at most once per public key per UTC day.
@@ -3053,6 +3053,10 @@ func (s *Server) start() error {
 		go s.dripRunner.Start(ctx)
 	}
 
+	cookieCtx, cookieCancel := context.WithCancel(context.Background())
+	s.cookieUsesCache.Clean(cookieCtx)
+	s.cookieCancel = cookieCancel
+
 	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -3823,6 +3827,9 @@ func (s *Server) Stop() error {
 	s.stopping.Store(true)
 	if s.startCancel != nil {
 		s.startCancel()
+	}
+	if s.cookieCancel != nil {
+		s.cookieCancel()
 	}
 
 	ctx := context.Background()

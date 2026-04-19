@@ -133,19 +133,19 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // proxyServer returns an [exeweb.ProxyServer] for wp.
 func (wp *WebProxy) proxyServer() *exeweb.ProxyServer {
 	return &exeweb.ProxyServer{
-		Data:          &exewebProxyData{wp: wp},
-		Lg:            wp.lg(),
-		Env:           wp.env,
-		ExedHTTPPort:  wp.exedHTTPPort,
-		ExedHTTPSPort: wp.exedHTTPSPort,
-		PiperdPort:    0,
-		SSHPool:       wp.proxy.sshPool,
-		Transports:    wp.transportCache,
-		HTTPMetrics:   wp.httpMetrics,
-		Templates:     wp.templates,
-		LobbyIP:       wp.lobbyIP,
-		PublicIPs:     wp.publicIPs,
-		CookieAtimes:  &wp.cookieAtimes,
+		Data:            &exewebProxyData{wp: wp},
+		Lg:              wp.lg(),
+		Env:             wp.env,
+		ExedHTTPPort:    wp.exedHTTPPort,
+		ExedHTTPSPort:   wp.exedHTTPSPort,
+		PiperdPort:      0,
+		SSHPool:         wp.proxy.sshPool,
+		Transports:      wp.transportCache,
+		HTTPMetrics:     wp.httpMetrics,
+		Templates:       wp.templates,
+		LobbyIP:         wp.lobbyIP,
+		PublicIPs:       wp.publicIPs,
+		CookieUsesCache: &wp.cookieUsesCache,
 	}
 }
 

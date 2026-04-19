@@ -77,9 +77,8 @@ type WebProxy struct {
 
 	templates *template.Template
 
-	// cookieAtimes is the shared cookie-atime dedup cache,
-	// passed to each per-request ProxyServer.
-	cookieAtimes sync.Map
+	cookieUsesCache exeweb.CookieUsesCache
+	cookieCancel    context.CancelFunc
 
 	stopping atomic.Bool // reports whether stop was called
 }
@@ -299,6 +298,10 @@ func (wp *WebProxy) start(ctx context.Context, cancel context.CancelFunc) error 
 		}(proxyLn)
 	}
 
+	cookieCtx, cookieCancel := context.WithCancel(context.Background())
+	wp.cookieUsesCache.Clean(cookieCtx)
+	wp.cookieCancel = cookieCancel
+
 	return nil
 }
 
@@ -474,6 +477,9 @@ func (wp *WebProxy) tailscaleCertificate() (*tls.Certificate, error) {
 // stop shuts down all servers.
 func (wp *WebProxy) stop(ctx context.Context) {
 	wp.stopping.Store(true)
+	if wp.cookieCancel != nil {
+		wp.cookieCancel()
+	}
 
 	if wp.httpServer != nil {
 		if err := wp.httpServer.Close(); err != nil {

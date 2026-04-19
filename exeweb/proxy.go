@@ -82,11 +82,11 @@ type ProxyServer struct {
 	Transports     *TransportCache
 	PushSender     PushSender
 
-	// CookieAtimes caches the UTC date (YYYY-MM-DD) of the last
+	// CookieUsesCache caches the UTC date (YYYY-MM-DD) of the last
 	// UsedCookie write for each cookie value. We only write once
 	// per cookie per UTC day to avoid per-request DB writes.
 	// Must be provided by the caller and outlive individual requests.
-	CookieAtimes *sync.Map // cookieValue → "2006-01-02"
+	CookieUsesCache *CookieUsesCache
 
 	// For testing:
 	LookupCNAMEFunc func(context.Context, string) (string, error)
@@ -253,7 +253,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	// Now that the box is confirmed to exist, bump the cookie atime.
 	// Deferred from GetProxyAuth to avoid DB writes for nonexistent boxes.
 	if authResult != nil && authResult.cookieValue != "" {
-		ps.touchCookieAtime(r.Context(), authResult.cookieValue)
+		ps.usedCookie(r.Context(), authResult.cookieValue)
 	}
 
 	// Determine final route:
@@ -662,7 +662,7 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 		if err := ps.Data.DeleteAuthCookie(r.Context(), cookieValue); err != nil {
 			ps.Lg.ErrorContext(r.Context(), "deleting auth cookie failed", "cookieValue", cookieValue, "error", err)
 		}
-		ps.CookieAtimes.Delete(cookieValue)
+		ps.CookieUsesCache.Delete(cookieValue)
 	}
 
 	// Clear the proxy auth cookie in the browser.
@@ -820,7 +820,7 @@ func (ps *ProxyServer) ValidateAuthCookie(r *http.Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ps.touchCookieAtime(r.Context(), cookieValue)
+	ps.usedCookie(r.Context(), cookieValue)
 	return userID, nil
 }
 
@@ -836,39 +836,25 @@ func (ps *ProxyServer) ValidateProxyAuthCookie(r *http.Request) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	ps.touchCookieAtime(r.Context(), cookieValue)
+	ps.usedCookie(r.Context(), cookieValue)
 	return userID, nil
 }
 
 // validateNamedAuthCookie validates the named auth cookie and returns the
 // authenticated user ID and the raw cookie value. It does not update the
-// cookie's last-used time; callers that want that should call touchCookieAtime.
+// cookie's last-used time; callers that want that should call usedCookie.
 func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName string) (string, string, error) {
-	cookie, err := r.Cookie(cookieName)
+	cookieValue, domain, err := CookieValueFromRequest(r, cookieName)
 	if err != nil {
-		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
-		// so be sure to wrap the error returned from r.Cookie.
-		return "", "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
-	}
-	if cookie.Value == "" {
-		return "", "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
+		return "", "", err
 	}
 
-	ctx := r.Context()
-	cookieValue := cookie.Value
-	// Strip port from domain since cookies are per-host,
-	// not per-host:port.
-	// We don't use RequestHost here because the auth cookie
-	// is associated with exe.dev, not the user host.
-	domain := domz.StripPort(r.Host)
-
-	// Get auth cookie info
-	cookieData, exists, err := ps.Data.CookieInfo(ctx, cookieValue, domain)
+	cookieData, exists, err := ps.Data.CookieInfo(r.Context(), cookieValue, domain)
 	if err != nil {
 		return "", "", fmt.Errorf("database error: %w", err)
 	}
 	if !exists {
-		ps.CookieAtimes.Delete(cookieValue)
+		ps.CookieUsesCache.Delete(cookieValue)
 		return "", "", fmt.Errorf("invalid cookie")
 	}
 
@@ -876,24 +862,28 @@ func (ps *ProxyServer) validateNamedAuthCookie(r *http.Request, cookieName strin
 	if time.Now().After(cookieData.ExpiresAt) {
 		// We don't call DeleteAuthCookie here;
 		// we expect the CookieInfo method to handle that.
-		ps.CookieAtimes.Delete(cookieValue)
+		ps.CookieUsesCache.Delete(cookieValue)
 		return "", "", fmt.Errorf("cookie expired")
 	}
 
 	return cookieData.UserID, cookieValue, nil
 }
 
-// touchCookieAtime records that a validated auth cookie was used today.
+// usedCookie records that a validated auth cookie was used today.
 // The DB update runs in a background goroutine to avoid blocking the caller.
-// Deduplicates via ps.CookieAtimes so at most one write per cookie per UTC day.
-func (ps *ProxyServer) touchCookieAtime(ctx context.Context, cookieValue string) {
-	today := time.Now().UTC().Format("2006-01-02")
-	if prev, ok := ps.CookieAtimes.Load(cookieValue); !ok || prev.(string) != today {
+// Deduplicates via ps.CookieUsesCache so at most one write per cookie per UTC day.
+func (ps *ProxyServer) usedCookie(ctx context.Context, cookieValue string) {
+	if ps.CookieUsesCache.Touch(cookieValue) {
 		go func() {
-			if err := ps.Data.UsedCookie(context.WithoutCancel(ctx), cookieValue); err != nil {
-				return
+			ctx := context.WithoutCancel(ctx)
+			err := ps.Data.UsedCookie(ctx, cookieValue)
+			if err != nil {
+				ps.Lg.ErrorContext(ctx, "UsedCookie failed", "error", err)
+
+				// Remove the cache entry so that
+				// we will try again later.
+				ps.CookieUsesCache.Delete(cookieValue)
 			}
-			ps.CookieAtimes.Store(cookieValue, today)
 		}()
 	}
 }

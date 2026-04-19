@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -816,11 +815,11 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 
 	testEnv := stage.Test()
 	ps := &ProxyServer{
-		Data:           mock,
-		Lg:             slog.Default(),
-		Env:            &testEnv,
-		ProxyHTTPSPort: 443,
-		CookieAtimes:   &sync.Map{},
+		Data:            mock,
+		Lg:              slog.Default(),
+		Env:             &testEnv,
+		ProxyHTTPSPort:  443,
+		CookieUsesCache: new(CookieUsesCache),
 	}
 
 	t.Run("app_token_in_cookie_authenticates", func(t *testing.T) {
@@ -895,11 +894,11 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 		}
 		testEnvCookie := stage.Test()
 		psWithCookie := &ProxyServer{
-			Data:           mockWithCookie,
-			Lg:             slog.Default(),
-			Env:            &testEnvCookie,
-			ProxyHTTPSPort: 443,
-			CookieAtimes:   &sync.Map{},
+			Data:            mockWithCookie,
+			Lg:              slog.Default(),
+			Env:             &testEnvCookie,
+			ProxyHTTPSPort:  443,
+			CookieUsesCache: new(CookieUsesCache),
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)

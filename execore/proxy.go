@@ -273,7 +273,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		LookupCNAMEFunc: s.lookupCNAMEFunc,
 		LookupAFunc:     s.lookupAFunc,
 		PushSender:      pushSender,
-		CookieAtimes:    &s.cookieAtimes,
+		CookieUsesCache: &s.cookieUsesCache,
 	}
 	if s.servingHTTP() {
 		ps.ProxyHTTPPort = s.httpLn.tcp.Port

@@ -1,10 +1,13 @@
 package exeweb
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/go4org/hashtriemap"
 )
 
 // MagicSecret represents a temporary authentication secret
@@ -105,4 +108,53 @@ func (ms *MagicSecrets) cleanupExpiredSecrets() {
 			delete(ms.magicSecrets, secret)
 		}
 	}
+}
+
+// CookieUsesCache caches the UTC date of the last time a cookie
+// was marked as used. We write once per cookie per day to avoid
+// per-request DB writes.
+type CookieUsesCache struct {
+	cache hashtriemap.HashTrieMap[string, time.Time]
+}
+
+// Touch is called when we use a cookie.
+// It reports whether the database should be updated.
+func (cuc *CookieUsesCache) Touch(cookieValue string) bool {
+	year, month, day := time.Now().UTC().Date()
+	today := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	if prev, ok := cuc.cache.Load(cookieValue); !ok || prev.Before(today) {
+		// It is possible for this to be run simultaneously
+		// by two different goroutines causing both to see
+		// a true return and update the database.
+		// We ignore this minor unlikely inefficiency.
+		cuc.cache.Store(cookieValue, today)
+		return true
+	}
+	return false
+}
+
+// Delete removes a cookie from the cache.
+func (cuc *CookieUsesCache) Delete(cookieValue string) {
+	cuc.cache.Delete(cookieValue)
+}
+
+// Clean starts a separate goroutine removing stale entries from the cache.
+func (cuc *CookieUsesCache) Clean(ctx context.Context) {
+	go func(ctx context.Context) {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				old := time.Now().Add(-25 * time.Hour)
+				for cookieValue, t := range cuc.cache.All() {
+					if t.Before(old) {
+						cuc.cache.Delete(cookieValue)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}(ctx)
 }
