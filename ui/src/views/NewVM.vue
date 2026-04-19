@@ -24,6 +24,9 @@
             required
             autocomplete="off"
             autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            inputmode="url"
             @input="onHostnameInput"
           />
           <span class="hostname-suffix">.exe.xyz</span>
@@ -69,6 +72,9 @@
               class="form-input"
               placeholder="exeuntu (default)"
               autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
             />
           </div>
         </div>
@@ -420,14 +426,14 @@ onMounted(async () => {
 
 <style scoped>
 .new-vm-page {
-  display: flex;
-  justify-content: center;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
   padding-top: 40px;
 }
 
 .new-vm-form {
   width: 100%;
-  max-width: 520px;
 }
 
 .form-title {
@@ -782,5 +788,126 @@ onMounted(async () => {
 .breadcrumb-current {
   color: var(--text-color);
   font-weight: 500;
+}
+
+/* Mobile: bigger touch targets, prevent iOS zoom-on-focus (requires >= 16px). */
+@media (max-width: 640px) {
+  .new-vm-page {
+    padding-top: 16px;
+  }
+
+  .form-title {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  /* 16px font-size on all form controls prevents iOS Safari auto-zoom. */
+  .form-input,
+  .hostname-suffix {
+    font-size: 16px;
+  }
+
+  .form-input {
+    padding: 12px 14px;
+    border-radius: 8px;
+  }
+
+  .hostname-input {
+    border-radius: 8px 0 0 8px;
+  }
+
+  .hostname-suffix {
+    padding: 12px 14px;
+    border-radius: 0 8px 8px 0;
+  }
+
+  .prompt-input {
+    min-height: 120px;
+  }
+
+  .form-hint {
+    font-size: 13px;
+  }
+
+  .seg-control {
+    display: flex;
+    width: 100%;
+  }
+
+  .seg-btn {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  .template-pill {
+    font-size: 13px;
+    padding: 6px 12px;
+  }
+
+  .options-toggle {
+    font-size: 14px;
+    padding: 10px 0;
+  }
+
+  .submit-btn {
+    padding: 14px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
+  /* Drawer: full-screen on phones with safe-area padding. */
+  .drawer-panel {
+    width: 100%;
+    max-width: 100%;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .drawer-header {
+    margin-bottom: 12px;
+    position: sticky;
+    top: 0;
+    background: var(--surface-ground, #fff);
+    padding-bottom: 8px;
+    z-index: 1;
+  }
+
+  .drawer-header h2 {
+    font-size: 18px;
+  }
+
+  .drawer-close {
+    font-size: 28px;
+    padding: 4px 10px;
+    line-height: 1;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .drawer-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .template-card {
+    padding: 14px;
+  }
+
+  .card-title {
+    font-size: 15px;
+  }
+
+  .card-desc {
+    font-size: 13px;
+  }
+
+  .breadcrumbs {
+    font-size: 13px;
+  }
 }
 </style>
