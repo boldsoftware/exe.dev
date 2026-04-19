@@ -817,6 +817,11 @@ type ServerConfig struct {
 	LMTPSocketPath     string // path to LMTP Unix socket; empty disables LMTP
 	MetricsdURL        string // URL of the metricsd server for VM usage data (e.g. http://localhost:21090)
 	DashboardUI        fs.FS  // embedded Vue SPA dist filesystem; nil disables
+	// DBReaders overrides the number of sqlite reader connections to open.
+	// Zero means use the default (16). Tests should set this to 1 to avoid
+	// re-parsing the full schema once per connection (~17 parses per Server),
+	// which dominates CI time when hundreds of tests run in parallel under -race.
+	DBReaders int
 }
 
 // NewServer creates a new Server instance with database and container management.
@@ -827,7 +832,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
-	const nReaders = 16
+	nReaders := cfg.DBReaders
+	if nReaders == 0 {
+		nReaders = 16
+	}
 	db, err := sqlite.New(cfg.DBPath, nReaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sqlite connection pool: %w", err)

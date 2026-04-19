@@ -42,6 +42,7 @@ func TestNewServerBootstrapStripeCatalog(t *testing.T) {
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
 		DashboardUI:     nil,
+		DBReaders:       1,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
@@ -79,6 +80,7 @@ func TestNewServerSkipsBootstrapStripeCatalog(t *testing.T) {
 		LMTPSocketPath:  "",
 		MetricsdURL:     "",
 		DashboardUI:     nil,
+		DBReaders:       1,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)

@@ -280,6 +280,7 @@ func run() error {
 		LMTPSocketPath:     *lmtpSocket,
 		MetricsdURL:        metricsdURL,
 		DashboardUI:        dashboardUI,
+		DBReaders:          0, // use default
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
