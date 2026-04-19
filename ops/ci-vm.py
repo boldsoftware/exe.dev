@@ -66,6 +66,20 @@ def sudo(*cmd, **kw):
     return run("sudo", *cmd, **kw)
 
 
+def _bk_preserve_env_flag() -> list[str]:
+    """sudo --preserve-env flag forwarding BUILDKITE_* to the child process.
+
+    Without this, psimon can't attribute cloud-hypervisor host-process CPU
+    time back to the Buildkite step that spawned the VM: sudo(1) strips
+    the environment by default, so the BUILDKITE_* vars we inherit from
+    the agent never reach the VM host-process.
+    """
+    names = sorted(k for k in os.environ if k.startswith("BUILDKITE_"))
+    if not names:
+        return []
+    return [f"--preserve-env={','.join(names)}"]
+
+
 # ── Snapshot / cache helpers ───────────────────────────────────────────────────
 
 def _setup_hash() -> str:
@@ -369,8 +383,12 @@ def _launch_ch(disk: Path, data_disk: Path,
     ]
 
     quoted = " ".join(shlex.quote(str(a)) for a in ch_args)
-    shell  = f"nohup {quoted} >> {shlex.quote(log)} 2>&1 & echo $! > {shlex.quote(pidfile)}"
-    sudo("bash", "-c", shell)
+    # Background cloud-hypervisor, record its pid, and let the outer bash
+    # exit. setsid detaches from the controlling terminal so the VM isn't
+    # killed when the agent's job shell finishes (replaces the older nohup
+    # wrapper, which got in the way of forwarding env vars).
+    shell  = f"setsid {quoted} >> {shlex.quote(log)} 2>&1 < /dev/null & echo $! > {shlex.quote(pidfile)}"
+    sudo(*_bk_preserve_env_flag(), "bash", "-c", shell)
 
     for _ in range(20):
         try:
@@ -732,8 +750,8 @@ def _build_docker_snapshot(snap_dir: Path, product_kernel: str) -> None:
     ]
 
     quoted = " ".join(shlex.quote(str(a)) for a in ch_args)
-    shell  = f"nohup {quoted} >> {shlex.quote(log)} 2>&1 & echo $! > {shlex.quote(pidfile)}"
-    sudo("bash", "-c", shell)
+    shell  = f"setsid {quoted} >> {shlex.quote(log)} 2>&1 < /dev/null & echo $! > {shlex.quote(pidfile)}"
+    sudo(*_bk_preserve_env_flag(), "bash", "-c", shell)
 
     for _ in range(20):
         try:
