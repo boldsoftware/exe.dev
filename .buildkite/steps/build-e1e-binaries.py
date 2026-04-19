@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Pre-build e1e test binaries so downstream jobs skip compilation.
 
-Builds everything in parallel where possible:
-  - exelet-fs restore, exe-init build, UI build all start immediately
-  - Go binary builds (exeprox, sshpiperd) start immediately
-  - exeletd waits for exelet-fs + exe-init (it embeds the fs via //go:embed)
-  - exed links against ui/dist, so it waits for UI to finish
+Two independent pipelines run in parallel, joined at the end:
+
+  A (exelet chain):  exelet-fs  →  exe-init  →  exeletd
+  B (ui+exed):       make ui    →  go build exed
+
+Plus two standalone Go builds: exeprox, sshpiperd.
+Plus a "warmer" that pre-compiles exed's deps to shorten B's final step
+(helpful when the UI cache misses and B's first stage takes a while).
 
 Artifacts are placed in ~/.cache/ci/e1e-prebuilt-{BUILD_ID}/ and shared
 with downstream shards.  Override the cache root via CI_CACHE env var.
@@ -14,19 +17,54 @@ with downstream shards.  Override the cache root via CI_CACHE env var.
 import os
 import subprocess
 import sys
+import threading
 import time
 
 def run(args, **kwargs):
     print(f"+ {' '.join(args)}", flush=True)
     subprocess.run(args, check=True, **kwargs)
 
-def timed(label, fn):
-    """Run fn(), print elapsed time."""
-    t0 = time.monotonic()
-    result = fn()
-    dt = time.monotonic() - t0
-    print(f"  {label}: {dt:.1f}s", flush=True)
-    return result
+
+class Task:
+    """A subprocess-based task that records its real elapsed time.
+
+    `start_after` is an optional Task whose completion must precede ours.
+    All Task objects should be registered via Task.all so main can join them.
+    """
+
+    all: list["Task"] = []
+
+    def __init__(self, name, argv, *, after=(), cwd=None, env=None, optional=False):
+        self.name = name
+        self.argv = argv
+        self.cwd = cwd
+        self.env = env
+        # Sequence of Tasks that must finish (successfully, unless optional)
+        # before this one starts.
+        self.after = after if isinstance(after, (list, tuple)) else (after,)
+        self.optional = optional  # if True, failure is non-fatal
+        self.elapsed = None
+        self.returncode = None
+        self._thread = threading.Thread(target=self._run, name=name, daemon=True)
+        Task.all.append(self)
+
+    def _run(self):
+        for dep in self.after:
+            dep._thread.join()
+            if dep.returncode != 0 and not dep.optional:
+                # Upstream failed; skip us.
+                self.returncode = -1
+                return
+        t0 = time.monotonic()
+        p = subprocess.Popen(self.argv, cwd=self.cwd, env=self.env)
+        self.returncode = p.wait()
+        self.elapsed = time.monotonic() - t0
+
+    def start(self):
+        self._thread.start()
+
+    def join(self):
+        self._thread.join()
 
 
 def main():
@@ -58,108 +96,80 @@ def main():
     print("--- :wrench: Build all artifacts (parallel)", flush=True)
     t0 = time.monotonic()
 
-    # ── Start all tasks concurrently ──
-
-    # 1. Restore exelet-fs (cached tarball or Backblaze download)
-    fs_proc = subprocess.Popen(["bash", "-c", _exelet_fs_script(ci_cache, goarch)])
-
-    # 2. Build UI (Node.js + Vite, ~3-6s)
-    ui_proc = subprocess.Popen(["bash", "-c", "make ui"])
-
     # When E1E_COVERAGE is set, build exed and exeprox with coverage instrumentation.
     coverage = os.environ.get("E1E_COVERAGE", "") == "true"
     cover_flags = ["-cover", "-covermode=atomic", "-coverpkg=exe.dev/..."] if coverage else []
     if coverage:
         print("  coverage mode: building exed+exeprox with -cover", flush=True)
 
-    # 4. Go binaries that don't depend on UI or exelet-fs — start immediately
-    go_procs = {}
-    go_procs["exeprox"] = subprocess.Popen(
-        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"])
-    go_procs["sshpiperd"] = subprocess.Popen(
+    linux_env = {**os.environ, "GOOS": "linux", "CGO_ENABLED": "0"}
+
+    # Pipeline A: exelet-fs -> exe-init -> exeletd.  exeletd embeds exelet/fs
+    # via //go:embed, and exe-init writes into that dir, so these are serial.
+    fs_task = Task("exelet-fs", ["bash", "-c", _exelet_fs_script(ci_cache, goarch)])
+    init_task = Task("exe-init", ["make", "exe-init"], after=fs_task)
+    exeletd_task = Task(
+        "exeletd",
+        ["go", "build"] + cover_flags + ["-ldflags=-s -w", "-o", f"{out}/exeletd", "./cmd/exelet"],
+        after=init_task,
+        env=linux_env,
+    )
+
+    ui_task = Task("ui", ["make", "ui"])
+
+    # Standalone Go builds (no dependencies).
+    exeprox_task = Task(
+        "exeprox",
+        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"],
+    )
+    sshpiperd_task = Task(
+        "sshpiperd",
         ["go", "build", "-race", "-ldflags=-s -w", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
-        cwd="deps/sshpiper")
-    # Note: exeletd is built later — it embeds exelet/fs via //go:embed,
-    # so exelet-fs + exe-init must complete first.
+        cwd="deps/sshpiper",
+    )
 
-    # 5. Pre-warm the Go race cache for exed while UI builds.
-    # exed can't link until ui/dist exists (//go:embed), but we can compile
-    # all its Go dependencies now so only the link step remains after UI.
-    exed_warm_proc = subprocess.Popen(
-        ["go", "build", "-race"] + cover_flags + ["./execore", "./exedb", "./billing", "./llmgateway"])
+    # Pre-warm the Go race cache for exed's biggest dependencies.  Running
+    # this in parallel with exed wastes CPU (they recompile the same deps and
+    # fight the lock); instead, warm first, then link exed.  The warmer
+    # overlaps with the A pipeline, UI, and the other Go builds.
+    warm_task = Task(
+        "exed-deps-warm",
+        ["go", "build", "-race"] + cover_flags + ["./execore", "./exedb", "./billing", "./llmgateway"],
+    )
 
-    # ── Wait for tasks, tracking timing ──
-    timings = {}
-    failed = False
+    # Pipeline B: (ui & warm) -> go build exed.  exed embeds ui/dist via
+    # //go:embed, so the UI must be ready before linking.  The warmer fills
+    # the Go build cache so the final exed build is just a link.
+    exed_task = Task(
+        "exed",
+        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"],
+        after=(ui_task, warm_task),
+    )
 
-    # Wait for non-exed Go builds
-    for name, proc in go_procs.items():
-        t_start = t0  # they all started at t0
-        if proc.wait() != 0:
-            print(f"  FAILED: {name}", file=sys.stderr, flush=True)
-            failed = True
-        else:
-            timings[name] = time.monotonic() - t0
+    # Kick them all off at once.
+    for t in Task.all:
+        t.start()
 
-    # Wait for exelet-fs (must finish before exe-init, which writes into fs dir)
-    if fs_proc.wait() != 0:
-        print("  FAILED: exelet-fs", file=sys.stderr, flush=True)
-        failed = True
-    else:
-        timings["exelet-fs"] = time.monotonic() - t0
+    # Join all.
+    for t in Task.all:
+        t.join()
 
-    # Build exe-init after exelet-fs so they don't race on the fs directory.
-    if not failed:
-        t_init = time.monotonic()
-        init_result = subprocess.run(["make", "exe-init"])
-        if init_result.returncode != 0:
-            print("  FAILED: exe-init", file=sys.stderr, flush=True)
-            failed = True
-        else:
-            timings["exe-init"] = time.monotonic() - t0
-
-    # Build exeletd after exelet-fs + exe-init (it embeds the fs directory).
-    # In coverage mode, build with -cover so downstream tests get exelet coverage data.
-    if not failed:
-        t_exeletd = time.monotonic()
-        exeletd_cmd = ["go", "build"] + cover_flags + ["-ldflags=-s -w", "-o", f"{out}/exeletd", "./cmd/exelet"]
-        exeletd_result = subprocess.run(
-            exeletd_cmd,
-            env={**os.environ, "GOOS": "linux", "CGO_ENABLED": "0"})
-        if exeletd_result.returncode != 0:
-            print("  FAILED: exeletd", file=sys.stderr, flush=True)
-            failed = True
-        else:
-            timings["exeletd"] = time.monotonic() - t0
-
-    # Wait for UI — exed needs ui/dist
-    if ui_proc.wait() != 0:
-        print("  FAILED: ui", file=sys.stderr, flush=True)
-        failed = True
-    else:
-        timings["ui"] = time.monotonic() - t0
-
-    # Wait for exed dep pre-warm (best-effort, don't fail the build)
-    if exed_warm_proc.wait() != 0:
-        print("  warning: exed dep pre-warm failed (non-fatal)", flush=True)
-
+    # Report & check.
+    failed = []
+    for t in Task.all:
+        if t.returncode == 0:
+            continue
+        if t.optional:
+            print(f"  warning: {t.name} failed (non-fatal)", flush=True)
+            continue
+        failed.append(t.name)
     if failed:
-        print("One or more parallel tasks failed", file=sys.stderr)
+        print(f"FAILED tasks: {', '.join(failed)}", file=sys.stderr, flush=True)
         sys.exit(1)
-
-    # 5. Build exed (depends on ui/dist being present)
-    t_exed = time.monotonic()
-    exed_result = subprocess.run(
-        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"])
-    if exed_result.returncode != 0:
-        print("  FAILED: exed", file=sys.stderr, flush=True)
-        sys.exit(1)
-    timings["exed"] = time.monotonic() - t0
-    timings["exed (link)"] = time.monotonic() - t_exed
 
     total = time.monotonic() - t0
 
-    # ── Copy artifacts for downstream shards ──
+    # Copy artifacts for downstream shards.
     print("--- :package: Cache build artifacts for shards", flush=True)
     run(["cp", "--reflink=auto", "-a", "ui/dist", f"{out}/ui-dist"])
     fs_dir = f"exelet/fs/{goarch}"
@@ -172,13 +182,19 @@ def main():
     print(f"--- :white_check_mark: Prebuilt binaries ready ({total:.1f}s)", flush=True)
     run(["ls", "-lh", out])
 
-    # Print timing breakdown
-    print("\nBuild timing breakdown:", flush=True)
-    for name in ["exelet-fs", "exe-init", "ui", "exeprox", "sshpiperd", "exeletd", "exed", "exed (link)"]:
-        if name in timings:
-            marker = "*" if name == "exed (link)" else " "
-            print(f" {marker} {name}: {timings[name]:.1f}s", flush=True)
-    print(f"  total: {total:.1f}s", flush=True)
+    # Print timing breakdown (real per-task elapsed, not wall-clock since t0).
+    print("\nPer-task elapsed (wall clock of each subprocess):", flush=True)
+    order = [
+        "exelet-fs", "exe-init", "exeletd",
+        "ui", "exed",
+        "exeprox", "sshpiperd", "exed-deps-warm",
+    ]
+    by_name = {t.name: t for t in Task.all}
+    for name in order:
+        t = by_name.get(name)
+        if t is not None and t.elapsed is not None:
+            print(f"  {name}: {t.elapsed:.1f}s", flush=True)
+    print(f"  total wall: {total:.1f}s", flush=True)
 
     # Write the output dir path so pipeline YAML can reference it.
     print(f"PREBUILT_DIR={out}")
