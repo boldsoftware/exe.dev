@@ -38,6 +38,11 @@ make protos &
 pids+=($!)
 names+=("make protos")
 
+# Note: this loop runs builds serially (~24s warm).  A single
+#   go build -o /tmp/out/ ./cmd/...
+# runs the same work in ~8-10s by letting the compiler parallelize across
+# packages.  Not worth changing right now — cmd builds aren't on the
+# critical path (unit + e1e test shards dominate this step's total).
 (for dir in cmd/*/; do go build -o /dev/null "./$dir"; done) &
 pids+=($!)
 names+=("cmd builds")
