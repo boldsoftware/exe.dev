@@ -6,8 +6,12 @@
 package exeweb
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +21,7 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/domz"
 	"exe.dev/stage"
+	"exe.dev/tracing"
 )
 
 // SSHKnownHostsPath is for https://c2sp.org/well-known-ssh-hosts.
@@ -277,4 +282,34 @@ func SetAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue s
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
+}
+
+// RenderLockedOutPage is called if a user is locked out
+// to show the locked-out page on w.
+func RenderLockedOutPage(ctx context.Context, lg *slog.Logger, templates *template.Template, userID string, w http.ResponseWriter) {
+	traceID := tracing.TraceIDFromContext(ctx)
+	lg.WarnContext(ctx, "locked out user attempted access", "userID", userID, "trace_id", traceID)
+
+	w.WriteHeader(http.StatusForbidden)
+	data := struct {
+		TraceID string
+	}{
+		TraceID: traceID,
+	}
+	if err := renderTemplate(ctx, lg, templates, w, "account-locked.html", data); err != nil {
+		lg.ErrorContext(ctx, "failed to render account-locked template", "error", err)
+	}
+}
+
+// renderTemplate generates an HTTP response from a template.
+func renderTemplate(ctx context.Context, lg *slog.Logger, templates *template.Template, w http.ResponseWriter, templateName string, data any) error {
+	w.Header().Set("Content-Type", "text/html")
+	var buf bytes.Buffer
+	if err := templates.ExecuteTemplate(&buf, templateName, data); err != nil {
+		lg.ErrorContext(ctx, "Failed to execute template", "error", err, "template", templateName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
 }

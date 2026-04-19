@@ -177,7 +177,7 @@ func (ps *ProxyServer) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc 
 				DashboardURL: dashboardURL,
 				TraceID:      tracing.TraceIDFromContext(r.Context()),
 			}
-			ps.renderTemplate(r.Context(), w, "proxy-terminal-access-denied.html", data)
+			renderTemplate(r.Context(), ps.Lg, ps.Templates, w, "proxy-terminal-access-denied.html", data)
 			return
 		}
 
@@ -597,7 +597,14 @@ func (ps *ProxyServer) HandleTerminalRequest(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Check if user is locked out
-	if ps.RenderLockedOutPage(w, r, userID) {
+	isLockedOut, err := ps.Data.IsUserLockedOut(r.Context(), userID)
+	if err != nil {
+		ps.Lg.WarnContext(r.Context(), "failed to check user lockout status", "userID", userID, "error", err)
+		// Permit access.
+		isLockedOut = false
+	}
+	if isLockedOut {
+		RenderLockedOutPage(r.Context(), ps.Lg, ps.Templates, userID, w)
 		return
 	}
 

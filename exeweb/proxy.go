@@ -447,13 +447,13 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 			}
 
 			w.WriteHeader(http.StatusBadGateway)
-			_ = ps.renderTemplate(r.Context(), w, "proxy-unreachable.html", data)
+			_ = renderTemplate(r.Context(), ps.Lg, ps.Templates, w, "proxy-unreachable.html", data)
 			return
 		}
 
 		// Non-owner: render 503 page
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = ps.renderTemplate(r.Context(), w, "proxy-503.html", struct {
+		_ = renderTemplate(r.Context(), ps.Lg, ps.Templates, w, "proxy-503.html", struct {
 			TraceID string
 		}{
 			TraceID: tracing.TraceIDFromContext(r.Context()),
@@ -1250,7 +1250,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 	// show the request-access page.
 	if userEmail != "" && box != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		ps.renderTemplate(r.Context(), w, "proxy-request-access.html", struct {
+		renderTemplate(r.Context(), ps.Lg, ps.Templates, w, "proxy-request-access.html", struct {
 			Email string
 		}{
 			Email: userEmail,
@@ -1277,7 +1277,7 @@ func (ps *ProxyServer) RenderAccessRequired(w http.ResponseWriter, r *http.Reque
 		Email: userEmail,
 	}
 	w.WriteHeader(http.StatusUnauthorized)
-	ps.renderTemplate(r.Context(), w, "proxy-401.html", data)
+	renderTemplate(r.Context(), ps.Lg, ps.Templates, w, "proxy-401.html", data)
 }
 
 // RenderLockedOutPage renders the account-locked page and
@@ -1304,7 +1304,7 @@ func (ps *ProxyServer) RenderLockedOutPage(w http.ResponseWriter, r *http.Reques
 	}{
 		TraceID: traceID,
 	}
-	if err := ps.renderTemplate(ctx, w, "account-locked.html", data); err != nil {
+	if err := renderTemplate(ctx, ps.Lg, ps.Templates, w, "account-locked.html", data); err != nil {
 		ps.Lg.ErrorContext(ctx, "failed to render account-locked template", "error", err)
 	}
 	return true
@@ -1356,7 +1356,7 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	}
 
 	if r.Method == http.MethodGet {
-		ps.renderTemplate(ctx, w, "proxy-request-access.html", struct {
+		renderTemplate(ctx, ps.Lg, ps.Templates, w, "proxy-request-access.html", struct {
 			Email string
 		}{
 			Email: requesterEmail,
@@ -1421,7 +1421,7 @@ func (ps *ProxyServer) HandleRequestAccess(w http.ResponseWriter, r *http.Reques
 	}
 
 	ps.Lg.InfoContext(ctx, "access request sent", "requester", requesterEmail, "owner", ownerEmail, "box", boxName)
-	ps.renderTemplate(ctx, w, "proxy-request-sent.html", nil)
+	renderTemplate(ctx, ps.Lg, ps.Templates, w, "proxy-request-sent.html", nil)
 }
 
 // RedirectToAuth redirects the user to the /__exe.dev/login URL
@@ -1435,19 +1435,6 @@ func (ps *ProxyServer) RedirectToAuth(w http.ResponseWriter, r *http.Request, ho
 
 	ps.Lg.DebugContext(r.Context(), "[REDIRECT] redirectToAuth", "from", r.URL, "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-}
-
-// renderTemplate generates an HTTP response from a template.
-func (ps *ProxyServer) renderTemplate(ctx context.Context, w http.ResponseWriter, templateName string, data any) error {
-	w.Header().Set("Content-Type", "text/html")
-	var buf bytes.Buffer
-	if err := ps.Templates.ExecuteTemplate(&buf, templateName, data); err != nil {
-		ps.Lg.ErrorContext(ctx, "Failed to execute template", "error", err, "template", templateName)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return err
-	}
-	_, err := w.Write(buf.Bytes())
-	return err
 }
 
 // serveStaticFile serves a file from the embedded static directory.
