@@ -37,6 +37,11 @@ if [ -n "$COMMIT" ] && [ -f "$CACHE_READY" ]; then
   mkdir -p "${BUILDKITE_BUILD_CHECKOUT_PATH}"
   rsync -a --delete --link-dest="${CACHE_DIR}/" "${CACHE_DIR}/" "${BUILDKITE_BUILD_CHECKOUT_PATH}/"
   cd "${BUILDKITE_BUILD_CHECKOUT_PATH}"
+  # Defensive: previous build steps (rebase-and-push, test-e1e) may have
+  # rewritten origin to embed a GitHub App token via `git remote set-url`.
+  # If that leaked into the cache, every subsequent agent would inherit a
+  # stale/poisoned token. Always reset origin to the pristine BUILDKITE_REPO.
+  git remote set-url origin "${BUILDKITE_REPO}"
   _checkout_t1=$(date +%s%3N)
   echo "rsync checkout done in $(( _checkout_t1 - _checkout_t0 ))ms"
   git log -n 1 --oneline
@@ -48,6 +53,9 @@ else
 
   if [ -d "${CHECKOUT}/.git" ]; then
     cd "${CHECKOUT}"
+    # Reset origin in case a previous step (rebase-and-push/test-e1e) baked
+    # a GitHub App token into the remote URL.
+    git remote set-url origin "${BUILDKITE_REPO}"
     # Re-use existing clone: fetch the commit and reset.
     git fetch origin "${BUILDKITE_COMMIT}" 2>/dev/null || \
       git fetch origin "+refs/heads/${BUILDKITE_BRANCH}:refs/heads/${BUILDKITE_BRANCH}" 2>/dev/null || \
@@ -93,6 +101,9 @@ else
       flock -n 200 || exit 0  # Another agent is already caching; skip.
       # Double-check after acquiring lock.
       [ -f "$CACHE_READY" ] && exit 0
+      # Normalize origin before caching so a tokenized URL from a previous
+      # step can never be baked into the cache (and propagated to other agents).
+      git -C "${CHECKOUT}" remote set-url origin "${BUILDKITE_REPO}" || true
       rm -rf "${CACHE_DIR}"
       mkdir -p "${CACHE_DIR}"
       rsync -a "${CHECKOUT}/" "${CACHE_DIR}/"
