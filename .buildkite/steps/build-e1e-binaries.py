@@ -117,14 +117,16 @@ def main():
 
     ui_task = Task("ui", ["make", "ui"])
 
+    race_flag = [] if os.environ.get("EXE_TEST_RACE", "true").lower() in ("false", "0", "no") else ["-race"]
+
     # Standalone Go builds (no dependencies).
     exeprox_task = Task(
         "exeprox",
-        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"],
+        ["go", "build", *race_flag, "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exeprox", "./cmd/exeprox"],
     )
     sshpiperd_task = Task(
         "sshpiperd",
-        ["go", "build", "-race", "-ldflags=-s -w", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
+        ["go", "build", *race_flag, "-ldflags=-s -w", "-o", f"{out}/sshpiperd", "./cmd/sshpiperd"],
         cwd="deps/sshpiper",
     )
 
@@ -134,7 +136,7 @@ def main():
     # overlaps with the A pipeline, UI, and the other Go builds.
     warm_task = Task(
         "exed-deps-warm",
-        ["go", "build", "-race"] + cover_flags + ["./execore", "./exedb", "./billing", "./llmgateway"],
+        ["go", "build", *race_flag] + cover_flags + ["./execore", "./exedb", "./billing", "./llmgateway"],
     )
 
     # Pipeline B: (ui & warm) -> go build exed.  exed embeds ui/dist via
@@ -142,7 +144,7 @@ def main():
     # the Go build cache so the final exed build is just a link.
     exed_task = Task(
         "exed",
-        ["go", "build", "-race", "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"],
+        ["go", "build", *race_flag, "-ldflags=-s -w"] + cover_flags + ["-o", f"{out}/exed", "./cmd/exed"],
         after=(ui_task, warm_task),
     )
 

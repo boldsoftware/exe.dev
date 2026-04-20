@@ -411,6 +411,18 @@ def add_retry_trailer(count):
     git("commit", "--amend", "-m", new_msg)
 
 
+def set_trailer(key, value):
+    """Amend HEAD so trailer `key: value` is present (replacing any existing)."""
+    msg = git("log", "--format=%B", "-n", "1", "HEAD")
+    r = subprocess.run(
+        ["git", "interpret-trailers", "--if-exists=replace",
+         "--trailer", f"{key}: {value}"],
+        input=msg, capture_output=True, text=True,
+    )
+    new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\n{key}: {value}"
+    git("commit", "--amend", "-m", new_msg)
+
+
 def _amend_for_ci(ref):
     """Amend HEAD with a CI-Attempt trailer to produce a new commit SHA."""
     if ref != "HEAD":
@@ -574,6 +586,10 @@ def main():
                     help="shell command to run after failed CI (e.g. 'say failed')")
     p.add_argument("--retries", type=int, default=0,
                     help="retry on CI failure up to N times (busts cache via CI-Retries trailer)")
+    p.add_argument("--race", action="store_true", default=True,
+                    help="run CI tests with -race [default]")
+    p.add_argument("--no-race", action="store_true",
+                    help="run CI tests without -race (adds Test-Race: false trailer)")
 
     # Parse user defaults first, then real args on top.
     args = p.parse_args(user_defaults)
@@ -593,6 +609,10 @@ def main():
     if args.no_rebase:
         args.rebase = False
     del args.no_rebase
+
+    if args.no_race:
+        args.race = False
+    del args.no_race
 
     ref = args.ref
 
@@ -644,6 +664,13 @@ def main():
     # --- Linters ---
     if not args.no_lint:
         run_linters()
+
+    # --- Apply Test-Race trailer if --no-race ---
+    if not args.race:
+        if ref != "HEAD":
+            print("q: --no-race requires HEAD", file=sys.stderr)
+            raise SystemExit(1)
+        set_trailer("Test-Race", "false")
 
     # --- Resolve commit (after possible formatter amend) ---
     commit = git("rev-parse", ref)

@@ -446,6 +446,8 @@ def main():
     # 30s -> 50s). Stick with 3 until contention is reduced.
     migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "3")))
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
+    # Test-Race: true (default) / false. Also accept EXE_TEST_RACE env.
+    test_race = trailers.get("test-race", os.environ.get("EXE_TEST_RACE", "true")).lower() not in ("false", "0", "no")
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
           f"blog_changed={blog_changed} ui_changed={ui_changed} "
@@ -513,7 +515,10 @@ def main():
     segments.append(psimon_text)
 
     # Emit the pipeline (stdout for upload, stderr for build log)
-    lines = ["agents:", "  queue: exe-ci", "", "steps:"]
+    lines = ["agents:", "  queue: exe-ci", ""]
+    if not test_race:
+        lines += ["env:", '  EXE_TEST_RACE: "false"', ""]
+    lines.append("steps:")
     for seg in segments:
         for line in seg.rstrip().splitlines():
             lines.append(f"  {line}")

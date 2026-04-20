@@ -54,8 +54,9 @@ def main():
 
     json_results = f"e1e-results{suffix}.json"
 
+    race_flags = [] if os.environ.get("EXE_TEST_RACE", "true").lower() in ("false", "0", "no") else ["-race"]
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
-           "--", "-race", "-timeout=15m", "-failfast"]
+           "--", *race_flags, "-timeout=15m", "-failfast"]
     if run_filter:
         cmd.extend(["-run", run_filter])
     cmd.append("./e1e")

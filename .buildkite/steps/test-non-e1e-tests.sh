@@ -69,7 +69,9 @@ if [ "${E1E_COVERAGE:-}" = "true" ]; then
     echo "Coverage mode: writing profile to $COVER_PROFILE"
 fi
 
-go tool gotestsum --format testname --jsonfile "$JSON_OUT" -- -race -count=1 ${COVER_FLAGS:+$COVER_FLAGS} ${RUN_FILTER:+$RUN_FILTER} $PKGS
+RACE_FLAG="-race"
+[ "${EXE_TEST_RACE:-true}" = "false" ] && RACE_FLAG=""
+go tool gotestsum --format testname --jsonfile "$JSON_OUT" -- ${RACE_FLAG} -count=1 ${COVER_FLAGS:+$COVER_FLAGS} ${RUN_FILTER:+$RUN_FILTER} $PKGS
 TEST_EXIT=$?
 python3 bin/ci-test-gantt "$JSON_OUT" "test-gantt-unit-${UNIT_TEST_SHARD:-all}.html" "unit tests (shard ${UNIT_TEST_SHARD:-all})" 2>/dev/null || true
 exit $TEST_EXIT

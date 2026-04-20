@@ -44,9 +44,10 @@ def main():
 
     vm_concurrency = os.environ.get("E1E_EXELETS_VM_CONCURRENCY", os.environ.get("E1E_VM_CONCURRENCY", "10"))
     env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
+    race_flags = [] if os.environ.get("EXE_TEST_RACE", "true").lower() in ("false", "0", "no") else ["-race"]
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
            "--junitfile", junit_results,
-           "--", "-race", "-count=1", "-timeout=15m", "-failfast",
+           "--", *race_flags, "-count=1", "-timeout=15m", "-failfast",
            "./e1e/testinfra", "./e1e/exelets"]
     if run_filter := os.environ.get("E1E_EXELETS_RUN_FILTER", ""):
         cmd.extend(["-run", run_filter])

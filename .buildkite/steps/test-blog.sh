@@ -8,7 +8,9 @@ echo "--- :go: Set up Go"
 go version
 
 echo "--- :test_tube: Run blog tests"
-go test -race -count=1 ./blog/...
+RACE_FLAG="-race"
+[ "${EXE_TEST_RACE:-true}" = "false" ] && RACE_FLAG=""
+go test ${RACE_FLAG} -count=1 ./blog/...
 
 echo "--- :hammer: Build blogd"
 go build -o /dev/null ./cmd/blogd
