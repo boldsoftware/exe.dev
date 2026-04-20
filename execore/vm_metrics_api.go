@@ -13,7 +13,7 @@ type vmMetricsResponse struct {
 	Name             string  `json:"name"`
 	Status           string  `json:"status"`
 	CPUPercent       float64 `json:"cpu_percent"`         // 100% = 1 core
-	MemBytes         uint64  `json:"mem_bytes"`           // RSS in bytes
+	MemBytes         uint64  `json:"mem_bytes"`           // cgroup memory.current (not useful for VMs)
 	SwapBytes        uint64  `json:"swap_bytes"`          // Swap usage in bytes
 	DiskBytes        uint64  `json:"disk_bytes"`          // Compressed on-disk usage (ZFS used)
 	DiskLogicalBytes uint64  `json:"disk_logical_bytes"`  // Uncompressed logical usage (matches df -h)

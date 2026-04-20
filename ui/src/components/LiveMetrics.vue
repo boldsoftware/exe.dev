@@ -14,7 +14,6 @@
       <div class="metric-card">
         <div class="mt">Memory</div>
         <div class="mv blue">{{ memDisplay }}</div>
-        <div class="mb"><div class="mb-fill" :style="{ width: memPct + '%', background: '#2563eb' }"></div></div>
         <div class="ms">{{ memSub }}</div>
       </div>
       <div class="metric-card">
@@ -72,25 +71,17 @@ const cpuSub = computed(() => {
   return 'of CPU capacity'
 })
 
-// Memory
-const memPct = computed(() => {
-  if (!metrics.value || !metrics.value.mem_capacity_bytes) return 0
-  return Math.min((metrics.value.mem_bytes / metrics.value.mem_capacity_bytes) * 100, 100)
-})
+// Memory — show allocated capacity (cgroup memory.current is not meaningful for VMs)
 const memDisplay = computed(() => {
   if (!metrics.value) return '—'
-  return formatBytesShort(metrics.value.mem_bytes)
+  if (metrics.value.mem_capacity_bytes) {
+    return formatBytesShort(metrics.value.mem_capacity_bytes)
+  }
+  return '—'
 })
 const memSub = computed(() => {
   if (!metrics.value) return ''
-  const parts: string[] = []
-  if (metrics.value.mem_capacity_bytes) {
-    parts.push(`of ${formatBytesShort(metrics.value.mem_capacity_bytes)}`)
-  }
-  if (metrics.value.swap_bytes > 0) {
-    parts.push(`${formatBytesShort(metrics.value.swap_bytes)} swap`)
-  }
-  return parts.length ? parts.join(' · ') : 'RSS usage'
+  return 'allocated'
 })
 
 // Disk
@@ -133,21 +124,21 @@ const netTxRate = computed(() => {
 
 const netRxDisplay = computed(() => {
   if (!metrics.value) return '—'
-  if (!prevMetrics.value) return formatBytesShort(metrics.value.net_rx_bytes)
+  if (!prevMetrics.value) return '—'
   return formatRate(netRxRate.value)
 })
 const netTxDisplay = computed(() => {
   if (!metrics.value) return '—'
-  if (!prevMetrics.value) return formatBytesShort(metrics.value.net_tx_bytes)
+  if (!prevMetrics.value) return '—'
   return formatRate(netTxRate.value)
 })
 const netRxSub = computed(() => {
-  if (!metrics.value) return ''
-  return `${formatBytesShort(metrics.value.net_rx_bytes)} received total`
+  if (!metrics.value || !prevMetrics.value) return ''
+  return 'receive rate'
 })
 const netTxSub = computed(() => {
-  if (!metrics.value) return ''
-  return `${formatBytesShort(metrics.value.net_tx_bytes)} sent total`
+  if (!metrics.value || !prevMetrics.value) return ''
+  return 'send rate'
 })
 
 // Format bytes as short human string using binary units (e.g. "2.3 GiB")

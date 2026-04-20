@@ -92,45 +92,24 @@ describe('LiveMetrics', () => {
     expect(cpuCard.find('.ms').text()).toBe('of CPU capacity')
   })
 
-  it('shows memory progress bar when capacity is known', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2 * 1024 * 1024 * 1024, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
-    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
-    await flushPromises()
-    const memBar = wrapper.findAll('.metric-card')[1].find('.mb-fill')
-    expect(memBar.attributes('style')).toContain('width: 50%')
-  })
-
-  it('displays memory in human-readable format', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2 * 1024 * 1024 * 1024 }))
+  it('shows allocated memory capacity (no progress bar)', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
-    expect(memCard.find('.mv').text()).toBe('2.0 GiB')
+    // Should show capacity, not cgroup memory.current
+    expect(memCard.find('.mv').text()).toBe('4.0 GiB')
+    expect(memCard.find('.ms').text()).toBe('allocated')
+    // No progress bar for memory
+    expect(memCard.find('.mb-fill').exists()).toBe(false)
   })
 
-  it('shows memory capacity and swap in subtitle', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 512 * 1024 * 1024, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
+  it('shows dash when no memory capacity', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ mem_capacity_bytes: 0 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
-    expect(memCard.find('.ms').text()).toContain('of 4.0 GiB')
-    expect(memCard.find('.ms').text()).toContain('swap')
-  })
-
-  it('shows memory capacity without swap when no swap', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
-    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
-    await flushPromises()
-    const memCard = wrapper.findAll('.metric-card')[1]
-    expect(memCard.find('.ms').text()).toBe('of 4.0 GiB')
-  })
-
-  it('falls back to RSS usage subtitle when no capacity', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0, mem_capacity_bytes: 0 }))
-    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
-    await flushPromises()
-    const memCard = wrapper.findAll('.metric-card')[1]
-    expect(memCard.find('.ms').text()).toBe('RSS usage')
+    expect(memCard.find('.mv').text()).toBe('—')
   })
 
   it('displays logical disk usage with capacity subtitle', async () => {
@@ -151,15 +130,18 @@ describe('LiveMetrics', () => {
     expect(diskCard.find('.mv').text()).toBe('3.0 GiB')
   })
 
-  it('shows total bytes on first poll for network', async () => {
+  it('shows dash on first poll for network (no rate yet)', async () => {
     mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1.5 * 1024 * 1024 * 1024, net_tx_bytes: 256 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const rxCard = wrapper.findAll('.metric-card')[3]
     const txCard = wrapper.findAll('.metric-card')[4]
-    // First poll: no rate yet, show raw value
-    expect(rxCard.find('.mv').text()).toBe('1.5 GiB')
-    expect(txCard.find('.mv').text()).toBe('256.0 MiB')
+    // First poll: no rate yet, show dash
+    expect(rxCard.find('.mv').text()).toBe('—')
+    expect(txCard.find('.mv').text()).toBe('—')
+    // No subtitle until rate is available
+    expect(rxCard.find('.ms').text()).toBe('')
+    expect(txCard.find('.ms').text()).toBe('')
   })
 
   it('shows network rate after second poll', async () => {
@@ -178,14 +160,20 @@ describe('LiveMetrics', () => {
     expect(rxCard.find('.mv').text()).toMatch(/bps/)
   })
 
-  it('shows network totals in subtitle', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_200_000_000, net_tx_bytes: 340_000_000 }))
+  it('shows rate labels in subtitle after second poll', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_000_000, net_tx_bytes: 500_000 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
+
+    // Second poll
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 2_000_000, net_tx_bytes: 1_000_000 }))
+    vi.advanceTimersByTime(5000)
+    await flushPromises()
+
     const rxCard = wrapper.findAll('.metric-card')[3]
     const txCard = wrapper.findAll('.metric-card')[4]
-    expect(rxCard.find('.ms').text()).toContain('received total')
-    expect(txCard.find('.ms').text()).toContain('sent total')
+    expect(rxCard.find('.ms').text()).toBe('receive rate')
+    expect(txCard.find('.ms').text()).toBe('send rate')
   })
 
   it('does not poll when VM is stopped', async () => {
