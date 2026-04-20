@@ -197,24 +197,13 @@ describe('UsageChart', () => {
     expect(data.datasets[1].borderDash).toEqual([5, 5])
   })
 
-  it('starts polling when VM is running', async () => {
+  it('loads data once on mount without polling', async () => {
     const fetchSpy = vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
     mountChart()
     await flushPromises()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
 
-    vi.advanceTimersByTime(60000)
-    await flushPromises()
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
-  })
-
-  it('does not poll when VM is stopped', async () => {
-    const fetchSpy = vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
-    mountChart({ vmStatus: 'stopped' })
-    await flushPromises()
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
-
-    vi.advanceTimersByTime(60000)
+    vi.advanceTimersByTime(120000)
     await flushPromises()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })

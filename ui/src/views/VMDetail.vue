@@ -31,16 +31,16 @@
         </div>
         <div class="vm-actions">
           <a :href="box.proxyURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open HTTPS">
-            <i class="pi pi-globe"></i> HTTPS
+            <i class="pi pi-globe"></i><span class="pill-label"> HTTPS</span>
           </a>
           <a :href="box.terminalURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open Terminal">
-            <i class="pi pi-chevron-right"></i> Terminal
+            <i class="pi pi-chevron-right"></i><span class="pill-label"> Terminal</span>
           </a>
           <a v-if="box.shelleyURL" :href="box.shelleyURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open Shelley">
-            <i class="pi pi-sparkles"></i> Shelley
+            <i class="pi pi-sparkles"></i><span class="pill-label"> Shelley</span>
           </a>
           <button v-if="box.vscodeURL" class="action-pill" @click="editorModalOpen = true" title="Open Editor">
-            <i class="pi pi-code"></i> Editor
+            <i class="pi pi-code"></i><span class="pill-label"> Editor</span>
           </button>
           <div class="junk-drawer-wrap">
             <button class="action-pill junk-btn" :class="{ active: drawerOpen }" @click.stop="drawerOpen = !drawerOpen" title="More actions">
@@ -133,29 +133,37 @@
 
       <div class="section-divider"></div>
 
-      <!-- Billing: two columns of rows under subheadings -->
-      <div class="billing-columns">
-        <!-- This Billing Period -->
-        <div class="billing-section">
-          <div class="section-heading">Usage<span v-if="periodLabel" class="section-heading-sub">{{ periodLabel }}</span></div>
+      <!-- Billing Usage -->
+      <div class="billing-section">
+        <div class="section-heading">Compute Usage<span v-if="periodLabel" class="section-heading-sub">{{ periodLabel }}</span></div>
           <div v-if="usageLoading" class="card-loading"><i class="pi pi-spin pi-spinner"></i></div>
           <template v-else-if="vmUsage">
-            <div class="card-row">
-              <span class="card-label">Disk (avg)</span>
-              <span class="card-value">{{ vmUsage.display.disk_provisioned || '—' }}</span>
-            </div>
             <div class="card-row">
               <span class="card-label">Disk included</span>
               <span class="card-value">{{ vmUsage.display.included_disk || '—' }}</span>
             </div>
-            <div class="card-row" :class="{ overage: vmUsage.display.overage_disk }">
+            <div class="card-row">
+              <span class="card-label">Disk provisioned</span>
+              <span class="card-value">{{ vmUsage.display.disk_provisioned || '—' }}</span>
+            </div>
+            <div v-if="vmUsage.display.overage_disk" class="card-row overage">
               <span class="card-label">Disk overage</span>
-              <span class="card-value">{{ vmUsage.display.overage_disk || 'none' }}</span>
+              <span class="card-value">{{ vmUsage.display.overage_disk }}</span>
+            </div>
+            <div class="card-row card-row-spacer"></div>
+            <div class="card-row">
+              <span class="card-label">Bandwidth included</span>
+              <span class="card-value">{{ vmUsage.display.included_bandwidth || '—' }}</span>
             </div>
             <div class="card-row">
-              <span class="card-label">Bandwidth</span>
+              <span class="card-label">Bandwidth used</span>
               <span class="card-value">{{ vmUsage.display.bandwidth || '—' }}</span>
             </div>
+            <div v-if="vmUsage.display.overage_bandwidth" class="card-row overage">
+              <span class="card-label">Bandwidth overage</span>
+              <span class="card-value">{{ vmUsage.display.overage_bandwidth }}</span>
+            </div>
+            <div class="card-row card-row-spacer"></div>
             <div class="card-row">
               <span class="card-label">CPU time</span>
               <span class="card-value">{{ formatCPUTime(vmUsage.cpu_seconds) }}</span>
@@ -166,41 +174,11 @@
             </div>
           </template>
           <div v-else class="card-empty">No usage data for this period.</div>
-        </div>
-
-        <!-- Plan & Limits -->
-        <div class="billing-section">
-          <div class="section-heading">Plan &amp; Limits</div>
-          <div v-if="profileLoading" class="card-loading"><i class="pi pi-spin pi-spinner"></i></div>
-          <template v-else-if="profile">
-            <div v-if="profile.credits.planName" class="card-row">
-              <span class="card-label">Plan</span>
-              <span class="card-value">{{ profile.credits.planName }}</span>
-            </div>
-            <div v-if="vmUsage?.display.included_disk" class="card-row">
-              <span class="card-label">Disk included</span>
-              <span class="card-value">{{ vmUsage.display.included_disk }}</span>
-            </div>
-            <div v-if="maxDiskDisplay !== '—'" class="card-row">
-              <span class="card-label">Max disk</span>
-              <span class="card-value">{{ maxDiskDisplay }}</span>
-            </div>
-            <div v-if="vmsUsedDisplay !== '—'" class="card-row">
-              <span class="card-label">VMs used</span>
-              <span class="card-value">{{ vmsUsedDisplay }}</span>
-            </div>
-            <div v-if="vmUsage?.display.overage_disk || vmUsage?.display.overage_bandwidth" class="card-row overage">
-              <span class="card-label">Est. overage</span>
-              <span class="card-value">{{ overageDisplay }}</span>
-            </div>
-          </template>
-          <div v-else class="card-empty">Plan info unavailable.</div>
-        </div>
       </div>
 
-      <!-- LLM Usage for this VM -->
+      <!-- Shelley Usage for this VM -->
       <div v-if="llmUsage && llmUsage.models.length" class="billing-section llm-usage-section">
-        <div class="section-heading">LLM Usage<span v-if="llmPeriodLabel" class="section-heading-sub">{{ llmPeriodLabel }}</span></div>
+        <div class="section-heading">Shelley Usage<span v-if="llmPeriodLabel" class="section-heading-sub">{{ llmPeriodLabel }}</span></div>
         <div class="card-row" v-for="m in llmUsage.models" :key="m.model + m.provider">
           <span class="card-label">{{ m.model }}</span>
           <span class="card-value">{{ m.cost }}</span>
@@ -288,10 +266,8 @@ import {
   fetchDashboard,
   fetchVMUsage,
   fetchBoxLLMUsage,
-  fetchProfile,
   type BoxInfo,
   type VMUsageEntry,
-  type ProfileData,
   type BoxLLMUsageResponse,
   shellQuote,
 } from '../api/client'
@@ -318,10 +294,6 @@ const usageLoading = ref(true)
 const vmUsage = ref<VMUsageEntry | null>(null)
 const periodStart = ref('')
 const periodEnd = ref('')
-
-// Profile
-const profileLoading = ref(true)
-const profile = ref<ProfileData | null>(null)
 
 // LLM usage
 const llmUsage = ref<BoxLLMUsageResponse | null>(null)
@@ -362,7 +334,7 @@ function saveEditorChoice() {
 }
 
 function fmtPeriodDate(s: string): string {
-  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return new Date(s).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
 }
 
 const periodLabel = computed(() => {
@@ -380,28 +352,6 @@ const uptimeDisplay = computed(() => {
   // updatedAt is approximate last-seen; use createdAt as proxy for uptime
   // Only show if box has been running for a meaningful time
   return ''
-})
-
-const maxDiskDisplay = computed(() => {
-  if (!vmUsage.value) return '—'
-  // Max disk comes from the plan; use the provisioned size as a proxy when unknown
-  return vmUsage.value.display.disk_provisioned || '—'
-})
-
-const vmsUsedDisplay = computed(() => {
-  if (!profile.value) return '—'
-  const ti = profile.value.teamInfo
-  if (ti) return `${ti.boxCount} / ${ti.maxBoxes}`
-  return `${profile.value.boxes.length}`
-})
-
-const overageDisplay = computed(() => {
-  const u = vmUsage.value
-  if (!u) return '—'
-  const parts: string[] = []
-  if (u.display.overage_disk) parts.push(`disk: ${u.display.overage_disk}`)
-  if (u.display.overage_bandwidth) parts.push(`bandwidth: ${u.display.overage_bandwidth}`)
-  return parts.join(', ') || 'none'
 })
 
 function formatBytes(bytes: number): string {
@@ -443,11 +393,6 @@ async function load() {
         usageLoading.value = false
       }).catch(() => { usageLoading.value = false })
 
-      fetchProfile().then(p => {
-        profile.value = p
-        profileLoading.value = false
-      }).catch(() => { profileLoading.value = false })
-
       fetchBoxLLMUsage(vmName.value).then(u => {
         llmUsage.value = u
       }).catch(err => {
@@ -455,7 +400,6 @@ async function load() {
       })
     } else {
       usageLoading.value = false
-      profileLoading.value = false
     }
   } catch (err: any) {
     loadError.value = err.message || 'Failed to load VM'
@@ -1017,13 +961,6 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-/* Billing columns */
-.billing-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-
 .billing-section {
   display: flex;
   flex-direction: column;
@@ -1073,6 +1010,11 @@ onBeforeUnmount(() => {
 
 .card-row:last-child {
   border-bottom: none;
+}
+
+.card-row-spacer {
+  border-bottom: none;
+  padding: 2px 0;
 }
 
 .card-label {
@@ -1282,15 +1224,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
-  .billing-columns {
-    grid-template-columns: 1fr;
-  }
   .vm-header {
     flex-direction: column;
     align-items: flex-start;
   }
   .vm-actions {
     width: 100%;
+  }
+  .pill-label {
+    display: none;
   }
 }
 </style>

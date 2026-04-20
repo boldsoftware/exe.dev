@@ -1,8 +1,7 @@
 <template>
   <div class="usage-chart">
     <div class="section-heading">
-      USAGE HISTORY
-      <span class="updated-ago"> · refreshes every 60s</span>
+      COMPUTE USAGE HISTORY
     </div>
 
     <!-- Tab and Time Range Selector -->
@@ -54,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Chart from 'primevue/chart'
 import {
   Chart as ChartJS,
@@ -92,8 +91,6 @@ const loading = ref(false)
 const error = ref('')
 const rawData = ref<VMComputeUsagePoint[]>([])
 
-const POLL_INTERVAL = 60000
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const selectTimeRange = (hours: number) => {
   selectedHours.value = hours
@@ -238,6 +235,7 @@ const chartJsData = computed<ChartData<'line'>>(() => {
 // Chart.js options — adapts y-axis formatting per metric
 const chartJsOptions = computed<ChartOptions<'line'>>(() => {
   const metric = selectedMetric.value
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
 
   const yTickCallback = (value: number | string) => {
     const v = typeof value === 'string' ? parseFloat(value) : value
@@ -302,6 +300,16 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
         },
       },
       tooltip: {
+        backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
+        titleColor: isDark ? '#e0e0e0' : '#1e1e1e',
+        bodyColor: isDark ? '#a0a0a0' : '#555555',
+        borderColor: isDark ? '#333333' : '#e0e0e0',
+        borderWidth: 1,
+        cornerRadius: 6,
+        padding: 10,
+        titleFont: { size: 12, weight: 'bold' as const },
+        bodyFont: { size: 11 },
+        displayColors: false,
         callbacks: {
           title: tooltipTitle,
           label: tooltipLabel,
@@ -338,33 +346,7 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
 // Lifecycle
 onMounted(() => {
   loadData()
-  if (props.vmStatus === 'running') {
-    pollTimer = setInterval(loadData, POLL_INTERVAL)
-  }
 })
-
-onBeforeUnmount(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-})
-
-watch(
-  () => props.vmStatus,
-  (newStatus) => {
-    if (newStatus === 'running') {
-      if (!pollTimer) {
-        pollTimer = setInterval(loadData, POLL_INTERVAL)
-      }
-    } else {
-      if (pollTimer) {
-        clearInterval(pollTimer)
-        pollTimer = null
-      }
-    }
-  },
-)
 </script>
 
 <style scoped>
@@ -382,9 +364,6 @@ watch(
   margin-bottom: 10px;
 }
 
-.updated-ago {
-  font-weight: 400;
-}
 
 .chart-controls {
   display: flex;

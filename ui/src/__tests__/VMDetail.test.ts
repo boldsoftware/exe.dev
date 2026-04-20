@@ -399,8 +399,8 @@ describe('VMDetail', () => {
     mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
     mockFetchProfile.mockResolvedValue(makeProfile())
     const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('Jan 1')
-    expect(wrapper.text()).toContain('Feb 1')
+    expect(wrapper.text()).toContain('January 1')
+    expect(wrapper.text()).toContain('February 1')
   })
 
   it('renders LLM usage with the API period label', async () => {
@@ -416,10 +416,10 @@ describe('VMDetail', () => {
     const wrapper = await mountVMDetail()
     const llmSection = wrapper.find('.llm-usage-section')
     expect(llmSection.exists()).toBe(true)
-    expect(llmSection.text()).toContain('LLM Usage')
-    expect(llmSection.text()).toContain('Apr 1')
+    expect(llmSection.text()).toContain('Shelley Usage')
+    expect(llmSection.text()).toContain('April 1')
     expect(llmSection.text()).toContain('May 1')
-    expect(llmSection.text()).not.toContain('Mar 1')
+    expect(llmSection.text()).not.toContain('March 1')
     expect(llmSection.text()).toContain('claude-sonnet-4-20250514')
     expect(llmSection.text()).toContain('$1.75')
   })
@@ -464,58 +464,6 @@ describe('VMDetail', () => {
     const overageRow = wrapper.findAll('.card-row').find(r => r.classes('overage'))
     expect(overageRow).toBeDefined()
     expect(overageRow!.text()).toContain('$2.00')
-  })
-
-  // --- Billing: Plan & Limits ---
-
-  it('renders plan name', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('Pro')
-  })
-
-  it('hides plan row when planName is empty', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockResolvedValue(makeProfile({
-      credits: { planName: '', balance: 0, currency: 'usd' } as any,
-    }))
-    const wrapper = await mountVMDetail()
-    const rows = wrapper.findAll('.card-row').map(r => r.text())
-    expect(rows.some(t => t.includes('Plan'))).toBe(false)
-  })
-
-  it('shows VMs used count for personal account', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockResolvedValue(makeProfile({
-      boxes: [{ name: 'my-vm', status: 'running' }, { name: 'other-vm', status: 'stopped' }],
-    }))
-    const wrapper = await mountVMDetail()
-    const rows = wrapper.findAll('.card-row').map(r => r.text())
-    const vmsRow = rows.find(t => t.includes('VMs used'))
-    expect(vmsRow).toBeDefined()
-    expect(vmsRow).toContain('2')
-  })
-
-  it('shows pool size as count/max for team accounts', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard({ hasTeam: true }))
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockResolvedValue(makeProfile({
-      teamInfo: { name: 'Acme', boxCount: 3, maxBoxes: 10 } as any,
-    }))
-    const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('3 / 10')
-  })
-
-  it('shows plan unavailable when profile fetch fails', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockRejectedValue(new Error('Unauthorized'))
-    const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('Plan info unavailable')
   })
 
   // --- Editor modal ---
