@@ -292,7 +292,7 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 
 func TestID(t *testing.T) {
 	got := ID(CategoryIndividual)
-	want := "individual:monthly:20260106"
+	want := "individual:small:monthly:20260601"
 	if got != want {
 		t.Errorf("ID(CategoryIndividual) = %q, want %q", got, want)
 	}
@@ -478,7 +478,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			tierID:        "individual:small:monthly:20260601",
 			billingOption: "monthly",
 			want: stripePriceInfo{
-				LookupKey: "individual_small_monthly",
+				LookupKey: "individual",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},

@@ -288,8 +288,8 @@ func TestSyncAccountPlanStaleEventSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan after active: %v", err)
 	}
-	if plan.PlanID != "individual:monthly:20260106" {
-		t.Fatalf("plan after active event = %q, want individual", plan.PlanID)
+	if plan.PlanID != "individual:small:monthly:20260601" {
+		t.Fatalf("plan after active event = %q, want individual:small:monthly:20260601", plan.PlanID)
 	}
 
 	// Process the older "canceled" event (from an old subscription).
@@ -302,8 +302,8 @@ func TestSyncAccountPlanStaleEventSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan after stale cancel: %v", err)
 	}
-	if plan.PlanID != "individual:monthly:20260106" {
-		t.Errorf("stale cancel overwrote plan: got %q, want individual:monthly:20260106", plan.PlanID)
+	if plan.PlanID != "individual:small:monthly:20260601" {
+		t.Errorf("stale cancel overwrote plan: got %q, want individual:small:monthly:20260601", plan.PlanID)
 	}
 }
 

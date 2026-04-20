@@ -159,7 +159,7 @@ var tiers = map[string]Tier{
 		Category: CategoryIndividual,
 		Name:     "Small",
 		StripePrices: map[string]stripePriceInfo{
-			"monthly":         {LookupKey: "individual_small_monthly", Model: "subscription", Interval: "monthly"},
+			"monthly":         {LookupKey: "individual", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
@@ -432,10 +432,6 @@ func tierIDFromStripePriceKey(key string) string {
 				return id
 			}
 		}
-	}
-	// Legacy lookup key for individual (no tier suffix)
-	if key == "individual" {
-		return "individual:small:monthly:20260601"
 	}
 	return "individual:small:monthly:20260601"
 }

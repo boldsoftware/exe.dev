@@ -369,12 +369,11 @@ func TestTierIDFromStripePriceKey(t *testing.T) {
 		key    string
 		wantID string
 	}{
-		{"individual_small_monthly", "individual:small:monthly:20260601"},
+		// "individual" lookup key maps to small tier (the current Stripe price).
+		{"individual", "individual:small:monthly:20260601"},
 		{"individual_medium_monthly", "individual:medium:monthly:20260601"},
 		{"individual_large_monthly", "individual:large:monthly:20260601"},
 		{"individual_xlarge_monthly", "individual:xlarge:monthly:20260601"},
-		// Legacy lookup key → small tier.
-		{"individual", "individual:small:monthly:20260601"},
 		// Unknown key → small tier fallback.
 		{"unknown_key", "individual:small:monthly:20260601"},
 	}

@@ -291,7 +291,7 @@ var plans = map[Category]Plan{
 		},
 	},
 	CategoryIndividual: {
-		ID:                   "individual:monthly:20260106",
+		ID:                   "individual:small:monthly:20260601",
 		Available:            true,
 		Category:             CategoryIndividual,
 		Paid:                 true,
