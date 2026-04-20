@@ -1,8 +1,11 @@
-// Phase 3a: Add tag:prod and group:prod (additive).
+// Phase 3c: Ready to activate SSH isolation.
 //
-// The *:* wildcard is still in place — no traffic is disrupted.
-// Adds tag:prod, group:prod, the prod-internal grant, and the prod SSH rule.
-// Retagging happens in Step 3b. The wildcard goes away in Step 3c.
+// All final rules are in place. Two safety-net lines keep the old
+// permissive behavior alive until deliberately removed.
+//
+// TO ACTIVATE: delete the two lines/blocks marked ⚠️ SAFETY NET below,
+//              then update the tests section to add deny entries.
+// TO ROLL BACK: re-add them.
 {
   "groups": {
     "group:dev": [
@@ -28,48 +31,54 @@
   },
 
   "tagOwners": {
-    "tag:server": ["autogroup:admin"],
+    "tag:server": ["autogroup:admin"], // kept until safety nets removed
     "tag:island": ["autogroup:admin"],
     "tag:staging": ["autogroup:admin"],
     "tag:prod": ["autogroup:admin"],
   },
 
   "grants": [
+    // ⚠️ SAFETY NET — delete this line to activate network isolation:
     { "src": ["*"], "dst": ["*"], "ip": ["*"] },
+
+    // Zone-internal traffic.
     { "src": ["tag:staging"], "dst": ["tag:staging"], "ip": ["*"] },
     { "src": ["tag:prod"], "dst": ["tag:prod"], "ip": ["*"] },
+
+    // All users can reach all zones on the network.
+    // This is not the safety boundary — SSH is.
+    {
+      "src": ["autogroup:member"],
+      "dst": ["tag:prod", "tag:staging", "tag:island"],
+      "ip": ["*"],
+    },
   ],
 
   "ssh": [
+    // Members can SSH to their own devices.
     {
       "action": "accept",
       "src": ["autogroup:member"],
       "dst": ["autogroup:self"],
       "users": ["autogroup:nonroot", "root"],
     },
+    // ⚠️ SAFETY NET — delete this rule to require passkey for prod SSH:
     {
       "action": "accept",
       "src": ["autogroup:admin", "tag:server"],
       "dst": ["tag:server"],
       "users": ["autogroup:nonroot", "root"],
     },
-    // group:dev can SSH to island machines after they lose tag:server.
-    {
-      "action": "accept",
-      "src": ["group:dev"],
-      "dst": ["tag:island"],
-      "users": ["autogroup:nonroot", "root"],
-    },
-    // group:dev (and tag:staging itself) can SSH to staging.
-    // No key flip needed for staging.
+    // Regular devs can SSH to non-prod (no key flip needed).
+    // tag:staging included as src for staging-internal SSH (exed-staging → exelets).
     {
       "action": "accept",
       "src": ["group:dev", "tag:staging"],
-      "dst": ["tag:staging"],
+      "dst": ["tag:staging", "tag:island"],
       "users": ["autogroup:nonroot", "root"],
     },
-    // group:prod (and tag:prod itself) can SSH to prod.
-    // group:prod is the passkey-authenticated account; deliberate key flip required.
+    // Prod users can SSH to prod. Passkey-authenticated; deliberate switch.
+    // tag:prod included as src for prod-internal SSH (product SSH pipeline).
     {
       "action": "accept",
       "src": ["group:prod", "tag:prod"],
@@ -80,35 +89,27 @@
 
   "nodeAttrs": [
     {
-      "target": ["autogroup:member", "tag:server"],
+      "target": ["autogroup:member", "tag:prod"],
       "attr": ["funnel"],
     },
     { "target": ["100.87.187.75"], "attr": ["mullvad"] },
     { "target": ["100.71.235.113"], "attr": ["mullvad"] },
   ],
 
-  // Tests validate the current (permissive) state.
-  // As phases progress, "accept" entries become "deny" entries.
+  // Accept-only tests (deny tests can't pass while the wildcard is active).
+  // After activation, add deny entries — see acl-target.jsonc for the final tests.
   "tests": [
-    // Island machines can still reach things via *:* — will become deny after Phase 3c.
-    {
-      "src": "tag:island",
-      "accept": ["tag:island:22"],
-    },
-    // Staging-internal traffic.
     {
       "src": "tag:staging",
       "accept": ["tag:staging:9080"],
     },
-    // Prod-internal traffic.
     {
       "src": "tag:prod",
       "accept": ["tag:prod:9080", "tag:prod:2224"],
     },
-    // josh's laptop can reach everything.
     {
       "src": "100.83.1.18",
-      "accept": ["tag:server:22", "tag:island:22"],
+      "accept": ["tag:prod:22", "tag:staging:22", "tag:island:22"],
     },
   ],
 }
