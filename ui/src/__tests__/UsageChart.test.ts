@@ -170,7 +170,7 @@ describe('UsageChart', () => {
     expect(data.datasets[1].data).toEqual([0, 150, 200])
   })
 
-  it('passes Disk data as used + capacity datasets', async () => {
+  it('passes Disk data as provisioned capacity dataset', async () => {
     vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
     const wrapper = mountChart()
     await flushPromises()
@@ -180,11 +180,9 @@ describe('UsageChart', () => {
 
     const chartComp = wrapper.findComponent(ChartStub)
     const data = chartComp.props('data')
-    expect(data.datasets).toHaveLength(2)
-    expect(data.datasets[0].label).toBe('Used')
+    expect(data.datasets).toHaveLength(1)
+    expect(data.datasets[0].label).toBe('Provisioned')
     expect(data.datasets[0].fill).toBe(true)
-    expect(data.datasets[1].label).toBe('Capacity')
-    expect(data.datasets[1].borderDash).toEqual([5, 5])
   })
 
   it('loads data once on mount without polling', async () => {
