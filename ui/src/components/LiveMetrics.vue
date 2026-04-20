@@ -141,10 +141,10 @@ const netTxSub = computed(() => {
   return 'send rate'
 })
 
-// Format bytes as short human string using binary units (e.g. "2.3 GiB")
+// Format bytes as short human string (1024-based, e.g. "2.3 GB")
 function formatBytesShort(bytes: number): string {
   if (!bytes) return '0 B'
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let i = 0
   let v = bytes
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }

@@ -22,7 +22,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1973,7 +1972,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				return cc.Errorf("disk resize is not available on your current plan")
 			}
 			if newDiskSize > maxDisk {
-				return cc.Errorf("requested size %s exceeds the %s limit — contact support@exe.dev if you need more", humanize.IBytes(newDiskSize), humanize.IBytes(maxDisk))
+				return cc.Errorf("requested size %s exceeds the %s limit — contact support@exe.dev if you need more", fmtBytes(newDiskSize), fmtBytes(maxDisk))
 			}
 		}
 
@@ -1990,16 +1989,16 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 		currentDiskSize := instanceResp.Instance.VMConfig.Disk
 		if newDiskSize <= currentDiskSize {
-			return cc.Errorf("--disk must be larger than current size (%s)", humanize.IBytes(currentDiskSize))
+			return cc.Errorf("--disk must be larger than current size (%s)", fmtBytes(currentDiskSize))
 		}
 
 		additionalBytes := newDiskSize - currentDiskSize
 		if additionalBytes > maxDiskGrowth {
-			return cc.Errorf("disk growth cannot exceed %s in a single operation", humanize.IBytes(maxDiskGrowth))
+			return cc.Errorf("disk growth cannot exceed %s in a single operation", fmtBytes(maxDiskGrowth))
 		}
 
 		if !cc.WantJSON() {
-			cc.Writeln("Growing disk to %s...", humanize.IBytes(newDiskSize))
+			cc.Writeln("Growing disk to %s...", fmtBytes(newDiskSize))
 		}
 
 		diskGrowResult, err = exeletClient.client.GrowDisk(ctx, &api.GrowDiskRequest{
@@ -2028,10 +2027,10 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				return cc.Errorf("invalid --memory value: %s", err)
 			}
 			if memoryBytes < stage.MinMemory {
-				return cc.Errorf("--memory must be at least %s", humanize.IBytes(stage.MinMemory))
+				return cc.Errorf("--memory must be at least %s", fmtBytes(stage.MinMemory))
 			}
 			if memoryBytes > stage.SupportMaxMemory {
-				return cc.Errorf("--memory cannot exceed %s", humanize.IBytes(stage.SupportMaxMemory))
+				return cc.Errorf("--memory cannot exceed %s", fmtBytes(stage.SupportMaxMemory))
 			}
 			req.Memory = &memoryBytes
 		}
@@ -2050,7 +2049,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 		if !cc.WantJSON() {
 			var changes []string
 			if req.Memory != nil {
-				changes = append(changes, fmt.Sprintf("memory to %s", humanize.IBytes(*req.Memory)))
+				changes = append(changes, fmt.Sprintf("memory to %s", fmtBytes(*req.Memory)))
 			}
 			if req.CPUs != nil {
 				changes = append(changes, fmt.Sprintf("CPU to %d", *req.CPUs))
@@ -2101,7 +2100,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Human-readable output
 	if resizeResult != nil {
 		if resizeResult.OldMemory != resizeResult.NewMemory {
-			cc.Writeln("Memory: %s -> %s", humanize.IBytes(resizeResult.OldMemory), humanize.IBytes(resizeResult.NewMemory))
+			cc.Writeln("Memory: %s -> %s", fmtBytes(resizeResult.OldMemory), fmtBytes(resizeResult.NewMemory))
 		}
 		if resizeResult.OldCPUs != resizeResult.NewCPUs {
 			cc.Writeln("CPUs: %d -> %d", resizeResult.OldCPUs, resizeResult.NewCPUs)
@@ -2109,7 +2108,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	if diskGrowResult != nil {
-		cc.Writeln("Disk: %s -> %s", humanize.IBytes(diskGrowResult.OldSize), humanize.IBytes(diskGrowResult.NewSize))
+		cc.Writeln("Disk: %s -> %s", fmtBytes(diskGrowResult.OldSize), fmtBytes(diskGrowResult.NewSize))
 	}
 
 	cc.Writeln("")

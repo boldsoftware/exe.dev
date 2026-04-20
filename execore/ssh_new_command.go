@@ -21,7 +21,6 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/stage"
 
-	"github.com/dustin/go-humanize"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -204,10 +203,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("invalid --memory value: %s", err)
 		}
 		if parsedMemory < stage.MinMemory {
-			return cc.Errorf("--memory must be at least %s", humanize.IBytes(stage.MinMemory))
+			return cc.Errorf("--memory must be at least %s", fmtBytes(stage.MinMemory))
 		}
 		if parsedMemory > maxMemory {
-			return cc.Errorf("--memory cannot exceed %s", humanize.IBytes(maxMemory))
+			return cc.Errorf("--memory cannot exceed %s", fmtBytes(maxMemory))
 		}
 		memory = parsedMemory
 	}
@@ -219,10 +218,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			return cc.Errorf("invalid --disk value: %s", err)
 		}
 		if parsedDisk < stage.MinDisk {
-			return cc.Errorf("--disk must be at least %s", humanize.IBytes(stage.MinDisk))
+			return cc.Errorf("--disk must be at least %s", fmtBytes(stage.MinDisk))
 		}
 		if parsedDisk > maxDisk {
-			return cc.Errorf("--disk cannot exceed %s — contact support@exe.dev if you need more", humanize.IBytes(maxDisk))
+			return cc.Errorf("--disk cannot exceed %s — contact support@exe.dev if you need more", fmtBytes(maxDisk))
 		}
 		disk = parsedDisk
 	}

@@ -10,8 +10,6 @@ import (
 	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-
-	"github.com/dustin/go-humanize"
 )
 
 // handleStatCommand handles the "stat <vm-name>" command.
@@ -72,10 +70,48 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 		}
 	}
 
+	// Fetch live metrics from exelet.
+	var liveRow *vmUsageRow
+	usageRows, usageErr := ss.fetchVMUsageForUser(ctx, userID)
+	if usageErr == nil {
+		for i := range usageRows {
+			if usageRows[i].Name == vmName {
+				liveRow = &usageRows[i]
+				break
+			}
+		}
+	}
+
 	// Print the stat output.
 	cc.Writeln("\033[1m%s\033[0m", vmName)
-	cc.Writeln("  Period:     %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
+
+	// Live metrics section.
+	if liveRow != nil && liveRow.Status == "running" {
+		cc.Writeln("  Status:     \033[32mrunning\033[0m")
+		cc.Writeln("  CPU:        %.1f%%", liveRow.CPUPercent)
+		if liveRow.CPUs > 0 {
+			cc.Writeln("  vCPUs:      %d", liveRow.CPUs)
+		}
+		if liveRow.MemCapacity > 0 {
+			cc.Writeln("  Memory:     %s", fmtBytes(liveRow.MemCapacity))
+		}
+		diskUsed := liveRow.DiskLogicalBytes
+		if diskUsed == 0 {
+			diskUsed = liveRow.DiskBytes
+		}
+		if diskUsed > 0 {
+			if liveRow.DiskCapacity > 0 {
+				cc.Writeln("  Disk used:  %s / %s", fmtBytes(diskUsed), fmtBytes(liveRow.DiskCapacity))
+			} else {
+				cc.Writeln("  Disk used:  %s", fmtBytes(diskUsed))
+			}
+		}
+	} else if liveRow != nil {
+		cc.Writeln("  Status:     %s", liveRow.Status)
+	}
+
 	cc.Writeln("")
+	cc.Writeln("  Period:     %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
 
 	// Disk line: show provisioned size, with extra if over included.
 	cc.Writeln("  Disk:       %s", diskStatLine(diskProvisionedBytes, includedDisk))
@@ -90,7 +126,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 // diskStatLine formats the disk provisioned size with extra-disk indicator.
 // Shows just the size when at or below included, adds extra amount when over.
 func diskStatLine(provisionedBytes int64, includedBytes uint64) string {
-	size := humanize.IBytes(uint64(provisionedBytes))
+	size := fmtBytes(uint64(provisionedBytes))
 	if includedBytes == 0 {
 		return size
 	}
@@ -99,16 +135,16 @@ func diskStatLine(provisionedBytes int64, includedBytes uint64) string {
 	}
 	extraBytes := provisionedBytes - int64(includedBytes)
 	return fmt.Sprintf("\033[33m%s (%s extra)\033[0m",
-		size, humanize.IBytes(uint64(extraBytes)))
+		size, fmtBytes(uint64(extraBytes)))
 }
 
 // bandwidthStatLine formats bandwidth usage as used / included.
 func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
-	used := humanize.IBytes(uint64(usedBytes))
+	used := fmtBytes(uint64(usedBytes))
 	if includedBytes == 0 {
 		return used
 	}
-	incl := humanize.IBytes(includedBytes)
+	incl := fmtBytes(includedBytes)
 	if usedBytes <= int64(includedBytes) {
 		pct := float64(usedBytes) / float64(includedBytes) * 100
 		color := "\033[32m" // green
@@ -119,7 +155,7 @@ func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
 	}
 	extraBytes := usedBytes - int64(includedBytes)
 	return fmt.Sprintf("\033[1;31m%s / %s (%s extra)\033[0m",
-		used, incl, humanize.IBytes(uint64(extraBytes)))
+		used, incl, fmtBytes(uint64(extraBytes)))
 }
 
 // formatDate formats a time.Time as a short date string.

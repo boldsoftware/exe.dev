@@ -11,7 +11,6 @@ import (
 
 	"exe.dev/billing/plan"
 	"exe.dev/exedb"
-	"github.com/dustin/go-humanize"
 )
 
 // billingUsageMonthlyMetric is one month's aggregated usage returned by
@@ -257,19 +256,19 @@ func (s *Server) handleAPIBillingUsageVMs(w http.ResponseWriter, r *http.Request
 			if includedBandwidth > 0 && vm.BandwidthBytes > int64(includedBandwidth) {
 				entry.OverageBandwidthBytes = vm.BandwidthBytes - int64(includedBandwidth)
 			}
-			entry.Display.DiskProvisioned = humanize.IBytes(uint64(vm.DiskProvisionedMaxBytes))
-			entry.Display.Bandwidth = humanize.IBytes(uint64(vm.BandwidthBytes))
+			entry.Display.DiskProvisioned = fmtBytes(uint64(vm.DiskProvisionedMaxBytes))
+			entry.Display.Bandwidth = fmtBytes(uint64(vm.BandwidthBytes))
 			if includedDisk > 0 {
-				entry.Display.IncludedDisk = humanize.IBytes(includedDisk)
+				entry.Display.IncludedDisk = fmtBytes(includedDisk)
 			}
 			if includedBandwidth > 0 {
-				entry.Display.IncludedBandwidth = humanize.IBytes(includedBandwidth)
+				entry.Display.IncludedBandwidth = fmtBytes(includedBandwidth)
 			}
 			if entry.OverageDiskBytes > 0 {
-				entry.Display.OverageDisk = humanize.IBytes(uint64(entry.OverageDiskBytes))
+				entry.Display.OverageDisk = fmtBytes(uint64(entry.OverageDiskBytes))
 			}
 			if entry.OverageBandwidthBytes > 0 {
-				entry.Display.OverageBandwidth = humanize.IBytes(uint64(entry.OverageBandwidthBytes))
+				entry.Display.OverageBandwidth = fmtBytes(uint64(entry.OverageBandwidthBytes))
 			}
 			vms = append(vms, entry)
 		}

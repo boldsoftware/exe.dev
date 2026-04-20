@@ -98,7 +98,7 @@ describe('LiveMetrics', () => {
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
     // Should show capacity, not cgroup memory.current
-    expect(memCard.find('.mv').text()).toBe('4.0 GiB')
+    expect(memCard.find('.mv').text()).toBe('4.0 GB')
     expect(memCard.find('.ms').text()).toBe('allocated')
     // No progress bar for memory
     expect(memCard.find('.mb-fill').exists()).toBe(false)
@@ -118,8 +118,8 @@ describe('LiveMetrics', () => {
     await flushPromises()
     const diskCard = wrapper.findAll('.metric-card')[2]
     // Should show logical bytes (5 GiB), not compressed (3 GiB)
-    expect(diskCard.find('.mv').text()).toBe('5.0 GiB')
-    expect(diskCard.find('.ms').text()).toContain('25.0 GiB capacity')
+    expect(diskCard.find('.mv').text()).toBe('5.0 GB')
+    expect(diskCard.find('.ms').text()).toContain('25.0 GB capacity')
   })
 
   it('falls back to compressed disk_bytes when disk_logical_bytes is 0', async () => {
@@ -127,7 +127,7 @@ describe('LiveMetrics', () => {
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const diskCard = wrapper.findAll('.metric-card')[2]
-    expect(diskCard.find('.mv').text()).toBe('3.0 GiB')
+    expect(diskCard.find('.mv').text()).toBe('3.0 GB')
   })
 
   it('shows dash on first poll for network (no rate yet)', async () => {

@@ -73,9 +73,9 @@ function makeUsageEntry(overrides: Partial<VMUsageEntry> = {}): VMUsageEntry {
     overage_disk_bytes: 0,
     overage_bandwidth_bytes: 0,
     display: {
-      disk_provisioned: '20 GiB',
-      bandwidth: '1.0 GiB',
-      included_disk: '10 GiB',
+      disk_provisioned: '20 GB',
+      bandwidth: '1 GB',
+      included_disk: '10 GB',
       included_bandwidth: '0 B',
       overage_disk: '',
       overage_bandwidth: '',
@@ -374,9 +374,9 @@ describe('VMDetail', () => {
     mockFetchProfile.mockResolvedValue(makeProfile())
     const wrapper = await mountVMDetail()
     const text = wrapper.text()
-    expect(text).toContain('20 GiB') // disk_provisioned
-    expect(text).toContain('1.0 GiB') // bandwidth
-    expect(text).toContain('10 GiB') // included_disk
+    expect(text).toContain('20 GB') // disk_provisioned
+    expect(text).toContain('1 GB') // bandwidth
+    expect(text).toContain('10 GB') // included_disk
     expect(text).toContain('1.0h') // cpu_seconds = 3600
   })
 
@@ -450,9 +450,9 @@ describe('VMDetail', () => {
       period_end: '2024-02-01',
       metrics: [makeUsageEntry({
         display: {
-          disk_provisioned: '20 GiB',
-          bandwidth: '1.0 GiB',
-          included_disk: '10 GiB',
+          disk_provisioned: '20 GB',
+          bandwidth: '1 GB',
+          included_disk: '10 GB',
           included_bandwidth: '0 B',
           overage_disk: '$2.00',
           overage_bandwidth: '',
