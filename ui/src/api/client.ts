@@ -196,6 +196,12 @@ export interface UserInfo {
 }
 
 // Full page data as served by the Go backend
+export interface TrialInfo {
+  expiresAt: string
+  daysLeft: number
+  expired: boolean
+}
+
 export interface DashboardData {
   user: UserInfo
   boxes: BoxInfo[]
@@ -212,6 +218,7 @@ export interface DashboardData {
     periodStart: string
     periodEnd: string
   }
+  trial?: TrialInfo
 }
 
 export interface RegionOption {
@@ -237,6 +244,7 @@ export interface ProfileData {
   availableRegions: RegionOption[]
   billingPeriodStart: string
   billingPeriodEnd: string
+  trial?: TrialInfo
 }
 
 export interface IntegrationsData {

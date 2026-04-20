@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
@@ -298,6 +299,193 @@ func TestAPIDashboardTeamSharedBoxes(t *testing.T) {
 		if tsb.Name == "member-vm" {
 			t.Error("member-vm should not appear in member's teamSharedBoxes (they own it)")
 		}
+	}
+}
+
+func TestAPIDashboardTrialBanner(t *testing.T) {
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "trial-user@example.com")
+
+	// Look up user ID and account.
+	var userID string
+	s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "trial-user@example.com").Scan(&userID)
+	})
+	if userID == "" {
+		t.Fatal("user not found")
+	}
+
+	// Fetch dashboard before granting trial — no trial field.
+	req, _ := http.NewRequest("GET", s.httpURL()+"/api/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/dashboard: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+	var dashBefore struct {
+		Trial *jsonTrialInfo `json:"trial"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&dashBefore); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if dashBefore.Trial != nil {
+		t.Fatalf("expected no trial info before granting trial, got %+v", dashBefore.Trial)
+	}
+
+	// Grant trial to user.
+	now := time.Now()
+	trialEnd := now.AddDate(0, 0, 14)
+	err = s.withTx(context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      acct.ID,
+			PlanID:         "trial:monthly:20260106",
+			At:             now,
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      "test",
+		})
+	})
+	if err != nil {
+		t.Fatalf("grant trial: %v", err)
+	}
+
+	// Fetch dashboard after granting trial — should have trial info.
+	req2, _ := http.NewRequest("GET", s.httpURL()+"/api/dashboard", nil)
+	req2.Header.Set("Authorization", "Bearer "+appToken)
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("GET /api/dashboard: %v", err)
+	}
+	defer resp2.Body.Close()
+	var dashAfter struct {
+		Trial *jsonTrialInfo `json:"trial"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&dashAfter); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if dashAfter.Trial == nil {
+		t.Fatal("expected trial info after granting trial, got nil")
+	}
+	if dashAfter.Trial.DaysLeft < 13 || dashAfter.Trial.DaysLeft > 15 {
+		t.Errorf("expected ~14 daysLeft, got %d", dashAfter.Trial.DaysLeft)
+	}
+	if dashAfter.Trial.Expired {
+		t.Error("expected active trial, got expired")
+	}
+
+	// Expire the trial.
+	past := now.Add(-24 * time.Hour)
+	err = s.withTx(context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      acct.ID,
+			PlanID:         "trial:monthly:20260106",
+			At:             now,
+			TrialExpiresAt: &past,
+			ChangedBy:      "test",
+		})
+	})
+	if err != nil {
+		t.Fatalf("expire trial: %v", err)
+	}
+
+	req3, _ := http.NewRequest("GET", s.httpURL()+"/api/dashboard", nil)
+	req3.Header.Set("Authorization", "Bearer "+appToken)
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatalf("GET /api/dashboard: %v", err)
+	}
+	defer resp3.Body.Close()
+	var dashExpired struct {
+		Trial *jsonTrialInfo `json:"trial"`
+	}
+	if err := json.NewDecoder(resp3.Body).Decode(&dashExpired); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if dashExpired.Trial == nil {
+		t.Fatal("expected trial info for expired trial, got nil")
+	}
+	if !dashExpired.Trial.Expired {
+		t.Error("expected expired=true for expired trial")
+	}
+}
+
+func TestAPIProfileTrialBanner(t *testing.T) {
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "profile-trial@example.com")
+
+	var userID string
+	s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "profile-trial@example.com").Scan(&userID)
+	})
+	if userID == "" {
+		t.Fatal("user not found")
+	}
+
+	fetchProfile := func() *jsonTrialInfo {
+		t.Helper()
+		req, _ := http.NewRequest("GET", s.httpURL()+"/api/profile", nil)
+		req.Header.Set("Authorization", "Bearer "+appToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET /api/profile: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+		var profile struct {
+			Trial *jsonTrialInfo `json:"trial"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return profile.Trial
+	}
+
+	// No trial before granting.
+	if trial := fetchProfile(); trial != nil {
+		t.Fatalf("expected no trial before granting, got %+v", trial)
+	}
+
+	// Grant trial.
+	now := time.Now()
+	trialEnd := now.AddDate(0, 0, 7)
+	if err := s.withTx(context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      acct.ID,
+			PlanID:         "trial:monthly:20260106",
+			At:             now,
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      "test",
+		})
+	}); err != nil {
+		t.Fatalf("grant trial: %v", err)
+	}
+
+	// Should have trial info now.
+	trial := fetchProfile()
+	if trial == nil {
+		t.Fatal("expected trial info after granting, got nil")
+	}
+	if trial.DaysLeft < 6 || trial.DaysLeft > 8 {
+		t.Errorf("expected ~7 daysLeft, got %d", trial.DaysLeft)
 	}
 }
 

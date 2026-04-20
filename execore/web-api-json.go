@@ -92,6 +92,43 @@ type jsonDashboardData struct {
 	ReplHost          string               `json:"replHost"`
 	ShowIntegrations  bool                 `json:"showIntegrations"`
 	Billing           jsonDashboardBilling `json:"billing"`
+	Trial             *jsonTrialInfo       `json:"trial,omitempty"`
+}
+
+type jsonTrialInfo struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+	DaysLeft  int       `json:"daysLeft"`
+	Expired   bool      `json:"expired"`
+}
+
+// resolveTrialInfo returns trial info for the user if they are on an active trial,
+// using the full plan resolution logic (same as the trial expiry enforcer).
+func (s *Server) resolveTrialInfo(ctx context.Context, userID string) *jsonTrialInfo {
+	planData, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserPlanData, userID)
+	if err != nil || planData.PlanID == nil || !strings.HasPrefix(*planData.PlanID, "trial:") || planData.TrialExpiresAt == nil {
+		return nil
+	}
+	cat, err := withRxRes0(s, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
+	})
+	if err != nil {
+		return nil
+	}
+	if cat == plan.CategoryTrial {
+		daysLeft := int(time.Until(*planData.TrialExpiresAt).Hours()/24) + 1
+		if daysLeft < 0 {
+			daysLeft = 0
+		}
+		return &jsonTrialInfo{
+			ExpiresAt: *planData.TrialExpiresAt,
+			DaysLeft:  daysLeft,
+		}
+	}
+	// Trial plan in DB but ForUser didn't resolve to trial — it's expired.
+	return &jsonTrialInfo{
+		ExpiresAt: *planData.TrialExpiresAt,
+		Expired:   true,
+	}
 }
 
 type jsonDashboardBilling struct {
@@ -263,6 +300,7 @@ type jsonProfileData struct {
 	AvailableRegions   []jsonRegionOption  `json:"availableRegions"`
 	BillingPeriodStart time.Time           `json:"billingPeriodStart"`
 	BillingPeriodEnd   time.Time           `json:"billingPeriodEnd"`
+	Trial              *jsonTrialInfo      `json:"trial,omitempty"`
 }
 
 type jsonIntegrationInfo struct {
@@ -517,6 +555,8 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	}
 	periodStart, periodEnd := billingPeriodForUser(r.Context(), s, billingAccountID, planErr)
 
+	trialInfo := s.resolveTrialInfo(r.Context(), userID)
+
 	writeJSONOK(w, jsonDashboardData{
 		User:              newJSONUserInfo(user),
 		Boxes:             boxes,
@@ -533,6 +573,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			PeriodStart: periodStart,
 			PeriodEnd:   periodEnd,
 		},
+		Trial: trialInfo,
 	})
 }
 
@@ -904,6 +945,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		billingAccountID = account.ID
 	}
 	profile.BillingPeriodStart, profile.BillingPeriodEnd = billingPeriodForUser(r.Context(), s, billingAccountID, nil)
+	profile.Trial = s.resolveTrialInfo(r.Context(), userID)
 
 	writeJSONOK(w, profile)
 }

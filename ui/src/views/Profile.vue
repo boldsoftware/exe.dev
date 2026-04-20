@@ -82,9 +82,11 @@
               <div class="billing-header-left">
                 <h3 class="plan-name">{{ data.credits.planName || 'Individual' }}</h3>
                 <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
+                <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
+                <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
               </div>
               <div class="billing-header-right">
-                <a v-if="canManageBilling" href="/billing/update?source=profile" class="btn btn-secondary"><i class="pi pi-cog" style="font-size: 13px"></i> Manage Plan</a>
+                <a v-if="canManageBilling" href="/billing/update?source=profile" :class="['btn', data.trial ? 'btn-upgrade' : 'btn-secondary']"><i class="pi pi-cog" style="font-size: 13px"></i> {{ data.trial ? 'Upgrade' : 'Manage Plan' }}</a>
               </div>
             </div>
 
@@ -1389,6 +1391,27 @@ async function toggleNewsletter(event: Event) {
 .active-tag {
   background: var(--text-color) !important;
   color: var(--surface-ground) !important;
+}
+
+.trial-expiry {
+  font-size: 13px;
+  color: var(--warning-text);
+}
+
+.trial-expired {
+  font-size: 13px;
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+.btn-upgrade {
+  background: transparent !important;
+  color: var(--warning-color) !important;
+  border-color: var(--warning-color) !important;
+}
+
+.btn-upgrade:hover {
+  background: var(--warning-bg) !important;
 }
 
 .payment-method-section {

@@ -7,6 +7,9 @@
       <span class="breadcrumb-current">VMs</span>
     </nav>
 
+    <!-- Trial Banner -->
+    <TrialBanner v-if="trialInfo" :days-left="trialInfo.daysLeft" :expired="trialInfo.expired" />
+
     <!-- Header -->
     <div class="section-header">
       <div class="section-left">
@@ -277,12 +280,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDashboard, fetchVMUsage, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, type VMUsageEntry, shellQuote } from '../api/client'
+import { fetchDashboard, fetchVMUsage, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, type VMUsageEntry, type TrialInfo, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import ViewPopover from '../components/ViewPopover.vue'
+import TrialBanner from '../components/TrialBanner.vue'
 import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
 
 const route = useRoute()
@@ -301,6 +305,7 @@ const hasTeam = ref(false)
 const searchQuery = ref((route.query.filter as string) || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
+const trialInfo = ref<TrialInfo | null>(null)
 
 // View options (sort, order, group) — persisted to localStorage
 const STORAGE_KEY = 'exe-vm-view-options'
@@ -563,6 +568,7 @@ async function loadDashboard() {
     teamBoxes.value = data.teamBoxes
     hasTeam.value = data.hasTeam || false
     sshCommand.value = data.sshCommand
+    trialInfo.value = data.trial || null
     // Default prompt VM to first shelley-enabled box
     const sb = data.boxes.filter(b => b.shelleyURL)
     if (sb.length > 0) promptVM.value = sb[0].name
