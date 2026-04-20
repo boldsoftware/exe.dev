@@ -19,13 +19,16 @@ Reads panopticon/.env automatically (python-dotenv).
 """
 
 import argparse
+import json
 import logging
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -127,6 +130,28 @@ def post_to_slack(header: str, items: list[str]) -> None:
             unfurl_media=False,
         )
     log.info("Posted header + %d items to #%s", len(items), SLACK_CHANNEL)
+
+
+# ---------------------------------------------------------------------------
+# Alerts — email via the exe.dev gateway, matching scripts/agents/bored.
+# ---------------------------------------------------------------------------
+
+ALERT_EMAIL = "josharian@gmail.com"
+GATEWAY_EMAIL_URL = "http://169.254.169.254/gateway/email/send"
+
+
+def send_alert(subject: str, body: str) -> None:
+    """Send an alert email via the exe.dev gateway. Best-effort, never raises."""
+    try:
+        data = json.dumps({"to": ALERT_EMAIL, "subject": subject, "body": body}).encode()
+        req = urllib.request.Request(
+            GATEWAY_EMAIL_URL, data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+        log.info("alert email sent: %s", subject)
+    except Exception:
+        log.warning("failed to send alert email", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +308,65 @@ def generate(args) -> tuple[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# Self-deploy: fast-forward to origin/main between cycles so a merge is
+# enough to ship. On pull failure, email an alert once per process lifetime
+# and keep running on the old code rather than crash-looping.
+# ---------------------------------------------------------------------------
+
+_autodeploy_alert_sent = False
+
+
+def _git_rev_parse(rev: str, *, short: bool = False) -> str | None:
+    args = ["git", "rev-parse"]
+    if short:
+        args.append("--short")
+    args.append(rev)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def _autodeploy_check() -> bool:
+    """Return True iff origin/main advanced and we just fast-forwarded.
+
+    The caller should exit so systemd restarts us with fresh code. On
+    pull failure, email a one-shot alert and return False.
+    """
+    global _autodeploy_alert_sent
+
+    fetch = subprocess.run(
+        ["git", "fetch", "--quiet", "origin", "main"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if fetch.returncode != 0:
+        log.warning("git fetch failed: %s", fetch.stderr.strip() or fetch.stdout.strip())
+        return False
+
+    local = _git_rev_parse("HEAD")
+    remote = _git_rev_parse("origin/main")
+    if not local or not remote or local == remote:
+        return False
+
+    pull = subprocess.run(
+        ["git", "pull", "--ff-only", "--quiet", "origin", "main"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if pull.returncode == 0:
+        log.info("self-deployed %s → %s", local[:12], (_git_rev_parse("HEAD") or remote)[:12])
+        return True
+
+    if not _autodeploy_alert_sent:
+        _autodeploy_alert_sent = True
+        err = (pull.stderr.strip() or pull.stdout.strip()) or "no output"
+        send_alert(
+            "newsletter autodeploy stuck",
+            f"panopticon/newsletter.py cannot fast-forward to {remote[:12]}.\n"
+            f"Running on stale code at {local[:12]} on {socket.gethostname()}.\n"
+            f"Fix the worktree on the host.\n\n{err}",
+        )
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Daemon loop
 # ---------------------------------------------------------------------------
 
@@ -292,6 +376,7 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 def main_loop(args):
     """Production loop: generate and post once daily at 6am Pacific."""
     log.info("newsletter daemon starting")
+    log.info("  running from %s", _git_rev_parse("HEAD", short=True) or "unknown")
     log.info("  target: 06:00 %s", PACIFIC)
     log.info("  channel: #%s", SLACK_CHANNEL)
     log.info("  stop: touch stop")
@@ -305,8 +390,15 @@ def main_loop(args):
             break
 
         now = datetime.now(PACIFIC)
+        in_window = 6 <= now.hour < 7
 
-        if 6 <= now.hour < 7 and last_brief_date != now.date():
+        # Self-deploy outside the posting window only: a mid-window restart
+        # would lose last_brief_date and risk a duplicate post.
+        if not in_window and _autodeploy_check():
+            log.info("new code on main, exiting for restart")
+            break
+
+        if in_window and last_brief_date != now.date():
             log.info("generating newsletter for %s", now.date())
             try:
                 header, items = generate(args)

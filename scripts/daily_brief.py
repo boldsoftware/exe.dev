@@ -32,11 +32,13 @@ Production loop:
 
 import argparse
 import datetime
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
+import urllib.request
 
 import dspy
 
@@ -263,6 +265,87 @@ def post_to_slack(header, items):
 
 
 # ---------------------------------------------------------------------------
+# Alerts — email via the exe.dev gateway, matching scripts/agents/bored.
+# ---------------------------------------------------------------------------
+
+ALERT_EMAIL = "josharian@gmail.com"
+GATEWAY_EMAIL_URL = "http://169.254.169.254/gateway/email/send"
+
+
+def send_alert(subject, body):
+    """Send an alert email via the exe.dev gateway. Best-effort, never raises."""
+    try:
+        data = json.dumps({"to": ALERT_EMAIL, "subject": subject, "body": body}).encode()
+        req = urllib.request.Request(
+            GATEWAY_EMAIL_URL, data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+        log(f"alert email sent: {subject}")
+    except Exception as e:
+        log(f"failed to send alert email: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Self-deploy: fast-forward to origin/main between cycles so a merge is
+# enough to ship. On pull failure, email an alert once per process lifetime
+# and keep running on the old code rather than crash-looping.
+# ---------------------------------------------------------------------------
+
+_autodeploy_alert_sent = False
+
+
+def _git_rev_parse(rev, *, short=False):
+    args = ["git", "rev-parse"]
+    if short:
+        args.append("--short")
+    args.append(rev)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def _autodeploy_check():
+    """Return True iff origin/main advanced and we just fast-forwarded.
+
+    The caller should exit so systemd restarts us with fresh code. On
+    pull failure, email a one-shot alert and return False.
+    """
+    global _autodeploy_alert_sent
+
+    r = subprocess.run(
+        ["git", "fetch", "--quiet", "origin", "main"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        log(f"git fetch failed: {r.stderr.strip() or r.stdout.strip()}")
+        return False
+
+    local = _git_rev_parse("HEAD")
+    remote = _git_rev_parse("origin/main")
+    if not local or not remote or local == remote:
+        return False
+
+    pull = subprocess.run(
+        ["git", "pull", "--ff-only", "--quiet", "origin", "main"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if pull.returncode == 0:
+        log(f"self-deployed {local[:12]} → {(_git_rev_parse('HEAD') or remote)[:12]}")
+        return True
+
+    if not _autodeploy_alert_sent:
+        _autodeploy_alert_sent = True
+        err = (pull.stderr.strip() or pull.stdout.strip()) or "no output"
+        send_alert(
+            "daily_brief autodeploy stuck",
+            f"scripts/daily_brief.py cannot fast-forward to {remote[:12]}.\n"
+            f"Running on stale code at {local[:12]} on {socket.gethostname()}.\n"
+            f"Fix the worktree on the host.\n\n{err}",
+        )
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Modes
 # ---------------------------------------------------------------------------
 
@@ -299,6 +382,7 @@ def run_once(date, post=False, verbose=False):
 def main_loop(verbose=False):
     """Production loop: fetch periodically, brief around midnight UTC."""
     log("codebase brief daemon starting")
+    log(f"  running from {_git_rev_parse('HEAD', short=True) or 'unknown'}")
     log(f"  channel: #{SLACK_CHANNEL}")
     log(f"  fetch interval: {FETCH_INTERVAL}s")
     log(f"  stop: touch stop")
@@ -313,6 +397,13 @@ def main_loop(verbose=False):
             break
 
         now = datetime.datetime.now(datetime.timezone.utc)
+        in_window = now.hour == 0
+
+        # Self-deploy outside the posting window only: a mid-window restart
+        # would lose last_brief_date and risk a duplicate post.
+        if not in_window and _autodeploy_check():
+            log("new code on main, exiting for restart")
+            break
 
         # Fetch periodically.
         if time.time() - last_fetch >= FETCH_INTERVAL:
@@ -320,7 +411,7 @@ def main_loop(verbose=False):
             last_fetch = time.time()
 
         # Generate brief shortly after midnight UTC.
-        if now.hour == 0 and now.minute >= 5:
+        if in_window and now.minute >= 5:
             yesterday = (now - datetime.timedelta(days=1)).date()
             if last_brief_date != yesterday:
                 log(f"generating brief for {yesterday}")
