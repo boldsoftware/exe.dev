@@ -713,6 +713,7 @@ type mockProxyData struct {
 	boxes                map[string]BoxData
 	sshKeysByFingerprint map[string]mockSSHKey
 	lockedOut            map[string]bool
+	magicSecrets         *MagicSecrets
 }
 
 // mockSSHKey corresponds to exedb.SSHKey
@@ -772,7 +773,14 @@ func (m *mockProxyData) CheckShareLink(ctx context.Context, boxID int, boxName, 
 }
 
 func (m *mockProxyData) ValidateMagicSecret(ctx context.Context, secret string) (string, string, string, error) {
-	return "", "", "", nil
+	if m.magicSecrets == nil {
+		return "", "", "", errors.New("mock proxy has no magic secrets")
+	}
+	ms, err := m.magicSecrets.Validate(secret)
+	if err != nil {
+		return "", "", "", err
+	}
+	return ms.UserID, ms.BoxName, ms.RedirectURL, nil
 }
 
 func (m *mockProxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (string, string, error) {
@@ -1128,4 +1136,65 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 
 	// After this we are following the usual auth flow,
 	// which is well tested in the e1e tests.
+}
+
+// TestMagicAuthOpenRedirect tests that handleMagicAuth validates redirect URLs.
+func TestMagicAuthOpenRedirect(t *testing.T) {
+	t.Parallel()
+
+	testEnv := stage.Test()
+
+	// Create a user
+	const userID = "usr-magic"
+
+	mock := mockProxyData{
+		magicSecrets: NewMagicSecrets(),
+	}
+
+	ps := &ProxyServer{
+		Data:           &mock,
+		Lg:             tslog.Slogger(t),
+		Env:            new(testEnv),
+		ProxyHTTPSPort: 443,
+	}
+
+	tests := []struct {
+		name           string
+		redirect       string
+		expectExternal bool
+	}{
+		{"safe relative path", "/dashboard", false},
+		{"external URL", "https://evil.com/phish", true},
+		{"protocol-relative", "//evil.com/phish", true},
+		{"javascript URL", "javascript:alert(1)", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a magic secret for authentication
+			secret, err := mock.magicSecrets.Create(userID, "box."+testEnv.BoxHost, "/")
+			if err != nil {
+				t.Fatalf("Failed to create magic secret: %v", err)
+			}
+
+			req := httptest.NewRequest("GET", "/__exe.dev/magic-auth?secret="+secret+"&redirect="+url.QueryEscape(tt.redirect), nil)
+			req.Host = "box." + testEnv.BoxHost
+			w := httptest.NewRecorder()
+			ps.HandleMagicAuth(w, req)
+
+			location := w.Header().Get("Location")
+			if tt.expectExternal {
+				if location == tt.redirect {
+					t.Errorf("Open redirect: redirected to %q", location)
+				}
+				if location != "/" {
+					t.Errorf("Expected fallback to '/', got %q", location)
+				}
+			} else {
+				if location != tt.redirect {
+					t.Errorf("Expected redirect to %q, got %q", tt.redirect, location)
+				}
+			}
+		})
+	}
 }

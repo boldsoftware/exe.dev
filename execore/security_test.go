@@ -164,59 +164,6 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 	}
 }
 
-// TestMagicAuthOpenRedirect tests that handleMagicAuth validates redirect URLs.
-func TestMagicAuthOpenRedirect(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	ctx := t.Context()
-
-	// Create a user
-	user, err := server.createUser(ctx, testSSHPubKey, "magic-redirect@example.com", "", AllQualityChecks)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	tests := []struct {
-		name           string
-		redirect       string
-		expectExternal bool
-	}{
-		{"safe relative path", "/dashboard", false},
-		{"external URL", "https://evil.com/phish", true},
-		{"protocol-relative", "//evil.com/phish", true},
-		{"javascript URL", "javascript:alert(1)", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a magic secret for authentication
-			secret, err := server.magicSecrets.Create(user.UserID, "box."+server.env.BoxHost, "/")
-			if err != nil {
-				t.Fatalf("Failed to create magic secret: %v", err)
-			}
-
-			req := httptest.NewRequest("GET", "/__exe.dev/magic-auth?secret="+secret+"&redirect="+url.QueryEscape(tt.redirect), nil)
-			req.Host = "box." + server.env.BoxHost
-			w := httptest.NewRecorder()
-			server.proxyServer().HandleMagicAuth(w, req)
-
-			location := w.Header().Get("Location")
-			if tt.expectExternal {
-				if location == tt.redirect {
-					t.Errorf("Open redirect: redirected to %q", location)
-				}
-				if location != "/" {
-					t.Errorf("Expected fallback to '/', got %q", location)
-				}
-			} else {
-				if location != tt.redirect {
-					t.Errorf("Expected redirect to %q, got %q", tt.redirect, location)
-				}
-			}
-		})
-	}
-}
-
 // TestProxyLoginOpenRedirect tests that handleProxyLogin validates redirect URLs.
 func TestProxyLoginOpenRedirect(t *testing.T) {
 	t.Parallel()
