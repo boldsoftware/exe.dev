@@ -8419,6 +8419,7 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 		Display           string         `json:"display"`
 		Active            bool           `json:"active"`
 		RequiresUserMatch bool           `json:"requires_user_match"`
+		Private           bool           `json:"private"`
 		ExeletsTotal      int            `json:"exelets_total"`
 		ExeletsUp         int            `json:"exelets_up"`
 		VMsTotal          int            `json:"vms_total"`
@@ -8439,6 +8440,7 @@ func (s *Server) handleDebugRegions(w http.ResponseWriter, r *http.Request) {
 			Display:           reg.Display,
 			Active:            reg.Active,
 			RequiresUserMatch: reg.RequiresUserMatch,
+			Private:           reg.Private,
 			VMsByStatus:       make(map[string]int),
 		}
 	}

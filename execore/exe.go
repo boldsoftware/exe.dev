@@ -454,14 +454,19 @@ type exeletClient struct {
 }
 
 // regionAllowsUser reports whether the exelet may host a VM for a user
-// in userRegion (looked up as userRegionInfo). It enforces both constraints:
+// in userRegion (looked up as userRegionInfo). It enforces:
 //  1. Exelets in RequiresUserMatch regions only accept users in that region.
 //  2. Users whose region has RequiresUserMatch must stay in their region.
+//  3. Exelets in Private regions only accept users already assigned to that region.
+//     Broader access (via team_exelets unlockedCodes) is enforced upstream.
 func (ec *exeletClient) regionAllowsUser(userRegion string, userRegionInfo region.Region) bool {
 	if ec.region.RequiresUserMatch && ec.region.Code != userRegion {
 		return false
 	}
 	if userRegionInfo.RequiresUserMatch && ec.region.Code != userRegion {
+		return false
+	}
+	if ec.region.Private && ec.region.Code != userRegion {
 		return false
 	}
 	return true
@@ -4617,8 +4622,9 @@ func exeletUsageCmp(a, b *exeletClient) int {
 }
 
 // autoThrottleVMCreation enables throttling if all exelets have hit the VM limit.
-// Exelets in RequiresUserMatch regions are excluded — they are only available
-// to manually rolled-out users and don't represent general capacity.
+// Exelets in RequiresUserMatch or Private regions are excluded — they are only
+// available to manually rolled-out or explicitly granted users and don't
+// represent general capacity.
 func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	if len(s.exeletClients) == 0 {
 		return
@@ -4627,7 +4633,7 @@ func (s *Server) autoThrottleVMCreation(ctx context.Context) {
 	someBelowLimit := false
 	checked := 0
 	for _, ec := range s.exeletClients {
-		if ec.region.RequiresUserMatch {
+		if ec.region.RequiresUserMatch || ec.region.Private {
 			continue
 		}
 		hardLimit := ec.VMHardLimit()

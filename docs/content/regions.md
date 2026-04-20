@@ -19,6 +19,7 @@ The lobby (main exe.dev server) is located in the United States for all accounts
 - **FRA**: Frankfurt, Germany
 - **TYO**: Tokyo, Japan
 - **SYD**: Sydney, Australia
+- **SGP**: Singapore
 - **LON**: London, UK
 
 The PDX region is not accepting new accounts; LAX is the nearest substitute. Accounts associated with PDX may have some VMs located in LAX.

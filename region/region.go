@@ -31,24 +31,31 @@ type Region struct {
 	// For now, during the transition to full region support, our primary regions (pdx, lax) allow any user.
 	RequiresUserMatch bool
 
+	// Private indicates that this region is reserved for specific teams' customers
+	// and must not be advertised in public docs, offered via automatic routing,
+	// or made selectable by users who have not been explicitly granted access.
+	// Access is granted via team_exelets rows (see exedb/schema/136-private-exelets.sql),
+	// which flow into AvailableFor's unlockedCodes argument.
+	Private bool
+
 	// Lat and Lon are the approximate coordinates of the datacenter.
 	Lat float64
 	Lon float64
 }
 
 var allRegions = []Region{
-	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: true, Lat: 45.59, Lon: -122.60},
-	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false, Lat: 33.94, Lon: -118.41},
-	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: false, Lat: 40.71, Lon: -74.01},
-	{Code: "dal", Display: "Dallas, USA", Active: true, RequiresUserMatch: true, Lat: 32.78, Lon: -96.80},
-	{Code: "iad", Display: "Virginia, USA", Active: true, RequiresUserMatch: true, Lat: 38.95, Lon: -77.45},
-	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: false, Lat: 50.11, Lon: 8.68},
-	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: false, Lat: 35.68, Lon: 139.65},
-	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: false, Lat: -33.87, Lon: 151.21},
-	{Code: "sgp", Display: "Singapore", Active: true, RequiresUserMatch: false, Lat: 1.35, Lon: 103.82},
-	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: false, Lat: 51.51, Lon: -0.13},
-	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
-	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0},
+	{Code: "pdx", Display: "Oregon, USA", Active: true, RequiresUserMatch: true, Private: false, Lat: 45.59, Lon: -122.60},
+	{Code: "lax", Display: "Los Angeles, USA", Active: true, RequiresUserMatch: false, Private: false, Lat: 33.94, Lon: -118.41},
+	{Code: "nyc", Display: "New York, USA", Active: true, RequiresUserMatch: false, Private: false, Lat: 40.71, Lon: -74.01},
+	{Code: "dal", Display: "Dallas, USA", Active: true, RequiresUserMatch: true, Private: true, Lat: 32.78, Lon: -96.80},
+	{Code: "iad", Display: "Virginia, USA", Active: true, RequiresUserMatch: true, Private: true, Lat: 38.95, Lon: -77.45},
+	{Code: "fra", Display: "Frankfurt, Germany", Active: true, RequiresUserMatch: false, Private: false, Lat: 50.11, Lon: 8.68},
+	{Code: "tyo", Display: "Tokyo, Japan", Active: true, RequiresUserMatch: false, Private: false, Lat: 35.68, Lon: 139.65},
+	{Code: "syd", Display: "Sydney, Australia", Active: true, RequiresUserMatch: false, Private: false, Lat: -33.87, Lon: 151.21},
+	{Code: "sgp", Display: "Singapore", Active: true, RequiresUserMatch: false, Private: false, Lat: 1.35, Lon: 103.82},
+	{Code: "lon", Display: "London, UK", Active: true, RequiresUserMatch: false, Private: false, Lat: 51.51, Lon: -0.13},
+	{Code: "dev", Display: "$HOME", Active: false, RequiresUserMatch: false, Private: false, Lat: 0, Lon: 0},
+	{Code: "ci", Display: "CI", Active: false, RequiresUserMatch: false, Private: false, Lat: 0, Lon: 0},
 }
 
 // All returns all known regions.
@@ -57,9 +64,10 @@ func All() []Region {
 }
 
 // AvailableFor returns the active regions a user may select given their current
-// assigned region code. A region is available if it is active and either open to
-// all users (!RequiresUserMatch), the user is already assigned to it, or its code
-// appears in the optional unlockedCodes list (e.g. regions covered by team exelets).
+// assigned region code. A region is available if it is active and not gated by
+// either RequiresUserMatch or Private, unless the user is already assigned to
+// it or its code appears in the optional unlockedCodes list (e.g. regions
+// covered by team exelets).
 func AvailableFor(currentRegionCode string, unlockedCodes ...string) []Region {
 	unlocked := make(map[string]bool, len(unlockedCodes))
 	for _, c := range unlockedCodes {
@@ -70,7 +78,8 @@ func AvailableFor(currentRegionCode string, unlockedCodes ...string) []Region {
 		if !r.Active {
 			continue
 		}
-		if !r.RequiresUserMatch || r.Code == currentRegionCode || unlocked[r.Code] {
+		gated := r.RequiresUserMatch || r.Private
+		if !gated || r.Code == currentRegionCode || unlocked[r.Code] {
 			out = append(out, r)
 		}
 	}
@@ -86,7 +95,7 @@ func ByCode(code string) (Region, error) {
 			return r, nil
 		}
 	}
-	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0}, fmt.Errorf("unknown region code %q", code)
+	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Private: false, Lat: 0, Lon: 0}, fmt.Errorf("unknown region code %q", code)
 }
 
 // Default returns the default region for new users and VMs.
@@ -142,7 +151,7 @@ func ParseExeletRegion(host string) (Region, error) {
 		}
 	}
 
-	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Lat: 0, Lon: 0}, fmt.Errorf("cannot parse region from exelet host %q", host)
+	return Region{Code: "", Display: "", Active: false, RequiresUserMatch: false, Private: false, Lat: 0, Lon: 0}, fmt.Errorf("cannot parse region from exelet host %q", host)
 }
 
 func isAllDigits(s string) bool {

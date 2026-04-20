@@ -14,6 +14,7 @@
 <tr>
 <th>Region</th>
 <th>Requires Match</th>
+<th>Private</th>
 <th>Exelets (up/total)</th>
 <th>VMs</th>
 <th>Users</th>
@@ -25,6 +26,7 @@
 <tr>
 <td><strong>{{.Code}}</strong> — {{.Display}}</td>
 <td>{{if .RequiresUserMatch}}yes{{else}}no{{end}}</td>
+<td>{{if .Private}}yes{{else}}no{{end}}</td>
 <td>{{.ExeletsUp}} / {{.ExeletsTotal}}</td>
 <td>{{.VMsTotal}}{{if .VMsByStatus}} ({{range $status, $count := .VMsByStatus}}{{$status}}:{{$count}} {{end}}){{end}}</td>
 <td>{{.Users}}</td>

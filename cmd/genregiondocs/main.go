@@ -65,9 +65,11 @@ The lobby (main exe.dev server) is located in the United States for all accounts
 
 `)
 
-	// Generate list items for active regions only
+	// Generate list items for active, non-private regions only.
+	// Private regions are reserved for specific teams' customers and must
+	// not be advertised in public docs.
 	for _, r := range region.All() {
-		if !r.Active {
+		if !r.Active || r.Private {
 			continue
 		}
 		fmt.Fprintf(&buf, "- **%s**: %s\n", strings.ToUpper(r.Code), r.Display)

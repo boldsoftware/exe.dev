@@ -213,6 +213,46 @@ func TestAvailableForUnlocked(t *testing.T) {
 	}
 }
 
+func TestAvailableForPrivateGated(t *testing.T) {
+	// A lax user without unlocks must not see private regions (dal, iad).
+	got := AvailableFor("lax")
+	for _, r := range got {
+		if r.Private {
+			t.Errorf("private region %q leaked to unprivileged lax user", r.Code)
+		}
+	}
+	// A user whose current region is private still sees it.
+	got2 := AvailableFor("dal")
+	var sawDal bool
+	for _, r := range got2 {
+		if r.Code == "dal" {
+			sawDal = true
+		}
+	}
+	if !sawDal {
+		t.Error("dal user should see dal")
+	}
+	// Unlocking grants access.
+	got3 := AvailableFor("lax", "dal")
+	var sawDalUnlocked bool
+	for _, r := range got3 {
+		if r.Code == "dal" {
+			sawDalUnlocked = true
+		}
+	}
+	if !sawDalUnlocked {
+		t.Error("dal should be available via unlockedCodes")
+	}
+}
+
+func TestCountryMapNoPrivateRegions(t *testing.T) {
+	for cc, r := range countryToRegion {
+		if r.Private {
+			t.Errorf("countryToRegion[%q] maps to private region %q; automatic routing must not land on private regions", cc, r.Code)
+		}
+	}
+}
+
 func TestCountryMapKeysUppercase(t *testing.T) {
 	for cc := range countryToRegion {
 		if cc != strings.ToUpper(cc) {
