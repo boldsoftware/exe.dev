@@ -92,14 +92,14 @@ describe('LiveMetrics', () => {
     expect(cpuCard.find('.ms').text()).toBe('of CPU capacity')
   })
 
-  it('shows allocated memory capacity (no progress bar)', async () => {
+  it('shows provisioned memory capacity (no progress bar)', async () => {
     mockFetch.mockResolvedValue(makeMetrics({ mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
     // Should show capacity, not cgroup memory.current
     expect(memCard.find('.mv').text()).toBe('4.0 GB')
-    expect(memCard.find('.ms').text()).toBe('allocated')
+    expect(memCard.find('.ms').text()).toBe('provisioned')
     // No progress bar for memory
     expect(memCard.find('.mb-fill').exists()).toBe(false)
   })
@@ -112,22 +112,22 @@ describe('LiveMetrics', () => {
     expect(memCard.find('.mv').text()).toBe('—')
   })
 
-  it('displays logical disk usage with capacity subtitle', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 3 * 1024 * 1024 * 1024, disk_logical_bytes: 5 * 1024 * 1024 * 1024, disk_capacity_bytes: 25 * 1024 * 1024 * 1024 }))
+  it('shows provisioned disk capacity (no progress bar)', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ disk_capacity_bytes: 25 * 1024 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const diskCard = wrapper.findAll('.metric-card')[2]
-    // Should show logical bytes (5 GiB), not compressed (3 GiB)
-    expect(diskCard.find('.mv').text()).toBe('5.0 GB')
-    expect(diskCard.find('.ms').text()).toContain('25.0 GB capacity')
+    expect(diskCard.find('.mv').text()).toBe('25.0 GB')
+    expect(diskCard.find('.ms').text()).toBe('provisioned')
+    expect(diskCard.find('.mb-fill').exists()).toBe(false)
   })
 
-  it('falls back to compressed disk_bytes when disk_logical_bytes is 0', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 3 * 1024 * 1024 * 1024, disk_logical_bytes: 0, disk_capacity_bytes: 25 * 1024 * 1024 * 1024 }))
+  it('shows dash when no disk capacity', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ disk_capacity_bytes: 0 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const diskCard = wrapper.findAll('.metric-card')[2]
-    expect(diskCard.find('.mv').text()).toBe('3.0 GB')
+    expect(diskCard.find('.mv').text()).toBe('—')
   })
 
   it('shows dash on first poll for network (no rate yet)', async () => {

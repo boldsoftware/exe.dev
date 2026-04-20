@@ -76,7 +76,7 @@ const props = defineProps<{
   vmStatus: string
 }>()
 
-const metrics = ['CPU', 'Memory', 'Disk', 'Network'] as const
+const metrics = ['CPU', 'Disk', 'Network'] as const
 type Metric = (typeof metrics)[number]
 
 const timeRanges = [
@@ -158,23 +158,6 @@ const chartJsData = computed<ChartData<'line'>>(() => {
           },
         ],
       }
-    case 'Memory':
-      return {
-        labels: labels.value,
-        datasets: [
-          {
-            label: 'Memory',
-            data: data.map((p) => p.memory_bytes),
-            borderColor: '#2563eb',
-            backgroundColor: 'rgba(37, 99, 235, 0.15)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-          },
-        ],
-      }
     case 'Disk':
       return {
         labels: labels.value,
@@ -242,7 +225,6 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     switch (metric) {
       case 'CPU':
         return `${v.toFixed(0)}%`
-      case 'Memory':
       case 'Disk':
         return formatBytes(v)
       case 'Network':
@@ -255,8 +237,6 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     switch (metric) {
       case 'CPU':
         return `${ctx.dataset.label}: ${v.toFixed(1)}%`
-      case 'Memory':
-        return `${ctx.dataset.label}: ${formatBytes(v)}`
       case 'Disk':
         return `${ctx.dataset.label}: ${formatBytes(v)}`
       case 'Network':
@@ -290,7 +270,7 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     },
     plugins: {
       legend: {
-        display: metric === 'Network' || metric === 'Disk',
+        display: metric === 'Disk' || metric === 'Network',
         position: 'bottom',
         labels: {
           usePointStyle: true,

@@ -69,8 +69,8 @@ describe('UsageChart', () => {
     vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue([])
     const wrapper = mountChart()
     const tabs = wrapper.findAll('.metric-tab')
-    expect(tabs).toHaveLength(4)
-    expect(tabs.map((t) => t.text())).toEqual(['CPU', 'Memory', 'Disk', 'Network'])
+    expect(tabs).toHaveLength(3)
+    expect(tabs.map((t) => t.text())).toEqual(['CPU', 'Disk', 'Network'])
   })
 
   it('renders time range selector buttons', () => {
@@ -145,28 +145,12 @@ describe('UsageChart', () => {
     expect(data.datasets[0].data).toEqual([0, 2.78, 5.5])
   })
 
-  it('passes Memory data as single dataset with fill', async () => {
-    vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
-    const wrapper = mountChart()
-    await flushPromises()
-
-    await wrapper.findAll('.metric-tab')[1].trigger('click')
-    await flushPromises()
-
-    const chartComp = wrapper.findComponent(ChartStub)
-    const data = chartComp.props('data')
-    expect(data.datasets).toHaveLength(1)
-    expect(data.datasets[0].label).toBe('Memory')
-    expect(data.datasets[0].fill).toBe(true)
-    expect(data.datasets[0].data).toEqual([1073741824, 1200000000, 1300000000])
-  })
-
   it('passes Network data as two datasets (rx/tx) without fill', async () => {
     vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
     const wrapper = mountChart()
     await flushPromises()
 
-    await wrapper.findAll('.metric-tab')[3].trigger('click')
+    await wrapper.findAll('.metric-tab')[2].trigger('click')
     await flushPromises()
 
     const chartComp = wrapper.findComponent(ChartStub)
@@ -185,7 +169,7 @@ describe('UsageChart', () => {
     const wrapper = mountChart()
     await flushPromises()
 
-    await wrapper.findAll('.metric-tab')[2].trigger('click')
+    await wrapper.findAll('.metric-tab')[1].trigger('click')
     await flushPromises()
 
     const chartComp = wrapper.findComponent(ChartStub)

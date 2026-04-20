@@ -19,7 +19,6 @@
       <div class="metric-card">
         <div class="mt">Disk</div>
         <div class="mv orange">{{ diskDisplay }}</div>
-        <div class="mb"><div class="mb-fill" :style="{ width: diskPct + '%', background: '#ea580c' }"></div></div>
         <div class="ms">{{ diskSub }}</div>
       </div>
       <div class="metric-card">
@@ -71,7 +70,7 @@ const cpuSub = computed(() => {
   return 'of CPU capacity'
 })
 
-// Memory — show allocated capacity (cgroup memory.current is not meaningful for VMs)
+// Memory — show provisioned capacity (cgroup memory.current is not meaningful for VMs)
 const memDisplay = computed(() => {
   if (!metrics.value) return '—'
   if (metrics.value.mem_capacity_bytes) {
@@ -81,29 +80,20 @@ const memDisplay = computed(() => {
 })
 const memSub = computed(() => {
   if (!metrics.value) return ''
-  return 'allocated'
+  return 'provisioned'
 })
 
-// Disk
-// Use logical bytes (matches df -h) with fallback to compressed bytes for old exelets
-const diskUsedBytes = computed(() => {
-  if (!metrics.value) return 0
-  return metrics.value.disk_logical_bytes || metrics.value.disk_bytes
-})
-const diskPct = computed(() => {
-  if (!metrics.value || !metrics.value.disk_capacity_bytes) return 0
-  return Math.min((diskUsedBytes.value / metrics.value.disk_capacity_bytes) * 100, 100)
-})
+// Disk — show provisioned capacity (same approach as memory)
 const diskDisplay = computed(() => {
   if (!metrics.value) return '—'
-  return formatBytesShort(diskUsedBytes.value)
+  if (metrics.value.disk_capacity_bytes) {
+    return formatBytesShort(metrics.value.disk_capacity_bytes)
+  }
+  return '—'
 })
 const diskSub = computed(() => {
   if (!metrics.value) return ''
-  if (metrics.value.disk_capacity_bytes) {
-    return `of ${formatBytesShort(metrics.value.disk_capacity_bytes)} capacity`
-  }
-  return 'disk usage'
+  return 'provisioned'
 })
 
 // Network rates (bytes/sec computed from cumulative counters)
