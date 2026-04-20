@@ -28,6 +28,66 @@ func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams
 	return err
 }
 
+const activeTrialUsers = `-- name: ActiveTrialUsers :many
+SELECT
+    u.user_id,
+    u.email,
+    ap.plan_id,
+    ap.trial_expires_at,
+    ap.changed_by,
+    (SELECT COUNT(*) FROM boxes b
+     WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+JOIN users u ON u.user_id = a.created_by
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at IS NOT NULL
+ORDER BY ap.trial_expires_at ASC
+`
+
+type ActiveTrialUsersRow struct {
+	UserID          string     `db:"user_id" json:"user_id"`
+	Email           string     `db:"email" json:"email"`
+	PlanID          string     `db:"plan_id" json:"plan_id"`
+	TrialExpiresAt  *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	ChangedBy       *string    `db:"changed_by" json:"changed_by"`
+	RunningBoxCount int64      `db:"running_box_count" json:"running_box_count"`
+}
+
+// ActiveTrialUsers returns all users with an active plan that has a trial
+// (trial_expires_at IS NOT NULL), their expiry time, email, and the count of
+// running boxes they own. Covers both stripeless trials (plan_id LIKE 'trial:%')
+// and Stripe trials. Used by the debug dashboard.
+func (q *Queries) ActiveTrialUsers(ctx context.Context) ([]ActiveTrialUsersRow, error) {
+	rows, err := q.query(ctx, q.activeTrialUsersStmt, activeTrialUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ActiveTrialUsersRow{}
+	for rows.Next() {
+		var i ActiveTrialUsersRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Email,
+			&i.PlanID,
+			&i.TrialExpiresAt,
+			&i.ChangedBy,
+			&i.RunningBoxCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const clearAccountParentID = `-- name: ClearAccountParentID :exec
 UPDATE accounts SET parent_id = NULL WHERE created_by = ?
 `
@@ -207,6 +267,24 @@ func (q *Queries) CountTrialsByKindAndStatus(ctx context.Context) ([]CountTrials
 		return nil, err
 	}
 	return items, nil
+}
+
+const debugSetTrialExpiresAt = `-- name: DebugSetTrialExpiresAt :exec
+UPDATE account_plans
+SET trial_expires_at = ?2
+WHERE account_id = ?1 AND ended_at IS NULL
+`
+
+type DebugSetTrialExpiresAtParams struct {
+	AccountID      string     `db:"account_id" json:"account_id"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+}
+
+// DebugSetTrialExpiresAt updates trial_expires_at for any active plan.
+// Used by the debug page to adjust trial expiry for testing.
+func (q *Queries) DebugSetTrialExpiresAt(ctx context.Context, arg DebugSetTrialExpiresAtParams) error {
+	_, err := q.exec(ctx, q.debugSetTrialExpiresAtStmt, debugSetTrialExpiresAt, arg.AccountID, arg.TrialExpiresAt)
+	return err
 }
 
 const deleteAccountsByUserID = `-- name: DeleteAccountsByUserID :exec
@@ -856,6 +934,46 @@ func (q *Queries) ListPlanVersionCounts(ctx context.Context) ([]ListPlanVersionC
 		return nil, err
 	}
 	return items, nil
+}
+
+const nextExpiredTrialUser = `-- name: NextExpiredTrialUser :one
+SELECT a.created_by AS user_id
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at IS NOT NULL
+  AND ap.trial_expires_at <= datetime('now')
+ORDER BY ap.trial_expires_at ASC
+LIMIT 1
+`
+
+// NextExpiredTrialUser returns the user ID with the oldest expired trial.
+// Candidates only -- the caller must verify entitlement via plan.ForUser
+// before transitioning anything. Returns sql.ErrNoRows if there are none.
+func (q *Queries) NextExpiredTrialUser(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.nextExpiredTrialUserStmt, nextExpiredTrialUser)
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const nextTrialExpiry = `-- name: NextTrialExpiry :one
+SELECT trial_expires_at
+FROM account_plans
+WHERE ended_at IS NULL
+  AND trial_expires_at > datetime('now')
+ORDER BY trial_expires_at ASC
+LIMIT 1
+`
+
+// NextTrialExpiry returns the earliest trial_expires_at for any active plan
+// with a trial that has not yet expired. Covers both stripeless and Stripe
+// trials. Returns sql.ErrNoRows if there are none.
+func (q *Queries) NextTrialExpiry(ctx context.Context) (*time.Time, error) {
+	row := q.queryRow(ctx, q.nextTrialExpiryStmt, nextTrialExpiry)
+	var trial_expires_at *time.Time
+	err := row.Scan(&trial_expires_at)
+	return trial_expires_at, err
 }
 
 const setAccountParentID = `-- name: SetAccountParentID :exec

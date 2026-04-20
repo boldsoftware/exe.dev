@@ -81,6 +81,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -317,6 +318,18 @@ type Server struct {
 
 	// Drip campaign runner for trial onboarding emails
 	dripRunner *drip.Runner
+
+	// trialExpiryWake is poked from the debug page so the
+	// trial-expiry enforcer recalculates its sleep deadline.
+	trialExpiryWake chan struct{}
+
+	// trialExpiryLimiter controls how frequently trial expirations are
+	// enforced. Initialized lazily by startTrialExpiryEnforcer.
+	trialExpiryLimiter *rate.Limiter
+
+	// trialExpiryNextWake is when the enforcer will next wake to check
+	// for work. Nil when the enforcer is actively running a pass.
+	trialExpiryNextWake atomic.Pointer[time.Time]
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -1171,14 +1184,16 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		hllTracker:            hllTracker,
 		hllCollector:          hllCollector,
 
-		docs:        docsHandler,
-		security:    securityHandler,
-		templates:   tmpl,
-		dashboardUI: cfg.DashboardUI,
-		stopChan:    make(chan struct{}),
-		log:         slog,
-		slackFeed:   logging.NewSlackFeed(slog, cfg.Env),
-		billing:     cfg.Billing,
+		docs:               docsHandler,
+		security:           securityHandler,
+		templates:          tmpl,
+		dashboardUI:        cfg.DashboardUI,
+		stopChan:           make(chan struct{}),
+		trialExpiryWake:    make(chan struct{}, 1),
+		trialExpiryLimiter: rate.NewLimiter(rate.Limit(1.0/defaultTrialExpiryRateLimit.Seconds()), 1),
+		log:                slog,
+		slackFeed:          logging.NewSlackFeed(slog, cfg.Env),
+		billing:            cfg.Billing,
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
 			Max:            20,              // 20 requests max
@@ -3048,6 +3063,9 @@ func (s *Server) start() error {
 
 	// Start background GitHub token renewal
 	go s.startGitHubTokenRenewal(ctx)
+
+	// Start background trial expiry enforcer — stops VMs when trials expire.
+	go s.startTrialExpiryEnforcer(ctx)
 
 	// Start drip campaign email loop
 	if s.dripRunner != nil {

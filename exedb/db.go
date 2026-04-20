@@ -27,6 +27,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.activateAccountStmt, err = db.PrepareContext(ctx, activateAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query ActivateAccount: %w", err)
 	}
+	if q.activeTrialUsersStmt, err = db.PrepareContext(ctx, activeTrialUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query ActiveTrialUsers: %w", err)
+	}
 	if q.addInviteCodeToPoolStmt, err = db.PrepareContext(ctx, addInviteCodeToPool); err != nil {
 		return nil, fmt.Errorf("error preparing query AddInviteCodeToPool: %w", err)
 	}
@@ -173,6 +176,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.debitUserLLMCreditStmt, err = db.PrepareContext(ctx, debitUserLLMCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query DebitUserLLMCredit: %w", err)
+	}
+	if q.debugSetTrialExpiresAtStmt, err = db.PrepareContext(ctx, debugSetTrialExpiresAt); err != nil {
+		return nil, fmt.Errorf("error preparing query DebugSetTrialExpiresAt: %w", err)
 	}
 	if q.deleteAccountsByUserIDStmt, err = db.PrepareContext(ctx, deleteAccountsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAccountsByUserID: %w", err)
@@ -684,6 +690,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTemplateRatingStatsStmt, err = db.PrepareContext(ctx, getTemplateRatingStats); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTemplateRatingStats: %w", err)
 	}
+	if q.getTrialExpiryEnforcerEnabledStmt, err = db.PrepareContext(ctx, getTrialExpiryEnforcerEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTrialExpiryEnforcerEnabled: %w", err)
+	}
+	if q.getTrialExpiryRateLimitStmt, err = db.PrepareContext(ctx, getTrialExpiryRateLimit); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTrialExpiryRateLimit: %w", err)
+	}
 	if q.getUnexpiredPendingRegistrationByEmailStmt, err = db.PrepareContext(ctx, getUnexpiredPendingRegistrationByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUnexpiredPendingRegistrationByEmail: %w", err)
 	}
@@ -1086,6 +1098,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.markPendingTeamInviteAcceptedStmt, err = db.PrepareContext(ctx, markPendingTeamInviteAccepted); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkPendingTeamInviteAccepted: %w", err)
 	}
+	if q.nextExpiredTrialUserStmt, err = db.PrepareContext(ctx, nextExpiredTrialUser); err != nil {
+		return nil, fmt.Errorf("error preparing query NextExpiredTrialUser: %w", err)
+	}
+	if q.nextTrialExpiryStmt, err = db.PrepareContext(ctx, nextTrialExpiry); err != nil {
+		return nil, fmt.Errorf("error preparing query NextTrialExpiry: %w", err)
+	}
 	if q.recordBoxLLMUsageStmt, err = db.PrepareContext(ctx, recordBoxLLMUsage); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordBoxLLMUsage: %w", err)
 	}
@@ -1142,6 +1160,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setTrialExpiresAtStmt, err = db.PrepareContext(ctx, setTrialExpiresAt); err != nil {
 		return nil, fmt.Errorf("error preparing query SetTrialExpiresAt: %w", err)
+	}
+	if q.setTrialExpiryEnforcerEnabledStmt, err = db.PrepareContext(ctx, setTrialExpiryEnforcerEnabled); err != nil {
+		return nil, fmt.Errorf("error preparing query SetTrialExpiryEnforcerEnabled: %w", err)
+	}
+	if q.setTrialExpiryRateLimitStmt, err = db.PrepareContext(ctx, setTrialExpiryRateLimit); err != nil {
+		return nil, fmt.Errorf("error preparing query SetTrialExpiryRateLimit: %w", err)
 	}
 	if q.setUserAuthProviderStmt, err = db.PrepareContext(ctx, setUserAuthProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query SetUserAuthProvider: %w", err)
@@ -1337,6 +1361,11 @@ func (q *Queries) Close() error {
 	if q.activateAccountStmt != nil {
 		if cerr := q.activateAccountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing activateAccountStmt: %w", cerr)
+		}
+	}
+	if q.activeTrialUsersStmt != nil {
+		if cerr := q.activeTrialUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing activeTrialUsersStmt: %w", cerr)
 		}
 	}
 	if q.addInviteCodeToPoolStmt != nil {
@@ -1582,6 +1611,11 @@ func (q *Queries) Close() error {
 	if q.debitUserLLMCreditStmt != nil {
 		if cerr := q.debitUserLLMCreditStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing debitUserLLMCreditStmt: %w", cerr)
+		}
+	}
+	if q.debugSetTrialExpiresAtStmt != nil {
+		if cerr := q.debugSetTrialExpiresAtStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing debugSetTrialExpiresAtStmt: %w", cerr)
 		}
 	}
 	if q.deleteAccountsByUserIDStmt != nil {
@@ -2434,6 +2468,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTemplateRatingStatsStmt: %w", cerr)
 		}
 	}
+	if q.getTrialExpiryEnforcerEnabledStmt != nil {
+		if cerr := q.getTrialExpiryEnforcerEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTrialExpiryEnforcerEnabledStmt: %w", cerr)
+		}
+	}
+	if q.getTrialExpiryRateLimitStmt != nil {
+		if cerr := q.getTrialExpiryRateLimitStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTrialExpiryRateLimitStmt: %w", cerr)
+		}
+	}
 	if q.getUnexpiredPendingRegistrationByEmailStmt != nil {
 		if cerr := q.getUnexpiredPendingRegistrationByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUnexpiredPendingRegistrationByEmailStmt: %w", cerr)
@@ -3104,6 +3148,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing markPendingTeamInviteAcceptedStmt: %w", cerr)
 		}
 	}
+	if q.nextExpiredTrialUserStmt != nil {
+		if cerr := q.nextExpiredTrialUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing nextExpiredTrialUserStmt: %w", cerr)
+		}
+	}
+	if q.nextTrialExpiryStmt != nil {
+		if cerr := q.nextTrialExpiryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing nextTrialExpiryStmt: %w", cerr)
+		}
+	}
 	if q.recordBoxLLMUsageStmt != nil {
 		if cerr := q.recordBoxLLMUsageStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing recordBoxLLMUsageStmt: %w", cerr)
@@ -3197,6 +3251,16 @@ func (q *Queries) Close() error {
 	if q.setTrialExpiresAtStmt != nil {
 		if cerr := q.setTrialExpiresAtStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setTrialExpiresAtStmt: %w", cerr)
+		}
+	}
+	if q.setTrialExpiryEnforcerEnabledStmt != nil {
+		if cerr := q.setTrialExpiryEnforcerEnabledStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setTrialExpiryEnforcerEnabledStmt: %w", cerr)
+		}
+	}
+	if q.setTrialExpiryRateLimitStmt != nil {
+		if cerr := q.setTrialExpiryRateLimitStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setTrialExpiryRateLimitStmt: %w", cerr)
 		}
 	}
 	if q.setUserAuthProviderStmt != nil {
@@ -3549,6 +3613,7 @@ type Queries struct {
 	db                                         DBTX
 	tx                                         *sql.Tx
 	activateAccountStmt                        *sql.Stmt
+	activeTrialUsersStmt                       *sql.Stmt
 	addInviteCodeToPoolStmt                    *sql.Stmt
 	addShellHistoryStmt                        *sql.Stmt
 	allocateInviteCodeStmt                     *sql.Stmt
@@ -3598,6 +3663,7 @@ type Queries struct {
 	createPendingBoxShareStmt                  *sql.Stmt
 	createUserLLMCreditWithInitialStmt         *sql.Stmt
 	debitUserLLMCreditStmt                     *sql.Stmt
+	debugSetTrialExpiresAtStmt                 *sql.Stmt
 	deleteAccountsByUserIDStmt                 *sql.Stmt
 	deleteAllGitHubInstallationsStmt           *sql.Stmt
 	deleteAllGitHubUserTokensStmt              *sql.Stmt
@@ -3768,6 +3834,8 @@ type Queries struct {
 	getTeamShardCollisionsStmt                 *sql.Stmt
 	getTemplateBySlugAnyStmt                   *sql.Stmt
 	getTemplateRatingStatsStmt                 *sql.Stmt
+	getTrialExpiryEnforcerEnabledStmt          *sql.Stmt
+	getTrialExpiryRateLimitStmt                *sql.Stmt
 	getUnexpiredPendingRegistrationByEmailStmt *sql.Stmt
 	getUserAuthProviderStmt                    *sql.Stmt
 	getUserBillingStmt                         *sql.Stmt
@@ -3902,6 +3970,8 @@ type Queries struct {
 	listUserRegionMigrationsByBatchStmt        *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
+	nextExpiredTrialUserStmt                   *sql.Stmt
+	nextTrialExpiryStmt                        *sql.Stmt
 	recordBoxLLMUsageStmt                      *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
 	setAccountParentIDStmt                     *sql.Stmt
@@ -3921,6 +3991,8 @@ type Queries struct {
 	setStripelessTrialEnabledStmt              *sql.Stmt
 	setTeamAuthProviderStmt                    *sql.Stmt
 	setTrialExpiresAtStmt                      *sql.Stmt
+	setTrialExpiryEnforcerEnabledStmt          *sql.Stmt
+	setTrialExpiryRateLimitStmt                *sql.Stmt
 	setUserAuthProviderStmt                    *sql.Stmt
 	setUserCgroupOverridesStmt                 *sql.Stmt
 	setUserDiscordStmt                         *sql.Stmt
@@ -3990,6 +4062,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                                         tx,
 		tx:                                         tx,
 		activateAccountStmt:                        q.activateAccountStmt,
+		activeTrialUsersStmt:                       q.activeTrialUsersStmt,
 		addInviteCodeToPoolStmt:                    q.addInviteCodeToPoolStmt,
 		addShellHistoryStmt:                        q.addShellHistoryStmt,
 		allocateInviteCodeStmt:                     q.allocateInviteCodeStmt,
@@ -4039,6 +4112,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createPendingBoxShareStmt:                  q.createPendingBoxShareStmt,
 		createUserLLMCreditWithInitialStmt:         q.createUserLLMCreditWithInitialStmt,
 		debitUserLLMCreditStmt:                     q.debitUserLLMCreditStmt,
+		debugSetTrialExpiresAtStmt:                 q.debugSetTrialExpiresAtStmt,
 		deleteAccountsByUserIDStmt:                 q.deleteAccountsByUserIDStmt,
 		deleteAllGitHubInstallationsStmt:           q.deleteAllGitHubInstallationsStmt,
 		deleteAllGitHubUserTokensStmt:              q.deleteAllGitHubUserTokensStmt,
@@ -4209,6 +4283,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTeamShardCollisionsStmt:                 q.getTeamShardCollisionsStmt,
 		getTemplateBySlugAnyStmt:                   q.getTemplateBySlugAnyStmt,
 		getTemplateRatingStatsStmt:                 q.getTemplateRatingStatsStmt,
+		getTrialExpiryEnforcerEnabledStmt:          q.getTrialExpiryEnforcerEnabledStmt,
+		getTrialExpiryRateLimitStmt:                q.getTrialExpiryRateLimitStmt,
 		getUnexpiredPendingRegistrationByEmailStmt: q.getUnexpiredPendingRegistrationByEmailStmt,
 		getUserAuthProviderStmt:                    q.getUserAuthProviderStmt,
 		getUserBillingStmt:                         q.getUserBillingStmt,
@@ -4343,6 +4419,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUserRegionMigrationsByBatchStmt:        q.listUserRegionMigrationsByBatchStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
+		nextExpiredTrialUserStmt:                   q.nextExpiredTrialUserStmt,
+		nextTrialExpiryStmt:                        q.nextTrialExpiryStmt,
 		recordBoxLLMUsageStmt:                      q.recordBoxLLMUsageStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
@@ -4362,6 +4440,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setStripelessTrialEnabledStmt:              q.setStripelessTrialEnabledStmt,
 		setTeamAuthProviderStmt:                    q.setTeamAuthProviderStmt,
 		setTrialExpiresAtStmt:                      q.setTrialExpiresAtStmt,
+		setTrialExpiryEnforcerEnabledStmt:          q.setTrialExpiryEnforcerEnabledStmt,
+		setTrialExpiryRateLimitStmt:                q.setTrialExpiryRateLimitStmt,
 		setUserAuthProviderStmt:                    q.setUserAuthProviderStmt,
 		setUserCgroupOverridesStmt:                 q.setUserCgroupOverridesStmt,
 		setUserDiscordStmt:                         q.setUserDiscordStmt,

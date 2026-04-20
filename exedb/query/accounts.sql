@@ -17,6 +17,13 @@ UPDATE account_plans
 SET trial_expires_at = ?2
 WHERE account_id = ?1 AND ended_at IS NULL AND changed_by = 'stripe:event';
 
+-- name: DebugSetTrialExpiresAt :exec
+-- DebugSetTrialExpiresAt updates trial_expires_at for any active plan.
+-- Used by the debug page to adjust trial expiry for testing.
+UPDATE account_plans
+SET trial_expires_at = ?2
+WHERE account_id = ?1 AND ended_at IS NULL;
+
 -- name: GetActiveAccountPlan :one
 SELECT account_id, plan_id, started_at, ended_at, trial_expires_at, changed_by, created_at
 FROM account_plans
@@ -401,3 +408,48 @@ SELECT EXISTS (
     SELECT 1 FROM account_plans
     WHERE account_id = ? AND (plan_id LIKE 'trial:%' OR trial_expires_at IS NOT NULL)
 ) AS had_trial;
+
+-- name: NextExpiredTrialUser :one
+-- NextExpiredTrialUser returns the user ID with the oldest expired trial.
+-- Candidates only -- the caller must verify entitlement via plan.ForUser
+-- before transitioning anything. Returns sql.ErrNoRows if there are none.
+SELECT a.created_by AS user_id
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at IS NOT NULL
+  AND ap.trial_expires_at <= datetime('now')
+ORDER BY ap.trial_expires_at ASC
+LIMIT 1;
+
+-- name: NextTrialExpiry :one
+-- NextTrialExpiry returns the earliest trial_expires_at for any active plan
+-- with a trial that has not yet expired. Covers both stripeless and Stripe
+-- trials. Returns sql.ErrNoRows if there are none.
+SELECT trial_expires_at
+FROM account_plans
+WHERE ended_at IS NULL
+  AND trial_expires_at > datetime('now')
+ORDER BY trial_expires_at ASC
+LIMIT 1;
+
+
+-- name: ActiveTrialUsers :many
+-- ActiveTrialUsers returns all users with an active plan that has a trial
+-- (trial_expires_at IS NOT NULL), their expiry time, email, and the count of
+-- running boxes they own. Covers both stripeless trials (plan_id LIKE 'trial:%')
+-- and Stripe trials. Used by the debug dashboard.
+SELECT
+    u.user_id,
+    u.email,
+    ap.plan_id,
+    ap.trial_expires_at,
+    ap.changed_by,
+    (SELECT COUNT(*) FROM boxes b
+     WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+JOIN users u ON u.user_id = a.created_by
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at IS NOT NULL
+ORDER BY ap.trial_expires_at ASC;

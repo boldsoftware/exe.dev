@@ -319,6 +319,16 @@ table.info th { width: 200px; }
 </form>
 {{end}}
 
+{{if .TrialExpiresAt}}
+<h3 style="margin-top:15px;">Set Trial Expiry</h3>
+<p style="font-size:13px;color:#666;">Current: <strong>{{.TrialExpiresAt}}</strong></p>
+<form method="post" action="/debug/users/set-trial-expiry" style="display: flex; gap: 8px; align-items: center;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<input type="datetime-local" name="trial_expiry" value="{{.TrialExpiresAtInput}}" required style="padding: 8px; font-family: inherit;">
+<button type="submit" style="padding: 8px 16px; background: #ffc107; color: #333; border: none; cursor: pointer;">Set Expiry</button>
+</form>
+{{end}}
+
 <h3 style="margin-top:15px;">Gift Credits</h3>
 <form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">
 <input type="hidden" name="user_id" value="{{.UserID}}">

@@ -512,3 +512,65 @@ func TestHadTrial(t *testing.T) {
 		t.Fatal("expected Stripe trial (individual plan with trial_expires_at) to be detected")
 	}
 }
+
+func TestNextExpiredTrialUser(t *testing.T) {
+	t.Parallel()
+
+	db, queries := setupAccountTestDB(t)
+	ctx := context.Background()
+
+	// Helper to insert a user + account + trial plan + box.
+	setup := func(t *testing.T, userID, accountID, planID string, trialExpiresAt *time.Time, boxStatus string) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, `INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, userID+"@example.com"); err != nil {
+			t.Fatalf("insert user: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by) VALUES (?, ?)`, accountID, userID); err != nil {
+			t.Fatalf("insert account: %v", err)
+		}
+		if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID:      accountID,
+			PlanID:         planID,
+			StartedAt:      time.Now().Add(-48 * time.Hour),
+			TrialExpiresAt: trialExpiresAt,
+			ChangedBy:      strPtr("system:stripeless_trial"),
+		}); err != nil {
+			t.Fatalf("InsertAccountPlan: %v", err)
+		}
+		if _, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost:         "ctr-01",
+			Name:            userID + "-box",
+			Status:          boxStatus,
+			Image:           "ubuntu",
+			CreatedByUserID: userID,
+			Region:          "us",
+		}); err != nil {
+			t.Fatalf("InsertBox: %v", err)
+		}
+	}
+
+	oldExpired := timePtr(time.Now().Add(-2 * time.Hour))
+	newExpired := timePtr(time.Now().Add(-1 * time.Hour))
+	active := timePtr(time.Now().Add(6 * 24 * time.Hour))
+
+	// Case 1: older expired trial + running box -> should be returned first.
+	setup(t, "usr_exp_run", "acct_exp_run", "trial:monthly:20260106", oldExpired, "running")
+
+	// Case 2: active trial + running box -> should NOT appear.
+	setup(t, "usr_act_run", "acct_act_run", "trial:monthly:20260106", active, "running")
+
+	// Case 3: newer expired trial + stopped box -> should appear second.
+	setup(t, "usr_exp_stop", "acct_exp_stop", "trial:monthly:20260106", newExpired, "stopped")
+
+	// Case 4: non-trial plan + running box -> should NOT appear.
+	setup(t, "usr_basic_run", "acct_basic_run", "basic:monthly:20260106", nil, "running")
+
+	// First call returns the oldest expired user.
+	userID, err := queries.NextExpiredTrialUser(ctx)
+	if err != nil {
+		t.Fatalf("NextExpiredTrialUser: %v", err)
+	}
+	if userID != "usr_exp_run" {
+		t.Fatalf("expected usr_exp_run (oldest expired), got %s", userID)
+	}
+}

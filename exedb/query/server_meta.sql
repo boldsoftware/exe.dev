@@ -63,3 +63,17 @@ SELECT value FROM server_meta WHERE key = 'last_bounces_poll';
 -- name: SetLastBouncesPoll :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('last_bounces_poll', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetTrialExpiryEnforcerEnabled :one
+SELECT value FROM server_meta WHERE key = 'trial_expiry_enforcer_enabled';
+
+-- name: SetTrialExpiryEnforcerEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('trial_expiry_enforcer_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetTrialExpiryRateLimit :one
+SELECT value FROM server_meta WHERE key = 'trial_expiry_rate_limit';
+
+-- name: SetTrialExpiryRateLimit :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('trial_expiry_rate_limit', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;

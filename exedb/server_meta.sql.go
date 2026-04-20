@@ -117,6 +117,28 @@ func (q *Queries) GetStripelessTrialEnabled(ctx context.Context) (string, error)
 	return value, err
 }
 
+const getTrialExpiryEnforcerEnabled = `-- name: GetTrialExpiryEnforcerEnabled :one
+SELECT value FROM server_meta WHERE key = 'trial_expiry_enforcer_enabled'
+`
+
+func (q *Queries) GetTrialExpiryEnforcerEnabled(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getTrialExpiryEnforcerEnabledStmt, getTrialExpiryEnforcerEnabled)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
+const getTrialExpiryRateLimit = `-- name: GetTrialExpiryRateLimit :one
+SELECT value FROM server_meta WHERE key = 'trial_expiry_rate_limit'
+`
+
+func (q *Queries) GetTrialExpiryRateLimit(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getTrialExpiryRateLimitStmt, getTrialExpiryRateLimit)
+	var value string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const setIPAbuseFilterDisabled = `-- name: SetIPAbuseFilterDisabled :exec
 INSERT INTO server_meta (key, value, updated_at) VALUES ('ip_abuse_filter_disabled', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
@@ -204,5 +226,25 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIME
 
 func (q *Queries) SetStripelessTrialEnabled(ctx context.Context, value string) error {
 	_, err := q.exec(ctx, q.setStripelessTrialEnabledStmt, setStripelessTrialEnabled, value)
+	return err
+}
+
+const setTrialExpiryEnforcerEnabled = `-- name: SetTrialExpiryEnforcerEnabled :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('trial_expiry_enforcer_enabled', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetTrialExpiryEnforcerEnabled(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setTrialExpiryEnforcerEnabledStmt, setTrialExpiryEnforcerEnabled, value)
+	return err
+}
+
+const setTrialExpiryRateLimit = `-- name: SetTrialExpiryRateLimit :exec
+INSERT INTO server_meta (key, value, updated_at) VALUES ('trial_expiry_rate_limit', ?, CURRENT_TIMESTAMP)
+ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`
+
+func (q *Queries) SetTrialExpiryRateLimit(ctx context.Context, value string) error {
+	_, err := q.exec(ctx, q.setTrialExpiryRateLimitStmt, setTrialExpiryRateLimit, value)
 	return err
 }

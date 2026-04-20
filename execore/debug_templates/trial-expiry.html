@@ -1,0 +1,112 @@
+<!doctype html>
+<html><head><title>Trial Expiry Enforcer</title>
+{{template "base-head"}}
+<style>
+.toggle-switch input:checked + .toggle-slider.green { background: #28a745; }
+table.trial-users { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.trial-users th, table.trial-users td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #ddd; }
+table.trial-users tr.expired { background: #fff3cd; }
+table.trial-users tr.will-enforce { background: #f8d7da; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.badge-danger { background: #dc3545; color: #fff; }
+.badge-warning { background: #ffc107; color: #333; }
+.badge-success { background: #28a745; color: #fff; }
+.badge-muted { background: #6c757d; color: #fff; }
+.stat-box { display: inline-block; padding: 8px 16px; margin-right: 12px; border-radius: 6px; background: #f8f9fa; border: 1px solid #dee2e6; }
+.stat-box .label { font-size: 12px; color: #6c757d; }
+.stat-box .value { font-size: 20px; font-weight: 600; }
+</style>
+</head><body>
+<h1>Trial Expiry Enforcer</h1>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/trial-expiry">trial-expiry</a></p>
+
+<div class="section">
+<h2>Settings</h2>
+<div class="info">
+<strong>Info:</strong> When enabled, the enforcer automatically stops VMs belonging to users whose trial
+plans have expired. It sleeps until the next trial expiry, then checks each expired user via the full
+plan resolution (so users who subscribed, joined a team, or have friend/VIP status are never affected).
+The rate limit controls how frequently VMs are stopped (e.g. one user every 10 minutes).
+</div>
+<form method="post" action="/debug/trial-expiry">
+<label class="toggle-switch">
+<input type="checkbox" name="enabled" value="true"{{if .Enabled}} checked{{end}}>
+<span class="toggle-slider green"></span>
+<span class="toggle-label">Enable trial expiry enforcer</span>
+</label>
+<p style="margin-top: 10px;">
+<label>Rate limit (Go duration, e.g. 10m, 1h, 30s):
+<input type="text" name="rate_limit" value="{{.RateLimit}}" style="width: 120px;" placeholder="10m">
+</label>
+</p>
+<p style="margin-top: 10px;">
+<button type="submit" class="save-btn">Save</button>
+</p>
+</form>
+</div>
+
+<div class="section">
+<h2>Status</h2>
+<div style="margin-bottom: 12px;">
+<div class="stat-box">
+<div class="label">Active trials</div>
+<div class="value">{{len .TrialUsers}}</div>
+</div>
+<div class="stat-box">
+<div class="label">Expired with running VMs</div>
+<div class="value">{{.ExpiredWithBoxes}}</div>
+</div>
+<div class="stat-box">
+<div class="label">Next expiry</div>
+<div class="value">{{if .NextExpiry}}{{.NextExpiry.Format "Jan 2 15:04 UTC"}}{{else}}&mdash;{{end}}</div>
+</div>
+<div class="stat-box">
+<div class="label">Next wake</div>
+<div class="value">{{if .NextWake}}{{.NextWake}}{{else}}&mdash;{{end}}</div>
+</div>
+</div>
+<form method="post" action="/debug/trial-expiry/wake" style="margin-top: 8px;">
+<button type="submit" class="save-btn" style="font-size: 13px; padding: 6px 14px;">Wake enforcer</button>
+</form>
+</div>
+
+<div class="section">
+<h2>Trial Users</h2>
+{{if .TrialUsers}}
+<table class="trial-users">
+<thead>
+<tr>
+<th>User</th>
+<th>Email</th>
+<th>Plan</th>
+<th>Source</th>
+<th>Expiry</th>
+<th>Running VMs</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+{{range .TrialUsers}}
+<tr{{if .WillEnforce}} class="will-enforce"{{else if .Expired}} class="expired"{{end}}>
+<td><a href="/debug/user?userId={{.UserID}}">{{.UserID}}</a></td>
+<td>{{.Email}}</td>
+<td>{{.PlanID}}</td>
+<td>{{if .Source}}{{.Source}}{{else}}&mdash;{{end}}</td>
+<td>{{.TimeLeft}}</td>
+<td>{{.RunningBoxCount}}</td>
+<td>
+{{if .WillEnforce}}<span class="badge badge-danger">will stop VMs</span>
+{{else if .Expired}}<span class="badge badge-warning">expired</span>
+{{else}}<span class="badge badge-success">active</span>
+{{end}}
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No active trial users.</p>
+{{end}}
+</div>
+
+</body></html>

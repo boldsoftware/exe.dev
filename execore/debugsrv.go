@@ -98,6 +98,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
 	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
+	mux.HandleFunc("POST /debug/users/set-trial-expiry", s.handleDebugSetTrialExpiry)
 	mux.HandleFunc("POST /debug/user/assign-enterprise", s.handleDebugAssignEnterprise)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
@@ -124,6 +125,9 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/signup-pow", s.handleDebugSignupPOWPost)
 	mux.HandleFunc("POST /debug/ip-abuse-filter", s.handleDebugIPAbuseFilterPost)
 	mux.HandleFunc("POST /debug/stripeless-trial", s.handleDebugStripelessTrialPost)
+	mux.HandleFunc("GET /debug/trial-expiry", s.handleDebugTrialExpiry)
+	mux.HandleFunc("POST /debug/trial-expiry", s.handleDebugTrialExpiryPost)
+	mux.HandleFunc("POST /debug/trial-expiry/wake", s.handleDebugTrialExpiryWake)
 	mux.HandleFunc("/debug/signup-reject", s.handleDebugSignupReject)
 	mux.HandleFunc("POST /debug/signup-reject", s.handleDebugSignupRejectPost)
 	mux.HandleFunc("/debug/ipshards", s.handleDebugIPShards)
@@ -2571,6 +2575,56 @@ func (s *Server) handleDebugGrantTrial(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 
+// handleDebugSetTrialExpiry adjusts the trial_expires_at for a user's active plan.
+func (s *Server) handleDebugSetTrialExpiry(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	expiryStr := r.FormValue("trial_expiry")
+	if expiryStr == "" {
+		http.Error(w, "trial_expiry is required", http.StatusBadRequest)
+		return
+	}
+
+	expiry, err := time.Parse("2006-01-02T15:04", expiryStr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid trial_expiry: %v", err), http.StatusBadRequest)
+		return
+	}
+	expiry = expiry.UTC()
+
+	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("no account found for user: %v", err), http.StatusNotFound)
+		return
+	}
+
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.DebugSetTrialExpiresAt(ctx, exedb.DebugSetTrialExpiresAtParams{
+			AccountID:      acct.ID,
+			TrialExpiresAt: &expiry,
+		})
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to update trial expiry: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "trial expiry updated via debug page",
+		"user_id", userID,
+		"trial_expires_at", expiry.Format(time.RFC3339),
+	)
+
+	// Wake the enforcer so it picks up the change.
+	s.wakeTrialExpiryEnforcer()
+
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
 // handleDebugAssignEnterprise assigns enterprise billing to a user's account.
 // POST /debug/user/assign-enterprise
 // Required: user_id (or email)
@@ -4577,6 +4631,154 @@ func (s *Server) handleDebugStripelessTrialPost(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, "/debug/signup-controls", http.StatusSeeOther)
 }
 
+// handleDebugTrialExpiry displays the trial expiry enforcer dashboard.
+func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	enabled, _ := s.isTrialExpiryEnforcerEnabled(ctx)
+	rateLimit := s.trialExpiryRateLimit(ctx)
+
+	trialUsers, err := withRxRes0(s, ctx, (*exedb.Queries).ActiveTrialUsers)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to list trial users: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	now := time.Now()
+	type trialUserRow struct {
+		UserID          string
+		Email           string
+		PlanID          string
+		Source          string
+		RunningBoxCount int64
+		Expired         bool
+		TimeLeft        string
+		WillEnforce     bool
+	}
+	rows := make([]trialUserRow, len(trialUsers))
+	expiredWithBoxes := 0
+	for i, u := range trialUsers {
+		row := trialUserRow{
+			UserID:          u.UserID,
+			Email:           u.Email,
+			PlanID:          u.PlanID,
+			RunningBoxCount: u.RunningBoxCount,
+		}
+		if u.ChangedBy != nil {
+			row.Source = *u.ChangedBy
+		}
+		if u.TrialExpiresAt != nil {
+			if now.After(*u.TrialExpiresAt) {
+				row.Expired = true
+				row.TimeLeft = "expired " + shortDuration(now.Sub(*u.TrialExpiresAt)) + " ago"
+				if u.RunningBoxCount > 0 {
+					row.WillEnforce = true
+					expiredWithBoxes++
+				}
+			} else {
+				row.TimeLeft = shortDuration(u.TrialExpiresAt.Sub(now)) + " left"
+			}
+		}
+		rows[i] = row
+	}
+
+	nextExpiry := s.nextTrialExpiry(ctx)
+
+	var nextWake string
+	if t := s.trialExpiryNextWake.Load(); t != nil {
+		nextWake = shortDuration(time.Until(*t)) + " from now"
+	}
+
+	data := struct {
+		Enabled          bool
+		RateLimit        string
+		TrialUsers       []trialUserRow
+		ExpiredWithBoxes int
+		NextExpiry       *time.Time
+		NextWake         string
+	}{
+		Enabled:          enabled,
+		RateLimit:        rateLimit.String(),
+		TrialUsers:       rows,
+		ExpiredWithBoxes: expiredWithBoxes,
+		NextExpiry:       nextExpiry,
+		NextWake:         nextWake,
+	}
+
+	s.renderDebugTemplate(ctx, w, "trial-expiry.html", data)
+}
+
+// handleDebugTrialExpiryPost saves trial expiry enforcer settings.
+func (s *Server) handleDebugTrialExpiryPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	enabled := r.FormValue("enabled") == "true"
+	enabledStr := "false"
+	if enabled {
+		enabledStr = "true"
+	}
+
+	// Validate all inputs before writing anything.
+	rateLimitStr := r.FormValue("rate_limit")
+	if rateLimitStr != "" {
+		if _, err := time.ParseDuration(rateLimitStr); err != nil {
+			http.Error(w, "rate_limit must be a valid Go duration (e.g. 10m, 1h)", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.SetTrialExpiryEnforcerEnabled(ctx, enabledStr); err != nil {
+			return err
+		}
+		if rateLimitStr != "" {
+			return q.SetTrialExpiryRateLimit(ctx, rateLimitStr)
+		}
+		return nil
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save settings: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "trial expiry enforcer settings updated via debug page",
+		"enabled", enabled,
+		"rate_limit", r.FormValue("rate_limit"),
+	)
+
+	// Wake the enforcer so it picks up the new settings immediately.
+	s.wakeTrialExpiryEnforcer()
+
+	http.Redirect(w, r, "/debug/trial-expiry", http.StatusSeeOther)
+}
+
+func (s *Server) handleDebugTrialExpiryWake(w http.ResponseWriter, r *http.Request) {
+	s.wakeTrialExpiryEnforcer()
+	http.Redirect(w, r, "/debug/trial-expiry", http.StatusSeeOther)
+}
+
+func shortDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		m := int(d.Minutes()) % 60
+		if m > 0 {
+			return fmt.Sprintf("%dh%dm", h, m)
+		}
+		return fmt.Sprintf("%dh", h)
+	}
+	days := int(d.Hours()) / 24
+	h := int(d.Hours()) % 24
+	if h > 0 {
+		return fmt.Sprintf("%dd%dh", days, h)
+	}
+	return fmt.Sprintf("%dd", days)
+}
+
 // handleDebugSignupReject displays the signup rejections and bypass list.
 func (s *Server) handleDebugSignupReject(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -5449,15 +5651,17 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Name   string
 			Region string
 		}
-		CanGrantTrial      bool
-		AllowDeleteUser    bool
-		DeleteBlockReasons []string
-		CgroupOverrides    string
-		CreatedAtShort     string
-		TeamID             string
-		TeamName           string
-		TeamRole           string
-		DripSends          []dripSendInfo
+		CanGrantTrial       bool
+		TrialExpiresAt      string // RFC3339, empty if no trial
+		TrialExpiresAtInput string // datetime-local format for HTML input
+		AllowDeleteUser     bool
+		DeleteBlockReasons  []string
+		CgroupOverrides     string
+		CreatedAtShort      string
+		TeamID              string
+		TeamName            string
+		TeamRole            string
+		DripSends           []dripSendInfo
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5490,6 +5694,18 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.PlanCategory = string(cat)
 		data.PlanName = plan.Name(cat)
 		data.CanGrantTrial = cat == plan.CategoryBasic || cat == plan.CategoryRestricted
+	}
+
+	// Populate trial expiry for the user's active plan.
+	if ap, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (exedb.AccountPlan, error) {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return exedb.AccountPlan{}, err
+		}
+		return q.GetActiveAccountPlan(ctx, acct.ID)
+	}); err == nil && ap.TrialExpiresAt != nil {
+		data.TrialExpiresAt = ap.TrialExpiresAt.UTC().Format(time.RFC3339)
+		data.TrialExpiresAtInput = ap.TrialExpiresAt.UTC().Format("2006-01-02T15:04")
 	}
 
 	if r, err := region.ByCode(user.Region); err == nil {
