@@ -50,6 +50,7 @@ import (
 	"exe.dev/domz"
 	"exe.dev/drip"
 	"exe.dev/email"
+	"exe.dev/exechsync"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/exens"
@@ -3173,6 +3174,14 @@ func (s *Server) start() error {
 	}
 
 	s.updateExeletUsageHeartbeat(ctx)
+
+	// Start background ClickHouse sync (users/teams/VMs for log enrichment)
+	go exechsync.Start(ctx, exechsync.Config{
+		DSN:      os.Getenv("CLICKHOUSE_PROD_DSN"),
+		DB:       s.db,
+		Logger:   s.slog(),
+		Registry: s.metricsRegistry,
+	})
 
 	// Start background GitHub token renewal
 	go s.startGitHubTokenRenewal(ctx)

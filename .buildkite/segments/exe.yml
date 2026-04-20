@@ -74,5 +74,11 @@
     - "test-gantt-unit-*.html"
     - "coverage-unit-*.txt"
 
+- label: ":clickhouse: clickhouse integration test"
+  key: clickhouse
+  depends_on: build-e1e
+  command: .buildkite/steps/test-clickhouse.sh
+  timeout_in_minutes: 10
+
 # e1e shard steps and exelets step are generated dynamically
 # by generate-pipeline.py based on E1E_SHARDS / E1E_VM_CONCURRENCY env vars.

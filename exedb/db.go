@@ -360,6 +360,24 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.drawInviteCodeFromPoolStmt, err = db.PrepareContext(ctx, drawInviteCodeFromPool); err != nil {
 		return nil, fmt.Errorf("error preparing query DrawInviteCodeFromPool: %w", err)
 	}
+	if q.extractAccountPlansForClickHouseStmt, err = db.PrepareContext(ctx, extractAccountPlansForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractAccountPlansForClickHouse: %w", err)
+	}
+	if q.extractAccountsForClickHouseStmt, err = db.PrepareContext(ctx, extractAccountsForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractAccountsForClickHouse: %w", err)
+	}
+	if q.extractBoxesForClickHouseStmt, err = db.PrepareContext(ctx, extractBoxesForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractBoxesForClickHouse: %w", err)
+	}
+	if q.extractTeamMembersForClickHouseStmt, err = db.PrepareContext(ctx, extractTeamMembersForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractTeamMembersForClickHouse: %w", err)
+	}
+	if q.extractTeamsForClickHouseStmt, err = db.PrepareContext(ctx, extractTeamsForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractTeamsForClickHouse: %w", err)
+	}
+	if q.extractUsersForClickHouseStmt, err = db.PrepareContext(ctx, extractUsersForClickHouse); err != nil {
+		return nil, fmt.Errorf("error preparing query ExtractUsersForClickHouse: %w", err)
+	}
 	if q.getAccountStmt, err = db.PrepareContext(ctx, getAccount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAccount: %w", err)
 	}
@@ -1970,6 +1988,36 @@ func (q *Queries) Close() error {
 	if q.drawInviteCodeFromPoolStmt != nil {
 		if cerr := q.drawInviteCodeFromPoolStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing drawInviteCodeFromPoolStmt: %w", cerr)
+		}
+	}
+	if q.extractAccountPlansForClickHouseStmt != nil {
+		if cerr := q.extractAccountPlansForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractAccountPlansForClickHouseStmt: %w", cerr)
+		}
+	}
+	if q.extractAccountsForClickHouseStmt != nil {
+		if cerr := q.extractAccountsForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractAccountsForClickHouseStmt: %w", cerr)
+		}
+	}
+	if q.extractBoxesForClickHouseStmt != nil {
+		if cerr := q.extractBoxesForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractBoxesForClickHouseStmt: %w", cerr)
+		}
+	}
+	if q.extractTeamMembersForClickHouseStmt != nil {
+		if cerr := q.extractTeamMembersForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractTeamMembersForClickHouseStmt: %w", cerr)
+		}
+	}
+	if q.extractTeamsForClickHouseStmt != nil {
+		if cerr := q.extractTeamsForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractTeamsForClickHouseStmt: %w", cerr)
+		}
+	}
+	if q.extractUsersForClickHouseStmt != nil {
+		if cerr := q.extractUsersForClickHouseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing extractUsersForClickHouseStmt: %w", cerr)
 		}
 	}
 	if q.getAccountStmt != nil {
@@ -3868,6 +3916,12 @@ type Queries struct {
 	deleteUserDefaultNewSetupScriptStmt        *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
+	extractAccountPlansForClickHouseStmt       *sql.Stmt
+	extractAccountsForClickHouseStmt           *sql.Stmt
+	extractBoxesForClickHouseStmt              *sql.Stmt
+	extractTeamMembersForClickHouseStmt        *sql.Stmt
+	extractTeamsForClickHouseStmt              *sql.Stmt
+	extractUsersForClickHouseStmt              *sql.Stmt
 	getAccountStmt                             *sql.Stmt
 	getAccountByUserIDStmt                     *sql.Stmt
 	getAccountWithBillingStatusStmt            *sql.Stmt
@@ -4335,6 +4389,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteUserDefaultNewSetupScriptStmt:        q.deleteUserDefaultNewSetupScriptStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
+		extractAccountPlansForClickHouseStmt:       q.extractAccountPlansForClickHouseStmt,
+		extractAccountsForClickHouseStmt:           q.extractAccountsForClickHouseStmt,
+		extractBoxesForClickHouseStmt:              q.extractBoxesForClickHouseStmt,
+		extractTeamMembersForClickHouseStmt:        q.extractTeamMembersForClickHouseStmt,
+		extractTeamsForClickHouseStmt:              q.extractTeamsForClickHouseStmt,
+		extractUsersForClickHouseStmt:              q.extractUsersForClickHouseStmt,
 		getAccountStmt:                             q.getAccountStmt,
 		getAccountByUserIDStmt:                     q.getAccountByUserIDStmt,
 		getAccountWithBillingStatusStmt:            q.getAccountWithBillingStatusStmt,
