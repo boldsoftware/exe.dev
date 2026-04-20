@@ -70,6 +70,7 @@ def main():
 
     _annotate_results(json_results, shard)
     _generate_gantt(json_results, shard)
+    _stash_for_psimon(json_results)
 
     # Only check golden files if tests passed — if they failed, we deleted
     # the files before the run and they were never regenerated.
@@ -316,6 +317,13 @@ def _collect_coverage(shard):
     dest = f"coverage-e1e{suffix}.txt"
     run(["cp", cover_file, dest])
     print(f"Coverage profile saved as {dest}", flush=True)
+
+
+def _stash_for_psimon(json_results):
+    """Copy gotestsum JSON into the shared dir the final psimon step reads from."""
+    if not os.path.isfile(json_results):
+        return
+    subprocess.run([".buildkite/steps/stash-test-results.sh", json_results], check=False)
 
 
 def _has_cmd(name):

@@ -72,6 +72,7 @@ def main():
     test_result = subprocess.run(cmd, env=env)
 
     _generate_gantt(json_results)
+    subprocess.run([".buildkite/steps/stash-test-results.sh", json_results], check=False)
 
     # Check cassette changes only if tests passed.
     if test_result.returncode == 0:

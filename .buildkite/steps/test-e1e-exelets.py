@@ -57,6 +57,7 @@ def main():
 
     _annotate_results(json_results)
     _generate_gantt(json_results)
+    subprocess.run([".buildkite/steps/stash-test-results.sh", json_results], check=False)
     _collect_coverage()
 
     sys.exit(test_result.returncode)

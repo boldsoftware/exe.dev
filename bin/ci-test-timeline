@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Build a combined timeline of all Go tests across every CI test step.
+
+Reads every gotestsum --jsonfile we can find (unit-results-*.json,
+e1e-results-*.json, etc.) and produces a single Vega-Lite Gantt chart
+plotting each top-level test on an *absolute* UTC timeline so the chart
+visually aligns with the psimon pressure traces.
+
+Usage:
+    bin/ci-test-timeline OUT.html TITLE JSON [JSON ...]
+
+Produces a self-contained HTML fragment that starts with <section>...</section>
+so it can also be concatenated into another HTML page (e.g. psimon-pressure.html).
+"""
+import json
+import os
+import sys
+from datetime import datetime
+
+
+def parse_file(path):
+    """Parse one gotestsum JSON file into a list of {test, pkg, start, end, status, shard}.
+    Timestamps are Unix seconds.
+    """
+    shard = os.path.basename(path).replace(".json", "")
+    starts = {}
+    results = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                action = ev.get("Action", "")
+                test = ev.get("Test", "")
+                pkg = ev.get("Package", "").replace("exe.dev/", "")
+                ts_str = ev.get("Time", "")
+                elapsed = ev.get("Elapsed", 0.0)
+                if not test or not ts_str:
+                    continue
+                if "/" in test:  # skip subtests
+                    continue
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                key = (pkg, test)
+                if action == "run":
+                    starts[key] = ts
+                elif action in ("pass", "fail", "skip"):
+                    start = starts.get(key, ts - elapsed)
+                    results.append({
+                        "test": test,
+                        "pkg": pkg,
+                        "shard": shard,
+                        "start": start,
+                        "end": start + elapsed,
+                        "elapsed": round(elapsed, 2),
+                        "status": action,
+                    })
+    except OSError as e:
+        print(f"warning: {path}: {e}", file=sys.stderr)
+    return results
+
+
+def pack_lanes(records):
+    """Greedy row-packing within each shard, stacked globally.
+
+    Per shard (typically one per parallel CI step), assign each test the
+    lowest-indexed lane whose last-placed bar ended before this test started.
+    Shards are concatenated vertically in order of earliest start, so each
+    parallel step becomes a horizontal band.
+
+    Returns (records_with_lane, total_lanes, shard_order) where every record
+    gains an absolute "lane" int and shard_order is the list of shard names
+    in display order (top to bottom).
+    """
+    by_shard = {}
+    for r in records:
+        by_shard.setdefault(r["shard"], []).append(r)
+    # Sort shards by their earliest test start so the visual order roughly
+    # matches the CI pipeline progression.
+    shard_order = sorted(by_shard, key=lambda s: min(r["start"] for r in by_shard[s]))
+
+    total = 0
+    for shard in shard_order:
+        items = sorted(by_shard[shard], key=lambda r: (r["start"], r["end"]))
+        lane_ends = []  # last end time placed in each lane (within this shard)
+        for r in items:
+            placed = False
+            for i, end in enumerate(lane_ends):
+                if end <= r["start"]:
+                    r["lane"] = total + i
+                    lane_ends[i] = r["end"]
+                    placed = True
+                    break
+            if not placed:
+                r["lane"] = total + len(lane_ends)
+                lane_ends.append(r["end"])
+        # Reserve one extra blank lane between shards as a visual separator.
+        total += len(lane_ends) + 1
+    return total, shard_order
+
+
+def build_html(records, title):
+    """Produce an HTML fragment with a Vega-Lite chart for `records`.
+    Assumes vega/vega-lite/vega-embed <script> tags already present on the
+    host page.
+    """
+    if not records:
+        return ""
+    records.sort(key=lambda r: r["start"])
+    total_lanes, shard_order = pack_lanes(records)
+    # Express absolute times in milliseconds for JS Date compatibility.
+    values = [
+        {
+            "test": f"{r['pkg']}.{r['test']}",
+            "pkg": r["pkg"],
+            "shard": r["shard"],
+            "lane": r["lane"],
+            "t0": int(r["start"] * 1000),
+            "t1": int(r["end"] * 1000),
+            "elapsed": r["elapsed"],
+            "status": r["status"],
+        }
+        for r in records
+    ]
+    n = len(values)
+    # Pixel budget per lane. Pack tight; cap total height.
+    lane_h = 10
+    height = max(180, min(total_lanes * lane_h, 20000))
+    n_shards = len({v["shard"] for v in values})
+    n_fail = sum(1 for v in values if v["status"] == "fail")
+    n_skip = sum(1 for v in values if v["status"] == "skip")
+    # Summary line.
+    t_min = min(v["t0"] for v in values) / 1000
+    t_max = max(v["t1"] for v in values) / 1000
+    wall = t_max - t_min
+    sum_elapsed = sum(v["elapsed"] for v in values)
+    stats = (
+        f"{n} tests across {n_shards} test steps · wall {wall:.0f}s · "
+        f"sum {sum_elapsed:.0f}s · {n_fail} failed · {n_skip} skipped"
+    )
+    values_json = json.dumps(values)
+    return f"""<section class="test-timeline" style="max-width: 1100px; margin: 24px auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#222;">
+  <h2 style="font-size:1.1em; font-weight:600; margin:24px 0 8px 0; color:#333;">{title}</h2>
+  <div class="stats" style="font-size:12px; color:#666; margin-bottom:8px;">{stats}</div>
+  <div id="test-timeline-chart" style="background:white;"></div>
+  <script>
+(function() {{
+  const values = {values_json};
+  const spec = {{
+    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+    config: {{
+      background: 'white',
+      axis: {{
+        domainColor: '#ccc', gridColor: '#eee', tickColor: '#ccc',
+        labelColor: '#666', titleColor: '#444',
+        titleFontSize: 11, labelFontSize: 10,
+      }},
+      legend: {{ labelColor: '#444' }},
+      view: {{ stroke: null }},
+    }},
+    width: 900,
+    height: {height},
+    data: {{ values: values }},
+    mark: {{ type: 'bar', cornerRadius: 2 }},
+    encoding: {{
+      x: {{ field: 't0', type: 'temporal', title: null, axis: {{ format: '%H:%M:%S', grid: true }} }},
+      x2: {{ field: 't1' }},
+      y: {{
+        field: 'lane', type: 'ordinal',
+        axis: {{ labels: false, ticks: false, grid: false, title: null, domain: false }},
+        scale: {{ paddingInner: 0.15, paddingOuter: 0.05 }},
+      }},
+      color: {{
+        field: 'shard', type: 'nominal', title: 'test step',
+        legend: {{ orient: 'right', columns: 1, labelLimit: 260, labelFontSize: 10 }},
+      }},
+      opacity: {{
+        condition: [
+          {{ test: "datum.status === 'fail'", value: 1.0 }},
+          {{ test: "datum.status === 'skip'", value: 0.35 }},
+        ],
+        value: 0.85,
+      }},
+      stroke: {{
+        condition: {{ test: "datum.status === 'fail'", value: '#c00' }},
+        value: null,
+      }},
+      strokeWidth: {{
+        condition: {{ test: "datum.status === 'fail'", value: 1.5 }},
+        value: 0,
+      }},
+      tooltip: [
+        {{ field: 'test', title: 'test' }},
+        {{ field: 'shard', title: 'test step' }},
+        {{ field: 'pkg', title: 'package' }},
+        {{ field: 'elapsed', title: 'elapsed (s)', format: '.2f' }},
+        {{ field: 'status', title: 'status' }},
+        {{ field: 't0', type: 'temporal', title: 'start', format: '%H:%M:%S' }},
+      ],
+    }},
+  }};
+  vegaEmbed('#test-timeline-chart', spec, {{ actions: false }});
+}})();
+  </script>
+</section>
+"""
+
+
+def main():
+    if len(sys.argv) < 4:
+        print(f"Usage: {sys.argv[0]} OUT.html TITLE JSON [JSON ...]", file=sys.stderr)
+        sys.exit(1)
+    out_path = sys.argv[1]
+    title = sys.argv[2]
+    inputs = sys.argv[3:]
+
+    all_records = []
+    for p in inputs:
+        all_records.extend(parse_file(p))
+
+    if not all_records:
+        print("no test results found in inputs", file=sys.stderr)
+        sys.exit(0)
+
+    fragment = build_html(all_records, title)
+    with open(out_path, "w") as f:
+        f.write(fragment)
+    print(f"Wrote {out_path} ({len(all_records)} tests from {len(inputs)} files)", flush=True)
+
+
+if __name__ == "__main__":
+    main()

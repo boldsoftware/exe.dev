@@ -214,6 +214,7 @@ type ProcSample struct {
 type Process struct {
 	Key       ProcKey           `json:"key"`
 	PID       int               `json:"pid"`
+	PPID      int               `json:"ppid,omitempty"`
 	StartUnix int64             `json:"start"` // unix time of first observation
 	LastUnix  int64             `json:"end"`   // unix time of last observation
 	Comm      string            `json:"comm"`
@@ -259,18 +260,18 @@ func readBootTime() (int64, error) {
 }
 
 // parseProcStat parses fields we care about from /proc/<pid>/stat.
-// Returns comm, utime+stime (ticks), starttime (ticks).
-func parseProcStat(pid int) (comm string, cpuTicks, startTicks uint64, err error) {
+// Returns comm, parent pid, utime+stime (ticks), starttime (ticks).
+func parseProcStat(pid int) (comm string, ppid int, cpuTicks, startTicks uint64, err error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, 0, err
 	}
 	// comm can contain spaces and parens; find last ')' to split reliably.
 	s := string(data)
 	lp := strings.IndexByte(s, '(')
 	rp := strings.LastIndexByte(s, ')')
 	if lp < 0 || rp < 0 || rp < lp {
-		return "", 0, 0, fmt.Errorf("bad stat: %q", s)
+		return "", 0, 0, 0, fmt.Errorf("bad stat: %q", s)
 	}
 	comm = s[lp+1 : rp]
 	rest := strings.Fields(s[rp+1:])
@@ -279,21 +280,25 @@ func parseProcStat(pid int) (comm string, cpuTicks, startTicks uint64, err error
 	// stime = field 15 -> rest index 12
 	// starttime = field 22 -> rest index 19
 	if len(rest) < 20 {
-		return "", 0, 0, fmt.Errorf("stat fields: %d", len(rest))
+		return "", 0, 0, 0, fmt.Errorf("stat fields: %d", len(rest))
+	}
+	ppid64, err := strconv.ParseInt(rest[1], 10, 64)
+	if err != nil {
+		return "", 0, 0, 0, err
 	}
 	utime, err := strconv.ParseUint(rest[11], 10, 64)
 	if err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, 0, err
 	}
 	stime, err := strconv.ParseUint(rest[12], 10, 64)
 	if err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, 0, err
 	}
 	start, err := strconv.ParseUint(rest[19], 10, 64)
 	if err != nil {
-		return "", 0, 0, err
+		return "", 0, 0, 0, err
 	}
-	return comm, utime + stime, start, nil
+	return comm, int(ppid64), utime + stime, start, nil
 }
 
 func readCmdline(pid int) string {
@@ -378,7 +383,7 @@ func (ps *ProcStore) scan(now int64, tickDelta uint64) {
 	defer ps.mu.Unlock()
 
 	for _, pid := range pids {
-		comm, cpuTicks, startTicks, err := parseProcStat(pid)
+		comm, ppid, cpuTicks, startTicks, err := parseProcStat(pid)
 		if err != nil {
 			continue
 		}
@@ -389,6 +394,7 @@ func (ps *ProcStore) scan(now int64, tickDelta uint64) {
 			p = &Process{
 				Key:       key,
 				PID:       pid,
+				PPID:      ppid,
 				StartUnix: ps.bootUnix + int64(startTicks)/clkTck,
 				Comm:      comm,
 				Cmdline:   readCmdline(pid),
@@ -419,6 +425,33 @@ func (ps *ProcStore) scan(now int64, tickDelta uint64) {
 		}
 	}
 
+	// Inherit BUILDKITE_* env vars from ancestors. Some processes (e.g.
+	// headless-shell launched by Playwright/Chromium) clear or scrub env
+	// before exec, losing the markers we use to group by pipeline step.
+	// Walk the ppid chain until we find a process with Buildkite set.
+	byPID := make(map[int]*Process, len(ps.active))
+	for _, p := range ps.active {
+		byPID[p.PID] = p
+	}
+	for _, p := range ps.active {
+		if p.Buildkite != nil {
+			continue
+		}
+		// Cap the walk to avoid cycles if /proc races produce stale ppids.
+		cur := p.PPID
+		for depth := 0; depth < 32 && cur > 1; depth++ {
+			anc, ok := byPID[cur]
+			if !ok {
+				break
+			}
+			if anc.Buildkite != nil {
+				p.Buildkite = anc.Buildkite
+				break
+			}
+			cur = anc.PPID
+		}
+	}
+
 	// Reap gone processes.
 	for key, p := range ps.active {
 		if seen[key] {
@@ -443,10 +476,19 @@ func (ps *ProcStore) scan(now int64, tickDelta uint64) {
 }
 
 // Range returns processes that overlap [start,end], including still-active ones.
+//
+// Filters out "background noise": processes that started more than 30s before
+// the query window AND whose peak CPU in-window was below 2%. These are things
+// like long-running systemd daemons, agents, etc. that predate the build and
+// would otherwise dominate the uncategorized section of the visualization.
 func (ps *ProcStore) Range(start, end int64) []*Process {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	var out []*Process
+	const (
+		noisePeakCPUThreshold = 2.0 // percent of one core
+		noiseStartGap         = 30  // seconds before window start
+	)
 	add := func(p *Process) {
 		if len(p.Samples) < 2 {
 			return
@@ -456,14 +498,21 @@ func (ps *ProcStore) Range(start, end int64) []*Process {
 		if last < start || first > end {
 			return
 		}
-		// Clip samples to window.
+		// Clip samples to window and compute peak CPU in-window.
 		var clipped []ProcSample
+		var peak float64
 		for _, s := range p.Samples {
 			if s.Timestamp >= start && s.Timestamp <= end {
 				clipped = append(clipped, s)
+				if s.CPUPercent > peak {
+					peak = s.CPUPercent
+				}
 			}
 		}
 		if len(clipped) < 2 {
+			return
+		}
+		if p.StartUnix < start-noiseStartGap && peak < noisePeakCPUThreshold {
 			return
 		}
 		copy := *p

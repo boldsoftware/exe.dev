@@ -74,4 +74,5 @@ RACE_FLAG="-race"
 go tool gotestsum --format testname --jsonfile "$JSON_OUT" -- ${RACE_FLAG} -count=1 ${COVER_FLAGS:+$COVER_FLAGS} ${RUN_FILTER:+$RUN_FILTER} $PKGS
 TEST_EXIT=$?
 python3 bin/ci-test-gantt "$JSON_OUT" "test-gantt-unit-${UNIT_TEST_SHARD:-all}.html" "unit tests (shard ${UNIT_TEST_SHARD:-all})" 2>/dev/null || true
+.buildkite/steps/stash-test-results.sh "$JSON_OUT" 2>/dev/null || true
 exit $TEST_EXIT
