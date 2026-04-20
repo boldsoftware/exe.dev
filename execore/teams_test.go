@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"exe.dev/exedb"
@@ -283,5 +284,112 @@ func TestParseTeamID(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("parseTeamID(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestAllocateIPShardReusesShardForTeamsOverLimit(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Test env has NumShards=25. Create a team with max_boxes=30.
+	userID := createTestUser(t, server, "overflow@shard-reuse.example")
+	teamID := "tm_shardreuse"
+	limits := `{"max_boxes":30}`
+	err := withTx1(server, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
+		TeamID: teamID, DisplayName: "ShardReuse", Limits: &limits,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.addTeamMember(ctx, teamID, userID, "billing_owner"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill all 25 shards with unique VMs.
+	for i := 1; i <= server.env.NumShards; i++ {
+		name := fmt.Sprintf("shard-vm%d", i)
+		_, err := server.preCreateBox(ctx, preCreateBoxOptions{
+			userID:        userID,
+			ctrhost:       "tcp://fake:9080",
+			name:          name,
+			image:         "ubuntu:latest",
+			noShard:       false,
+			region:        "pdx",
+			allocatedCPUs: 1,
+		})
+		if err != nil {
+			t.Fatalf("failed to create box %d: %v", i, err)
+		}
+	}
+
+	// 26th box should succeed, reusing shard 1.
+	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "vm-overflow",
+		image:         "ubuntu:latest",
+		noShard:       false,
+		region:        "pdx",
+		allocatedCPUs: 1,
+	})
+	if err != nil {
+		t.Fatalf("expected overflow box to succeed, got: %v", err)
+	}
+	shard, err := withRxRes1(server, ctx, (*exedb.Queries).GetBoxIPShard, boxID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shard != 1 {
+		t.Errorf("overflow box shard = %d, want 1", shard)
+	}
+}
+
+func TestAllocateIPShardFailsForNonTeamUser(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	// Individual user with max_boxes > NumShards should still fail
+	// when all shards are exhausted (no reuse for non-team users).
+	userID := createTestUser(t, server, "solo@shard-fail.example")
+	userLimits := `{"max_boxes":30}`
+	err := withTx1(server, ctx, (*exedb.Queries).SetUserLimits, exedb.SetUserLimitsParams{
+		Limits: &userLimits,
+		UserID: userID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill all 25 shards.
+	for i := 1; i <= server.env.NumShards; i++ {
+		name := fmt.Sprintf("solovm%d", i)
+		_, err := server.preCreateBox(ctx, preCreateBoxOptions{
+			userID:        userID,
+			ctrhost:       "tcp://fake:9080",
+			name:          name,
+			image:         "ubuntu:latest",
+			noShard:       false,
+			region:        "pdx",
+			allocatedCPUs: 1,
+		})
+		if err != nil {
+			t.Fatalf("failed to create box %d: %v", i, err)
+		}
+	}
+
+	// 26th box should fail for a non-team user.
+	_, err = server.preCreateBox(ctx, preCreateBoxOptions{
+		userID:        userID,
+		ctrhost:       "tcp://fake:9080",
+		name:          "solo-vm-overflow",
+		image:         "ubuntu:latest",
+		noShard:       false,
+		region:        "pdx",
+		allocatedCPUs: 1,
+	})
+	if err == nil {
+		t.Fatal("expected error for non-team user exceeding shard count, got nil")
 	}
 }

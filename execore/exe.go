@@ -2366,7 +2366,16 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	}
 
 	if assigned == 0 {
-		return 0, errNoIPShardsAvailable
+		// All unique shards are exhausted. Teams whose max_boxes limit
+		// exceeds NumShards are allowed to reuse shard 1. The HTTP proxy
+		// routes by Host header and SSH works via vm+name@, so sharing
+		// an IP is fine — only shard-based SSH routing becomes ambiguous
+		// for the overflow VMs.
+		if inTeam && maxBoxes > s.env.NumShards {
+			assigned = 1
+		} else {
+			return 0, errNoIPShardsAvailable
+		}
 	}
 
 	if err := queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{

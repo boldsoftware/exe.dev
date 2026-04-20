@@ -253,9 +253,10 @@ func (s *Server) resolveTeamShardCollisions(ctx context.Context, teamID, newUser
 				}
 			}
 			if newShard == 0 {
-				slog.WarnContext(ctx, "no free shard for collision resolution",
+				// All unique shards exhausted; reuse shard 1.
+				newShard = 1
+				slog.WarnContext(ctx, "all shards exhausted, reusing shard 1 for collision resolution",
 					"box_id", c.BoxID, "old_shard", c.IPShard, "team_id", teamID)
-				continue
 			}
 
 			if err := queries.UpdateBoxIPShard(ctx, exedb.UpdateBoxIPShardParams{
