@@ -3,18 +3,90 @@ package execore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 )
 
-// handleVMEmailSend handles POST /_/gateway/email/send from the metadata proxy
+// handleVMEmailSend handles POST /_/gateway/email/send from the metadata proxy.
+//
+// Note: if you make any changes here, look at
+// exeweb.(*ProxyServer).HandleVMEmailSend.
 func (s *Server) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
-	s.proxyServer().HandleVMEmailSend(w, r)
+	req, boxName, ok := exeweb.PrepareVMEmailSend(&s.env, w, r)
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+
+	// Look up box and owner email.
+	box, err := withRxRes1(s, ctx, (*exedb.Queries).BoxNamed, boxName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			exeweb.WriteVMEmailError(w, "box not found", http.StatusNotFound)
+			return
+		}
+		s.slog().ErrorContext(ctx, "failed to look up box", "error", err, "box", boxName)
+		exeweb.WriteVMEmailError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	userEmail, err := withRxRes1(s, ctx, (*exedb.Queries).GetEmailByUserID, box.CreatedByUserID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to look up user", "error", err, "userID", box.CreatedByUserID, "box", boxName)
+		exeweb.WriteVMEmailError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Security: only allow sending to the VM owner
+	if !strings.EqualFold(req.To, userEmail) {
+		exeweb.WriteVMEmailError(w, "can only send email to VM owner", http.StatusForbidden)
+		return
+	}
+
+	// Check and apply rate limiting.
+	// We debit before sending intentionally: there's no way to be perfect,
+	// and we'd rather fail closed (lose a credit on send failure) than allow
+	// unlimited retries on a problematic email.
+	err = s.checkAndDebitVMEmailCredit(ctx, int64(box.ID))
+	if errors.Is(err, exeweb.ErrVMEmailRateLimited) {
+		exeweb.WriteVMEmailError(w, "rate limit exceeded; emails refill at 10/day", http.StatusTooManyRequests)
+		return
+	}
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to check email credit", "error", err, "box", boxName)
+		exeweb.WriteVMEmailError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the email
+	if err := s.sendEmail(ctx, sendEmailParams{
+		emailType: email.TypeSendFromInsideVM,
+		to:        userEmail,
+		subject:   req.Subject,
+		body:      req.Body,
+		fromName:  s.env.BoxSub(boxName),
+		replyTo:   "",
+		attrs:     []slog.Attr{slog.String("user_id", box.CreatedByUserID)},
+	}); err != nil {
+		s.slog().ErrorContext(ctx, "failed to send VM email", "error", err, "box", boxName, "to", userEmail)
+		exeweb.WriteVMEmailError(w, "failed to send email", http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "VM email sent", "box", boxName, "to", userEmail, "subject", req.Subject)
+
+	// Success
+	json.NewEncoder(w).Encode(exeweb.VMEmailResponse{Success: true})
 }
 
 // checkAndDebitVMEmailCredit checks if the box has email credit available and debits 1 email.
