@@ -157,12 +157,16 @@ func RegisterSQLiteMetrics(reg *prometheus.Registry) {
 //
 // Instead, we choose a single connection to use for writing (because
 // SQLite is single-writer) and use the rest as readers.
+//
+// Writer and reader connections live in separate *sql.DBs: the writer
+// opens read-write, the reader opens with SQLITE_OPEN_READONLY (mode=ro).
 type DB struct {
-	db      *sql.DB
-	dbPath  string // filesystem path to the database file (empty if unknown)
-	writer  chan *sql.Conn
-	stopped chan *sql.Conn // holds the writer conn while writes are stopped
-	readers chan *sql.Conn
+	writerDB *sql.DB
+	readerDB *sql.DB
+	dbPath   string // filesystem path to the database file (empty if unknown)
+	writer   chan *sql.Conn
+	stopped  chan *sql.Conn // holds the writer conn while writes are stopped
+	readers  chan *sql.Conn
 
 	// Sniff streams SQL activity to a connected HTTP client.
 	Sniff Sniffer
@@ -185,55 +189,81 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	if dataSourceName == ":memory:" {
 		return nil, fmt.Errorf(":memory: is not supported (because multiple conns are needed); use a temp file")
 	}
-	// TODO: a caller could override PRAGMA query_only.
-	// Consider opening two *sql.DBs, one configured as read-only,
-	// to ensure read-only transactions are always such.
-	db, err := sql.Open("sqlite", WithTimeParams(dataSourceName))
+	if readerCount < 1 {
+		return nil, fmt.Errorf("sqlite.New: readerCount must be >= 1, got %d", readerCount)
+	}
+
+	// The "file:" prefix is load-bearing: modernc.org/sqlite only forwards the URI query string to sqlite3_open_v2 when the DSN starts with "file:".
+	baseDSN := dataSourceName
+	if !strings.HasPrefix(baseDSN, "file:") {
+		baseDSN = "file:" + baseDSN
+	}
+	baseDSN = WithTimeParams(baseDSN)
+
+	// Writer pool: single conn, read-write.
+	writerDB, err := sql.Open("sqlite", baseDSN)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite.New: %w", err)
+		return nil, fmt.Errorf("sqlite.New: open writer: %w", err)
 	}
-	numConns := readerCount + 1
-	if err := InitDB(db, numConns); err != nil {
-		return nil, fmt.Errorf("sqlite.New: %w", err)
-	}
+
+	var readerDB *sql.DB // initialized later
 
 	ctx, _useShutdownInstead := context.WithCancel(context.Background())
-
 	shutdown := func() error {
 		_useShutdownInstead()
-		return db.Close()
+		// Close readers before writer: readers hold refs into the shared -shm mapping that the writer owns.
+		var rerr error
+		if readerDB != nil {
+			rerr = readerDB.Close()
+		}
+		werr := writerDB.Close()
+		return errors.Join(rerr, werr)
 	}
 
-	var conns []*sql.Conn
-	for range numConns {
-		conn, err := db.Conn(ctx)
+	if err := InitDB(writerDB, 1); err != nil {
+		shutdown()
+		return nil, fmt.Errorf("sqlite.New: %w", err)
+	}
+
+	// Reader pool: mode=ro.
+	readerURI := baseDSN + "&mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)"
+	readerDB, err = sql.Open("sqlite", readerURI)
+	if err != nil {
+		shutdown()
+		return nil, fmt.Errorf("sqlite.New: open reader: %w", err)
+	}
+	setFixedPool(readerDB, readerCount)
+
+	writerConn, err := writerDB.Conn(ctx)
+	if err != nil {
+		shutdown()
+		return nil, fmt.Errorf("sqlite.New: acquire writer conn: %w", err)
+	}
+
+	readers := make(chan *sql.Conn, readerCount)
+	for range readerCount {
+		conn, err := readerDB.Conn(ctx)
 		if err != nil {
 			shutdown()
-			return nil, fmt.Errorf("sqlite.New: %w", err)
+			return nil, fmt.Errorf("sqlite.New: acquire reader conn: %w", err)
 		}
-		conns = append(conns, conn)
+		readers <- conn
 	}
 
 	p := &DB{
-		db:       db,
+		writerDB: writerDB,
+		readerDB: readerDB,
 		dbPath:   dbPathFromDSN(dataSourceName),
 		writer:   make(chan *sql.Conn, 1),
-		readers:  make(chan *sql.Conn, readerCount),
+		readers:  readers,
 		shutdown: shutdown,
 		stopped:  make(chan *sql.Conn, 1),
 	}
-	if err := p.Sniff.registerHook(conns[0]); err != nil {
+	if err := p.Sniff.registerHook(writerConn); err != nil {
 		shutdown()
 		return nil, fmt.Errorf("sqlite.New: register pre-update hook: %w", err)
 	}
-	p.writer <- conns[0]
-	for _, conn := range conns[1:] {
-		if _, err := conn.ExecContext(ctx, "PRAGMA query_only=1;"); err != nil {
-			shutdown()
-			return nil, fmt.Errorf("sqlite.New query_only: %w", err)
-		}
-		p.readers <- conn
-	}
+	p.writer <- writerConn
 
 	// Set initial metrics
 	p.UpdateMetrics()
@@ -255,12 +285,23 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	return p, nil
 }
 
-// InitDB fixes the database/sql pool to a set of fixed connections.
-func InitDB(db *sql.DB, numConns int) error {
+// setFixedPool configures db's connection pool as a fixed-size set of long-lived conns.
+// The limit is numConns max open and idle, no expiry.
+func setFixedPool(db *sql.DB, numConns int) {
 	db.SetMaxIdleConns(numConns)
 	db.SetMaxOpenConns(numConns)
 	db.SetConnMaxLifetime(-1)
 	db.SetConnMaxIdleTime(-1)
+}
+
+// InitDB configures db for single-writer SQLite use.
+// It pins the pool to numConns long-lived conns and sets journal_mode=wal and busy_timeout on each.
+//
+// Most callers should use New instead of InitDB.
+// InitDB is useful for opening a simple standalone read-write *sql.DB,
+// typically to run migrations before re-opening with New.
+func InitDB(db *sql.DB, numConns int) error {
+	setFixedPool(db, numConns)
 
 	initQueries := []string{
 		"PRAGMA journal_mode=wal;",
@@ -327,11 +368,12 @@ func dbPathFromDSN(dsn string) string {
 
 // UpdateMetrics updates Prometheus metrics with current connection pool status
 func (p *DB) UpdateMetrics() {
-	// Update SQL-level connection pool metrics
-	stats := p.db.Stats()
-	openConnectionsGauge.Set(float64(stats.OpenConnections))
-	inUseConnectionsGauge.Set(float64(stats.InUse))
-	idleConnectionsGauge.Set(float64(stats.Idle))
+	// Update SQL-level connection pool metrics (sum across writer + readers)
+	ws := p.writerDB.Stats()
+	rs := p.readerDB.Stats()
+	openConnectionsGauge.Set(float64(ws.OpenConnections + rs.OpenConnections))
+	inUseConnectionsGauge.Set(float64(ws.InUse + rs.InUse))
+	idleConnectionsGauge.Set(float64(ws.Idle + rs.Idle))
 
 	// Update our custom channel-level metrics
 	availableWritersGauge.Set(float64(len(p.writer)))
