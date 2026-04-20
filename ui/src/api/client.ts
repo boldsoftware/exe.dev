@@ -19,7 +19,8 @@ export async function runCommand(command: string): Promise<CmdResult> {
     body: JSON.stringify({ command }),
   })
   if (resp.status === 401 || resp.status === 403) {
-    window.location.href = '/login'
+    isAuthenticated.value = false
+    window.location.href = '/auth'
     throw new Error('Session expired')
   }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -260,7 +261,6 @@ async function fetchJSON<T>(url: string): Promise<T> {
   const resp = await fetch(url)
   if (resp.status === 401 || resp.status === 403) {
     isAuthenticated.value = false
-    window.location.href = '/login'
     throw new Error('Session expired')
   }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)

@@ -801,7 +801,7 @@ async function submitPrompt() {
   if (!text) return
 
   if (promptVM.value === '__new__') {
-    window.location.href = '/new?prompt=' + encodeURIComponent(text)
+    router.push({ name: 'new-vm', query: { prompt: text } })
     return
   }
 
