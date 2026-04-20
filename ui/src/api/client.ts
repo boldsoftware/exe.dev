@@ -467,7 +467,8 @@ export async function fetchDocsEntry(slug: string): Promise<DocsEntryData> {
 
 export interface VMComputeUsagePoint {
   timestamp: string
-  cpu_percent: number
+  cpu_cores: number
+  cpu_nominal: number
   memory_bytes: number
   disk_used_bytes: number
   disk_capacity_bytes: number

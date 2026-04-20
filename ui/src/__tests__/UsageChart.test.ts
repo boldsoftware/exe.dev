@@ -14,7 +14,8 @@ const ChartStub = {
 const sampleComputeUsageData: client.VMComputeUsagePoint[] = [
   {
     timestamp: '2024-01-01T00:00:00Z',
-    cpu_percent: 0,
+    cpu_cores: 0,
+    cpu_nominal: 2,
     memory_bytes: 1073741824,
     disk_used_bytes: 5368709120,
     disk_capacity_bytes: 10737418240,
@@ -23,7 +24,8 @@ const sampleComputeUsageData: client.VMComputeUsagePoint[] = [
   },
   {
     timestamp: '2024-01-01T01:00:00Z',
-    cpu_percent: 2.78,
+    cpu_cores: 0.35,
+    cpu_nominal: 2,
     memory_bytes: 1200000000,
     disk_used_bytes: 5500000000,
     disk_capacity_bytes: 10737418240,
@@ -32,7 +34,8 @@ const sampleComputeUsageData: client.VMComputeUsagePoint[] = [
   },
   {
     timestamp: '2024-01-01T02:00:00Z',
-    cpu_percent: 5.5,
+    cpu_cores: 0.72,
+    cpu_nominal: 2,
     memory_bytes: 1300000000,
     disk_used_bytes: 5600000000,
     disk_capacity_bytes: 10737418240,
@@ -132,17 +135,20 @@ describe('UsageChart', () => {
     expect(wrapper.find('.chart-stub').attributes('data-type')).toBe('line')
   })
 
-  it('passes CPU data as single dataset without fill', async () => {
+  it('passes CPU data as cores with provisioned line', async () => {
     vi.spyOn(client, 'fetchVMComputeUsage').mockResolvedValue(sampleComputeUsageData)
     const wrapper = mountChart()
     await flushPromises()
 
     const chartComp = wrapper.findComponent(ChartStub)
     const data = chartComp.props('data')
-    expect(data.datasets).toHaveLength(1)
-    expect(data.datasets[0].label).toBe('CPU')
-    expect(data.datasets[0].fill).toBe(false)
-    expect(data.datasets[0].data).toEqual([0, 2.78, 5.5])
+    expect(data.datasets).toHaveLength(2)
+    expect(data.datasets[0].label).toBe('Used')
+    expect(data.datasets[0].fill).toBe(true)
+    expect(data.datasets[0].data).toEqual([0, 0.35, 0.72])
+    expect(data.datasets[1].label).toBe('Provisioned')
+    expect(data.datasets[1].borderDash).toEqual([5, 5])
+    expect(data.datasets[1].data).toEqual([2, 2, 2])
   })
 
   it('passes Network data as two datasets (rx/tx) without fill', async () => {

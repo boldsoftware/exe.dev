@@ -14,7 +14,8 @@ import (
 // Rates are pre-computed from cumulative counters.
 type computeUsagePoint struct {
 	Timestamp         time.Time `json:"timestamp"`
-	CPUPercent        float64   `json:"cpu_percent"`
+	CPUCores          float64   `json:"cpu_cores"`   // cores used (cpu-seconds / wall-seconds)
+	CPUNominal        float64   `json:"cpu_nominal"` // total provisioned cores
 	MemoryBytes       int64     `json:"memory_bytes"`
 	DiskUsedBytes     int64     `json:"disk_used_bytes"`
 	DiskCapacityBytes int64     `json:"disk_capacity_bytes"`
@@ -80,6 +81,7 @@ func (s *Server) handleAPIVMComputeUsage(w http.ResponseWriter, r *http.Request,
 	for i, m := range raw {
 		p := computeUsagePoint{
 			Timestamp:         m.Timestamp,
+			CPUNominal:        m.CPUNominal,
 			MemoryBytes:       m.MemoryRSSBytes,
 			DiskUsedBytes:     m.DiskLogicalUsedBytes,
 			DiskCapacityBytes: m.DiskSizeBytes,
@@ -88,7 +90,13 @@ func (s *Server) handleAPIVMComputeUsage(w http.ResponseWriter, r *http.Request,
 			prev := raw[i-1]
 			dt := m.Timestamp.Sub(prev.Timestamp).Seconds()
 			if dt > 0 {
-				p.CPUPercent = (m.CPUUsedCumulativeSecs - prev.CPUUsedCumulativeSecs) / dt * 100
+				cpuDelta := m.CPUUsedCumulativeSecs - prev.CPUUsedCumulativeSecs
+				if cpuDelta >= 0 {
+					p.CPUCores = cpuDelta / dt
+					if p.CPUCores > m.CPUNominal {
+						p.CPUCores = m.CPUNominal
+					}
+				}
 				p.NetRxBytesPerSec = float64(m.NetworkRXBytes-prev.NetworkRXBytes) / dt
 				p.NetTxBytesPerSec = float64(m.NetworkTXBytes-prev.NetworkTXBytes) / dt
 			}

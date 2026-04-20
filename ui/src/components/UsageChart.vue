@@ -142,22 +142,40 @@ const chartJsData = computed<ChartData<'line'>>(() => {
   if (!data.length) return { labels: [], datasets: [] }
 
   switch (selectedMetric.value) {
-    case 'CPU':
+    case 'CPU': {
+      const nominal = data.length > 0 ? data[data.length - 1].cpu_nominal : 0
       return {
         labels: labels.value,
         datasets: [
           {
-            label: 'CPU',
-            data: data.map((p) => p.cpu_percent),
+            label: 'Used',
+            data: data.map((p) => p.cpu_cores),
             borderColor: '#22c55e',
+            backgroundColor: 'rgba(34, 197, 94, 0.15)',
             borderWidth: 2,
-            fill: false,
+            fill: true,
             tension: 0.3,
             pointRadius: 0,
             pointHoverRadius: 4,
           },
+          ...(nominal > 0
+            ? [
+                {
+                  label: 'Provisioned',
+                  data: data.map(() => nominal),
+                  borderColor: '#888',
+                  borderWidth: 1,
+                  borderDash: [5, 5] as number[],
+                  fill: false,
+                  tension: 0,
+                  pointRadius: 0,
+                  pointHoverRadius: 0,
+                },
+              ]
+            : []),
         ],
       }
+    }
     case 'Disk':
       return {
         labels: labels.value,
@@ -224,7 +242,7 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     const v = typeof value === 'string' ? parseFloat(value) : value
     switch (metric) {
       case 'CPU':
-        return `${v.toFixed(0)}%`
+        return v.toFixed(1)
       case 'Disk':
         return formatBytes(v)
       case 'Network':
@@ -236,7 +254,7 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     const v = ctx.parsed.y ?? 0
     switch (metric) {
       case 'CPU':
-        return `${ctx.dataset.label}: ${v.toFixed(1)}%`
+        return `${ctx.dataset.label}: ${v.toFixed(2)} cores`
       case 'Disk':
         return `${ctx.dataset.label}: ${formatBytes(v)}`
       case 'Network':
@@ -270,7 +288,7 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
     },
     plugins: {
       legend: {
-        display: metric === 'Disk' || metric === 'Network',
+        display: true,
         position: 'bottom',
         labels: {
           usePointStyle: true,
@@ -309,7 +327,11 @@ const chartJsOptions = computed<ChartOptions<'line'>>(() => {
       },
       y: {
         beginAtZero: true,
-        max: metric === 'CPU' ? 100 : undefined,
+        title: {
+          display: metric === 'CPU',
+          text: 'cores',
+          font: { size: 11 },
+        },
         ticks: {
           callback: yTickCallback,
           maxTicksLimit: 6,

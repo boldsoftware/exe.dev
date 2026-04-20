@@ -517,7 +517,7 @@ describe('VMDetail', () => {
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
 
-  // --- Provisioned bar + Live Metrics ---
+  // --- Provisioned bar ---
 
   it('shows provisioned bar with vCPUs, memory, and disk for running VMs', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
@@ -566,37 +566,56 @@ describe('VMDetail', () => {
     expect(items[1].find('.prov-value').text()).toBe('8 GB')
   })
 
-  it('shows live metrics CPU and network cards for running VMs', async () => {
+  it('only shows provisioned fields that have data (skips zeros)', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
       status: 'running',
-      cpu_percent: 42.5,
-      mem_bytes: 1073741824,
+      cpu_percent: 0,
+      mem_bytes: 0,
       swap_bytes: 0,
-      disk_bytes: 3221225472,
-      disk_logical_bytes: 5368709120,
-      disk_capacity_bytes: 10737418240,
-      mem_capacity_bytes: 2147483648,
-      cpus: 2,
-      net_rx_bytes: 1048576,
-      net_tx_bytes: 524288,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 25 * 1024 * 1024 * 1024,
+      mem_capacity_bytes: 0,
+      cpus: 0,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
     })
     const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('Live Metrics')
-    expect(wrapper.text()).toContain('42.5%')
-    const cards = wrapper.findAll('.metric-card')
-    expect(cards).toHaveLength(3)
-    const labels = cards.map(c => c.find('.mt').text())
-    expect(labels).toEqual(['CPU', 'Net ↓', 'Net ↑'])
+    const bar = wrapper.find('.provisioned-bar')
+    expect(bar.exists()).toBe(true)
+    const items = bar.findAll('.prov-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].find('.prov-label').text()).toBe('Disk')
+    expect(items[0].find('.prov-value').text()).toBe('25 GB')
   })
 
-  it('does not show live metrics or provisioned bar for stopped VMs', async () => {
+  it('hides provisioned bar entirely when no data available', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 0,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 0,
+      cpus: 0,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.provisioned-bar').exists()).toBe(false)
+  })
+
+  it('does not show provisioned bar for stopped VMs', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({
       boxes: [makeBox({ status: 'stopped' })],
     }))
     const wrapper = await mountVMDetail()
-    expect(wrapper.text()).not.toContain('Live Metrics')
     expect(wrapper.find('.provisioned-bar').exists()).toBe(false)
   })
 
