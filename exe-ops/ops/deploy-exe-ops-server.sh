@@ -1,17 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <target-host>"
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $0 <target-host> <environment> [addr]"
+    echo "  <environment>  Tailscale tag to filter peers (e.g. 'staging', 'prod')."
+    echo "                 Written to a systemd drop-in as EXE_OPS_TAG=<environment>."
+    echo "  [addr]         Listen address. Default ':443' for Tailscale automatic HTTPS."
+    echo "                 Pass ':5555' (or similar) for a non-privileged port."
     exit 1
 fi
 
 TARGET="$1"
+ENVIRONMENT="$2"
+ADDR="${3:-:443}"
+
+case "$ENVIRONMENT" in
+*[!a-zA-Z0-9_:-]* | "")
+    echo "ERROR: invalid environment '$ENVIRONMENT' (allowed: alphanumerics, '_', '-', ':')"
+    exit 1
+    ;;
+esac
+
+case "$ADDR" in
+*[!a-zA-Z0-9_.:-]* | "")
+    echo "ERROR: invalid addr '$ADDR'"
+    exit 1
+    ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BINARY="exe-ops-server"
 REMOTE_BIN_DIR="/opt/exe-ops/bin"
 SERVICE_FILE="exe-ops-server.service"
+DROPIN_DIR="/etc/systemd/system/${SERVICE_FILE}.d"
+DROPIN_FILE="environment.conf"
 
 cd "$PROJECT_DIR"
 VERSION="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
@@ -56,6 +79,16 @@ ssh "$TARGET" "test -f /etc/default/exe-ops-server" || {
     scp "$SCRIPT_DIR/exe-ops-server.env" "$TARGET:/tmp/exe-ops-server.env"
     ssh "$TARGET" "sudo mv /tmp/exe-ops-server.env /etc/default/exe-ops-server"
 }
+
+# Install/refresh the environment drop-in that pins the Tailscale tag filter,
+# listen address, and TLS mode (Tailscale automatic HTTPS via tscert).
+echo "Writing systemd drop-in: EXE_OPS_TAG=$ENVIRONMENT EXE_OPS_ADDR=$ADDR EXE_OPS_TLS=true"
+ssh "$TARGET" "sudo mkdir -p $DROPIN_DIR && sudo tee $DROPIN_DIR/$DROPIN_FILE >/dev/null" <<EOF
+[Service]
+Environment=EXE_OPS_TAG=$ENVIRONMENT
+Environment=EXE_OPS_ADDR=$ADDR
+Environment=EXE_OPS_TLS=true
+EOF
 
 echo "Reloading systemd and restarting service..."
 ssh "$TARGET" "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE_FILE && sudo systemctl restart $SERVICE_FILE"

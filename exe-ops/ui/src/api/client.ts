@@ -2,6 +2,7 @@ export interface ServerVersion {
   version: string
   commit: string
   date: string
+  environment?: string
 }
 
 export async function fetchServerVersion(): Promise<ServerVersion> {

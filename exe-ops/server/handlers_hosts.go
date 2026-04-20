@@ -124,9 +124,19 @@ func (h *Handlers) HandleHosts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Filter by configured Tailscale tag (e.g. "staging"/"prod"). The
+	// Prometheus `stage` label values match the stripped tags.
+	stageFilter := make(map[string]bool, len(h.inventory.TagFilter()))
+	for _, t := range h.inventory.TagFilter() {
+		stageFilter[t] = true
+	}
+
 	// Convert to slice.
 	out := make([]HostMetrics, 0, len(hosts))
 	for _, hm := range hosts {
+		if len(stageFilter) > 0 && !stageFilter[hm.Stage] {
+			continue
+		}
 		out = append(out, *hm)
 	}
 

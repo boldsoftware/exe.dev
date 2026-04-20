@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/inventory"
@@ -26,11 +27,15 @@ func NewHandlers(log *slog.Logger, inv *inventory.Inventory, deployer *deploy.Ma
 
 // HandleServerVersion handles GET /api/v1/version.
 func (h *Handlers) HandleServerVersion(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]string{
+	resp := map[string]any{
 		"version": version.Version,
 		"commit":  version.Commit,
 		"date":    version.Date,
-	})
+	}
+	if tags := h.inventory.TagFilter(); len(tags) > 0 {
+		resp["environment"] = strings.Join(tags, ",")
+	}
+	writeJSON(w, resp)
 }
 
 // HandleHealth handles GET /health.

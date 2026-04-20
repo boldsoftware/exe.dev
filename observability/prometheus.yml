@@ -253,6 +253,6 @@ scrape_configs:
   - job_name: 'exe-ops'
     scheme: http
     static_configs:
-      - targets: ["exe-ops:9100"]
+      - targets: ["exe-ops:9100", "exe-ops-staging:9100"]
     metrics_path: '/metrics'
 

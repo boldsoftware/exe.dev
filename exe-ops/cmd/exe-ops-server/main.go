@@ -58,6 +58,11 @@ func main() {
 				Usage:   "Slack bot token for deploy notifications (posts to #ship/#boat)",
 				EnvVars: []string{"EXE_SLACK_BOT_TOKEN"},
 			},
+			&cli.StringSliceFlag{
+				Name:    "tag",
+				Usage:   "only include Tailscale peers carrying one of these tags (repeatable; e.g. --tag=staging). If unset, all peers are included.",
+				EnvVars: []string{"EXE_OPS_TAG"},
+			},
 		},
 		Action: func(c *cli.Context) error {
 			useTLS := c.Bool("tls")
@@ -77,7 +82,7 @@ func main() {
 			// Initialize git repo and inventory services.
 			gitRepoDir := c.String("git-repo-dir")
 			gitRepo := inventory.NewGitRepo(log, gitRepoDir, c.String("git-repo-url"))
-			inv := inventory.New(log, gitRepo)
+			inv := inventory.New(log, gitRepo, c.StringSlice("tag"))
 
 			// Initialize deploy manager (shares the bare git clone with inventory).
 			deployer := deploy.NewManager(ctx, log, gitRepoDir, "deploy-cache")

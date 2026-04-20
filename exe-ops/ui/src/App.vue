@@ -3,11 +3,11 @@
     <aside class="layout-sidebar" :class="{ collapsed: sidebarCollapsed, open: sidebarOpen }">
       <div class="sidebar-header">
         <button v-if="!sidebarCollapsed" class="sidebar-logo logo-collapse" @click="sidebarCollapsed = true" title="Collapse sidebar">
-          <img src="/exy.png" alt="" class="logo-icon" />
-          <span class="logo-text">exe-ops</span>
+          <img src="/exe.png" alt="" class="logo-icon" />
+          <span class="logo-text">{{ titleText }}</span>
         </button>
         <button v-else class="sidebar-logo logo-expand" @click="sidebarCollapsed = false" title="Expand sidebar">
-          <img src="/exy.png" alt="exe-ops" class="logo-icon" />
+          <img src="/exe.png" alt="exe-ops" class="logo-icon" />
         </button>
         <button v-if="!sidebarCollapsed" class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed" title="Collapse sidebar">
           <i class="pi pi-angle-left"></i>
@@ -73,7 +73,7 @@
         <button class="mobile-menu-btn" @click="sidebarOpen = true" aria-label="Open navigation">
           <i class="pi pi-bars"></i>
         </button>
-        <span class="mobile-title"><img src="/exy.png" alt="" class="mobile-logo-icon" /> exe-ops</span>
+        <span class="mobile-title"><img src="/exe.png" alt="" class="mobile-logo-icon" /> {{ titleText }}</span>
       </header>
       <main class="layout-content">
         <router-view />
@@ -129,6 +129,13 @@ onMounted(() => {
 onUnmounted(() => {
   mediaQuery.removeEventListener('change', onSystemThemeChange)
 })
+
+const titleText = computed(() => {
+  const env = serverVersion.value?.environment
+  return env ? `exe-ops: ${env}` : 'exe-ops'
+})
+
+watch(titleText, (t) => { document.title = t }, { immediate: true })
 
 const effectiveTheme = computed(() => {
   if (themePreference.value === 'system') {
