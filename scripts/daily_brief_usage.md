@@ -53,8 +53,7 @@ optimized.save("optimized_daily_brief.json")
 
 The metric function scores candidate briefs (e.g. LLM-as-judge comparing against a gold brief, or heuristic checks for link format / length / coverage). Optimized prompts and parameters save to JSON and can be loaded back with `rlm.load()`.
 
-## "Deployment"
+## Deployment
 
-Currently runs on chicken.exe.xyz, in an unhelpfully ad hoc way.
-
-Probably will be eclipsed in the future and moved somewhere better.
+Runs on the `exe-news` VM as the `daily-brief.service` systemd unit. See
+`devdocs/vms.md` for the shared-VM inventory.
