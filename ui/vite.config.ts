@@ -3,6 +3,21 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 import { writeFileSync, mkdirSync } from 'fs'
+import { execSync } from 'child_process'
+
+// When running on an exe.dev VM, the dev server is reached via the exe.dev
+// HTTPS proxy at https://<fqdn>:<port>/ where <fqdn> ends in .exe.xyz.
+// Allow that exact hostname through vite's host check so previews work
+// out of the box. os.hostname() only returns the short name, so shell
+// out to `hostname -f` for the FQDN.
+function exeDevHost(): string[] {
+  try {
+    const fqdn = execSync('hostname -f', { encoding: 'utf8' }).trim()
+    if (fqdn.endsWith('.exe.xyz')) return [fqdn]
+  } catch { /* not available; no extra hosts */ }
+  return []
+}
+const exeDevHosts = exeDevHost()
 
 // Page manifest: each simple page has a title, entry script, and optional extras.
 const pages: Record<string, { title: string; extras?: string }> = {
@@ -81,6 +96,7 @@ export default defineConfig({
   },
   server: {
     port: 8000,
+    allowedHosts: exeDevHosts,
     proxy: {
       '/cmd': 'http://localhost:8080',
       '/github': 'http://localhost:8080',
