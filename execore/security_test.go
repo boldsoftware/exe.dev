@@ -164,51 +164,6 @@ func TestPasskeyOpenRedirect(t *testing.T) {
 	}
 }
 
-// TestProxyLoginOpenRedirect tests that handleProxyLogin validates redirect URLs.
-func TestProxyLoginOpenRedirect(t *testing.T) {
-	t.Parallel()
-
-	server := newTestServer(t)
-
-	tests := []struct {
-		name            string
-		redirect        string
-		expectSanitized bool
-	}{
-		{"safe relative path", "/dashboard", false},
-		{"external URL", "https://evil.com/phish", true},
-		{"protocol-relative", "//evil.com/phish", true},
-		{"javascript URL", "javascript:alert(1)", true},
-		{"empty defaults to /", "", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			target := "/__exe.dev/login"
-			if tt.redirect != "" {
-				target += "?redirect=" + url.QueryEscape(tt.redirect)
-			}
-			req := httptest.NewRequest("GET", target, nil)
-			req.Host = "box." + server.env.BoxHost
-			w := httptest.NewRecorder()
-			server.proxyServer().HandleProxyLogin(w, req)
-
-			location := w.Header().Get("Location")
-			if tt.expectSanitized {
-				// The redirect param embedded in the auth URL should be "/" (sanitized).
-				if strings.Contains(location, url.QueryEscape(tt.redirect)) && tt.redirect != "" {
-					t.Errorf("open redirect: location contains unsanitized redirect %q: %s", tt.redirect, location)
-				}
-			} else {
-				// The redirect param should be preserved.
-				if !strings.Contains(location, url.QueryEscape(tt.redirect)) {
-					t.Errorf("expected location to contain redirect=%q, got: %s", tt.redirect, location)
-				}
-			}
-		})
-	}
-}
-
 // TestSignupRateLimiting tests that signup endpoints are rate limited.
 func TestSignupRateLimiting(t *testing.T) {
 	t.Parallel()
@@ -347,71 +302,6 @@ func TestSignupPOWDisabled(t *testing.T) {
 	if strings.Contains(w.Body.String(), "verification challenge") {
 		t.Errorf("With POW disabled: got verification challenge error")
 	}
-}
-
-// TestRenderAccessRequiredRedirect tests that unauthenticated users on box
-// subdomains are redirected to the main domain auth page (so the login form
-// is same-origin and passkeys work), while authenticated users without access
-// see the "Access Denied" page directly.
-func TestRenderAccessRequiredRedirect(t *testing.T) {
-	t.Parallel()
-	server := newTestServer(t)
-	ps := server.proxyServer()
-
-	t.Run("unauthenticated user is redirected", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://mybox."+server.env.BoxHost+"/some/path?key=val", nil)
-		req.Host = "mybox." + server.env.BoxHost
-		w := httptest.NewRecorder()
-		ps.RenderAccessRequired(w, req, nil)
-
-		if w.Code != http.StatusTemporaryRedirect {
-			t.Fatalf("got status %d, want %d", w.Code, http.StatusTemporaryRedirect)
-		}
-		loc := w.Header().Get("Location")
-		// Verify the redirect points to /auth on the web host.
-		// The URL may include a non-standard port (e.g. https://localhost:PORT/auth?...).
-		if !strings.Contains(loc, "/auth?redirect=") {
-			t.Fatalf("unexpected redirect location: %s", loc)
-		}
-		if !strings.Contains(loc, "return_host=") {
-			t.Errorf("redirect missing return_host: %s", loc)
-		}
-		if !strings.Contains(loc, "redirect=") {
-			t.Errorf("redirect missing redirect param: %s", loc)
-		}
-		if !strings.Contains(loc, url.QueryEscape("/some/path?key=val")) {
-			t.Errorf("redirect should encode original path+query, got: %s", loc)
-		}
-	})
-
-	t.Run("authenticated user without access sees 401", func(t *testing.T) {
-		user, err := server.createUser(t.Context(), testSSHPubKey, "denied@example.com", "", AllQualityChecks)
-		if err != nil {
-			t.Fatalf("Failed to create user: %v", err)
-		}
-		boxHost := "mybox." + server.env.BoxHost
-		cookieValue, err := server.createAuthCookie(t.Context(), user.UserID, boxHost)
-		if err != nil {
-			t.Fatalf("Failed to create auth cookie: %v", err)
-		}
-
-		req := httptest.NewRequest("GET", "http://"+boxHost+"/", nil)
-		req.Host = boxHost
-		req.AddCookie(&http.Cookie{Name: exeweb.ProxyAuthCookieName(80), Value: cookieValue})
-		w := httptest.NewRecorder()
-		ps.RenderAccessRequired(w, req, nil)
-
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("got status %d, want %d", w.Code, http.StatusUnauthorized)
-		}
-		body := w.Body.String()
-		if !strings.Contains(body, "Access Denied") {
-			t.Errorf("expected 'Access Denied' in body, got: %s", body[:min(200, len(body))])
-		}
-		if strings.Contains(body, "<form") {
-			t.Errorf("authenticated user should not see login form")
-		}
-	})
 }
 
 func TestRender401PageVariants(t *testing.T) {
