@@ -517,9 +517,56 @@ describe('VMDetail', () => {
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
 
-  // --- Live Metrics ---
+  // --- Provisioned bar + Live Metrics ---
 
-  it('shows live metrics section for running VMs', async () => {
+  it('shows provisioned bar with vCPUs, memory, and disk for running VMs', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 42.5,
+      mem_bytes: 1073741824,
+      swap_bytes: 0,
+      disk_bytes: 3221225472,
+      disk_logical_bytes: 5368709120,
+      disk_capacity_bytes: 30 * 1024 * 1024 * 1024,
+      mem_capacity_bytes: 8 * 1024 * 1024 * 1024,
+      cpus: 2,
+      net_rx_bytes: 1048576,
+      net_tx_bytes: 524288,
+    })
+    const wrapper = await mountVMDetail()
+    const bar = wrapper.find('.provisioned-bar')
+    expect(bar.exists()).toBe(true)
+    const items = bar.findAll('.prov-item')
+    expect(items).toHaveLength(3)
+    expect(items[0].find('.prov-value').text()).toBe('2')
+    expect(items[1].find('.prov-value').text()).toBe('8 GB')
+    expect(items[2].find('.prov-value').text()).toBe('30 GB')
+  })
+
+  it('rounds memory to nearest GB in provisioned bar (7.5 GiB -> 8 GB)', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 1.0,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 25 * 1024 * 1024 * 1024,
+      mem_capacity_bytes: 7.5 * 1024 * 1024 * 1024,
+      cpus: 4,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    const wrapper = await mountVMDetail()
+    const items = wrapper.findAll('.prov-item')
+    expect(items[1].find('.prov-value').text()).toBe('8 GB')
+  })
+
+  it('shows live metrics CPU and network cards for running VMs', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
@@ -538,14 +585,19 @@ describe('VMDetail', () => {
     const wrapper = await mountVMDetail()
     expect(wrapper.text()).toContain('Live Metrics')
     expect(wrapper.text()).toContain('42.5%')
+    const cards = wrapper.findAll('.metric-card')
+    expect(cards).toHaveLength(3)
+    const labels = cards.map(c => c.find('.mt').text())
+    expect(labels).toEqual(['CPU', 'Net ↓', 'Net ↑'])
   })
 
-  it('does not show live metrics for stopped VMs', async () => {
+  it('does not show live metrics or provisioned bar for stopped VMs', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({
       boxes: [makeBox({ status: 'stopped' })],
     }))
     const wrapper = await mountVMDetail()
     expect(wrapper.text()).not.toContain('Live Metrics')
+    expect(wrapper.find('.provisioned-bar').exists()).toBe(false)
   })
 
   // --- Charts placeholder still hidden ---

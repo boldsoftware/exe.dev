@@ -124,8 +124,50 @@
         <button class="btn btn-secondary" @click="showCreationLog = true">View Creation Log</button>
       </div>
 
-      <!-- Live Metrics -->
-      <LiveMetrics v-if="box.status === 'running'" :vm-name="box.name" :vm-status="box.status" />
+      <!-- Provisioned + Live Metrics -->
+      <div v-if="box.status === 'running'" class="live-metrics">
+        <div v-if="metricsError" class="metrics-error">
+          <span>{{ metricsError }}</span>
+        </div>
+        <template v-else-if="liveMetrics">
+          <div class="metrics-section-heading">Provisioned</div>
+          <div class="provisioned-bar">
+            <div class="prov-item">
+              <span class="prov-label">vCPUs</span>
+              <span class="prov-value">{{ provCpus }}</span>
+            </div>
+            <div class="prov-sep"></div>
+            <div class="prov-item">
+              <span class="prov-label">Memory</span>
+              <span class="prov-value">{{ provMemory }}</span>
+            </div>
+            <div class="prov-sep"></div>
+            <div class="prov-item">
+              <span class="prov-label">Disk</span>
+              <span class="prov-value">{{ provDisk }}</span>
+            </div>
+          </div>
+          <div class="metrics-section-heading">Live Metrics<span class="updated-ago"> · refreshes every 5s</span></div>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="mt">CPU</div>
+              <div class="mv green">{{ cpuDisplay }}</div>
+              <div class="mb"><div class="mb-fill" :style="{ width: cpuBarPct + '%', background: 'var(--success-color, #22c55e)' }"></div></div>
+              <div class="ms">{{ cpuSub }}</div>
+            </div>
+            <div class="metric-card">
+              <div class="mt">Net ↓</div>
+              <div class="mv blue">{{ netRxDisplay }}</div>
+              <div class="ms">{{ netRxSub }}</div>
+            </div>
+            <div class="metric-card">
+              <div class="mt">Net ↑</div>
+              <div class="mv blue">{{ netTxDisplay }}</div>
+              <div class="ms">{{ netTxSub }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
 
       <!-- Usage History Charts -->
       <UsageChart :vm-name="box.name" :vm-status="box.status" />
@@ -265,15 +307,16 @@ import {
   fetchDashboard,
   fetchVMUsage,
   fetchBoxLLMUsage,
+  fetchVMLiveMetrics,
   type BoxInfo,
   type VMUsageEntry,
   type BoxLLMUsageResponse,
+  type VMLiveMetrics,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
-import LiveMetrics from '../components/LiveMetrics.vue'
 import UsageChart from '../components/UsageChart.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
@@ -296,6 +339,14 @@ const periodEnd = ref('')
 
 // LLM usage
 const llmUsage = ref<BoxLLMUsageResponse | null>(null)
+
+// Live metrics
+const METRICS_POLL_INTERVAL = 5000
+const liveMetrics = ref<VMLiveMetrics | null>(null)
+const prevLiveMetrics = ref<VMLiveMetrics | null>(null)
+const prevMetricsTime = ref<number>(0)
+const metricsError = ref('')
+let metricsTimer: ReturnType<typeof setInterval> | null = null
 
 // Junk drawer
 const drawerOpen = ref(false)
@@ -363,6 +414,114 @@ function formatCPUTime(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`
 }
 
+// --- Provisioned specs ---
+const provCpus = computed(() => {
+  if (!liveMetrics.value) return '\u2014'
+  if (liveMetrics.value.cpus) return String(liveMetrics.value.cpus)
+  return '\u2014'
+})
+const provMemory = computed(() => {
+  if (!liveMetrics.value || !liveMetrics.value.mem_capacity_bytes) return '\u2014'
+  return roundedGB(liveMetrics.value.mem_capacity_bytes)
+})
+const provDisk = computed(() => {
+  if (!liveMetrics.value || !liveMetrics.value.disk_capacity_bytes) return '\u2014'
+  return roundedGB(liveMetrics.value.disk_capacity_bytes)
+})
+
+// --- CPU ---
+const cpuBarPct = computed(() => {
+  if (!liveMetrics.value) return 0
+  return Math.min(liveMetrics.value.cpu_percent, 100)
+})
+const cpuDisplay = computed(() => {
+  if (!liveMetrics.value) return '\u2014'
+  return `${liveMetrics.value.cpu_percent.toFixed(1)}%`
+})
+const cpuSub = computed(() => {
+  if (!liveMetrics.value) return ''
+  if (liveMetrics.value.cpus) {
+    return `of ${liveMetrics.value.cpus} vCPU${liveMetrics.value.cpus > 1 ? 's' : ''}`
+  }
+  return 'of CPU capacity'
+})
+
+// --- Network rates ---
+const netRxRate = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value || !prevMetricsTime.value) return 0
+  const elapsed = (Date.now() - prevMetricsTime.value) / 1000
+  if (elapsed <= 0) return 0
+  return (liveMetrics.value.net_rx_bytes - prevLiveMetrics.value.net_rx_bytes) / elapsed
+})
+const netTxRate = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value || !prevMetricsTime.value) return 0
+  const elapsed = (Date.now() - prevMetricsTime.value) / 1000
+  if (elapsed <= 0) return 0
+  return (liveMetrics.value.net_tx_bytes - prevLiveMetrics.value.net_tx_bytes) / elapsed
+})
+const netRxDisplay = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value) return '\u2014'
+  return formatRate(netRxRate.value)
+})
+const netTxDisplay = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value) return '\u2014'
+  return formatRate(netTxRate.value)
+})
+const netRxSub = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value) return ''
+  return 'receive rate'
+})
+const netTxSub = computed(() => {
+  if (!liveMetrics.value || !prevLiveMetrics.value) return ''
+  return 'send rate'
+})
+
+function roundedGB(bytes: number): string {
+  if (!bytes) return '0 B'
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (gb >= 1) return `${Math.round(gb)} GB`
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) return `${Math.round(mb)} MB`
+  const kb = bytes / 1024
+  return `${Math.round(kb)} KB`
+}
+
+function formatRate(bytesPerSec: number): string {
+  if (bytesPerSec < 0) return '0 B/s'
+  const bitsPerSec = bytesPerSec * 8
+  if (bitsPerSec >= 1_000_000) return `${(bitsPerSec / 1_000_000).toFixed(1)} Mbps`
+  if (bitsPerSec >= 1_000) return `${(bitsPerSec / 1_000).toFixed(1)} Kbps`
+  return `${Math.round(bitsPerSec)} bps`
+}
+
+async function pollMetrics() {
+  try {
+    const data = await fetchVMLiveMetrics(vmName.value)
+    if (liveMetrics.value) {
+      prevLiveMetrics.value = liveMetrics.value
+      prevMetricsTime.value = Date.now()
+    }
+    liveMetrics.value = data
+    metricsError.value = ''
+  } catch (e: any) {
+    if (!liveMetrics.value) {
+      metricsError.value = 'Unable to load metrics'
+    }
+  }
+}
+
+function startMetricsPolling() {
+  stopMetricsPolling()
+  if (box.value?.status === 'running') {
+    pollMetrics()
+    metricsTimer = setInterval(pollMetrics, METRICS_POLL_INTERVAL)
+  }
+}
+
+function stopMetricsPolling() {
+  if (metricsTimer) { clearInterval(metricsTimer); metricsTimer = null }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -391,6 +550,8 @@ async function load() {
       }).catch(err => {
         console.error('Failed to load VM LLM usage:', err)
       })
+      // Start live metrics polling for running VMs
+      startMetricsPolling()
     } else {
       usageLoading.value = false
     }
@@ -584,6 +745,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopMetricsPolling()
   document.removeEventListener('keydown', onEscapeKey)
   document.removeEventListener('click', onDocumentClick)
 })
@@ -1216,6 +1378,129 @@ onBeforeUnmount(() => {
   text-decoration: none;
 }
 
+/* --- Live metrics --- */
+.live-metrics {
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics-section-heading {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-color-muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.updated-ago {
+  font-weight: 400;
+}
+
+.metrics-error {
+  font-size: 12px;
+  color: var(--text-color-muted);
+  padding: 4px 0;
+}
+
+.provisioned-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 14px 20px;
+  background: var(--surface-card);
+  margin-bottom: 16px;
+}
+
+.prov-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.prov-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.prov-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  color: var(--text-color);
+}
+
+.prov-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--surface-border);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.metric-card {
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface-card);
+}
+
+.mt {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-color-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.mv {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+}
+
+.mv.green { color: var(--success-color, #22c55e); }
+.mv.blue { color: #2563eb; }
+
+.mb {
+  height: 3px;
+  background: var(--surface-border);
+  border-radius: 2px;
+  margin-bottom: 6px;
+}
+
+.mb-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.ms {
+  font-size: 10px;
+  color: var(--text-color-muted);
+}
+
+@media (max-width: 768px) {
+  .provisioned-bar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .prov-sep {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .vm-header {
     flex-direction: column;
@@ -1226,6 +1511,12 @@ onBeforeUnmount(() => {
   }
   .pill-label {
     display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
