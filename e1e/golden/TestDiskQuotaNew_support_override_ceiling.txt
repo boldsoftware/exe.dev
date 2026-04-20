@@ -9,6 +9,6 @@ new --name=BOX_NAME --disk=40GB
 - help to see a list of commands
 
 PROMPT ▶ new --name=BOX_NAME --disk=40GB
---disk cannot exceed 30 GiB — contact support@exe.dev if you need more
+--disk cannot exceed 30 GB — contact support@exe.dev if you need more
 PROMPT ▶ exit
 Goodbye!

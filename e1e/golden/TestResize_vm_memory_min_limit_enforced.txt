@@ -10,6 +10,6 @@ resize BOX_NAME --memory=1
 - help to see a list of commands
 
 PROMPT ▶ resize BOX_NAME --memory=1
---memory must be at least 2.0 GiB
+--memory must be at least 2 GB
 PROMPT ▶ exit
 Goodbye!

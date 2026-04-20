@@ -10,6 +10,6 @@ resize BOX_NAME --memory=64
 - help to see a list of commands
 
 PROMPT ▶ resize BOX_NAME --memory=64
---memory cannot exceed 32 GiB
+--memory cannot exceed 32 GB
 PROMPT ▶ exit
 Goodbye!
