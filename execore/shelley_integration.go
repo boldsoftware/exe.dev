@@ -74,7 +74,7 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 	// Create HTTP client that tunnels through SSH to the container
 	sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
 	httpClient := &http.Client{
-		Transport: ss.server.createSSHTunnelTransport(sshHost, box, sshKey),
+		Transport: ss.server.createSSHTunnelTransport(ctx, sshHost, box, sshKey),
 	}
 
 	// Create conversation and get ID

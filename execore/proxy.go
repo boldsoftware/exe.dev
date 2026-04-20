@@ -119,12 +119,22 @@ func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (
 
 // createSSHTunnelTransport creates an HTTP transport that
 // tunnels through SSH to a container.
-func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
-	// Convert to exeweb data formats.
-	// This code is temporary until we move more to exeweb.
-	exewebBox := dbBoxToExewebBox(box)
-
-	return s.proxyServer().CreateSSHTunnelTransport(sshHost, &exewebBox, sshKey)
+func (s *Server) createSSHTunnelTransport(ctx context.Context, sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
+	args := &exeweb.CreateSSHTunnelTransportArgs{
+		SSHHost:                 sshHost,
+		SSHKey:                  sshKey,
+		BoxName:                 box.Name,
+		BoxSSHServerIdentityKey: box.SSHServerIdentityKey,
+		SSHPool:                 s.sshPool,
+		Metrics:                 s.httpMetrics,
+	}
+	if box.SSHPort != nil {
+		args.BoxSSHPort = int(*box.SSHPort)
+	}
+	if box.SSHUser != nil {
+		args.BoxSSHUser = *box.SSHUser
+	}
+	return exeweb.CreateSSHTunnelTransport(ctx, args)
 }
 
 // hasUserAccessToBox reports whether a box is shared with a user.

@@ -958,7 +958,7 @@ func (ps *ProxyServer) ProxyToContainer(w http.ResponseWriter, r *http.Request, 
 
 // proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
 func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *BoxData, sshKey ssh.Signer, targetPort int, authResult *ProxyAuthResult) error {
-	transport := ps.getOrCreateTransport(sshHost, box, sshKey)
+	transport := ps.getOrCreateTransport(r.Context(), sshHost, box, sshKey)
 
 	// Configure the reverse proxy using NewSingleHostReverseProxy
 	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", targetPort))
@@ -1031,7 +1031,7 @@ func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Req
 
 // getOrCreateTransport returns a cached transport for the given box,
 // creating one if none exists yet.
-func (ps *ProxyServer) getOrCreateTransport(sshHost string, box *BoxData, sshKey ssh.Signer) *http.Transport {
+func (ps *ProxyServer) getOrCreateTransport(ctx context.Context, sshHost string, box *BoxData, sshKey ssh.Signer) *http.Transport {
 	key := transportKey{
 		sshHost:   sshHost,
 		sshUser:   box.SSHUser,
@@ -1040,58 +1040,18 @@ func (ps *ProxyServer) getOrCreateTransport(sshHost string, box *BoxData, sshKey
 		publicKey: string(sshKey.PublicKey().Marshal()),
 	}
 	return ps.Transports.GetOrCreate(key, func() *http.Transport {
-		return ps.CreateSSHTunnelTransport(sshHost, box, sshKey)
+		args := &CreateSSHTunnelTransportArgs{
+			SSHHost:                 sshHost,
+			SSHKey:                  sshKey,
+			BoxName:                 box.Name,
+			BoxSSHUser:              box.SSHUser,
+			BoxSSHPort:              box.SSHPort,
+			BoxSSHServerIdentityKey: box.SSHServerIdentityKey,
+			SSHPool:                 ps.SSHPool,
+			Metrics:                 ps.HTTPMetrics,
+		}
+		return CreateSSHTunnelTransport(ctx, args)
 	})
-}
-
-// CreateSSHTunnelTransport creates an HTTP transport that
-// tunnels through SSH to a container.
-func (ps *ProxyServer) CreateSSHTunnelTransport(sshHost string, box *BoxData, sshKey ssh.Signer) *http.Transport {
-	// Build an HTTP transport that dials through SSH
-	// to the target on the SSH host.
-	// The sshDialer uses the connection pool for SSH connections.
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			cfg := &ssh.ClientConfig{
-				User:            box.SSHUser,
-				Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKey)},
-				HostKeyCallback: CreateHostKeyCallback(box.Name, box.SSHServerIdentityKey),
-				Timeout:         30 * time.Second,
-			}
-			// Use a deadline that allows for stale
-			// connection recovery:
-			// - Each dial attempt is bounded by
-			//   max(500ms, 4×RTT) via staleTimeoutFor;
-			// - If first attempt hits a stale connection,
-			//   it times out and is removed;
-			// - Retries can establish a fresh connection
-			//   (up to 3s for SSH dial).
-			// 10s gives enough headroom for stale recovery
-			// even on high-latency paths (e.g. JNB→LAX).
-			// Note: "port not bound" still fails fast
-			// since connection refused is immediate.
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			conn, err := ps.SSHPool.DialWithRetries(ctx, network, addr, sshHost, box.SSHUser, box.SSHPort, sshKey, cfg, []time.Duration{
-				50 * time.Millisecond,
-				100 * time.Millisecond,
-				200 * time.Millisecond,
-			})
-			// DialWithRetries guarantees (conn, nil) on success; check conn for defensiveness.
-			if conn == nil {
-				return nil, errors.Join(errors.New("SSH dial failed"), err)
-			}
-			return &countingConn{Conn: conn, metrics: ps.HTTPMetrics}, nil
-		},
-		ForceAttemptHTTP2:     false,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100, // all traffic goes to one host (127.0.0.1 inside VM)
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 5 * time.Minute,
-	}
 }
 
 // isDefaultServerPort reports whether port should use the box's default route.

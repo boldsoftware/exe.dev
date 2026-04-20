@@ -225,7 +225,7 @@ func (ss *SSHServer) handleShelleyPrompt(ctx context.Context, cc *exemenu.Comman
 	if cc.SSHSession == nil {
 		sshHost := exeweb.BoxSSHHost(ss.server.slog(), box.Ctrhost)
 		httpClient := &http.Client{
-			Transport: ss.server.createSSHTunnelTransport(sshHost, box, sshSigner),
+			Transport: ss.server.createSSHTunnelTransport(ctx, sshHost, box, sshSigner),
 			Timeout:   30 * time.Second,
 		}
 

@@ -12,16 +12,21 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"exe.dev/boxname"
 	"exe.dev/domz"
+	"exe.dev/sshpool2"
 	"exe.dev/stage"
 	"exe.dev/tracing"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // SSHKnownHostsPath is for https://c2sp.org/well-known-ssh-hosts.
@@ -340,4 +345,74 @@ func CookieValueFromRequest(r *http.Request, cookieName string) (cookieValue, do
 	domain = domz.StripPort(r.Host)
 
 	return cookie.Value, domain, nil
+}
+
+// CreateSSHTunnelTransportArgs is arguments to pass to CreateSSHTunnelTransport.
+type CreateSSHTunnelTransportArgs struct {
+	SSHHost                 string
+	SSHKey                  ssh.Signer
+	BoxName                 string
+	BoxSSHUser              string
+	BoxSSHPort              int
+	BoxSSHServerIdentityKey []byte
+	SSHPool                 *sshpool2.Pool
+	Metrics                 *HTTPMetrics
+}
+
+// CreateSSHTunnelTransport creates an HTTP transport that
+// tunnels through SSH to a container.
+func CreateSSHTunnelTransport(ctx context.Context, args *CreateSSHTunnelTransportArgs) *http.Transport {
+	if args.SSHHost == "" || args.SSHKey == nil ||
+		args.BoxName == "" || args.BoxSSHUser == "" ||
+		args.BoxSSHPort == 0 || len(args.BoxSSHServerIdentityKey) == 0 ||
+		args.SSHPool == nil || args.Metrics == nil {
+
+		slog.ErrorContext(ctx, "CreateSSHTunnelTransport missing args", "args", *args)
+	}
+
+	// Build an HTTP transport that dials through SSH
+	// to the target on the SSH host.
+	// The sshDialer uses the connection pool for SSH connections.
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			cfg := &ssh.ClientConfig{
+				User:            args.BoxSSHUser,
+				Auth:            []ssh.AuthMethod{ssh.PublicKeys(args.SSHKey)},
+				HostKeyCallback: CreateHostKeyCallback(args.BoxName, args.BoxSSHServerIdentityKey),
+				Timeout:         30 * time.Second,
+			}
+			// Use a deadline that allows for stale
+			// connection recovery:
+			// - Each dial attempt is bounded by
+			//   max(500ms, 4×RTT) via staleTimeoutFor;
+			// - If first attempt hits a stale connection,
+			//   it times out and is removed;
+			// - Retries can establish a fresh connection
+			//   (up to 3s for SSH dial).
+			// 10s gives enough headroom for stale recovery
+			// even on high-latency paths (e.g. JNB→LAX).
+			// Note: "port not bound" still fails fast
+			// since connection refused is immediate.
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			conn, err := args.SSHPool.DialWithRetries(ctx, network, addr, args.SSHHost, args.BoxSSHUser, args.BoxSSHPort, args.SSHKey, cfg, []time.Duration{
+				50 * time.Millisecond,
+				100 * time.Millisecond,
+				200 * time.Millisecond,
+			})
+			// DialWithRetries guarantees (conn, nil) on success; check conn for defensiveness.
+			if conn == nil {
+				return nil, errors.Join(errors.New("SSH dial failed"), err)
+			}
+			return &countingConn{Conn: conn, metrics: args.Metrics}, nil
+		},
+		ForceAttemptHTTP2:     false,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100, // all traffic goes to one host (127.0.0.1 inside VM)
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Minute,
+	}
 }
