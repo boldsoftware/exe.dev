@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -707,9 +708,19 @@ func TestClearExeDevHeaders(t *testing.T) {
 
 // mockProxyData is a minimal ProxyData for unit tests.
 type mockProxyData struct {
-	appTokens map[string]string // token -> userID
-	cookies   map[string]CookieData
-	boxes     map[string]BoxData
+	appTokens            map[string]string // token -> userID
+	cookies              map[string]CookieData
+	boxes                map[string]BoxData
+	sshKeysByFingerprint map[string]mockSSHKey
+	lockedOut            map[string]bool
+}
+
+// mockSSHKey corresponds to exedb.SSHKey
+type mockSSHKey struct {
+	userID      string
+	publicKey   string
+	fingerprint string
+	permissions string
 }
 
 func (m *mockProxyData) BoxInfo(ctx context.Context, boxName string) (BoxData, bool, error) {
@@ -732,7 +743,7 @@ func (m *mockProxyData) UserInfo(ctx context.Context, userID string) (UserData, 
 }
 
 func (m *mockProxyData) IsUserLockedOut(ctx context.Context, userID string) (bool, error) {
-	return false, nil
+	return m.lockedOut[userID], nil
 }
 
 func (m *mockProxyData) UserHasExeSudo(ctx context.Context, userID string) (bool, error) {
@@ -765,8 +776,13 @@ func (m *mockProxyData) ValidateMagicSecret(ctx context.Context, secret string) 
 }
 
 func (m *mockProxyData) GetSSHKeyByFingerprint(ctx context.Context, fingerprint string) (string, string, error) {
-	return "", "", nil
+	sk, ok := m.sshKeysByFingerprint[fingerprint]
+	if !ok {
+		return "", "", errors.New("no such ssh key")
+	}
+	return sk.userID, sk.publicKey, nil
 }
+
 func (m *mockProxyData) HLLNoteEvents(ctx context.Context, userID string, events []string) {}
 func (m *mockProxyData) CheckAndIncrementEmailQuota(ctx context.Context, userID string) error {
 	return nil
