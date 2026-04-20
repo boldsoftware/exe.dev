@@ -36,6 +36,17 @@ def main():
     _restore_prebuilt_artifacts()
     _destroy_stale_vms()
 
+    # Fetch Stripe secret key from Buildkite secrets if not already in env.
+    if not os.environ.get("STRIPE_SECRET_KEY"):
+        result = subprocess.run(
+            ["buildkite-agent", "secret", "get", "STRIPE_SECRET_KEY"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            os.environ["STRIPE_SECRET_KEY"] = result.stdout.strip()
+            print("Loaded STRIPE_SECRET_KEY from Buildkite secrets", flush=True)
+        else:
+            print("WARNING: STRIPE_SECRET_KEY not available, billing tests will be skipped", flush=True)
     print("--- :credit_card: Run e1e billing tests (includes VM startup)", flush=True)
 
     logs_dir = "e1e-logs-billing"
@@ -48,8 +59,16 @@ def main():
     env = {**os.environ, "E1_VM_CONCURRENCY": vm_concurrency, "GITHUB_ACTIONS": "false"}
     cmd = ["go", "tool", "gotestsum", "--format", "testname", "--jsonfile", json_results,
            "--", "-race", "-count=1", "-timeout=10m", "-failfast",
-           "./e1e/billing",
-           "-args", "-httprecord=stripe-checkout"]
+           "./e1e/billing"]
+    # Only record if the cassette doesn't exist yet. If it exists, replay
+    # and verify. This prevents -httprecord from truncating the committed
+    # cassette when the test skips early (e.g. no VM available).
+    cassette = "e1e/billing/testdata/stripe-checkout.httprr"
+    if not os.path.isfile(cassette):
+        cmd.extend(["-args", "-httprecord=stripe-checkout"])
+        print(f"Cassette {cassette} not found, recording mode enabled", flush=True)
+    else:
+        print(f"Cassette {cassette} found, replay mode", flush=True)
     test_result = subprocess.run(cmd, env=env)
 
     _generate_gantt(json_results)
