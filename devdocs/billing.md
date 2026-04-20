@@ -11,13 +11,13 @@ Access control uses a plan-based system defined in `billing/plan/`. Each account
 | Plan | Grants | LLM Category |
 |------|--------|--------------|
 | `vip` | All entitlements (wildcard) | `friend` |
-| `enterprise` | LLM, credits, invites, VM create/connect/run | `has_billing` |
-| `team` | LLM, credits, invites, VM create/connect/run | `has_billing` |
-| `individual` | LLM, credits, invites, teams, VM create/connect/run | `has_billing` |
-| `friend` | LLM, VM create/connect/run | `friend` |
-| `grandfathered` | LLM, VM create/connect/run | `no_billing` |
-| `trial` | LLM, VM create/connect/run | `no_billing` |
-| `basic` | LLM, VM connect only | `no_billing` |
+| `enterprise` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
+| `team` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
+| `individual` | LLM, credits, invites, teams, VM create/run, disk resize | `has_billing` |
+| `friend` | LLM, VM create/run, disk resize | `friend` |
+| `grandfathered` | LLM, VM create/run, disk resize | `no_billing` |
+| `trial` | LLM, VM create/run, disk resize | `no_billing` |
+| `basic` | LLM only | `no_billing` |
 | `restricted` | Nothing | `no_billing` |
 
 **Plan resolution** (`billing/plan/plan.go:GetPlanCategory`), in priority order:
@@ -143,6 +143,7 @@ CREATE UNIQUE INDEX idx_account_plans_active
 | `billing/billing.go` | Stripe API: subscriptions, credits, checkout, sync |
 | `billing/plan/entitlement.go` | Entitlement constants (VMCreate, LLMUse, etc.) |
 | `billing/plan/plan.go` | Plan catalog, plan resolution logic |
+| `billing/plan/tier.go` | Tier catalog, compute classes, disk/bandwidth quotas |
 | `billing/tender/tender.go` | Microcent value type and arithmetic |
 | `execore/subscription_poller.go` | 3-second poll loop for subscription events |
 | `execore/billing_status.go` | `UserHasEntitlement()`, `checkCanCreateVM()` |

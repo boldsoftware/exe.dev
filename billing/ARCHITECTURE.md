@@ -1,292 +1,143 @@
 # Billing Architecture
 
-For the current billing architecture, see [devdocs/billing.md](../devdocs/billing.md).
+For user-facing billing docs, see [devdocs/billing.md](../devdocs/billing.md).
 
-## Plans and Entitlements
+## Plans
 
-All plans are defined in `billing/plan/plan.go`. Each plan grants a set of entitlements checked via `UserHasEntitlement`.
+All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a versioned `ID`, entitlements, and a `DefaultTier`.
 
-| Plan | Version | Price | Entitlements |
-|------|---------|-------|-------------|
-| VIP | `"vip"` | $0 | All (wildcard) |
-| Individual | `"individual"` | $20/mo | `llm:use`, `credit:purchase`, `invite:request`, `team:create`, `vm:create`, `vm:connect`, `vm:run`. Signup bonus: $100 |
-| Team | `"team"` | — | `llm:use`, `credit:purchase`, `invite:request`, `vm:create`, `vm:connect`, `vm:run` |
-| Friend | `"friend"` | $0 | `llm:use`, `vm:create`, `vm:connect`, `vm:run` |
-| Grandfathered | `"grandfathered"` | $0 | Same as Friend |
-| Trial | `"trial"` | $0 | Same as Friend |
-| Basic | `"basic"` | $0 | `llm:use`, `vm:connect` |
-| Restricted | `"restricted"` | — | None |
+| Plan | ID | Paid | Entitlements |
+|------|-----|------|--------------|
+| VIP | `vip` | No | All (wildcard) |
+| Enterprise | `enterprise:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
+| Team | `team:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
+| Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize |
+| Friend | `friend` | No | LLM, VM create/run, disk resize |
+| Grandfathered | `grandfathered` | No | Same as Friend |
+| Trial | `trial:monthly:20260106` | No | Same as Friend |
+| Basic | `basic:monthly:20260106` | No | LLM only |
+| Restricted | `restricted` | No | None |
 
-## Credits Architecture
+Only Individual gets `TeamCreate`. Only VIP gets the `All` wildcard.
 
-Credits are the currency users spend on LLM API requests. They are purchased via Stripe or granted as gifts, and debited automatically when LLM requests flow through the gateway.
+### Versioned Plan IDs
 
-The `billing_credits` ledger is the source of truth for all credit operations. All amounts are stored as integer microcents via `tender.Value` ($1 = 1,000,000 microcents).
+Plan IDs use a colon-separated format:
+- **Bare category:** `individual`, `friend`, `vip`
+- **3-part legacy:** `individual:monthly:20260106`
+- **4-part tier:** `individual:medium:monthly:20260601`
 
-> **Legacy:** `user_llm_credit` in exedb (float64 `available_credit`) is deprecated and being migrated. It still controls LLM gateway access and automatic refreshes during the transition.
+`ParseID()` extracts `(category, interval, version)`. `Base()` extracts just the category.
+
+### Plan Resolution
+
+`plan.ForUser()` is the canonical way to determine a user's plan. Priority:
+
+1. `canceled` billing status → Basic
+2. `HasExplicitOverrides` → VIP
+3. `plan_id` is `"friend"` or `"free"` → Friend
+4. Team billing active → Team
+5. Active billing → Individual
+6. Trial not expired → Trial
+7. Created before 2026-01-06 23:10 UTC → Grandfathered
+8. Default → Basic
+
+## Tiers
+
+Tiers live in `billing/plan/tier.go`. Each plan has a `DefaultTier`; Individual has four compute tiers.
+
+Tier IDs use 4-part format: `{category}:{tier}:{interval}:{version}`
+
+### Individual Tiers
+
+| Tier | Compute | Disk | Max Disk | Bandwidth | Max VMs |
+|------|---------|------|----------|-----------|----------|
+| Small | 2 CPU / 8 GB | 25 GB | 75 GB | 100 GB | 50 |
+| Medium | 4 CPU / 16 GB | 25 GB | 75 GB | 100 GB | 50 |
+| Large | 8 CPU / 32 GB | 25 GB | 75 GB | 100 GB | 50 |
+| XLarge | 16 CPU / 64 GB | 25 GB | 75 GB | 100 GB | 50 |
+
+All other plans have a single `default` tier. Tier entitlements are `nil` (inherit from parent plan) unless explicitly overridden.
+
+### Tier Resolution
+
+`getTierByID()` handles all ID formats:
+1. Direct lookup in the `tiers` map (4-part ID)
+2. Fallback: extract category via `Base()`, look up the plan's `DefaultTier`
+
+`Grants(planID, entitlement)` resolves the tier, then checks tier-level overrides before falling back to plan entitlements.
+
+## Entitlements
+
+Entitlements are boolean feature gates defined in `billing/plan/entitlement.go`. Each is a struct with `ID` and `DisplayName`:
+
+| Entitlement | ID | Description |
+|-------------|-----|-------------|
+| LLMUse | `llm:use` | Use LLM Gateway |
+| CreditPurchase | `credit:purchase` | Purchase Credits |
+| InviteRequest | `invite:request` | Request Invites |
+| TeamCreate | `team:create` | Create Teams |
+| VMCreate | `vm:create` | Create VMs |
+| VMRun | `vm:run` | Run VMs |
+| DiskResize | `disk:resize` | Resize VM Disks |
+| All | `*` | Wildcard (VIP only) |
+
+Checked via `execore/billing_status.go:UserHasEntitlement()`, which resolves user → account → active plan → tier → entitlements. For team members, the parent account's plan is used.
+
+## Credits
+
+Credits are prepaid balance for LLM usage, stored as integer microcents via `tender.Value` (1 USD = 1,000,000 microcents, 1 cent = 10,000 microcents).
+
+The `Credits` interface (`billing/credits.go`) provides: `GiftCredits`, `SpendCredits`, `CreditBalance`, `GetCreditState`, `ListGifts`.
 
 ### Crediting
 
-Credits enter the ledger through purchases (Stripe) or gifts.
+Credits enter via purchases (Stripe) or gifts.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Credit Sources                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  Stripe checkout ──► handleCreditsSuccess               │
-│                          │                              │
-│                          ▼                              │
-│                      SyncCredits ──► billing_credits    │
-│                                      stripe_event_id    │
-│                                      credit_type = NULL │
-│                                                         │
-│  Debug UI ──► handleDebugGiftCredits ──┐                │
-│  SSH cmd  ──► sudo-exe add-gift ───────┤                │
-│  Upgrade  ──► giftSignupBonus() ───────┘                │
-│                          │                              │
-│                          ▼                              │
-│                  billing.GiftCredits(billingID, params)  │
-│                          │                              │
-│                          ▼                              │
-│                  INSERT OR IGNORE INTO billing_credits   │
-│                  credit_type = 'gift', gift_id UNIQUE   │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
-
-`GiftCredits` takes `AmountUSD` and a `GiftPrefix` — the billing package handles tender conversion and gift ID construction (`prefix:billingID:nanos`) internally. Callers never touch `tender.Value`.
+- **Purchases:** `BuyCredits` creates a Stripe checkout session. `SyncCredits` polls for completed payment intents and inserts paid credit rows.
+- **Gifts:** `GiftCredits(billingID, params)` takes `AmountUSD` and a `GiftPrefix`. The billing package handles tender conversion and gift ID construction (`prefix:billingID:nanos`). Idempotent via `INSERT OR IGNORE` on `gift_id`.
 
 Gift prefixes: `GiftPrefixDebug`, `GiftPrefixSignup`, `GiftPrefixSSH`.
 
 ### Debiting
 
-LLM requests debit through a waterfall: gateway credits first, then the billing ledger.
+LLM requests debit through a waterfall:
+1. **Gateway credits** (per-user quota in `user_llm_credit`, managed by `llmgateway/credit.go`)
+2. **Billing credits** (per-account prepaid balance in `billing_credits`, via `SpendCredits`)
+3. **Debt tolerance** up to $2.00
+4. **402 rejection** if everything is exhausted
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                  LLM Request Debit Flow                  │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  LLM request arrives at gateway                         │
-│          │                                              │
-│          ▼                                              │
-│  CheckAndRefreshCreditDB(userID)                        │
-│          │                                              │
-│          ├── available > 0 ──► billingBacked = false     │
-│          │                                              │
-│          └── available ≤ 0                              │
-│              ├── no billing account ──► 402             │
-│              └── ledger balance > -$2 ──► billingBacked │
-│                                            = true       │
-│          │                                              │
-│          ▼                                              │
-│  Proxy to LLM provider (Anthropic/OpenAI/Fireworks)     │
-│          │                                              │
-│          ▼                                              │
-│  debitResponseCredits(costUSD)                          │
-│          │                                              │
-│          ├── DebitCreditDB ──► user_llm_credit          │
-│          │   available_credit -= costUSD (legacy)       │
-│          │                                              │
-│          └── if billingBacked && overage > 0            │
-│              └── SpendCredits ──► billing_credits       │
-│                  credit_type = 'usage'                  │
-│                  hour_bucket = current hour             │
-│                  ON CONFLICT: amount += negative        │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
+Usage rows are bucketed by hour (`hour_bucket`). Each hour gets one row per account that accumulates debits.
 
-Usage rows are bucketed by hour (`hour_bucket`). Each hour gets one row per account that accumulates debits. Accounts can go up to $2.00 negative (debt tolerance) before requests are rejected with 402.
+### Gateway Credit Refresh
 
-### Automatic Refreshes
+Gateway credits refresh lazily on every LLM request via `CheckAndRefreshCredit` in `llmgateway/credit.go`:
+- **Paid users:** Monthly reset to plan's `MonthlyLLMCreditUSD` (e.g. $20 for Individual, $500 for VIP/Enterprise/Team/Friend)
+- **Free users:** No refresh (flat lifetime grant)
 
-Gateway credits refresh lazily — there is no cron or background job. The refresh is evaluated inline on every LLM request during `CheckAndRefreshCreditDB`.
+## Subscription Sync
 
-```
-┌─────────────────────────────────────────────────────────┐
-│              Gateway Credit Refresh Logic                 │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  CheckAndRefreshCreditDB(userID)                        │
-│          │                                              │
-│          ▼                                              │
-│  planForUser(userID) ──► determines plan + Refresh fn   │
-│          │                                              │
-│          ▼                                              │
-│  plan.Refresh(available, lastRefresh, now)              │
-│          │                                              │
-│          ├── has_billing (paid):                        │
-│          │   different UTC month && available < $20?    │
-│          │   └── reset to $20                           │
-│          │                                              │
-│          ├── friend / no_billing (free):                │
-│          │   └── no refresh (flat $20 lifetime)         │
-│          │                                              │
-│          └── VIP (explicit overrides):                  │
-│              different UTC month?                       │
-│              └── reset to custom max_credit             │
-│                                                         │
-│  Refresh is per-user, stored in user_llm_credit:        │
-│  available_credit, last_refresh_at, max_credit,         │
-│  refresh_per_hour                                       │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
+`execore/subscription_poller.go` polls Stripe every 3 seconds via `SyncSubscriptions`. Events are recorded in `billing_events` (idempotent via unique index). `syncAccountPlan` updates `account_plans`:
+- `active` event → insert plan row matching the subscription
+- `canceled` event → insert `basic` plan row
 
-This entire refresh system lives in `llmgateway/credit.go` and is a candidate for extraction into the billing package (see WORK-10).
+Skips duplicate updates when the active plan's base category already matches.
 
-### Key files
+`HandleWebhook` (`billing/webhook.go`) stores raw Stripe payloads but does not process them inline — processing happens via the poller.
+
+## Key Files
 
 | File | Role |
 |------|------|
-| `billing/billing.go` | `GiftCredits`, `SpendCredits`, `GetCreditState`, `ListGifts`, `Credits` interface |
+| `billing/billing.go` | `Manager`: Subscribe, VerifyCheckout, SyncSubscriptions, syncAccountPlan, pricing |
+| `billing/credits.go` | `Credits` interface: GiftCredits, SpendCredits, BuyCredits, SyncCredits |
+| `billing/webhook.go` | Stripe webhook signature verification and storage |
+| `billing/plan/plan.go` | Plan catalog, `ForUser()` resolution, versioned plan IDs |
+| `billing/plan/entitlement.go` | Entitlement types, `Grants()` |
+| `billing/plan/tier.go` | Tier catalog, compute classes, quotas, disk/bandwidth helpers |
 | `billing/tender/tender.go` | `Value` type (microcents), `Mint`, arithmetic |
-| `llmgateway/credit.go` | `CheckAndRefreshCreditDB`, `DebitCreditDB`, `planForUser`, refresh logic |
-| `llmgateway/gateway.go` | Pre-flight credit check, billing-backed fallback |
-| `llmgateway/accounting_transport.go` | Post-response debit, overage spill to billing ledger |
-| `execore/credit_bar.go` | `computeCreditBar`, `giftsFromLedger` |
-| `execore/exe-web-auth.go` | `giftSignupBonus` (on Stripe checkout) |
-| `execore/debugsrv.go` | Debug gift endpoint |
-| `execore/ssh_add_gift_command.go` | `sudo-exe add-gift` |
-
-## Entitlements Architecture
-
-Entitlements are boolean feature gates that control what features an account has access to (e.g. VM creation, credit purchases, LLM gateway). This is not an authorization system — it determines feature availability per plan, not user permissions. Each plan grants a fixed set of entitlements, checked at request time via `UserHasEntitlement`.
-
-### Plan Resolution
-
-Plan resolution uses the `account_plans` table. Every user has an account (created at signup), and every account has exactly one active plan row (`ended_at IS NULL`). For team members, the parent account's plan is used instead.
-
-```
-User request (SSH/HTTP)
-         │
-         ▼
-  UserHasEntitlement(source, entitlement, userID)
-         │
-         ▼
-  GetActivePlanForUser(userID)
-  ┌──────────────────────────────────────────────────────┐
-  │                                                      │
-  │  users ──► accounts (via created_by)                 │
-  │              │                                       │
-  │              ├── parent_id IS NULL                    │
-  │              │   └── own account_plans row            │
-  │              │       (WHERE ended_at IS NULL)         │
-  │              │                                        │
-  │              └── parent_id IS NOT NULL (team member)  │
-  │                  └── parent's account_plans row       │
-  │                      (WHERE ended_at IS NULL)         │
-  │                                                      │
-  │  Returns: plan_id, account_id                        │
-  └──────────────────────────────────────────────────────┘
-         │
-         ▼
-  Grants(plan_id, entitlement)
-  ┌──────────────────────────────────────────────────────┐
-  │                                                      │
-  │  plan_id ──► Plan.Entitlements map                   │
-  │                                                      │
-  │  "vip"        ──► All: true (wildcard)               │
-  │  "individual" ──► all 7 entitlements                 │
-  │  "team"       ──► all except team:create             │
-  │  "friend"     ──► llm:use, vm:create/connect/run    │
-  │  "trial"      ──► same as friend                    │
-  │  "basic"      ──► llm:use, vm:connect only          │
-  │  "restricted" ──► nothing                            │
-  │                                                      │
-  │  Granted? ──► allow request                          │
-  │  Denied?  ──► log + reject                           │
-  └──────────────────────────────────────────────────────┘
-```
-
-### Account Hierarchy
-
-```
-  Individual account          Team billing owner
-  ┌────────────────┐          ┌────────────────┐
-  │ id: exe_abc    │          │ id: exe_team1  │
-  │ parent_id: NULL│          │ parent_id: NULL│
-  │ plan: individual          │ plan: individual
-  └────────────────┘          └───────┬────────┘
-                                      │ parent_id
-                              ┌───────┴────────┐
-                              │ id: exe_member1│
-                              │ parent_id:     │
-                              │   exe_team1    │
-                              │ plan: basic    │  ◄── own plan ignored,
-                              └────────────────┘      parent's plan used
-```
-
-Team members' entitlements are resolved through the parent account's plan. The member's own plan row (`basic`) is not used for entitlement checks — `GetActivePlanForUser` follows `parent_id` and returns the parent's active plan.
-
-### Plan Lifecycle
-
-Plans change via `account_plans` rows (append-only history):
-
-```
-  Signup (SSH/OAuth/email)      Stripe checkout success
-  ┌─────────────────────┐      ┌─────────────────────┐
-  │ createAccountWith   │      │ syncAccountPlan      │
-  │ BasicPlan           │      │ (subscription poller)│
-  │                     │      │                      │
-  │ INSERT account      │      │ Close current plan   │
-  │ INSERT account_plan │      │ (set ended_at)       │
-  │ plan_id = "basic"   │      │                      │
-  │ changed_by =        │      │ INSERT account_plan  │
-  │   "system:signup"   │      │ plan_id = "individual│
-  └─────────────────────┘      │ changed_by =         │
-                               │   "stripe:event"     │
-  Invite code applied          └─────────────────────┘
-  ┌─────────────────────┐
-  │ applyInviteCode     │      Cancellation
-  │                     │      ┌─────────────────────┐
-  │ Close basic plan    │      │ syncAccountPlan      │
-  │ INSERT account_plan │      │                      │
-  │ plan_id = "trial"   │      │ Close current plan   │
-  │   or "friend"       │      │ INSERT account_plan  │
-  │ changed_by =        │      │ plan_id = "basic"    │
-  │   "system:invite"   │      │ changed_by =         │
-  └─────────────────────┘      │   "stripe:event"     │
-                               └─────────────────────┘
-```
-
-### Key files
-
-| File | Role |
-|------|------|
-| `billing/plan/plan.go` | Plan catalog, `Grants`, `Quotas`, `ByID` |
-| `billing/plan/entitlement.go` | Entitlement type definitions (`VMCreate`, `LLMUse`, etc.) |
-| `execore/billing_status.go` | `UserHasEntitlement` — main entitlement check used by request handlers |
-| `exedb/query/accounts.sql` | `GetActivePlanForUser` — SQL that walks account hierarchy |
-| `execore/subscription_poller.go` | `syncAccountPlan` — keeps account_plans in sync with Stripe |
-
-## Three Billing Systems
-
-### 1. Subscriptions (Access Gating)
-Controls whether a user can access exe.dev. Managed via Stripe subscriptions.
-The subscription poller (`execore/subscription_poller.go`) syncs status from Stripe every ~5 minutes and calls `syncAccountPlan` to keep `account_plans` in sync.
-Subscriptions can be created via Stripe Checkout or directly in the Stripe dashboard.
-
-### 2. Billing Credits (Prepaid Balance)
-Prepaid balance for LLM usage, denominated in microcents (1 USD = 100,000,000 microcents).
-Purchased via Stripe Checkout, consumed by LLM requests via the spending waterfall.
-Accounts can go up to $2.00 negative (debt tolerance).
-
-### 3. LLM Gateway Credits (Per-User Quota)
-Rate-limiting mechanism for LLM API proxy usage. Not purchasable — allocated by plan tier.
-Refreshes monthly for paid users, flat lifetime grant for free users.
-
-## Spending Waterfall (LLM Requests)
-1. Gateway credits first (per-user quota)
-2. Billing credits second (per-account prepaid balance)
-3. Debt up to $2.00 tolerated
-4. 402 rejection if everything is exhausted
-
-## VIP
-VIP users have a `vip` plan in `account_plans` and per-user overrides
-in the `user_llm_credit` table for custom `max_credit` and `refresh_per_hour`.
-Can be granted via:
-- Invite codes with `plan_type='free'`
-- Debug admin endpoints (Tailscale/localhost only)
+| `execore/billing_status.go` | `UserHasEntitlement`, `checkCanCreateVM` |
+| `execore/subscription_poller.go` | 3-second poll loop for Stripe subscription events |
+| `execore/credit_bar.go` | Credit bar UI computation |
+| `llmgateway/credit.go` | Gateway credit manager: refresh, debit, plan-based quotas |
+| `llmgateway/accounting_transport.go` | HTTP transport for LLM proxy credit enforcement |
