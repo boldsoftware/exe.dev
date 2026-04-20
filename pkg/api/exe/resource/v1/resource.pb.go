@@ -450,13 +450,16 @@ type VMUsage struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ID                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	CpuSeconds        float64                `protobuf:"fixed64,3,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`      // Total CPU time consumed
-	CpuPercent        float64                `protobuf:"fixed64,10,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`     // CPU usage percentage from last poll interval (100% = 1 core)
-	MemoryBytes       uint64                 `protobuf:"varint,4,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`    // Current RSS memory usage
-	DiskBytes         uint64                 `protobuf:"varint,5,opt,name=disk_bytes,json=diskBytes,proto3" json:"disk_bytes,omitempty"`          // Current disk usage (compressed)
-	NetRxBytes        uint64                 `protobuf:"varint,6,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`     // Total network received
-	NetTxBytes        uint64                 `protobuf:"varint,7,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`     // Total network transmitted
-	LastActivity      int64                  `protobuf:"varint,8,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"` // Unix nano timestamp of last detected activity
+	CpuSeconds        float64                `protobuf:"fixed64,3,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`                     // Total CPU time consumed
+	CpuPercent        float64                `protobuf:"fixed64,10,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`                    // CPU usage percentage from last poll interval (100% = 1 core)
+	MemoryBytes       uint64                 `protobuf:"varint,4,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`                   // Current RSS memory usage
+	DiskBytes         uint64                 `protobuf:"varint,5,opt,name=disk_bytes,json=diskBytes,proto3" json:"disk_bytes,omitempty"`                         // Current disk usage (compressed on-disk bytes)
+	DiskLogicalBytes  uint64                 `protobuf:"varint,13,opt,name=disk_logical_bytes,json=diskLogicalBytes,proto3" json:"disk_logical_bytes,omitempty"` // Current disk usage (uncompressed logical bytes, matches df -h)
+	MemCapacityBytes  uint64                 `protobuf:"varint,14,opt,name=mem_capacity_bytes,json=memCapacityBytes,proto3" json:"mem_capacity_bytes,omitempty"` // Allocated memory from VM config
+	CPUs              uint64                 `protobuf:"varint,15,opt,name=cpus,proto3" json:"cpus,omitempty"`                                                   // Allocated vCPUs from VM config
+	NetRxBytes        uint64                 `protobuf:"varint,6,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`                    // Total network received
+	NetTxBytes        uint64                 `protobuf:"varint,7,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`                    // Total network transmitted
+	LastActivity      int64                  `protobuf:"varint,8,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"`                // Unix nano timestamp of last detected activity
 	Priority          VMPriority             `protobuf:"varint,9,opt,name=priority,proto3,enum=exe.resource.v1.VMPriority" json:"priority,omitempty"`
 	SwapBytes         uint64                 `protobuf:"varint,11,opt,name=swap_bytes,json=swapBytes,proto3" json:"swap_bytes,omitempty"`                           // Current swap usage
 	DiskCapacityBytes uint64                 `protobuf:"varint,12,opt,name=disk_capacity_bytes,json=diskCapacityBytes,proto3" json:"disk_capacity_bytes,omitempty"` // Provisioned disk capacity (ZFS volsize)
@@ -532,6 +535,27 @@ func (x *VMUsage) GetMemoryBytes() uint64 {
 func (x *VMUsage) GetDiskBytes() uint64 {
 	if x != nil {
 		return x.DiskBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetDiskLogicalBytes() uint64 {
+	if x != nil {
+		return x.DiskLogicalBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemCapacityBytes() uint64 {
+	if x != nil {
+		return x.MemCapacityBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetCPUs() uint64 {
+	if x != nil {
+		return x.CPUs
 	}
 	return 0
 }
@@ -1109,7 +1133,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xa2\x03\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\x92\x04\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1120,7 +1144,10 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"cpuPercent\x12!\n" +
 	"\fmemory_bytes\x18\x04 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x05 \x01(\x04R\tdiskBytes\x12 \n" +
+	"disk_bytes\x18\x05 \x01(\x04R\tdiskBytes\x12,\n" +
+	"\x12disk_logical_bytes\x18\r \x01(\x04R\x10diskLogicalBytes\x12,\n" +
+	"\x12mem_capacity_bytes\x18\x0e \x01(\x04R\x10memCapacityBytes\x12\x12\n" +
+	"\x04cpus\x18\x0f \x01(\x04R\x04cpus\x12 \n" +
 	"\fnet_rx_bytes\x18\x06 \x01(\x04R\n" +
 	"netRxBytes\x12 \n" +
 	"\fnet_tx_bytes\x18\a \x01(\x04R\n" +

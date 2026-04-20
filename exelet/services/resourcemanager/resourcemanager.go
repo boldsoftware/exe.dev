@@ -82,6 +82,7 @@ type vmUsageState struct {
 	memoryBytes          uint64
 	swapBytes            uint64 // Per-VM swap usage from /proc/<pid>/status VmSwap
 	allocatedMemoryBytes uint64 // VM's allocated memory from config (for memory.high calculation)
+	allocatedCPUs        uint64 // VM's allocated vCPUs from config
 	diskVolsizeBytes     uint64 // ZFS volsize (provisioned size)
 	diskBytes            uint64 // ZFS used (actual compressed bytes on disk)
 	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
@@ -346,10 +347,11 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	groupChanged := false
 	oldGroupID := ""
 	if !exists {
-		// Get allocated memory from VM config for memory.high calculation
-		var allocatedMemory uint64
+		// Get allocated memory and CPUs from VM config
+		var allocatedMemory, allocatedCPUs uint64
 		if cfg, ok := vmCfg.(*computeapi.VMConfig); ok && cfg != nil {
 			allocatedMemory = cfg.GetMemory()
+			allocatedCPUs = cfg.GetCPUs()
 		}
 		state = &vmUsageState{
 			name:                 name,
@@ -357,13 +359,17 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 			priority:             api.VMPriority_PRIORITY_NORMAL,
 			prevPollTime:         now,
 			allocatedMemoryBytes: allocatedMemory,
+			allocatedCPUs:        allocatedCPUs,
 		}
 		m.usageState[id] = state
 	} else {
-		// Update allocatedMemoryBytes on each poll in case VM was resized
+		// Update allocated resources on each poll in case VM was resized
 		if cfg, ok := vmCfg.(*computeapi.VMConfig); ok && cfg != nil {
 			if newMemory := cfg.GetMemory(); newMemory != state.allocatedMemoryBytes {
 				state.allocatedMemoryBytes = newMemory
+			}
+			if newCPUs := cfg.GetCPUs(); newCPUs != state.allocatedCPUs {
+				state.allocatedCPUs = newCPUs
 			}
 		}
 	}

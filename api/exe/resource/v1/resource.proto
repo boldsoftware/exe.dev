@@ -66,7 +66,10 @@ message VMUsage {
   double cpu_seconds = 3;    // Total CPU time consumed
   double cpu_percent = 10;   // CPU usage percentage from last poll interval (100% = 1 core)
   uint64 memory_bytes = 4;   // Current RSS memory usage
-  uint64 disk_bytes = 5;     // Current disk usage (compressed)
+  uint64 disk_bytes = 5;             // Current disk usage (compressed on-disk bytes)
+  uint64 disk_logical_bytes = 13;    // Current disk usage (uncompressed logical bytes, matches df -h)
+  uint64 mem_capacity_bytes = 14;    // Allocated memory from VM config
+  uint64 cpus = 15;                  // Allocated vCPUs from VM config
   uint64 net_rx_bytes = 6;   // Total network received
   uint64 net_tx_bytes = 7;   // Total network transmitted
   int64 last_activity = 8;   // Unix nano timestamp of last detected activity
