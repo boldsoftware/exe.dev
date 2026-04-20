@@ -3089,11 +3089,11 @@ func (s *Server) start() error {
 	go s.startGitHubTokenRenewal(ctx)
 
 	// Start background trial expiry enforcer — stops VMs when trials expire.
-	go s.startTrialExpiryEnforcer(ctx)
+	s.serveWg.Go(func() { s.startTrialExpiryEnforcer(ctx) })
 
 	// Start drip campaign email loop
 	if s.dripRunner != nil {
-		go s.dripRunner.Start(ctx)
+		s.serveWg.Go(func() { s.dripRunner.Start(ctx) })
 	}
 
 	cookieCtx, cookieCancel := context.WithCancel(context.Background())
