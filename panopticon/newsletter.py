@@ -96,7 +96,7 @@ def _require_env(name: str) -> str:
 # Slack
 # ---------------------------------------------------------------------------
 
-def post_to_slack(text: str) -> None:
+def post_to_slack(header: str, items: list[str]) -> None:
     # Import from the scripts/slack package that daily_brief.py also uses.
     slack_dir = os.path.join(os.path.dirname(__file__), "..", "scripts", "slack")
     if slack_dir not in sys.path:
@@ -105,20 +105,28 @@ def post_to_slack(text: str) -> None:
     from client import SlackClient, ensure_token
 
     hostname = socket.gethostname()
-    footer = f"\n\n_posted from `{hostname}` · panopticon/newsletter.py_"
-    warning = "_untrusted user content, take caution with links_\n\n"
+    provenance = f"_posted from `{hostname}` · panopticon/newsletter.py_"
+    warning = "_untrusted user content, take caution with links_"
 
     token = ensure_token()
     slack = SlackClient(token)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
     slack.post_message(
         channel_id,
-        warning + text + footer,
+        f"{header}\n{provenance}\n{warning}",
         mrkdwn=True,
         unfurl_links=False,
         unfurl_media=False,
     )
-    log.info("Posted to #%s", SLACK_CHANNEL)
+    for item in items:
+        slack.post_message(
+            channel_id,
+            item,
+            mrkdwn=True,
+            unfurl_links=False,
+            unfurl_media=False,
+        )
+    log.info("Posted header + %d items to #%s", len(items), SLACK_CHANNEL)
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +137,12 @@ SOURCE_DESCS = {"github": GITHUB_DESC, "discord": DISCORD_DESC, "missive": MISSI
 VALID_SOURCES = set(SOURCE_DESCS)
 
 
-def generate(args) -> str:
-    """Run the RLM pipeline and return the newsletter text."""
+def generate(args) -> tuple[str, list[str]]:
+    """Run the RLM pipeline and return (header, items).
+
+    The header is built in Python from the run context (date and sources);
+    items are produced by the agent, one self-contained news item per entry.
+    """
     # --- parse and validate --sources ---
     enabled_sources = {s.strip().lower() for s in args.sources.split(",")}
     enabled_sources.discard("")
@@ -224,7 +236,12 @@ def generate(args) -> str:
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H:%M UTC")
 
-        sig_fields["newsletter"] = dspy.OutputField()
+        sig_fields["items"] = (
+            list[str],
+            dspy.OutputField(
+                desc="Self-contained news items, each posted as its own Slack message"
+            ),
+        )
 
         instruction = SIGNATURE_INSTRUCTION.format(
             date_str=date_str,
@@ -239,12 +256,12 @@ def generate(args) -> str:
 
         if not args.post:
             instruction += (
-                "\n\nAt the end of the newsletter, add a short section noting "
-                "any issues you hit while gathering data (API errors, missing "
-                "attributes, sources that were unreachable, etc.). Call "
-                "get_pipeline_warnings() to see host-side warnings from the "
-                "data-source layer that aren't visible in REPL output. This "
-                "helps the team debug the data pipeline."
+                "\n\nAs the final item, add a short note of any issues you hit "
+                "while gathering data (API errors, missing attributes, sources "
+                "that were unreachable, etc.). Call get_pipeline_warnings() to "
+                "see host-side warnings from the data-source layer that aren't "
+                "visible in REPL output. This helps the team debug the data "
+                "pipeline."
             )
 
         newsletter_sig = dspy.Signature(sig_fields, instruction)
@@ -260,7 +277,9 @@ def generate(args) -> str:
 
         log.info("Running RLM agent...")
         result = rlm(**call_kwargs)
-        return result.newsletter
+        items = list(result.items)
+        header = "Daily user-pulse"
+        return header, items
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +309,8 @@ def main_loop(args):
         if 6 <= now.hour < 7 and last_brief_date != now.date():
             log.info("generating newsletter for %s", now.date())
             try:
-                newsletter = generate(args)
-                post_to_slack(newsletter)
+                header, items = generate(args)
+                post_to_slack(header, items)
                 last_brief_date = now.date()
                 log.info("posted newsletter for %s", last_brief_date)
             except Exception:
@@ -344,14 +363,17 @@ def main():
             log.info("interrupted")
     else:
         # Single-shot: dry-run (default) or --once --post
-        newsletter = generate(args)
+        header, items = generate(args)
 
         print("\n" + "=" * 70)
-        print(newsletter)
+        print(header)
+        for item in items:
+            print("-" * 70)
+            print(item)
         print("=" * 70 + "\n")
 
         if args.post:
-            post_to_slack(newsletter)
+            post_to_slack(header, items)
 
 
 if __name__ == "__main__":

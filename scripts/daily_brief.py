@@ -3,10 +3,10 @@
 # requires-python = ">=3.11"
 # dependencies = ["dspy>=2.6", "mlflow>=2.18"]
 # ///
-"""Daily commit brief for exe.dev.
+"""Daily codebase brief for exe.dev.
 
 Fetches origin/main periodically and, around midnight UTC, generates
-a daily brief of the day's commits and posts it to Slack #news.
+a codebase brief of the day's commits and posts it to Slack #news.
 
 Uses a dSPy RLM (Recursive Language Model) to explore commit diffs via
 a sandboxed REPL — no truncation, no context limits.
@@ -51,8 +51,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "slack"))
 # dSPy signature
 # ---------------------------------------------------------------------------
 
-class DailyBrief(dspy.Signature):
-    """Write the exe.dev daily brief.
+class CodebaseBrief(dspy.Signature):
+    """Write the exe.dev codebase brief.
 
     Your audience is the exe.dev engineering team. They are busy, deeply
     technical, and work on this codebase daily. The goal is to help them
@@ -64,13 +64,14 @@ class DailyBrief(dspy.Signature):
     and precision, plus direct links to primary sources on GitHub.
 
     Prioritize ruthlessly. Many commits aren't worth mentioning. Collapse
-    related commits into one bullet. Some important changes might get two
-    bullets. Do NOT have a catchall "other fixes" or "bug fixes" bullet —
-    if it's not worth its own bullet, omit it entirely. Avoid a wall of
-    text. A few tight bullets is ideal. Quiet days can be a single line.
+    related commits into one item. Some important changes might get two
+    items. Do NOT have a catchall "other fixes" or "bug fixes" item —
+    if it's not worth its own item, omit it entirely. A few tight items
+    is ideal. Quiet days can be a single item.
 
-    Do NOT start with a title or header — the date is already clear from
-    the posting context. No preamble, no sign-off, no explanation.
+    Do NOT start an item with a title or header — the date is already
+    clear from the posting context. No preamble, no sign-off, no
+    explanation.
 
     Every sentence should update the reader's mental model of the system.
     Use the history to understand what readers already know — their prior
@@ -100,8 +101,9 @@ class DailyBrief(dspy.Signature):
              "delta against it. Rarely, link a prior commit if a reader "
              "would almost certainly want to look it up — but default to not."
     )
-    brief: str = dspy.OutputField(
-        desc="The brief, ready to post to Slack. Slack mrkdwn format."
+    items: list[str] = dspy.OutputField(
+        desc="Self-contained brief items, each posted as its own Slack message. "
+             "Slack mrkdwn format."
     )
 
 
@@ -192,7 +194,7 @@ def setup_tracing():
     import mlflow
     mlflow.dspy.autolog()
     mlflow.set_tracking_uri("sqlite:///mlruns.db")
-    mlflow.set_experiment("daily-brief")
+    mlflow.set_experiment("codebase-brief")
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +202,12 @@ def setup_tracing():
 # ---------------------------------------------------------------------------
 
 def generate_brief(date, commits, history, verbose=False):
-    """Use a dSPy RLM to produce the brief. Returns the text or empty string."""
+    """Use a dSPy RLM to produce the brief. Returns (header, items).
+
+    The header is built in Python from the run context (date and commit
+    count); items are produced by the agent, one self-contained brief
+    entry per element.
+    """
     # Prevent Deno from discovering a parent package.json and using manual
     # node_modules resolution, which breaks pyodide loading in the sandbox.
     os.environ["DENO_NO_PACKAGE_JSON"] = "1"
@@ -209,7 +216,7 @@ def generate_brief(date, commits, history, verbose=False):
     dspy.configure(lm=lm)
 
     rlm = dspy.RLM(
-        DailyBrief,
+        CodebaseBrief,
         max_iterations=15,
         max_llm_calls=50,
     )
@@ -222,28 +229,37 @@ def generate_brief(date, commits, history, verbose=False):
         verbose=verbose,
     )
 
+    items = list(result.items)
+    header = "exe.dev codebase brief"
+
     brief_path = os.path.join(os.getcwd(), f"brief_{date.strftime('%Y_%m_%d')}.md")
     with open(brief_path, "w") as f:
-        f.write(result.brief)
+        f.write(header)
+        for item in items:
+            f.write("\n\n")
+            f.write(item)
+        f.write("\n")
     log(f"wrote {brief_path}")
-    return result.brief
+    return header, items
 
 
 # ---------------------------------------------------------------------------
 # Slack posting
 # ---------------------------------------------------------------------------
 
-def post_to_slack(brief):
+def post_to_slack(header, items):
     from client import SlackClient, ensure_token
 
     hostname = socket.gethostname()
-    footer = f"\n\n_posted from `{hostname}` · <https://github.com/{GITHUB_REPO}/blob/main/scripts/daily_brief.py|scripts/daily_brief.py>_"
+    provenance = f"_posted from `{hostname}` · <https://github.com/{GITHUB_REPO}/blob/main/scripts/daily_brief.py|scripts/daily_brief.py>_"
 
     token = ensure_token()
     slack = SlackClient(token)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
-    slack.post_message(channel_id, brief + footer, mrkdwn=True)
-    log(f"posted brief to #{SLACK_CHANNEL}")
+    slack.post_message(channel_id, f"{header}\n{provenance}", mrkdwn=True)
+    for item in items:
+        slack.post_message(channel_id, item, mrkdwn=True)
+    log(f"posted header + {len(items)} items to #{SLACK_CHANNEL}")
 
 
 # ---------------------------------------------------------------------------
@@ -264,22 +280,25 @@ def run_once(date, post=False, verbose=False):
     log(f"found {len(commits)} commits")
     history = get_history(date)
     log(f"loaded {len(history)} history entries")
-    brief = generate_brief(date, commits, history, verbose=verbose)
-    if not brief:
+    header, items = generate_brief(date, commits, history, verbose=verbose)
+    if not items:
         log("failed to generate brief")
         return
 
     print()
-    print(brief)
+    print(header)
+    for item in items:
+        print()
+        print(item)
     print()
 
     if post:
-        post_to_slack(brief)
+        post_to_slack(header, items)
 
 
 def main_loop(verbose=False):
     """Production loop: fetch periodically, brief around midnight UTC."""
-    log("daily brief daemon starting")
+    log("codebase brief daemon starting")
     log(f"  channel: #{SLACK_CHANNEL}")
     log(f"  fetch interval: {FETCH_INTERVAL}s")
     log(f"  stop: touch stop")
@@ -309,13 +328,13 @@ def main_loop(verbose=False):
                 if commits:
                     history = get_history(yesterday)
                     try:
-                        brief = generate_brief(yesterday, commits, history, verbose=verbose)
+                        header, items = generate_brief(yesterday, commits, history, verbose=verbose)
                     except Exception as e:
                         log(f"failed to generate brief: {e}")
-                        brief = None
-                    if brief:
+                        header, items = "", []
+                    if items:
                         try:
-                            post_to_slack(brief)
+                            post_to_slack(header, items)
                             last_brief_date = yesterday
                         except Exception as e:
                             log(f"failed to post: {e}")
@@ -333,7 +352,7 @@ def main_loop(verbose=False):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="exe.dev daily commit brief")
+    parser = argparse.ArgumentParser(description="exe.dev codebase brief")
     parser.add_argument(
         "--date",
         type=lambda s: datetime.date.fromisoformat(s),
