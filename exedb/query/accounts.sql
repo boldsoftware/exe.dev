@@ -423,6 +423,7 @@ WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at IS NOT NULL
   AND ap.trial_expires_at <= datetime('now')
   AND ap.changed_by = 'system:stripeless_trial'
+  AND ap.plan_id LIKE 'trial:%'
 ORDER BY ap.trial_expires_at ASC
 LIMIT 1;
 
@@ -437,6 +438,7 @@ FROM account_plans
 WHERE ended_at IS NULL
   AND trial_expires_at > datetime('now')
   AND changed_by = 'system:stripeless_trial'
+  AND plan_id LIKE 'trial:%'
 ORDER BY trial_expires_at ASC
 LIMIT 1;
 
@@ -461,4 +463,5 @@ JOIN users u ON u.user_id = a.created_by
 WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at IS NOT NULL
   AND ap.changed_by = 'system:stripeless_trial'
+  AND ap.plan_id LIKE 'trial:%'
 ORDER BY ap.trial_expires_at ASC;
