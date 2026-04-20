@@ -924,7 +924,7 @@ func TestCertRateLimitHostPolicyCacheHit(t *testing.T) {
 		"cached.example.com": []byte("fake-cert-data"),
 	}}
 	rl.ValidateHost = func(ctx context.Context, host string) (string, error) {
-		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+		return s.validateHostForTLSCertWithBoxName(ctx, host)
 	}
 
 	ctx := context.Background()
@@ -984,7 +984,7 @@ func TestCertRateLimitHostPolicyCacheMissConsumesToken(t *testing.T) {
 	rl.Lg = s.slog()
 	rl.Cache = &fakeCache{data: map[string][]byte{}}
 	rl.ValidateHost = func(ctx context.Context, host string) (string, error) {
-		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+		return s.validateHostForTLSCertWithBoxName(ctx, host)
 	}
 
 	ctx := context.Background()

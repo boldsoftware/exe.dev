@@ -178,7 +178,7 @@ func (s *Server) setupHTTPSServer() {
 	s.certRateLimiter = exeweb.NewCertRateLimiter(10)
 	s.certRateLimiter.RegisterMetrics(s.metricsRegistry)
 	s.certRateLimiter.ValidateHost = func(ctx context.Context, host string) (string, error) {
-		return s.proxyServer().ValidateHostForTLSCertWithBoxName(ctx, host)
+		return s.validateHostForTLSCertWithBoxName(ctx, host)
 	}
 	s.certRateLimiter.Cache = certCache
 	s.certRateLimiter.Lg = s.slog()
@@ -269,7 +269,8 @@ func (s *Server) setupHTTPSServer() {
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
 func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
-	return s.proxyServer().ValidateHostForTLSCert(ctx, host)
+	_, err := s.validateHostForTLSCertWithBoxName(ctx, host)
+	return err
 }
 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.

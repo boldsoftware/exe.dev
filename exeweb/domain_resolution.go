@@ -264,3 +264,32 @@ func (dr *DomainResolver) lookupA(ctx context.Context, host string) ([]netip.Add
 	}
 	return addrs, err
 }
+
+// ValidateHostForTLSCert checks whether the given host
+// is valid for TLS certificate issuance.
+// For a VM this returns the box name,
+// but it does not verify that the box actually exists;
+// normally the caller should check that.
+func (dr *DomainResolver) ValidateHostForTLSCert(ctx context.Context, host string) (boxName string, err error) {
+	host = domz.Canonicalize(host)
+	if domz.FirstMatch(host, dr.Env.BoxHost, dr.Env.WebHost) != "" {
+		return "", nil
+	}
+	if host == "exe.new" {
+		return "", nil
+	}
+	if host == "bold.dev" {
+		return "", nil
+	}
+
+	dr.CheckWildcardCNAME(ctx, host)
+	boxName, err = dr.ResolveCustomDomainBoxName(ctx, host)
+	if err != nil {
+		return "", err
+	}
+	if boxName == "" {
+		dr.Lg.WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
+		return "", fmt.Errorf("unable to resolve VM for %s", host)
+	}
+	return boxName, nil
+}

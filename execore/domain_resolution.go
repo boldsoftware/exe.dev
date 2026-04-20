@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"fmt"
 
 	"exe.dev/exeweb"
 )
@@ -21,6 +22,24 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 // ALIAS/ANAME records which resolve to A records pointing at exe.dev infrastructure.
 func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (string, error) {
 	return s.domainResolver().ResolveCustomDomainBoxName(ctx, host)
+}
+
+// validateHostForTLSCertWithBoxName checks whether the given host
+// is valid for TLS certificate issuance.
+// It returns the box name.
+func (s *Server) validateHostForTLSCertWithBoxName(ctx context.Context, host string) (boxName string, err error) {
+	boxName, err = s.domainResolver().ValidateHostForTLSCert(ctx, host)
+	if err != nil {
+		return "", err
+	}
+	if boxName == "" {
+		return "", nil
+	}
+	if !s.boxExists(ctx, boxName) {
+		s.slog().WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host, "boxName", boxName)
+		return "", fmt.Errorf("box not found: %s", boxName)
+	}
+	return boxName, nil
 }
 
 // domainResolver returns a [exeweb.DomainResolver] for [Server].

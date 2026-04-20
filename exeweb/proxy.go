@@ -474,26 +474,12 @@ func (ps *ProxyServer) ValidateHostForTLSCert(ctx context.Context, host string) 
 // ValidateHostForTLSCertWithBoxName is like ValidateHostForTLSCert but also
 // returns the resolved box name (empty for first-party domains like WebHost).
 func (ps *ProxyServer) ValidateHostForTLSCertWithBoxName(ctx context.Context, host string) (boxName string, _ error) {
-	host = domz.Canonicalize(host)
-	if domz.FirstMatch(host, ps.Env.BoxHost, ps.Env.WebHost) != "" {
-		return "", nil
-	}
-	if host == "exe.new" {
-		return "", nil
-	}
-	if host == "bold.dev" {
-		return "", nil
-	}
-
-	dr := ps.domainResolver()
-	dr.CheckWildcardCNAME(ctx, host)
-	boxName, err := dr.ResolveCustomDomainBoxName(ctx, host)
+	boxName, err := ps.domainResolver().ValidateHostForTLSCert(ctx, host)
 	if err != nil {
 		return "", err
 	}
 	if boxName == "" {
-		ps.Lg.WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
-		return "", fmt.Errorf("unable to resolve VM for %s", host)
+		return "", nil
 	}
 	_, exists, err := ps.Data.BoxInfo(ctx, boxName)
 	if err != nil {
