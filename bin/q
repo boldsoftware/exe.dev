@@ -590,6 +590,9 @@ def main():
                     help="run CI tests with -race [default]")
     p.add_argument("--no-race", action="store_true",
                     help="run CI tests without -race (adds Test-Race: false trailer)")
+    p.add_argument("--yolo", action="store_true",
+                    help="skip all CI tests (adds Bypass-CI: true trailer); "
+                         "also skips local generate/lint. You take responsibility.")
 
     # Parse user defaults first, then real args on top.
     args = p.parse_args(user_defaults)
@@ -613,6 +616,14 @@ def main():
     if args.no_race:
         args.race = False
     del args.no_race
+
+    if args.yolo:
+        if args.dry_run:
+            print("q: --yolo and --dry-run are mutually exclusive", file=sys.stderr)
+            raise SystemExit(1)
+        # --yolo asserts "don't bother checking anything": skip local checks too.
+        args.no_generate = True
+        args.no_lint = True
 
     ref = args.ref
 
@@ -671,6 +682,14 @@ def main():
             print("q: --no-race requires HEAD", file=sys.stderr)
             raise SystemExit(1)
         set_trailer("Test-Race", "false")
+
+    # --- Apply Bypass-CI trailer if --yolo ---
+    if args.yolo:
+        if ref != "HEAD":
+            print("q: --yolo requires HEAD", file=sys.stderr)
+            raise SystemExit(1)
+        set_trailer("Bypass-CI", "true")
+        print("q: YOLO mode: Bypass-CI trailer set; CI will skip tests", file=sys.stderr)
 
     # --- Resolve commit (after possible formatter amend) ---
     commit = git("rev-parse", ref)

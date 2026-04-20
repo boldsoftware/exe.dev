@@ -24,6 +24,10 @@ Coverage mode (commit trailer "Coverage: true" or env E1E_COVERAGE=true):
   Builds exed/exeprox with -cover, collects coverage from all test steps,
   and adds a final merge-coverage step that produces a combined report.
 
+Bypass mode (commit trailer "Bypass-CI: true"):
+  Skips exe/shelley/blog/ui test segments. commit-validation, format,
+  and push still run. Ignored on main — main always runs the full suite.
+
 The segments are plain YAML lists of steps. push.yml uses the placeholder
 string __ALL_DEPS__ which is replaced with the actual dependency list at
 generation time.
@@ -448,6 +452,14 @@ def main():
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
     # Test-Race: true (default) / false. Also accept EXE_TEST_RACE env.
     test_race = trailers.get("test-race", os.environ.get("EXE_TEST_RACE", "true")).lower() not in ("false", "0", "no")
+    # Bypass-CI: author asserts the change needs no tests (docs, etc.).
+    # Honored only on queue/test branches; main always runs the full suite.
+    # Require exactly "true" (case-insensitive) — no "1"/"yes" shorthand, to
+    # keep the trailer greppable and intentional.
+    bypass_ci = (
+        trailers.get("bypass-ci", "").strip().lower() == "true"
+        and branch != "main"
+    )
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
           f"blog_changed={blog_changed} ui_changed={ui_changed} "
@@ -456,7 +468,8 @@ def main():
           f"gomaxprocs={gomaxprocs or '(default)'} "
           f"exelets_vm_concurrency={exelets_vm_concurrency} "
           f"migration_shards={migration_shards} "
-          f"coverage={coverage}",
+          f"coverage={coverage} "
+          f"bypass_ci={bypass_ci}",
           file=sys.stderr)
 
     # Assemble step segments
@@ -466,7 +479,7 @@ def main():
     segments.append(load_segment("commit-validation.yml"))
 
     # Conditional: exe tests
-    if exe_changed:
+    if exe_changed and not bypass_ci:
         exe_segment = load_segment("exe.yml")
         if coverage:
             exe_segment = _inject_coverage_env(exe_segment)
@@ -475,15 +488,15 @@ def main():
         segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=coverage))
 
     # Conditional: shelley tests
-    if shelley_changed:
+    if shelley_changed and not bypass_ci:
         segments.append(load_segment("shelley.yml"))
 
     # Conditional: blog tests (run for blog-only changes, or as part of exe)
-    if blog_changed or exe_changed:
+    if (blog_changed or exe_changed) and not bypass_ci:
         segments.append(load_segment("blog.yml"))
 
     # Conditional: ui tests (typecheck + vitest). Runs whenever ui/ changes.
-    if ui_changed:
+    if ui_changed and not bypass_ci:
         segments.append(load_segment("ui.yml"))
 
     # Always: formatting
