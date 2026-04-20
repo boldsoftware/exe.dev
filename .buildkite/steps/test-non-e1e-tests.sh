@@ -35,7 +35,7 @@ fi
 
 echo "--- :go: Run unit tests (excluding e1e)${UNIT_TEST_SHARD:+ shard $UNIT_TEST_SHARD}"
 
-ALL_PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/testinfra|e1e/exelets|experiments/imageunpack|blog|cmd/blogd)$')
+ALL_PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|e1e/billing|e1e/testinfra|e1e/exelets|experiments/imageunpack|blog|cmd/blogd)$')
 
 RUN_FILTER=""
 case "$UNIT_TEST_SHARD" in

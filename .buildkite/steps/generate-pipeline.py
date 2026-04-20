@@ -301,6 +301,22 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
             lines.append(f'    - "coverage-{label}.txt"')
         lines.append('')
 
+    # Billing e1e step (separate exed instance with billing enabled).
+    lines.append('- label: ":credit_card: e1e billing"')
+    lines.append('  key: test-billing')
+    lines.append('  depends_on:')
+    lines.append('    - build-e1e')
+    lines.append('    - ensure-snapshot')
+    lines.append('  command: python3 .buildkite/steps/test-e1e-billing.py')
+    lines.append('  timeout_in_minutes: 15')
+    lines.append('  env:')
+    lines.append('    VM_DRIVER: cloudhypervisor')
+    lines.append('  artifact_paths:')
+    lines.append('    - "e1e-results-billing.json"')
+    lines.append('    - "test-gantt-billing.html"')
+    lines.append('    - "e1e-logs-billing/**/*"')
+    lines.append('')
+
     return '\n'.join(lines)
 
 
