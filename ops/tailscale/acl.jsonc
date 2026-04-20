@@ -1,11 +1,13 @@
-// Phase 3c: Ready to activate SSH isolation.
+// Tailscale ACL policy for bold.dev.
 //
-// All final rules are in place. Two safety-net lines keep the old
-// permissive behavior alive until deliberately removed.
+// SSH is the safety boundary. Network grants are permissive within and
+// across zones — anyone on the tailnet can reach any tagged machine at
+// the TCP/UDP level. What's restricted is who gets a shell:
+//   - group:dev can SSH to staging and island (no key flip).
+//   - group:prod can SSH to prod (passkey required).
 //
-// TO ACTIVATE: delete the two lines/blocks marked ⚠️ SAFETY NET below,
-//              then update the tests section to add deny entries.
-// TO ROLL BACK: re-add them.
+// To grant emergency full access, add to grants:
+//   { "src": ["*"], "dst": ["*"], "ip": ["*"] }
 {
   "groups": {
     "group:dev": [
@@ -31,16 +33,12 @@
   },
 
   "tagOwners": {
-    "tag:server": ["autogroup:admin"], // kept until safety nets removed
     "tag:island": ["autogroup:admin"],
     "tag:staging": ["autogroup:admin"],
     "tag:prod": ["autogroup:admin"],
   },
 
   "grants": [
-    // ⚠️ SAFETY NET — delete this line to activate network isolation:
-    { "src": ["*"], "dst": ["*"], "ip": ["*"] },
-
     // Zone-internal traffic.
     { "src": ["tag:staging"], "dst": ["tag:staging"], "ip": ["*"] },
     { "src": ["tag:prod"], "dst": ["tag:prod"], "ip": ["*"] },
@@ -60,13 +58,6 @@
       "action": "accept",
       "src": ["autogroup:member"],
       "dst": ["autogroup:self"],
-      "users": ["autogroup:nonroot", "root"],
-    },
-    // ⚠️ SAFETY NET — delete this rule to require passkey for prod SSH:
-    {
-      "action": "accept",
-      "src": ["autogroup:admin", "tag:server"],
-      "dst": ["tag:server"],
       "users": ["autogroup:nonroot", "root"],
     },
     // Regular devs can SSH to non-prod (no key flip needed).
@@ -96,17 +87,26 @@
     { "target": ["100.71.235.113"], "attr": ["mullvad"] },
   ],
 
-  // Accept-only tests (deny tests can't pass while the wildcard is active).
-  // After activation, add deny entries — see acl-target.jsonc for the final tests.
+  // Tests verify isolation invariants.
   "tests": [
+    // Staging can reach staging, but not prod or island.
     {
       "src": "tag:staging",
       "accept": ["tag:staging:9080"],
+      "deny": ["tag:prod:9080", "tag:island:22"],
     },
+    // Prod can reach prod, but not staging or island.
     {
       "src": "tag:prod",
       "accept": ["tag:prod:9080", "tag:prod:2224"],
+      "deny": ["tag:staging:9080", "tag:island:22"],
     },
+    // Each island is isolated from everything — including other islands.
+    {
+      "src": "tag:island",
+      "deny": ["tag:prod:9080", "tag:staging:9080", "tag:island:22"],
+    },
+    // Developer access: can reach everything on the network.
     {
       "src": "100.83.1.18",
       "accept": ["tag:prod:22", "tag:staging:22", "tag:island:22"],
