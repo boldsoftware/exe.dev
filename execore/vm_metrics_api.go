@@ -10,15 +10,18 @@ import (
 
 // vmMetricsResponse is the JSON response for GET /api/vm/{name}/compute-usage/live
 type vmMetricsResponse struct {
-	Name         string  `json:"name"`
-	Status       string  `json:"status"`
-	CPUPercent   float64 `json:"cpu_percent"`         // 100% = 1 core
-	MemBytes     uint64  `json:"mem_bytes"`           // RSS in bytes
-	SwapBytes    uint64  `json:"swap_bytes"`          // Swap usage in bytes
-	DiskBytes    uint64  `json:"disk_bytes"`          // Actual disk usage
-	DiskCapacity uint64  `json:"disk_capacity_bytes"` // Provisioned disk size
-	NetRxBytes   uint64  `json:"net_rx_bytes"`        // Cumulative received bytes
-	NetTxBytes   uint64  `json:"net_tx_bytes"`        // Cumulative transmitted bytes
+	Name             string  `json:"name"`
+	Status           string  `json:"status"`
+	CPUPercent       float64 `json:"cpu_percent"`         // 100% = 1 core
+	MemBytes         uint64  `json:"mem_bytes"`           // RSS in bytes
+	SwapBytes        uint64  `json:"swap_bytes"`          // Swap usage in bytes
+	DiskBytes        uint64  `json:"disk_bytes"`          // Compressed on-disk usage (ZFS used)
+	DiskLogicalBytes uint64  `json:"disk_logical_bytes"`  // Uncompressed logical usage (matches df -h)
+	DiskCapacity     uint64  `json:"disk_capacity_bytes"` // Provisioned disk size (ZFS volsize)
+	MemCapacity      uint64  `json:"mem_capacity_bytes"`  // Allocated memory from VM config
+	CPUs             uint64  `json:"cpus"`                // Allocated vCPUs from VM config
+	NetRxBytes       uint64  `json:"net_rx_bytes"`        // Cumulative received bytes
+	NetTxBytes       uint64  `json:"net_tx_bytes"`        // Cumulative transmitted bytes
 }
 
 // handleAPIVMMetrics handles GET /api/vm/{name}/compute-usage/live
@@ -64,15 +67,18 @@ func (s *Server) handleAPIVMMetrics(w http.ResponseWriter, r *http.Request, user
 		if row.Name == vmName {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(vmMetricsResponse{
-				Name:         row.Name,
-				Status:       row.Status,
-				CPUPercent:   row.CPUPercent,
-				MemBytes:     row.MemBytes,
-				SwapBytes:    row.SwapBytes,
-				DiskBytes:    row.DiskBytes,
-				DiskCapacity: row.DiskCapacity,
-				NetRxBytes:   row.NetRx,
-				NetTxBytes:   row.NetTx,
+				Name:             row.Name,
+				Status:           row.Status,
+				CPUPercent:       row.CPUPercent,
+				MemBytes:         row.MemBytes,
+				SwapBytes:        row.SwapBytes,
+				DiskBytes:        row.DiskBytes,
+				DiskLogicalBytes: row.DiskLogicalBytes,
+				DiskCapacity:     row.DiskCapacity,
+				MemCapacity:      row.MemCapacity,
+				CPUs:             row.CPUs,
+				NetRxBytes:       row.NetRx,
+				NetTxBytes:       row.NetTx,
 			})
 			return
 		}

@@ -25,15 +25,18 @@ const (
 
 // vmUsageRow is one row in the top display, representing a single VM.
 type vmUsageRow struct {
-	Name         string
-	Status       string
-	CPUPercent   float64 // 100% = 1 core
-	MemBytes     uint64  // RSS
-	SwapBytes    uint64
-	DiskBytes    uint64 // actual usage
-	DiskCapacity uint64 // provisioned size
-	NetRx        uint64 // cumulative bytes
-	NetTx        uint64 // cumulative bytes
+	Name             string
+	Status           string
+	CPUPercent       float64 // 100% = 1 core
+	MemBytes         uint64  // RSS
+	SwapBytes        uint64
+	DiskBytes        uint64 // compressed on-disk usage (ZFS used)
+	DiskLogicalBytes uint64 // uncompressed logical usage (ZFS logicalused, matches df -h)
+	DiskCapacity     uint64 // provisioned size (ZFS volsize)
+	MemCapacity      uint64 // allocated memory from VM config
+	CPUs             uint64 // allocated vCPUs from VM config
+	NetRx            uint64 // cumulative bytes
+	NetTx            uint64 // cumulative bytes
 }
 
 // topModel is the bubbletea model for the "top" command.
@@ -193,12 +196,16 @@ func (m *topModel) View() string {
 		cpuStr := colorizeCPU(row.CPUPercent)
 		memStr := colorizeMemory(row.MemBytes + row.SwapBytes)
 
-		// Disk: used/capacity
+		// Disk: logical-used/capacity (use logical bytes so the number matches df -h)
 		var diskStr string
+		diskUsed := row.DiskLogicalBytes
+		if diskUsed == 0 {
+			diskUsed = row.DiskBytes // fallback to compressed if logical not available
+		}
 		if row.DiskCapacity > 0 {
-			diskStr = fmt.Sprintf("%s/%s", topFmtBytes(row.DiskBytes), topFmtBytes(row.DiskCapacity))
+			diskStr = fmt.Sprintf("%s/%s", topFmtBytes(diskUsed), topFmtBytes(row.DiskCapacity))
 		} else {
-			diskStr = topFmtBytes(row.DiskBytes)
+			diskStr = topFmtBytes(diskUsed)
 		}
 
 		// Network: rates in Mbps (bits per second).
@@ -416,7 +423,10 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 					row.MemBytes = u.MemoryBytes
 					row.SwapBytes = u.SwapBytes
 					row.DiskBytes = u.DiskBytes
+					row.DiskLogicalBytes = u.DiskLogicalBytes
 					row.DiskCapacity = u.DiskCapacityBytes
+					row.MemCapacity = u.MemCapacityBytes
+					row.CPUs = u.CPUs
 					row.NetRx = u.NetRxBytes
 					row.NetTx = u.NetTxBytes
 				}

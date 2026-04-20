@@ -72,8 +72,7 @@
         <span v-if="box.image">{{ box.image }}</span>
         <span v-if="box.createdAt" class="sep">·</span>
         <span v-if="box.createdAt">Created {{ box.createdAt }}</span>
-        <span v-if="uptimeDisplay" class="sep">·</span>
-        <span v-if="uptimeDisplay">Up {{ uptimeDisplay }}</span>
+
       </div>
 
       <!-- SSH Field -->
@@ -347,12 +346,6 @@ const llmPeriodLabel = computed(() => {
   return `${fmtPeriodDate(llmUsage.value.periodStart)} – ${fmtPeriodDate(llmUsage.value.periodEnd)}`
 })
 
-const uptimeDisplay = computed(() => {
-  if (!box.value?.updatedAt || box.value.status !== 'running') return ''
-  // updatedAt is approximate last-seen; use createdAt as proxy for uptime
-  // Only show if box has been running for a meaningful time
-  return ''
-})
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 B'

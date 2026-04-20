@@ -527,8 +527,11 @@ describe('VMDetail', () => {
       cpu_percent: 42.5,
       mem_bytes: 1073741824,
       swap_bytes: 0,
-      disk_bytes: 5368709120,
+      disk_bytes: 3221225472,
+      disk_logical_bytes: 5368709120,
       disk_capacity_bytes: 10737418240,
+      mem_capacity_bytes: 2147483648,
+      cpus: 2,
       net_rx_bytes: 1048576,
       net_tx_bytes: 524288,
     })

@@ -26,13 +26,11 @@
       <div class="metric-card">
         <div class="mt">Net ↓</div>
         <div class="mv blue">{{ netRxDisplay }}</div>
-        <div class="mb"><div class="mb-fill" :style="{ width: '0%', background: '#2563eb' }"></div></div>
         <div class="ms">{{ netRxSub }}</div>
       </div>
       <div class="metric-card">
         <div class="mt">Net ↑</div>
         <div class="mv blue">{{ netTxDisplay }}</div>
-        <div class="mb"><div class="mb-fill" :style="{ width: '0%', background: '#2563eb' }"></div></div>
         <div class="ms">{{ netTxSub }}</div>
       </div>
     </div>
@@ -68,31 +66,46 @@ const cpuDisplay = computed(() => {
 })
 const cpuSub = computed(() => {
   if (!metrics.value) return ''
+  if (metrics.value.cpus) {
+    return `of ${metrics.value.cpus} vCPU${metrics.value.cpus > 1 ? 's' : ''}`
+  }
   return 'of CPU capacity'
 })
 
 // Memory
-const memPct = computed(() => 0) // no capacity info from API
+const memPct = computed(() => {
+  if (!metrics.value || !metrics.value.mem_capacity_bytes) return 0
+  return Math.min((metrics.value.mem_bytes / metrics.value.mem_capacity_bytes) * 100, 100)
+})
 const memDisplay = computed(() => {
   if (!metrics.value) return '—'
   return formatBytesShort(metrics.value.mem_bytes)
 })
 const memSub = computed(() => {
   if (!metrics.value) return ''
-  if (metrics.value.swap_bytes > 0) {
-    return `${formatBytesShort(metrics.value.swap_bytes)} swap`
+  const parts: string[] = []
+  if (metrics.value.mem_capacity_bytes) {
+    parts.push(`of ${formatBytesShort(metrics.value.mem_capacity_bytes)}`)
   }
-  return 'RSS usage'
+  if (metrics.value.swap_bytes > 0) {
+    parts.push(`${formatBytesShort(metrics.value.swap_bytes)} swap`)
+  }
+  return parts.length ? parts.join(' · ') : 'RSS usage'
 })
 
 // Disk
+// Use logical bytes (matches df -h) with fallback to compressed bytes for old exelets
+const diskUsedBytes = computed(() => {
+  if (!metrics.value) return 0
+  return metrics.value.disk_logical_bytes || metrics.value.disk_bytes
+})
 const diskPct = computed(() => {
   if (!metrics.value || !metrics.value.disk_capacity_bytes) return 0
-  return Math.min((metrics.value.disk_bytes / metrics.value.disk_capacity_bytes) * 100, 100)
+  return Math.min((diskUsedBytes.value / metrics.value.disk_capacity_bytes) * 100, 100)
 })
 const diskDisplay = computed(() => {
   if (!metrics.value) return '—'
-  return formatBytesShort(metrics.value.disk_bytes)
+  return formatBytesShort(diskUsedBytes.value)
 })
 const diskSub = computed(() => {
   if (!metrics.value) return ''
@@ -137,13 +150,13 @@ const netTxSub = computed(() => {
   return `${formatBytesShort(metrics.value.net_tx_bytes)} sent total`
 })
 
-// Format bytes as short human string (e.g. "2.3 GB")
+// Format bytes as short human string using binary units (e.g. "2.3 GiB")
 function formatBytesShort(bytes: number): string {
   if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
   let i = 0
   let v = bytes
-  while (v >= 1000 && i < units.length - 1) { v /= 1000; i++ }
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
@@ -292,9 +305,19 @@ onBeforeUnmount(() => {
   color: var(--text-color-muted);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
   .metrics-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  /* Let the 5th card span full width so it doesn't orphan */
+  .metric-card:last-child {
+    grid-column: 1 / -1;
   }
 }
 </style>

@@ -23,12 +23,15 @@ function makeMetrics(overrides: Partial<VMLiveMetrics> = {}): VMLiveMetrics {
     name: 'test-vm',
     status: 'running',
     cpu_percent: 23.4,
-    mem_bytes: 2_147_483_648, // ~2 GB
+    mem_bytes: 2 * 1024 * 1024 * 1024,          // 2 GiB
     swap_bytes: 0,
-    disk_bytes: 5_000_000_000, // 5 GB
-    disk_capacity_bytes: 25_000_000_000, // 25 GB
-    net_rx_bytes: 1_200_000_000, // 1.2 GB
-    net_tx_bytes: 340_000_000, // 340 MB
+    disk_bytes: 3 * 1024 * 1024 * 1024,          // 3 GiB compressed
+    disk_logical_bytes: 5 * 1024 * 1024 * 1024,  // 5 GiB logical (matches df -h)
+    disk_capacity_bytes: 25 * 1024 * 1024 * 1024, // 25 GiB
+    mem_capacity_bytes: 4 * 1024 * 1024 * 1024,  // 4 GiB allocated
+    cpus: 4,
+    net_rx_bytes: 1.5 * 1024 * 1024 * 1024,      // 1.5 GiB
+    net_tx_bytes: 256 * 1024 * 1024,             // 256 MiB
     ...overrides,
   }
 }
@@ -65,48 +68,98 @@ describe('LiveMetrics', () => {
     expect(cpuCard.find('.mv').text()).toBe('75.3%')
   })
 
-  it('displays memory in human-readable format', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2_147_483_648 }))
+  it('shows vCPU count in CPU subtitle', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpus: 4 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
-    const memCard = wrapper.findAll('.metric-card')[1]
-    expect(memCard.find('.mv').text()).toBe('2.1 GB')
+    const cpuCard = wrapper.findAll('.metric-card')[0]
+    expect(cpuCard.find('.ms').text()).toBe('of 4 vCPUs')
   })
 
-  it('shows swap info in memory subtitle when swap is used', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 500_000_000 }))
+  it('shows singular vCPU for 1 core', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpus: 1 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cpuCard = wrapper.findAll('.metric-card')[0]
+    expect(cpuCard.find('.ms').text()).toBe('of 1 vCPU')
+  })
+
+  it('falls back to generic CPU subtitle when cpus is 0', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ cpus: 0 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const cpuCard = wrapper.findAll('.metric-card')[0]
+    expect(cpuCard.find('.ms').text()).toBe('of CPU capacity')
+  })
+
+  it('shows memory progress bar when capacity is known', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2 * 1024 * 1024 * 1024, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memBar = wrapper.findAll('.metric-card')[1].find('.mb-fill')
+    expect(memBar.attributes('style')).toContain('width: 50%')
+  })
+
+  it('displays memory in human-readable format', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ mem_bytes: 2 * 1024 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.mv').text()).toBe('2.0 GiB')
+  })
+
+  it('shows memory capacity and swap in subtitle', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 512 * 1024 * 1024, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.ms').text()).toContain('of 4.0 GiB')
     expect(memCard.find('.ms').text()).toContain('swap')
   })
 
-  it('shows RSS usage subtitle when no swap', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0 }))
+  it('shows memory capacity without swap when no swap', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const memCard = wrapper.findAll('.metric-card')[1]
+    expect(memCard.find('.ms').text()).toBe('of 4.0 GiB')
+  })
+
+  it('falls back to RSS usage subtitle when no capacity', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ swap_bytes: 0, mem_capacity_bytes: 0 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const memCard = wrapper.findAll('.metric-card')[1]
     expect(memCard.find('.ms').text()).toBe('RSS usage')
   })
 
-  it('displays disk usage with capacity subtitle', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 5_000_000_000, disk_capacity_bytes: 25_000_000_000 }))
+  it('displays logical disk usage with capacity subtitle', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 3 * 1024 * 1024 * 1024, disk_logical_bytes: 5 * 1024 * 1024 * 1024, disk_capacity_bytes: 25 * 1024 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const diskCard = wrapper.findAll('.metric-card')[2]
-    expect(diskCard.find('.mv').text()).toBe('5.0 GB')
-    expect(diskCard.find('.ms').text()).toContain('25.0 GB capacity')
+    // Should show logical bytes (5 GiB), not compressed (3 GiB)
+    expect(diskCard.find('.mv').text()).toBe('5.0 GiB')
+    expect(diskCard.find('.ms').text()).toContain('25.0 GiB capacity')
+  })
+
+  it('falls back to compressed disk_bytes when disk_logical_bytes is 0', async () => {
+    mockFetch.mockResolvedValue(makeMetrics({ disk_bytes: 3 * 1024 * 1024 * 1024, disk_logical_bytes: 0, disk_capacity_bytes: 25 * 1024 * 1024 * 1024 }))
+    const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
+    await flushPromises()
+    const diskCard = wrapper.findAll('.metric-card')[2]
+    expect(diskCard.find('.mv').text()).toBe('3.0 GiB')
   })
 
   it('shows total bytes on first poll for network', async () => {
-    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1_200_000_000, net_tx_bytes: 340_000_000 }))
+    mockFetch.mockResolvedValue(makeMetrics({ net_rx_bytes: 1.5 * 1024 * 1024 * 1024, net_tx_bytes: 256 * 1024 * 1024 }))
     const wrapper = mount(LiveMetrics, { props: { vmName: 'test-vm', vmStatus: 'running' } })
     await flushPromises()
     const rxCard = wrapper.findAll('.metric-card')[3]
     const txCard = wrapper.findAll('.metric-card')[4]
     // First poll: no rate yet, show raw value
-    expect(rxCard.find('.mv').text()).toBe('1.2 GB')
-    expect(txCard.find('.mv').text()).toBe('340.0 MB')
+    expect(rxCard.find('.mv').text()).toBe('1.5 GiB')
+    expect(txCard.find('.mv').text()).toBe('256.0 MiB')
   })
 
   it('shows network rate after second poll', async () => {
@@ -227,7 +280,10 @@ describe('LiveMetrics', () => {
     mockFetch.mockResolvedValue(makeMetrics({
       cpu_percent: 0,
       mem_bytes: 0,
+      mem_capacity_bytes: 0,
+      cpus: 0,
       disk_bytes: 0,
+      disk_logical_bytes: 0,
       disk_capacity_bytes: 0,
       net_rx_bytes: 0,
       net_tx_bytes: 0,

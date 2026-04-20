@@ -52,7 +52,22 @@ func TestTopCommand(t *testing.T) {
 				// the cgroup stats have actually been collected.
 				if u.Name == boxName && u.MemoryBytes > 0 {
 					found = true
-					t.Logf("VM %s: cpu=%.1f%% mem=%d swap=%d disk=%d/%d", boxName, u.CpuPercent, u.MemoryBytes, u.SwapBytes, u.DiskBytes, u.DiskCapacityBytes)
+					t.Logf("VM %s: cpu=%.1f%% mem=%d swap=%d disk=%d disk_logical=%d cap=%d mem_cap=%d cpus=%d",
+						boxName, u.CpuPercent, u.MemoryBytes, u.SwapBytes,
+						u.DiskBytes, u.DiskLogicalBytes, u.DiskCapacityBytes,
+						u.MemCapacityBytes, u.CPUs)
+					if u.DiskLogicalBytes == 0 {
+						t.Errorf("DiskLogicalBytes should be non-zero for a running VM")
+					}
+					if u.DiskLogicalBytes < u.DiskBytes {
+						t.Errorf("DiskLogicalBytes (%d) should be >= DiskBytes (%d)", u.DiskLogicalBytes, u.DiskBytes)
+					}
+					if u.MemCapacityBytes == 0 {
+						t.Errorf("MemCapacityBytes should be non-zero for a running VM")
+					}
+					if u.CPUs == 0 {
+						t.Errorf("CPUs should be non-zero for a running VM")
+					}
 					break
 				}
 			}

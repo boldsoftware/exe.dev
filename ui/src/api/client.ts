@@ -362,7 +362,10 @@ export interface VMLiveMetrics {
   mem_bytes: number
   swap_bytes: number
   disk_bytes: number
+  disk_logical_bytes: number
   disk_capacity_bytes: number
+  mem_capacity_bytes: number
+  cpus: number
   net_rx_bytes: number
   net_tx_bytes: number
 }

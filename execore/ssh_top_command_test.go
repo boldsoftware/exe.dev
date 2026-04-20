@@ -209,15 +209,16 @@ func TestTopModelView(t *testing.T) {
 	t.Run("with_rows", func(t *testing.T) {
 		rows := []vmUsageRow{
 			{
-				Name:         "my-vm",
-				Status:       "running",
-				CPUPercent:   45.2,
-				MemBytes:     1024 * 1024 * 1024,      // 1G RSS
-				SwapBytes:    512 * 1024 * 1024,       // 512M swap
-				DiskBytes:    500 * 1024 * 1024,       // 500M used
-				DiskCapacity: 10 * 1024 * 1024 * 1024, // 10G capacity
-				NetRx:        2048,
-				NetTx:        4096,
+				Name:             "my-vm",
+				Status:           "running",
+				CPUPercent:       45.2,
+				MemBytes:         1024 * 1024 * 1024,      // 1G RSS
+				SwapBytes:        512 * 1024 * 1024,       // 512M swap
+				DiskBytes:        300 * 1024 * 1024,       // 300M compressed
+				DiskLogicalBytes: 500 * 1024 * 1024,       // 500M logical (matches df -h)
+				DiskCapacity:     10 * 1024 * 1024 * 1024, // 10G capacity
+				NetRx:            2048,
+				NetTx:            4096,
 			},
 		}
 		m := newTestModel(rows, nil)
@@ -491,7 +492,23 @@ func TestFetchUsageCmdReturnsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTopViewDiskFormat(t *testing.T) {
-	t.Run("with_capacity", func(t *testing.T) {
+	t.Run("prefers_logical_bytes", func(t *testing.T) {
+		rows := []vmUsageRow{{
+			Name:             "vm1",
+			Status:           "running",
+			DiskBytes:        1 * 1024 * 1024 * 1024, // 1G compressed
+			DiskLogicalBytes: 2 * 1024 * 1024 * 1024, // 2G logical
+			DiskCapacity:     20 * 1024 * 1024 * 1024,
+		}}
+		m := newTestModel(rows, nil)
+		out := m.View()
+		if !strings.Contains(out, "2.0G/20.0G") {
+			t.Errorf("View() should show logical bytes (2.0G), not compressed (1.0G), got %q", out)
+		}
+	})
+
+	t.Run("falls_back_to_compressed", func(t *testing.T) {
+		// When DiskLogicalBytes is 0 (old exelet), fall back to DiskBytes
 		rows := []vmUsageRow{{
 			Name:         "vm1",
 			Status:       "running",
@@ -501,15 +518,15 @@ func TestTopViewDiskFormat(t *testing.T) {
 		m := newTestModel(rows, nil)
 		out := m.View()
 		if !strings.Contains(out, "2.0G/20.0G") {
-			t.Errorf("View() should show disk as used/capacity, got %q", out)
+			t.Errorf("View() should fall back to compressed bytes, got %q", out)
 		}
 	})
 
 	t.Run("without_capacity", func(t *testing.T) {
 		rows := []vmUsageRow{{
-			Name:      "vm1",
-			Status:    "running",
-			DiskBytes: 500 * 1024 * 1024,
+			Name:             "vm1",
+			Status:           "running",
+			DiskLogicalBytes: 500 * 1024 * 1024,
 		}}
 		m := newTestModel(rows, nil)
 		out := m.View()
