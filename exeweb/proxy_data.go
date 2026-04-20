@@ -91,12 +91,6 @@ type ProxyData interface {
 	// [ErrVMEmailRateLimited].
 	CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) error
 
-	// GetPushTokensByUserID returns all push tokens for a user.
-	GetPushTokensByUserID(ctx context.Context, userID string) ([]PushTokenData, error)
-
-	// DeletePushToken deletes a push token for a user.
-	DeletePushToken(ctx context.Context, token, userID string) error
-
 	// ValidateAppToken validates an app token (prefixed with AppTokenPrefix)
 	// and returns the user ID if valid.
 	// Returns an error if the token is invalid, expired, or the user is locked out.

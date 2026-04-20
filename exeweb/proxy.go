@@ -80,7 +80,6 @@ type ProxyServer struct {
 	LobbyIP        netip.Addr
 	PublicIPs      map[netip.Addr]publicips.PublicIP
 	Transports     *TransportCache
-	PushSender     PushSender
 
 	// CookieUsesCache caches the UTC date (YYYY-MM-DD) of the last
 	// UsedCookie write for each cookie value. We only write once

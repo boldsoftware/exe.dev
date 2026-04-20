@@ -383,18 +383,6 @@ func (epd *exewebProxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxI
 	return epd.exeproxData().CheckAndDebitVMEmailCredit(ctx, boxID)
 }
 
-// GetPushTokensByUserID implements [exeweb.ProxyData.GetPushTokensByUserID].
-// Push notifications are only sent from exed, not exeprox.
-func (epd *exewebProxyData) GetPushTokensByUserID(ctx context.Context, userID string) ([]exeweb.PushTokenData, error) {
-	return nil, nil
-}
-
-// DeletePushToken implements [exeweb.ProxyData.DeletePushToken].
-// Push notifications are only sent from exed, not exeprox.
-func (epd *exewebProxyData) DeletePushToken(ctx context.Context, token, userID string) error {
-	return nil
-}
-
 // ValidateAppToken implements [exeweb.ProxyData.ValidateAppToken].
 // App token validation reuses the CookieInfo gRPC, which already
 // recognizes app tokens by their exeapp_ prefix and validates them

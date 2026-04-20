@@ -339,6 +339,9 @@ type Server struct {
 	ipAbuseCacheMu sync.Mutex
 	ipAbuseCache   map[string]ipAbuseCacheEntry
 
+	// Push notification hook for testing.
+	vmPushSender vmPushSender
+
 	// Metrics
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
@@ -1263,6 +1266,13 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// This avoids an unimportant but distracting /debug panic after each deployment.
 	s.signupLimiter.Allow(netip.Addr{})
 	s.execLimiter.Allow("")
+
+	if s.apnsProduction != nil || s.apnsSandbox != nil {
+		s.vmPushSender = &apnsPushSender{
+			production: s.apnsProduction,
+			sandbox:    s.apnsSandbox,
+		}
+	}
 
 	// Set up HTTP metrics host functions for in-flight label tracking
 	s.httpMetrics.SetHostFuncs(s.isProxyRequest, func(host string) string {

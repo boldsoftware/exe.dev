@@ -94,9 +94,8 @@ func TestVMPushSend_Success(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
-	ps.PushSender = fake
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = fake
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -133,9 +132,8 @@ func TestVMPushSend_MissingBox(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", "nonexistent-box")
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
-	ps.PushSender = fake
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = fake
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("Expected 404, got %d: %s", w.Code, w.Body.String())
@@ -174,9 +172,8 @@ func TestVMPushSend_NoTokens(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
-	ps.PushSender = fake
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = fake
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -201,9 +198,8 @@ func TestVMPushSend_InvalidTokenNotDeleted(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
-	ps.PushSender = fake
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = fake
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -269,9 +265,8 @@ func TestVMPushSend_SandboxToken(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", boxName)
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
-	ps.PushSender = fake
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = fake
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
@@ -297,9 +292,9 @@ func TestVMPushSend_NotConfigured(t *testing.T) {
 	req.Header.Set("X-Exedev-Box", "whatever")
 	w := httptest.NewRecorder()
 
-	ps := s.proxyServer()
 	// PushSender is nil — not configured.
-	ps.HandleVMPushSend(w, req)
+	s.vmPushSender = nil
+	s.handleVMPushSend(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("Expected 503, got %d: %s", w.Code, w.Body.String())

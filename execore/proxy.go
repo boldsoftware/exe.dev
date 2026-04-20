@@ -264,11 +264,6 @@ func (s *Server) proxyData() exeweb.ProxyData {
 
 // proxyServer returns an exeweb.ProxyServer that refers to s.
 func (s *Server) proxyServer() *exeweb.ProxyServer {
-	var pushSender exeweb.PushSender
-	if s.apnsProduction != nil || s.apnsSandbox != nil {
-		pushSender = &apnsPushSender{production: s.apnsProduction, sandbox: s.apnsSandbox}
-	}
-
 	ps := &exeweb.ProxyServer{
 		Data:            s.proxyData(),
 		Lg:              s.slog(),
@@ -282,7 +277,6 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 		PublicIPs:       s.PublicIPs,
 		LookupCNAMEFunc: s.lookupCNAMEFunc,
 		LookupAFunc:     s.lookupAFunc,
-		PushSender:      pushSender,
 		CookieUsesCache: &s.cookieUsesCache,
 	}
 	if s.servingHTTP() {
@@ -515,29 +509,4 @@ func (pd *proxyData) CheckAndDebitVMEmailCredit(ctx context.Context, boxID int) 
 // ValidateAppToken implements [exeweb.ProxyData.ValidateAppToken].
 func (pd *proxyData) ValidateAppToken(ctx context.Context, token string) (string, error) {
 	return pd.s.validateAppToken(ctx, token)
-}
-
-// GetPushTokensByUserID implements [exeweb.ProxyData.GetPushTokensByUserID].
-func (pd *proxyData) GetPushTokensByUserID(ctx context.Context, userID string) ([]exeweb.PushTokenData, error) {
-	tokens, err := withRxRes1(pd.s, ctx, (*exedb.Queries).GetPushTokensByUserID, userID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]exeweb.PushTokenData, len(tokens))
-	for i, t := range tokens {
-		result[i] = exeweb.PushTokenData{
-			Token:       t.Token,
-			Platform:    t.Platform,
-			Environment: t.Environment,
-		}
-	}
-	return result, nil
-}
-
-// DeletePushToken implements [exeweb.ProxyData.DeletePushToken].
-func (pd *proxyData) DeletePushToken(ctx context.Context, token, userID string) error {
-	return withTx1(pd.s, ctx, (*exedb.Queries).DeletePushToken, exedb.DeletePushTokenParams{
-		Token:  token,
-		UserID: userID,
-	})
 }
