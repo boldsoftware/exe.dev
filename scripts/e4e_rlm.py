@@ -28,13 +28,11 @@ Please do a thorough read-through of the user-facing exe.dev docs, located in di
 
 The rest of the repo is included, so that you can compare the docs against the actual behavior of the system.
 
-Please flag any issues with the user-facing docs, including but not limited to:
+The code is the ground truth: if a doc disagrees with the code, the doc is wrong. However, bear in mind that not everything in the code is meant to be exposed to users.
 
-- Technical inaccuracies
-- Vagueness, contradictions, missing context, or steps that would confuse or mislead a user
-- Mismatched terminology
-- Conflicting instructions
-- Outdated or missing cross-links
+Please flag places where the docs are factually incorrect, misleading, vague, contradictory, or confusing.
+
+Thoroughly verify each finding before reporting it. If a finding is not sufficient clear-cut and well-researched that it would include a hedge like "potentially", "probably", or "might", it is better to omit it.
 
 Do not flag missing discussions of limits or caps; these are intentionally omitted.
 
@@ -113,7 +111,8 @@ def main():
         description="RLM-based documentation review for exe.dev"
     )
     parser.add_argument(
-        "--verbose", action="store_true",
+        "--verbose",
+        action="store_true",
         help="Print RLM REPL traces to stdout",
     )
     args = parser.parse_args()
@@ -138,7 +137,9 @@ def main():
 
     log("loading source")
     source = load_source(repo_root)
-    log(f"loaded {len(source)} source files ({sum(len(v) for v in source.values()) // 1024}KB)")
+    log(
+        f"loaded {len(source)} source files ({sum(len(v) for v in source.values()) // 1024}KB)"
+    )
 
     lm = dspy.LM("anthropic/claude-opus-4-6", max_tokens=16384)
     dspy.configure(lm=lm)
