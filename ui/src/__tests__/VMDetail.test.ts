@@ -545,7 +545,7 @@ describe('VMDetail', () => {
     expect(items[2].find('.prov-value').text()).toBe('30 GB')
   })
 
-  it('rounds memory to nearest GB in provisioned bar (7.5 GiB -> 8 GB)', async () => {
+  it('rounds memory up to standard provisioned size (7.2 GiB -> 8 GB)', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
@@ -556,7 +556,7 @@ describe('VMDetail', () => {
       disk_bytes: 0,
       disk_logical_bytes: 0,
       disk_capacity_bytes: 25 * 1024 * 1024 * 1024,
-      mem_capacity_bytes: 7.5 * 1024 * 1024 * 1024,
+      mem_capacity_bytes: 7.2 * 1024 * 1024 * 1024,
       cpus: 4,
       net_rx_bytes: 0,
       net_tx_bytes: 0,

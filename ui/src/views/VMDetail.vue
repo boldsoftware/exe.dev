@@ -383,10 +383,23 @@ const provItems = computed(() => {
   if (!liveMetrics.value) return []
   const items: { label: string; value: string }[] = []
   if (liveMetrics.value.cpus) items.push({ label: 'vCPUs', value: String(liveMetrics.value.cpus) })
-  if (liveMetrics.value.mem_capacity_bytes) items.push({ label: 'Memory', value: roundedGB(liveMetrics.value.mem_capacity_bytes) })
+  if (liveMetrics.value.mem_capacity_bytes) items.push({ label: 'Memory', value: roundedMemoryGB(liveMetrics.value.mem_capacity_bytes) })
   if (liveMetrics.value.disk_capacity_bytes) items.push({ label: 'Disk', value: roundedGB(liveMetrics.value.disk_capacity_bytes) })
   return items
 })
+
+// Round memory to the nearest standard provisioned size (power-of-2 GiB).
+// The reported value is often slightly under due to kernel/firmware overhead
+// (e.g. 7.2 GiB for an 8 GB VM).
+function roundedMemoryGB(bytes: number): string {
+  if (!bytes) return '0 B'
+  const gb = bytes / (1024 * 1024 * 1024)
+  const sizes = [1, 2, 4, 8, 16, 32, 64, 128]
+  for (const s of sizes) {
+    if (gb <= s) return `${s} GB`
+  }
+  return `${Math.ceil(gb)} GB`
+}
 
 function roundedGB(bytes: number): string {
   if (!bytes) return '0 B'
