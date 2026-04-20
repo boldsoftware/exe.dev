@@ -23,10 +23,13 @@ table.trial-users tr.will-enforce { background: #f8d7da; }
 <div class="section">
 <h2>Settings</h2>
 <div class="info">
-<strong>Info:</strong> When enabled, the enforcer automatically stops VMs belonging to users whose trial
-plans have expired. It sleeps until the next trial expiry, then checks each expired user via the full
-plan resolution (so users who subscribed, joined a team, or have friend/VIP status are never affected).
-The rate limit controls how frequently VMs are stopped (e.g. one user every 10 minutes).
+<strong>Info:</strong> When enabled, the enforcer automatically stops VMs belonging to users whose
+<strong>stripeless signup trials</strong> have expired (<code>changed_by = 'system:stripeless_trial'</code>).
+Stripe-managed trials and invite trials are <strong>not</strong> affected &mdash; only self-serve
+stripeless signup trials are considered. It sleeps until the next such trial expiry, then checks each
+expired user via the full plan resolution (so users who subscribed, joined a team, or have friend/VIP
+status are never affected). The rate limit controls how frequently VMs are stopped (e.g. one user
+every 10 minutes).
 </div>
 <form method="post" action="/debug/trial-expiry">
 <label class="toggle-switch">

@@ -410,35 +410,43 @@ SELECT EXISTS (
 ) AS had_trial;
 
 -- name: NextExpiredTrialUser :one
--- NextExpiredTrialUser returns the user ID with the oldest expired trial.
--- Candidates only -- the caller must verify entitlement via plan.ForUser
--- before transitioning anything. Returns sql.ErrNoRows if there are none.
+-- NextExpiredTrialUser returns the user ID with the oldest expired
+-- stripeless-signup trial (changed_by = 'system:stripeless_trial').
+-- Other trial kinds (Stripe, invite) are intentionally excluded: this
+-- enforcer only handles self-serve stripeless trials. Candidates only --
+-- the caller must verify entitlement via plan.ForUser before
+-- transitioning anything. Returns sql.ErrNoRows if there are none.
 SELECT a.created_by AS user_id
 FROM account_plans ap
 JOIN accounts a ON a.id = ap.account_id
 WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at IS NOT NULL
   AND ap.trial_expires_at <= datetime('now')
+  AND ap.changed_by = 'system:stripeless_trial'
 ORDER BY ap.trial_expires_at ASC
 LIMIT 1;
 
 -- name: NextTrialExpiry :one
--- NextTrialExpiry returns the earliest trial_expires_at for any active plan
--- with a trial that has not yet expired. Covers both stripeless and Stripe
--- trials. Returns sql.ErrNoRows if there are none.
+-- NextTrialExpiry returns the earliest trial_expires_at for any active
+-- stripeless-signup trial (changed_by = 'system:stripeless_trial') that
+-- has not yet expired. Other trial kinds (Stripe-managed, invite) are
+-- excluded: this enforcer only handles self-serve stripeless trials.
+-- Returns sql.ErrNoRows if there are none.
 SELECT trial_expires_at
 FROM account_plans
 WHERE ended_at IS NULL
   AND trial_expires_at > datetime('now')
+  AND changed_by = 'system:stripeless_trial'
 ORDER BY trial_expires_at ASC
 LIMIT 1;
 
 
 -- name: ActiveTrialUsers :many
--- ActiveTrialUsers returns all users with an active plan that has a trial
--- (trial_expires_at IS NOT NULL), their expiry time, email, and the count of
--- running boxes they own. Covers both stripeless trials (plan_id LIKE 'trial:%')
--- and Stripe trials. Used by the debug dashboard.
+-- ActiveTrialUsers returns all users with an active stripeless signup trial
+-- (changed_by = 'system:stripeless_trial'), their expiry time, email, and the
+-- count of running boxes they own. Stripe-managed and invite trials are
+-- excluded because the trial expiry enforcer does not act on them. Used by
+-- the debug dashboard.
 SELECT
     u.user_id,
     u.email,
@@ -452,4 +460,5 @@ JOIN accounts a ON a.id = ap.account_id
 JOIN users u ON u.user_id = a.created_by
 WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at IS NOT NULL
+  AND ap.changed_by = 'system:stripeless_trial'
 ORDER BY ap.trial_expires_at ASC;
