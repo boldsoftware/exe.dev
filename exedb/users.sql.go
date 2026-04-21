@@ -364,7 +364,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const listPDXUsers = `-- name: ListPDXUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE region = 'pdx' ORDER BY created_at ASC, user_id ASC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE region = 'pdx' ORDER BY created_at DESC, user_id DESC
 `
 
 func (q *Queries) ListPDXUsers(ctx context.Context) ([]User, error) {

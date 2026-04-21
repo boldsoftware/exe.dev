@@ -34,7 +34,7 @@ SELECT created_for_login_with_exe, COUNT(*) AS count FROM users GROUP BY created
 SELECT region, COUNT(*) AS count FROM users GROUP BY region;
 
 -- name: ListPDXUsers :many
-SELECT * FROM users WHERE region = 'pdx' ORDER BY created_at ASC, user_id ASC;
+SELECT * FROM users WHERE region = 'pdx' ORDER BY created_at DESC, user_id DESC;
 
 -- name: GetUserNewVMCreationDisabled :one
 SELECT new_vm_creation_disabled FROM users WHERE user_id = ?;

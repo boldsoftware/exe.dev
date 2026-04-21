@@ -9283,7 +9283,7 @@ func (s *Server) handleDebugStalePDXCleanup(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	fmt.Fprintf(w, "<p>PDX users eligible for region cleanup: %d</p>", len(users))
-	fmt.Fprint(w, `<fieldset><legend>Run batch</legend><p>Dry run accepts an optional limit. Apply requires an explicit limit; recommended starting batch size is 1000 users in creation order.</p><form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block;margin-bottom:8px"><input type="hidden" name="mode" value="dry_run"><label>limit <input type="number" name="limit" min="1" placeholder="1000"></label><button type="submit">Dry Run</button></form>`)
+	fmt.Fprint(w, `<fieldset><legend>Run batch</legend><p>Dry run accepts an optional limit. Apply requires an explicit limit; recommended starting batch size is 1000 users in reverse-chronological (newest first) order.</p><form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block;margin-bottom:8px"><input type="hidden" name="mode" value="dry_run"><label>limit <input type="number" name="limit" min="1" placeholder="1000"></label><button type="submit">Dry Run</button></form>`)
 	fmt.Fprintf(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block"><input type="hidden" name="mode" value="apply"><label>limit <input type="number" name="limit" min="1" value="%d" required></label><button type="submit" onclick="return confirm('Apply stale PDX cleanup batch?')">Apply batch</button></form></fieldset>`, defaultStalePDXApplyBatchSize)
 	fmt.Fprint(w, "<table><thead><tr><th>user_id</th><th>email</th><th>current</th><th>target</th><th>source</th><th>reason</th></tr></thead><tbody>")
 	for i, user := range users {
