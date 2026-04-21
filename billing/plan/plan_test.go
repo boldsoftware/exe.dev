@@ -465,6 +465,37 @@ func strPtr(s string) *string {
 	return &s
 }
 
+func TestCategoryFromProductName(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantCat Category
+		wantOK  bool
+	}{
+		{"Individual", CategoryIndividual, true},
+		{"individual", CategoryIndividual, true},
+		{"INDIVIDUAL", CategoryIndividual, true},
+		{"Team", CategoryTeam, true},
+		{"team", CategoryTeam, true},
+		{"VIP", CategoryVIP, true},
+		{"vip", CategoryVIP, true},
+		{"Enterprise", CategoryEnterprise, true},
+		{"enterprise", CategoryEnterprise, true},
+		{"Unknown", Category(""), false},
+		{"", Category(""), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := CategoryFromProductName(tt.name)
+			if ok != tt.wantOK {
+				t.Errorf("CategoryFromProductName(%q) ok = %v, want %v", tt.name, ok, tt.wantOK)
+			}
+			if got != tt.wantCat {
+				t.Errorf("CategoryFromProductName(%q) = %q, want %q", tt.name, got, tt.wantCat)
+			}
+		})
+	}
+}
+
 func TestTierStripePriceInfo(t *testing.T) {
 	tests := []struct {
 		name          string

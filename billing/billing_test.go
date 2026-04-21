@@ -542,6 +542,106 @@ func TestListGiftsEmpty(t *testing.T) {
 	}
 }
 
+func TestPlanCategoryFromSubscription(t *testing.T) {
+	tests := []struct {
+		name string
+		sub  *stripe.Subscription
+		want string
+	}{
+		{
+			name: "nil subscription",
+			sub:  nil,
+			want: "individual",
+		},
+		{
+			name: "no items",
+			sub:  &stripe.Subscription{},
+			want: "individual",
+		},
+		{
+			name: "individual product",
+			sub: &stripe.Subscription{
+				Items: &stripe.SubscriptionItemList{
+					Data: []*stripe.SubscriptionItem{{
+						Price: &stripe.Price{
+							Product: &stripe.Product{Name: "Individual"},
+						},
+					}},
+				},
+			},
+			want: "individual",
+		},
+		{
+			name: "VIP product",
+			sub: &stripe.Subscription{
+				Items: &stripe.SubscriptionItemList{
+					Data: []*stripe.SubscriptionItem{{
+						Price: &stripe.Price{
+							Product: &stripe.Product{Name: "VIP"},
+						},
+					}},
+				},
+			},
+			want: "vip",
+		},
+		{
+			name: "team product",
+			sub: &stripe.Subscription{
+				Items: &stripe.SubscriptionItemList{
+					Data: []*stripe.SubscriptionItem{{
+						Price: &stripe.Price{
+							Product: &stripe.Product{Name: "Team"},
+						},
+					}},
+				},
+			},
+			want: "team",
+		},
+		{
+			name: "skips metered items to find base product",
+			sub: &stripe.Subscription{
+				Items: &stripe.SubscriptionItemList{
+					Data: []*stripe.SubscriptionItem{
+						{
+							Price: &stripe.Price{
+								Product:   &stripe.Product{Name: "Individual"},
+								Recurring: &stripe.PriceRecurring{UsageType: "metered"},
+							},
+						},
+						{
+							Price: &stripe.Price{
+								Product: &stripe.Product{Name: "VIP"},
+							},
+						},
+					},
+				},
+			},
+			want: "vip",
+		},
+		{
+			name: "unknown product falls back to individual",
+			sub: &stripe.Subscription{
+				Items: &stripe.SubscriptionItemList{
+					Data: []*stripe.SubscriptionItem{{
+						Price: &stripe.Price{
+							Product: &stripe.Product{Name: "SomethingElse"},
+						},
+					}},
+				},
+			},
+			want: "individual",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := planCategoryFromSubscription(tt.sub)
+			if string(got) != tt.want {
+				t.Errorf("planCategoryFromSubscription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseInvoiceLinePlanName(t *testing.T) {
 	tests := []struct {
 		in, want string

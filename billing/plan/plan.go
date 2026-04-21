@@ -197,6 +197,23 @@ func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error
 	return getPlanCategory(inputs), nil
 }
 
+// CategoryFromProductName returns the plan category for a Stripe product name.
+// Returns false if the product name is not recognized.
+func CategoryFromProductName(name string) (Category, bool) {
+	switch strings.ToLower(name) {
+	case "individual":
+		return CategoryIndividual, true
+	case "team":
+		return CategoryTeam, true
+	case "vip":
+		return CategoryVIP, true
+	case "enterprise":
+		return CategoryEnterprise, true
+	default:
+		return "", false
+	}
+}
+
 // DeriveExemptionDisplay returns a human-readable billing exemption string
 // for display purposes (debug UI, logs). This is NOT used for plan decisions.
 // Returns "free", "trial", or empty string.

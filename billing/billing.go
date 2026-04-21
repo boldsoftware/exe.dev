@@ -722,7 +722,7 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 			t := time.Unix(sub.TrialEnd, 0).UTC()
 			trialEnd = &t
 		}
-		if err := m.syncAccountPlan(ctx, sub.Customer.ID, eventType, eventAt, trialEnd); err != nil {
+		if err := m.syncAccountPlan(ctx, sub.Customer.ID, eventType, eventAt, trialEnd, &sub); err != nil {
 			m.slog().WarnContext(ctx, "failed to sync account plan",
 				"account_id", sub.Customer.ID,
 				"event_type", eventType,
@@ -742,17 +742,17 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 }
 
 // syncAccountPlan updates account_plans when a subscription event is processed.
-// "active" -> close current plan, insert versioned "individual" plan ID.
+// "active" -> close current plan, insert plan ID derived from the subscription's product.
 // "canceled" -> close current plan, insert versioned "basic" plan ID.
 //
 // When trialEnd is non-nil (trialing subscription), trial_expires_at is written
 // so we can distinguish trialing users from paid ones in queries.
 //
 // Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
-func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time) error {
+func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time, sub *stripe.Subscription) error {
 	basePlan := plan.CategoryBasic
 	if eventType == "active" {
-		basePlan = plan.CategoryIndividual
+		basePlan = planCategoryFromSubscription(sub)
 	}
 	newPlanID := plan.ID(basePlan)
 
@@ -800,6 +800,30 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	// }
 
 	return nil
+}
+
+// planCategoryFromSubscription determines the plan category from a Stripe
+// subscription's line items. It looks at the product name on the first
+// subscription-model item (skipping metered/usage items) to resolve the
+// category. Falls back to Individual if the subscription has no recognizable
+// product.
+func planCategoryFromSubscription(sub *stripe.Subscription) plan.Category {
+	if sub == nil || sub.Items == nil {
+		return plan.CategoryIndividual
+	}
+	for _, item := range sub.Items.Data {
+		if item.Price == nil || item.Price.Product == nil {
+			continue
+		}
+		// Skip metered/usage prices — we want the base subscription price.
+		if item.Price.Recurring != nil && item.Price.Recurring.UsageType == "metered" {
+			continue
+		}
+		if cat, ok := plan.CategoryFromProductName(item.Price.Product.Name); ok {
+			return cat
+		}
+	}
+	return plan.CategoryIndividual
 }
 
 // BillingPeriod holds the start and end of a billing period.

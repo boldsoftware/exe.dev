@@ -24,7 +24,7 @@ func TestSyncAccountPlanTrialExpiresAt(t *testing.T) {
 	// Sync a trialing subscription — should write trial_expires_at.
 	now := time.Now().UTC().Truncate(time.Second)
 	trialEnd := now.Add(15 * 24 * time.Hour)
-	if err := m.syncAccountPlan(ctx, accountID, "active", now, &trialEnd); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", now, &trialEnd, nil); err != nil {
 		t.Fatalf("syncAccountPlan(trialing): %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestSyncAccountPlanNoTrialNullExpiresAt(t *testing.T) {
 	createTestAccount(t, db, accountID, userID)
 
 	now := time.Now().UTC().Truncate(time.Second)
-	if err := m.syncAccountPlan(ctx, accountID, "active", now, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", now, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(active, no trial): %v", err)
 	}
 
@@ -86,7 +86,7 @@ func TestSyncAccountPlanTrialToActivePreservesExpiry(t *testing.T) {
 	// First sync: trialing subscription.
 	now := time.Now().UTC().Truncate(time.Second)
 	trialEnd := now.Add(15 * 24 * time.Hour)
-	if err := m.syncAccountPlan(ctx, accountID, "active", now, &trialEnd); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", now, &trialEnd, nil); err != nil {
 		t.Fatalf("syncAccountPlan(trialing): %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestSyncAccountPlanTrialToActivePreservesExpiry(t *testing.T) {
 	// will skip since the base matches — this is the correct behavior.
 	// The trial row remains with trial_expires_at set.
 	later := now.Add(16 * 24 * time.Hour)
-	if err := m.syncAccountPlan(ctx, accountID, "active", later, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", later, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(active, post-trial): %v", err)
 	}
 
@@ -280,7 +280,7 @@ func TestSyncAccountPlanStaleEventSkipped(t *testing.T) {
 	olderEvent := now.Add(-30 * 24 * time.Hour)
 
 	// Process the newer "active" event first (as Stripe would deliver it).
-	if err := m.syncAccountPlan(ctx, accountID, "active", newerEvent, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", newerEvent, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(active, newer): %v", err)
 	}
 
@@ -294,7 +294,7 @@ func TestSyncAccountPlanStaleEventSkipped(t *testing.T) {
 
 	// Process the older "canceled" event (from an old subscription).
 	// This must NOT overwrite the newer active plan.
-	if err := m.syncAccountPlan(ctx, accountID, "canceled", olderEvent, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "canceled", olderEvent, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(canceled, older): %v", err)
 	}
 
@@ -322,13 +322,13 @@ func TestSyncAccountPlanNewerCancelApplied(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Activate subscription.
-	if err := m.syncAccountPlan(ctx, accountID, "active", now, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "active", now, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(active): %v", err)
 	}
 
 	// Cancel it with a newer timestamp — this should apply.
 	later := now.Add(5 * 24 * time.Hour)
-	if err := m.syncAccountPlan(ctx, accountID, "canceled", later, nil); err != nil {
+	if err := m.syncAccountPlan(ctx, accountID, "canceled", later, nil, nil); err != nil {
 		t.Fatalf("syncAccountPlan(canceled, newer): %v", err)
 	}
 
