@@ -563,6 +563,38 @@ func (ec *exeletClient) updateUsage(ctx context.Context) {
 	}
 }
 
+// warmExeletClients calls GetSystemInfo on each exelet client to populate
+// its cached arch/version strings and to verify connectivity. Runs in a
+// goroutine from NewServer so that exelet reachability doesn't gate startup.
+// The per-host duration and overall wall-clock are logged so the phase is
+// still visible in ClickHouse.
+func warmExeletClients(logger *slog.Logger, clients map[string]*exeletClient, startedAt time.Time) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 16)
+	for addr, ec := range clients {
+		wg.Add(1)
+		go func(addr string, ec *exeletClient) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			hostStart := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := ec.client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
+			dur := time.Since(hostStart)
+			if err != nil {
+				logger.ErrorContext(ctx, "failed to get system info from exelet, will retry later", "addr", addr, "error", err, "duration", dur)
+				ec.up.Store(false)
+				return
+			}
+			logger.InfoContext(ctx, "warmed exelet client", "addr", addr, "region", ec.region.Code, "arch", ec.client.Arch(), "version", ec.client.Version(), "duration", dur)
+		}(addr, ec)
+	}
+	wg.Wait()
+	logger.Info("exelet client warmup complete", "count", len(clients), "duration", time.Since(startedAt))
+}
+
 func (s *Server) slog() *slog.Logger {
 	if s.log != nil {
 		return s.log
@@ -1098,20 +1130,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	// Initialize exelet clients.
 	//
-	// Each exelet requires a blocking gRPC GetSystemInfo call (up to 10s per
-	// host) to cache arch/version. We fan these out so startup time is
-	// O(slowest exelet) rather than O(sum of exelets). See
-	// devdocs/for-agents/ for the clickhouse analysis that motivated this.
+	// Constructing a client is purely local (grpc.NewClient doesn't dial).
+	// The expensive part is GetSystemInfo, which was previously blocking
+	// startup for ~600ms total (geographically bound: ~500ms RTT from US
+	// to SGP/FRA/SYD). GetSystemInfo's only purpose at startup is to
+	// populate the client's cached arch/version strings, which are read
+	// lazily by debug pages. We fire those off in a background goroutine
+	// and let NewServer return immediately.
 	exeletInitStart := time.Now()
 	exeletClients := make(map[string]*exeletClient)
 	exeletClientMetrics := exeletclient.NewClientMetrics(cfg.MetricsRegistry)
-	type exeletInitResult struct {
-		ec *exeletClient
-	}
-	results := make([]exeletInitResult, len(cfg.ExeletAddresses))
-	var exeletWG sync.WaitGroup
-	exeletSem := make(chan struct{}, 16) // cap concurrency
-	for i, addr := range cfg.ExeletAddresses {
+	for _, addr := range cfg.ExeletAddresses {
 		if addr == "" {
 			continue
 		}
@@ -1119,65 +1148,37 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			slog.Error("exelet address specified more than once in exed config, skipping", "addr", addr)
 			continue
 		}
-		exeletClients[addr] = nil // reserve slot to dedup
-		exeletWG.Add(1)
-		go func(i int, addr string) {
-			defer exeletWG.Done()
-			exeletSem <- struct{}{}
-			defer func() { <-exeletSem }()
-
-			hostStart := time.Now()
-			exeletRegion, err := region.ParseExeletRegion(addr)
-			if err != nil {
-				slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
-				return
-			}
-
-			client, err := exeletclient.NewClient(addr,
-				exeletclient.WithInsecure(),
-				exeletclient.WithLogger(slog),
-				exeletclient.WithClientMetrics(exeletClientMetrics))
-			if err != nil {
-				slog.Error("failed to create exelet client, skipping host", "addr", addr, "error", err)
-				return
-			}
-
-			ec := &exeletClient{
-				addr:   addr,
-				region: exeletRegion,
-				client: client,
-			}
-			ec.up.Store(true)
-
-			err = func() error {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-				_, err := client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
-				return err
-			}()
-			dur := time.Since(hostStart)
-			if err != nil {
-				slog.Error("failed to get system info from exelet, will retry later", "addr", addr, "error", err, "duration", dur)
-				ec.up.Store(false)
-			} else {
-				slog.Info("initialized exelet client", "addr", addr, "region", exeletRegion.Code, "arch", client.Arch(), "version", client.Version(), "duration", dur)
-			}
-			results[i] = exeletInitResult{ec: ec}
-		}(i, addr)
-	}
-	exeletWG.Wait()
-	// Collect successfully-initialized clients (preserving input order).
-	for addr := range exeletClients {
-		delete(exeletClients, addr) // drop placeholders
-	}
-	for _, r := range results {
-		if r.ec == nil {
+		exeletRegion, err := region.ParseExeletRegion(addr)
+		if err != nil {
+			slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
 			continue
 		}
-		exeletClients[r.ec.addr] = r.ec
+		client, err := exeletclient.NewClient(addr,
+			exeletclient.WithInsecure(),
+			exeletclient.WithLogger(slog),
+			exeletclient.WithClientMetrics(exeletClientMetrics))
+		if err != nil {
+			slog.Error("failed to create exelet client, skipping host", "addr", addr, "error", err)
+			continue
+		}
+		ec := &exeletClient{
+			addr:   addr,
+			region: exeletRegion,
+			client: client,
+		}
+		// Optimistically mark up; the async warmup below flips to false if
+		// the exelet is unreachable. This matches the pre-parallelization
+		// behavior: tests and the usage poller treat a fresh exelet as up
+		// until proven otherwise.
+		ec.up.Store(true)
+		exeletClients[addr] = ec
 	}
-	slog.Info("exelet clients initialized", "count", len(exeletClients), "total", len(cfg.ExeletAddresses), "duration", time.Since(exeletInitStart))
 	phase("exelet_clients_init", "count", len(exeletClients))
+
+	// Warm the arch/version cache (and flip up=false for unreachable
+	// hosts) asynchronously. Bounded concurrency so we don't open 40+
+	// concurrent gRPC connections during the post-startup burst.
+	go warmExeletClients(slog, exeletClients, exeletInitStart)
 
 	docsStore, err := docspkg.Load(cfg.Env)
 	if err != nil {
