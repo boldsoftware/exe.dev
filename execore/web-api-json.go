@@ -952,9 +952,10 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		}
 	}
 
-	// Invoices — only for billing owners (no team = individual = always; team = billing_owner only)
+	// Invoices — show for any user with a billing account (including downgraded/canceled).
+	// Team members only see invoices if they're the billing owner.
 	canManageBilling := profile.TeamInfo == nil || profile.TeamInfo.IsBillingOwner
-	if canManageBilling && account.ID != "" && selfServeBilling {
+	if canManageBilling && account.ID != "" {
 		toRow := func(inv billing.InvoiceInfo) jsonInvoiceRow {
 			return jsonInvoiceRow{
 				Description:      inv.Description,
