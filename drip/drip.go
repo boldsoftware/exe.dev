@@ -86,7 +86,8 @@ func (r *Runner) Start(ctx context.Context) {
 
 // runOnce evaluates all trial users and sends any due emails.
 func (r *Runner) runOnce(ctx context.Context) {
-	users, err := exedb.WithRxRes0(r.db, ctx, (*exedb.Queries).ListTrialUsersForDrip)
+	cutoff := r.now().Add(-21 * 24 * time.Hour)
+	users, err := exedb.WithRxRes1(r.db, ctx, (*exedb.Queries).ListTrialUsersForDrip, cutoff)
 	if err != nil {
 		r.log.ErrorContext(ctx, "drip: failed to list trial users", "error", err)
 		return
