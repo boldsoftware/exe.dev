@@ -488,6 +488,27 @@ func (m *Manager) Subscribe(ctx context.Context, billingID string, p *SubscribeP
 	return sess.URL, nil
 }
 
+// activeSubscriptionID returns the ID of the customer's active subscription,
+// or "" if there isn't one.
+func (m *Manager) activeSubscriptionID(ctx context.Context, c *stripe.Client, customerID string) (string, error) {
+	params := &stripe.SubscriptionListParams{
+		Customer: &customerID,
+		Status:   new("all"),
+	}
+	for sub, err := range c.V1Subscriptions.List(ctx, params).All(ctx) {
+		if err != nil {
+			return "", err
+		}
+		switch sub.Status {
+		case stripe.SubscriptionStatusActive,
+			stripe.SubscriptionStatusTrialing,
+			stripe.SubscriptionStatusPastDue:
+			return sub.ID, nil
+		}
+	}
+	return "", nil
+}
+
 func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, customerID string) (bool, error) {
 	params := &stripe.SubscriptionListParams{
 		Customer: &customerID,
@@ -944,11 +965,19 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 // UpcomingInvoice returns a preview of the customer's next invoice, or nil if there isn't one.
 func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*InvoiceInfo, error) {
 	c := m.client()
+
+	// CreatePreview requires a subscription ID — find the active one first.
+	subID, err := m.activeSubscriptionID(ctx, c, customerID)
+	if err != nil || subID == "" {
+		return nil, nil //nolint:nilerr
+	}
+
 	inv, err := c.V1Invoices.CreatePreview(ctx, &stripe.InvoiceCreatePreviewParams{
-		Customer: stripe.String(customerID),
+		Customer:     stripe.String(customerID),
+		Subscription: stripe.String(subID),
 	})
 	if err != nil {
-		// No upcoming invoice (e.g. no active subscription) is not an error.
+		// No upcoming invoice is not an error.
 		return nil, nil //nolint:nilerr
 	}
 

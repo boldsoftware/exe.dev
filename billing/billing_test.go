@@ -566,6 +566,19 @@ func TestUpcomingInvoice(t *testing.T) {
 	periodStart := now
 	periodEnd := now.Add(30 * 24 * time.Hour)
 
+	// activeSubResponse returns a handler that responds to /v1/subscriptions with
+	// an active subscription, then delegates to invoiceHandler for the preview call.
+	activeSubResponse := func(invoiceHandler func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/subscriptions" {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"object":"list","data":[{"id":"sub_test123","status":"active"}],"has_more":false}`)
+				return
+			}
+			invoiceHandler(w, r)
+		}
+	}
+
 	tests := []struct {
 		name            string
 		handler         func(w http.ResponseWriter, r *http.Request)
@@ -577,17 +590,12 @@ func TestUpcomingInvoice(t *testing.T) {
 	}{
 		{
 			name: "valid upcoming invoice with line items",
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/v1/invoices/create_preview" {
-					t.Errorf("unexpected path: %s", r.URL.Path)
-					w.WriteHeader(404)
-					return
-				}
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
 					periodStart.Unix(), periodEnd.Unix())
-			},
+			}),
 			wantPlanName:    "Individual",
 			wantDescription: "Upcoming",
 			wantAmount:      2000,
@@ -596,18 +604,22 @@ func TestUpcomingInvoice(t *testing.T) {
 		{
 			name: "no subscription returns nil",
 			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/subscriptions" {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, `{"object":"list","data":[],"has_more":false}`)
+					return
+				}
 				w.WriteHeader(404)
-				fmt.Fprint(w, `{"error":{"type":"invalid_request_error","message":"No upcoming invoices"}}`)
 			},
 			wantNil: true,
 		},
 		{
 			name: "empty line items uses invoice-level period",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[]}}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix())
-			},
+			}),
 			wantPlanName:    "",
 			wantDescription: "Upcoming",
 			wantAmount:      2000,
@@ -615,12 +627,12 @@ func TestUpcomingInvoice(t *testing.T) {
 		},
 		{
 			name: "line item with empty description",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{"object":"invoice","amount_due":3500,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"","period":{"start":%d,"end":%d}}]}}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
 					periodStart.Unix(), periodEnd.Unix())
-			},
+			}),
 			wantPlanName:    "",
 			wantDescription: "Upcoming",
 			wantAmount:      3500,
@@ -628,12 +640,12 @@ func TestUpcomingInvoice(t *testing.T) {
 		},
 		{
 			name: "zero amount upcoming invoice",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{"object":"invoice","amount_due":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
 					periodStart.Unix(), periodEnd.Unix())
-			},
+			}),
 			wantPlanName:    "Individual",
 			wantDescription: "Upcoming",
 			wantAmount:      0,
@@ -641,11 +653,11 @@ func TestUpcomingInvoice(t *testing.T) {
 		},
 		{
 			name: "null lines uses invoice-level period",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix())
-			},
+			}),
 			wantPlanName:    "",
 			wantDescription: "Upcoming",
 			wantAmount:      2000,
