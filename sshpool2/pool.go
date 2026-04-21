@@ -139,6 +139,8 @@ type pooledConn struct {
 	key  connKey // immutable after creation
 	pool *Pool   // immutable after creation
 
+	createdAt time.Time // when the SSH handshake completed; immutable after creation
+
 	mu sync.Mutex // protects following fields
 	// active refcounts the number of active connections.
 	// It includes connections that have been closed but whose post-close TTL has not yet expired.
@@ -490,7 +492,7 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	}
 	p.log().Info("established new SSH connection in pool", "key", key.String(), "rtt", connRTT)
 
-	pc = &pooledConn{client: client, rawConn: conn, key: key, pool: p, log: p.log()}
+	pc = &pooledConn{client: client, rawConn: conn, key: key, pool: p, createdAt: time.Now(), log: p.log()}
 	// Mark as connected, insert into the pool, then disconnect for balance.
 	// setConn must precede disconnected so release() can find pc in the map.
 	// This starts the TTL clock running.

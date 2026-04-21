@@ -62,6 +62,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"exe.dev/tcprtt"
 )
 
 // ErrStaleConnection indicates that a pooled SSH connection appears
@@ -262,3 +264,100 @@ func (p *Pool) DropConnectionsTo(host string, port int) { p.dropConnectionsTo(ho
 // No metrics: shutdown is a once-per-lifetime event with no meaningful
 // latency or error signal for ongoing health monitoring.
 func (p *Pool) Close() error { return p.closePool() }
+
+// ConnInfo is a point-in-time view of a pooled SSH connection.
+// Returned by [Pool.Snapshot] for debug and observability tooling.
+// The field set is intended for humans and ops tools; it is not part of a
+// stability contract and may grow over time.
+type ConnInfo struct {
+	Host                 string
+	User                 string
+	Port                 int
+	PublicKeyFingerprint string        // ssh.FingerprintSHA256 form ("SHA256:<base64>"); empty if key is unparseable
+	Active               int           // current refcount (in-flight dials + tracked conns within TTL)
+	Age                  time.Duration // time since the SSH handshake completed
+	RTT                  time.Duration // most recent TCP_INFO RTT; 0 if unavailable
+}
+
+// Snapshot returns a summary of all currently pooled connections.
+// Ordering is unspecified and may change between calls.
+//
+// Intended for debug and observability tooling, not for data-plane decisions:
+// by the time the caller inspects the result, any connection may already have
+// been evicted. Safe to call concurrently with data-plane operations.
+func (p *Pool) Snapshot() []ConnInfo {
+	if p == nil {
+		return nil
+	}
+	// Collect under p.mu, release, then read per-pc state under pc.mu.
+	// Same lock-order discipline as dropConnectionsTo / closePool.
+	p.mu.Lock()
+	pcs := make([]*pooledConn, 0, len(p.conns))
+	for _, pc := range p.conns {
+		pcs = append(pcs, pc)
+	}
+	p.mu.Unlock()
+
+	now := time.Now()
+	out := make([]ConnInfo, 0, len(pcs))
+	for _, pc := range pcs {
+		info := ConnInfo{
+			Host: pc.key.host,
+			User: pc.key.user,
+			Port: pc.key.port,
+			Age:  now.Sub(pc.createdAt),
+		}
+		if pub, err := ssh.ParsePublicKey([]byte(pc.key.publicKey)); err == nil {
+			info.PublicKeyFingerprint = ssh.FingerprintSHA256(pub)
+		}
+		pc.mu.Lock()
+		info.Active = pc.active
+		pc.mu.Unlock()
+		if pc.rawConn != nil {
+			if rtt, err := tcprtt.Get(pc.rawConn); err == nil && rtt > 0 {
+				info.RTT = rtt
+			}
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// DropAll removes every pooled connection. The pool itself remains usable;
+// subsequent dials will establish fresh connections.
+//
+// Close on each underlying SSH client runs asynchronously, matching the
+// hot-path eviction semantics: a stale TCP retransmit timeout on one dead
+// connection must not block teardown of the others. Use [Pool.Close] instead
+// when you want blocking, error-aggregating shutdown semantics.
+//
+// No metrics: control-plane operation intended for manual / debug invocation.
+func (p *Pool) DropAll() {
+	if p == nil {
+		return
+	}
+	// Snapshot and reinstall a fresh map under p.mu, then release p.mu before
+	// touching pc.mu. Same lock-order concern as dropConnectionsTo / closePool.
+	// A fresh map (not nil) preserves the invariant that nil p.conns means
+	// Close was called, so a subsequent Close still drains any new connections.
+	p.mu.Lock()
+	conns := p.conns
+	p.conns = make(map[connKey]*pooledConn)
+	p.mu.Unlock()
+
+	for key, pc := range conns {
+		pc.mu.Lock()
+		if pc.timer != nil {
+			pc.timer.Stop()
+			// Stopping the timer can leave active without its matching decrement;
+			// harmless because the pooledConn is already unreachable and will be
+			// GC'd after client.Close. See dropConnectionsTo for the same note.
+		}
+		pc.mu.Unlock()
+		go func(key connKey, pc *pooledConn) {
+			if err := pc.client.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				p.log().Warn("error closing SSH connection during DropAll", "key", key.String(), "error", err)
+			}
+		}(key, pc)
+	}
+}
