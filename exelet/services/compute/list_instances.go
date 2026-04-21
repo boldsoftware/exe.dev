@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"google.golang.org/grpc/codes"
@@ -40,8 +41,13 @@ func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 			ID: id,
 		})
 		if err != nil {
-			s.log.WarnContext(ctx, "unable to get instance config", "id", id)
-			continue
+			// A legitimate race: filepath.Glob saw the directory, but
+			// DeleteInstance removed it before GetInstance could read
+			// the config. Treat this as "not present" and move on.
+			if status.Code(err) == codes.NotFound {
+				continue
+			}
+			return nil, fmt.Errorf("loading instance %s: %w", id, err)
 		}
 		// update instance placement
 		r.Instance.Placement = &api.Placement{

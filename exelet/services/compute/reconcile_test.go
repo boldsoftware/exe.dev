@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -295,6 +296,103 @@ func TestReconcileIPLeasesEmptyInstances(t *testing.T) {
 	}
 	if len(nm.reconcileCalls[0]) != 0 {
 		t.Errorf("expected 0 instances, got %d", len(nm.reconcileCalls[0]))
+	}
+}
+
+func TestReconcileIPLeasesAbortsOnUnreadableConfig(t *testing.T) {
+	t.Parallel()
+	svc, nm := newTestService(t)
+
+	// A readable instance config.
+	inst := &api.Instance{
+		ID:    "inst-ok",
+		State: api.VMState_RUNNING,
+		VMConfig: &api.VMConfig{
+			NetworkInterface: &api.NetworkInterface{
+				IP: &api.IPAddress{IPV4: "10.42.0.3/16"},
+			},
+		},
+	}
+	if err := svc.saveInstanceConfig(inst); err != nil {
+		t.Fatalf("saveInstanceConfig: %v", err)
+	}
+
+	// A broken instance directory whose config.json is actually a directory,
+	// so os.ReadFile returns a non-IsNotExist error. This simulates a
+	// transient read failure (permission denied, I/O error, etc.).
+	brokenDir := svc.getInstanceDir("inst-broken")
+	if err := os.MkdirAll(filepath.Join(brokenDir, "config.json"), 0o700); err != nil {
+		t.Fatalf("setup broken config: %v", err)
+	}
+
+	svc.reconcileIPLeases()
+
+	if calls := nm.callCount(); calls != 0 {
+		t.Fatalf("expected 0 ReconcileLeases calls when a config is unreadable, got %d", calls)
+	}
+}
+
+func TestListInstancesSkipsRaceRemovedConfigs(t *testing.T) {
+	t.Parallel()
+	svc, _ := newTestService(t)
+
+	// A readable instance config.
+	inst := &api.Instance{
+		ID:    "inst-ok",
+		State: api.VMState_RUNNING,
+		VMConfig: &api.VMConfig{
+			NetworkInterface: &api.NetworkInterface{
+				IP: &api.IPAddress{IPV4: "10.42.0.3/16"},
+			},
+		},
+	}
+	if err := svc.saveInstanceConfig(inst); err != nil {
+		t.Fatalf("saveInstanceConfig: %v", err)
+	}
+
+	// An instance dir that exists but whose config.json is missing —
+	// this is the exact shape of the race where filepath.Glob saw the
+	// config, DeleteInstance ran os.RemoveAll, and GetInstance then
+	// returns NotFound. listInstances must skip these without erroring.
+	ghostDir := svc.getInstanceDir("inst-ghost")
+	if err := os.MkdirAll(ghostDir, 0o700); err != nil {
+		t.Fatalf("mkdir ghost: %v", err)
+	}
+	// Create a config.json so the glob finds it, then remove it to simulate
+	// the race (the glob already happened).
+	cfgPath := filepath.Join(ghostDir, "config.json")
+	if err := os.WriteFile(cfgPath, []byte{}, 0o660); err != nil {
+		t.Fatalf("write ghost cfg: %v", err)
+	}
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatalf("remove ghost cfg: %v", err)
+	}
+	// Re-create the config.json path so filepath.Glob still matches it,
+	// using a symlink to /nonexistent so os.ReadFile returns ENOENT.
+	if err := os.Symlink("/nonexistent/config.json", cfgPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	instances, err := svc.listInstances(context.Background())
+	if err != nil {
+		t.Fatalf("listInstances should tolerate NotFound from racing delete, got %v", err)
+	}
+	if len(instances) != 1 || instances[0].ID != "inst-ok" {
+		t.Errorf("expected only inst-ok, got %+v", instances)
+	}
+}
+
+func TestReconcileIPLeasesAbortsAfterShutdown(t *testing.T) {
+	t.Parallel()
+	svc, nm := newTestService(t)
+
+	// Simulate shutdown: reconcileCancel is invoked from Service.Stop.
+	svc.reconcileCancel()
+
+	svc.reconcileIPLeases()
+
+	if calls := nm.callCount(); calls != 0 {
+		t.Fatalf("expected 0 ReconcileLeases calls after shutdown, got %d", calls)
 	}
 }
 

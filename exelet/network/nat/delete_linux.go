@@ -75,6 +75,34 @@ func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([
 		return nil, err
 	}
 
+	// Safety bounds: refuse to release leases if the instance list looks
+	// suspiciously incomplete. A partial list (e.g. from a transient
+	// read failure) combined with this function's destructive behavior
+	// can mass-release live leases whose IPs then get reassigned,
+	// producing duplicate-IP conflicts.
+	if len(leases) > 0 && len(validIPs) == 0 {
+		n.log.ErrorContext(ctx,
+			"aborting IPAM reconciliation: no valid instance IPs but leases exist — instance list is likely incomplete",
+			"leases", len(leases),
+		)
+		return nil, nil
+	}
+	var wouldRelease int
+	for _, lease := range leases {
+		if _, ok := validIPs[lease.IP]; !ok {
+			wouldRelease++
+		}
+	}
+	if len(leases) > 10 && wouldRelease > len(leases)/2 {
+		n.log.ErrorContext(ctx,
+			"aborting IPAM reconciliation: would release more than half of all leases — instance list is likely incomplete",
+			"leases", len(leases),
+			"valid_instance_ips", len(validIPs),
+			"would_release", wouldRelease,
+		)
+		return nil, nil
+	}
+
 	var released []string
 	for _, lease := range leases {
 		if _, ok := validIPs[lease.IP]; !ok {

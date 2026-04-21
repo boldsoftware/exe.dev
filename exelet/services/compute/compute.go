@@ -328,6 +328,11 @@ func (s *Service) applyStartupNetworkLimits(ctx context.Context, instances []*ap
 func (s *Service) reconcileIPLeases() {
 	s.reconcileGroup.Do("reconcile", func() (struct{}, error) {
 		ctx := s.reconcileCtx
+		// Skip if shutdown is in progress: filesystem reads become unreliable
+		// as other services stop, and reconciliation is destructive.
+		if ctx.Err() != nil {
+			return struct{}{}, nil
+		}
 		instances, err := s.listInstances(ctx)
 		if err != nil {
 			s.log.WarnContext(ctx, "failed to list instances for IP reconciliation", "error", err)

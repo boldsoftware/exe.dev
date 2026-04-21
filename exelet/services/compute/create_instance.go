@@ -250,6 +250,19 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		rb.networkIP = networkInterface.IP.IPV4
 	}
 
+	// Persist the allocated network interface into the instance config
+	// immediately. Without this, a hard kill of the exelet between
+	// CreateInterface and the final saveInstanceConfig below leaves the
+	// IPAM lease durably on disk while the config has no IP, so a later
+	// DeleteInstance call reads ip="" from VMConfig and never releases
+	// the lease — leaking the IP. Re-saving here narrows that window to
+	// just the time between ipam.Reserve's fsync and this save.
+	earlyInstance.VMConfig = &api.VMConfig{NetworkInterface: networkInterface}
+	earlyInstance.UpdatedAt = time.Now().UnixNano()
+	if err := s.saveInstanceConfig(earlyInstance); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	// ensure gateway IP (for shelley config)
 	gatewayIP := ""
 	if ip := networkInterface.IP; ip != nil {

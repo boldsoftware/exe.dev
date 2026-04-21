@@ -862,4 +862,21 @@ func TestCheckDuplicateIPs(t *testing.T) {
 	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
 		t.Errorf("expected duplicate_ips_detected=0 after cleanup, got %v", got)
 	}
+
+	// A CREATING instance sharing an IP with a RUNNING one is a
+	// transient race (concurrent Delete hasn't completed os.RemoveAll
+	// before the new Create's intermediate save). It must not be
+	// reported as a duplicate.
+	mkInstState := func(id, ip string, state computeapi.VMState) *computeapi.Instance {
+		inst := mkInst(id, ip)
+		inst.State = state
+		return inst
+	}
+	m.checkDuplicateIPs(t.Context(), []*computeapi.Instance{
+		mkInstState("vm-outgoing", "10.0.0.1", computeapi.VMState_RUNNING),
+		mkInstState("vm-incoming", "10.0.0.1", computeapi.VMState_CREATING),
+	})
+	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
+		t.Errorf("expected duplicate_ips_detected=0 for CREATING+RUNNING transient race, got %v", got)
+	}
 }

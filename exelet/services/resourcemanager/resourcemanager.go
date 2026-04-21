@@ -324,6 +324,14 @@ func (m *ResourceManager) checkDuplicateIPs(ctx context.Context, instances []*co
 	}
 	ipToVMs := make(map[string][]string)
 	for _, inst := range instances {
+		// Skip instances in CREATING state: their config has just been
+		// populated with an IP by CreateInstance but a concurrent
+		// DeleteInstance for another VM on the same IP may not have
+		// removed its config dir yet. Any collision here is transient
+		// and resolves as soon as the delete's os.RemoveAll completes.
+		if inst.GetState() == computeapi.VMState_CREATING {
+			continue
+		}
 		ni := inst.GetVMConfig().GetNetworkInterface()
 		ip := ni.GetIP().GetIPV4()
 		if ip == "" {
