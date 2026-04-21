@@ -47,7 +47,11 @@ from panopticon.newsletter_prompts import (
 from panopticon.proxy import ProxyRegistry
 from panopticon.sources.discord import DiscordClient, DiscordSource
 from panopticon.sources.github import GitHubClient, GitHubRepo
-from panopticon.sources.missive import MissiveClient, MissiveSource
+from panopticon.sources.missive import (
+    MissiveClient,
+    MissiveSource,
+    open_conversation_age_histogram,
+)
 from deps.dspy.predict.rlm import RLM
 
 logging.basicConfig(
@@ -231,6 +235,7 @@ def generate(args) -> tuple[str, list[str]]:
         call_kwargs["discord"] = discord
 
     # --- Missive ---
+    missive_client: MissiveClient | None = None
     if "missive" in enabled_sources:
         missive_token = _require_env("EXE_MISSIVE_API_KEY")
         missive_client = MissiveClient(missive_token)
@@ -304,6 +309,12 @@ def generate(args) -> tuple[str, list[str]]:
         result = rlm(**call_kwargs)
         items = list(result.items)
         header = "Daily user-pulse"
+        if missive_client is not None:
+            try:
+                histogram = open_conversation_age_histogram(missive_client)
+                header = f"{header}\n{histogram}"
+            except Exception as e:
+                log.warning("failed to build Missive age histogram: %s", e)
         return header, items
 
 

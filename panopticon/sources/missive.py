@@ -305,6 +305,207 @@ def _to_missive_cursor(ts) -> str | None:
     return str(dt.timestamp())
 
 
+# buckets: (label, upper_bound_hours or None for overflow)
+_AGE_BUCKETS: list[tuple[str, float | None]] = [
+    ("<24h", 24),
+    ("<2d",  48),
+    ("<3d",  72),
+    ("<4d",  96),
+    ("4d+",  None),
+]
+
+
+def _paginate_conversations(
+    client: "MissiveClient",
+    params: dict,
+    max_pages: int,
+) -> list[dict]:
+    """Helper: page through /conversations with a cursor on last_activity_at."""
+    out: list[dict] = []
+    oldest_seen: str | None = None
+    until: str | None = None
+    for _ in range(max_pages):
+        page_params = dict(params, limit="50")
+        if until is not None:
+            page_params["until"] = until
+        data = client._request("/conversations", page_params)
+        page = data.get("conversations", []) if isinstance(data, dict) else []
+        if not page:
+            break
+        out.extend(page)
+        last_acts = [c.get("last_activity_at") for c in page
+                     if isinstance(c.get("last_activity_at"), (int, float))]
+        if not last_acts:
+            break
+        nu = str(min(last_acts))
+        if nu == oldest_seen:
+            break
+        oldest_seen = nu
+        until = nu
+        if len(page) < 50:
+            break
+    return out
+
+
+def _discover_team_id(client: "MissiveClient", team_name: str) -> str | None:
+    """Find a team's id by name by sampling recent conversations.
+
+    Missive has no list-teams endpoint; team dicts (id + name) are only
+    exposed as fields on conversations. Samples up to ~200 recent
+    conversations across mailboxes.
+    """
+    sample = _paginate_conversations(client, {"all": "true"}, max_pages=4)
+    for conv in sample:
+        t = conv.get("team") or {}
+        if isinstance(t, dict) and t.get("name") == team_name and t.get("id"):
+            return t["id"]
+    return None
+
+
+def _assignee_in_inbox(a: dict) -> bool:
+    """True iff this per-user assignee entry is in the user's inbox.
+
+    Missive models assignments as per-user states: each assignee record
+    carries its own ``closed``/``archived``/``trashed``/``junked``/``snoozed``
+    flags. A conversation leaves the team inbox once someone self-assigns
+    and lives in the assignee's inbox until they archive or close it.
+    """
+    return not (
+        a.get("closed")
+        or a.get("archived")
+        or a.get("trashed")
+        or a.get("junked")
+        or a.get("snoozed")
+    )
+
+
+def open_conversation_age_histogram(
+    client: "MissiveClient",
+    team_name: str = "Support",
+    now: datetime | None = None,
+    max_pages: int = 40,
+) -> str:
+    """Return an ASCII-art histogram of open ``team_name`` inbox conversations.
+
+    "Open in the inbox" mirrors what humans see in the Missive UI and
+    unions two Missive mailboxes:
+
+    * ``team_inbox=<team_id>`` — unassigned, sitting in the shared team inbox.
+    * ``team_all=<team_id>`` — with at least one assignee whose per-user
+      state is active (not closed/archived/trashed/junked/snoozed).
+
+    Rows are split by assigned vs unassigned and bucketed by age since
+    ``created_at``: <24h, <2d, <3d, <4d, 4d+. Output is a Slack-friendly
+    fenced code block (monospaced).
+    """
+    if now is None:
+        now = datetime.now(tz=timezone.utc)
+
+    team_id = _discover_team_id(client, team_name)
+    if team_id is None:
+        return (
+            f"```\nOpen Missive {team_name!r} inbox by age\n"
+            f"(team {team_name!r} not found)\n```"
+        )
+
+    # Pull both mailboxes and union by conversation id. team_all includes
+    # closed/archived/assigned-and-done, which we filter out below.
+    ti = _paginate_conversations(client, {"team_inbox": team_id}, max_pages)
+    ta = _paginate_conversations(client, {"team_all": team_id}, max_pages)
+    ti_ids = {c.get("id") for c in ti if c.get("id")}
+
+    assigned = [0] * len(_AGE_BUCKETS)
+    unassigned = [0] * len(_AGE_BUCKETS)
+    by_person: dict[str, int] = {}
+    seen: set[str] = set()
+
+    def bucket(conv: dict) -> None:
+        cid = conv.get("id")
+        if not cid or cid in seen:
+            return
+        created_ts = conv.get("created_at")
+        if not isinstance(created_ts, (int, float)) or created_ts <= 0:
+            return
+        active = [a for a in (conv.get("assignees") or [])
+                  if isinstance(a, dict) and _assignee_in_inbox(a)]
+        in_team_inbox = cid in ti_ids
+        if not active and not in_team_inbox:
+            return  # closed/archived/snoozed for everyone: not in any inbox
+        seen.add(cid)
+        age_hours = (now.timestamp() - float(created_ts)) / 3600.0
+        target = assigned if active else unassigned
+        for i, (_, upper) in enumerate(_AGE_BUCKETS):
+            if upper is None or age_hours < upper:
+                target[i] += 1
+                break
+        # Per-person counts: credit each active assignee; fall back to
+        # "Unassigned" for conversations sitting in team_inbox with no
+        # active assignee.
+        if active:
+            for a in active:
+                name = a.get("name") or a.get("email") or "(unknown)"
+                by_person[name] = by_person.get(name, 0) + 1
+        else:
+            by_person["Unassigned"] = by_person.get("Unassigned", 0) + 1
+
+    for conv in ti:
+        bucket(conv)
+    for conv in ta:
+        bucket(conv)
+
+    return _render_histogram(team_name, assigned, unassigned, by_person)
+
+
+def _render_histogram(
+    team_name: str,
+    assigned: list[int],
+    unassigned: list[int],
+    by_person: dict[str, int],
+) -> str:
+    """Render two stacked bar charts inside a single Slack code block.
+
+    First chart: open conversations bucketed by age, each row
+    ``█`` assigned then ``░`` unassigned, followed by ``A+U``.
+
+    Second chart: open conversations per assignee ("Unassigned" first,
+    then by descending count), simple ``█`` bars.
+    """
+    labels = [b[0] for b in _AGE_BUCKETS]
+    total = sum(assigned) + sum(unassigned)
+    header = f"Open Missive {team_name!r} inbox by age ({total} total)"
+    if total == 0:
+        return f"```\n{header}\n(none)\n```"
+
+    max_bar = 24
+    # --- Age chart ---
+    age_max = max(a + u for a, u in zip(assigned, unassigned)) or 1
+    age_label_w = max(len(lbl) for lbl in labels)
+    lines = [header, "(█ assigned, ░ unassigned)"]
+    for lbl, a, u in zip(labels, assigned, unassigned):
+        a_bar = round(a / age_max * max_bar) if a > 0 else 0
+        u_bar = round(u / age_max * max_bar) if u > 0 else 0
+        bar = "█" * a_bar + "░" * u_bar
+        lines.append(f"{lbl.ljust(age_label_w)}  {bar} {a}+{u}")
+
+    # --- Per-person chart ---
+    # "Unassigned" always first, then the rest sorted by count desc, name asc.
+    unassigned_count = by_person.get("Unassigned", 0)
+    people = sorted(
+        ((n, c) for n, c in by_person.items() if n != "Unassigned"),
+        key=lambda nc: (-nc[1], nc[0].lower()),
+    )
+    rows: list[tuple[str, int]] = [("Unassigned", unassigned_count), *people]
+    lines.append("")
+    lines.append("By assignee:")
+    p_max = max((c for _, c in rows), default=1) or 1
+    p_label_w = max(len(n) for n, _ in rows)
+    for name, count in rows:
+        bar_len = round(count / p_max * max_bar) if count > 0 else 0
+        bar = "█" * bar_len
+        lines.append(f"{name.ljust(p_label_w)}  {bar} {count}")
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
 def _html_to_text(body: str) -> str:
     """Convert HTML email body to plain text.
 

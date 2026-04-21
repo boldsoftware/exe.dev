@@ -2678,3 +2678,144 @@ class TestClickHouseSecurity:
         result = reg.resolve_getattr(source._proxy_id, "query")
         assert result["type"] == "method"
         assert result["name"] == "query"
+
+
+class TestMissiveAgeHistogram:
+
+    def _fake_client(self, team_inbox_pages, team_all_pages=None, sample_pages=None):
+        """Build a fake MissiveClient whose _request returns canned pages.
+
+        team_inbox_pages: pages returned from consecutive team_inbox= calls.
+        team_all_pages: pages returned from consecutive team_all= calls.
+          Defaults to mirroring team_inbox_pages (i.e. team_all == team_inbox,
+          no additional assigned-but-archived conversations).
+        sample_pages: pages returned for the all=true team-discovery sample.
+          Defaults to a single page that exposes one Support team.
+        """
+        from panopticon.sources.missive import MissiveClient
+
+        client = MissiveClient.__new__(MissiveClient)
+        client._token = "t"
+        if sample_pages is None:
+            sample_pages = [[
+                {"id": "discover", "last_activity_at": 1,
+                 "team": {"id": "t_support", "name": "Support"}},
+            ]]
+        if team_all_pages is None:
+            team_all_pages = [list(p) for p in team_inbox_pages]
+
+        sample_iter = iter(sample_pages + [[]])
+        ti_iter = iter(team_inbox_pages + [[]])
+        ta_iter = iter(team_all_pages + [[]])
+        calls = {"team_inbox": 0, "team_all": 0, "all": 0}
+
+        def fake_request(path, params=None):
+            p = params or {}
+            if "team_inbox" in p:
+                calls["team_inbox"] += 1
+                page = next(ti_iter, [])
+            elif "team_all" in p:
+                calls["team_all"] += 1
+                page = next(ta_iter, [])
+            elif "all" in p:
+                calls["all"] += 1
+                page = next(sample_iter, [])
+            else:
+                page = []
+            return {"conversations": page}
+        client._request = fake_request  # type: ignore[assignment]
+        return client, calls
+
+    def test_buckets_and_rendering(self):
+        from panopticon.sources.missive import open_conversation_age_histogram
+        from datetime import datetime, timezone
+
+        now = datetime(2025, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+        now_ts = now.timestamp()
+        h = 3600
+        # Per-user assignment states: "active" = none of the inbox flags set.
+        active_a = [{"name": "X", "closed": False, "archived": False,
+                     "trashed": False, "junked": False, "snoozed": False}]
+        archived_a = [{"name": "Y", "closed": False, "archived": True,
+                       "trashed": False, "junked": False, "snoozed": False}]
+        # team_inbox page: unassigned conversations sitting in team inbox.
+        team_inbox = [
+            {"id": "u1", "created_at": now_ts - 12 * h,
+             "last_activity_at": now_ts, "assignees": []},
+            {"id": "u2", "created_at": now_ts - 30 * h,
+             "last_activity_at": now_ts, "assignees": []},
+        ]
+        # team_all includes assigned (active + archived) + team_inbox entries.
+        team_all = team_inbox + [
+            {"id": "a1", "created_at": now_ts -  2 * h,
+             "last_activity_at": now_ts, "assignees": active_a},
+            {"id": "a2", "created_at": now_ts - 60 * h,
+             "last_activity_at": now_ts, "assignees": active_a},
+            {"id": "a3", "created_at": now_ts - 200 * h,
+             "last_activity_at": now_ts, "assignees": active_a},
+            # assigned-and-archived — excluded
+            {"id": "arch", "created_at": now_ts - 10 * h,
+             "last_activity_at": now_ts, "assignees": archived_a},
+        ]
+        client, _ = self._fake_client([team_inbox], team_all_pages=[team_all])
+        out = open_conversation_age_histogram(client, now=now)
+        assert out.startswith("```") and out.endswith("```")
+        assert "5 total" in out  # 2 unassigned + 3 active-assigned
+        assert "'Support'" in out
+        for lbl, a, u in [("<24h", 1, 1), ("<2d", 0, 1), ("<3d", 1, 0),
+                          ("<4d", 0, 0), ("4d+", 1, 0)]:
+            assert f" {a}+{u}\n" in out + "\n", f"bucket {lbl} missing {a}+{u}"
+        # Per-assignee chart: "By assignee:" section with Unassigned first,
+        # then X (3 active assignments, descending).
+        assert "By assignee:" in out
+        ui = out.index("Unassigned")
+        xi = out.index("X ")
+        assert ui < xi
+        # Unassigned count == 2 (two unassigned team_inbox conversations);
+        # X has 3 active assignments.
+        after_by = out[out.index("By assignee:"):]
+        assert " 2\n" in after_by  # Unassigned row
+        assert " 3\n" in after_by  # X row
+
+    def test_team_not_found(self):
+        from panopticon.sources.missive import open_conversation_age_histogram
+        client, _ = self._fake_client([], sample_pages=[[]])
+        out = open_conversation_age_histogram(client)
+        assert "not found" in out
+
+
+
+    def test_empty(self):
+        from panopticon.sources.missive import open_conversation_age_histogram
+        from datetime import datetime, timezone
+
+        client, _ = self._fake_client([[]])
+        out = open_conversation_age_histogram(
+            client, now=datetime(2025, 1, 1, tzinfo=timezone.utc)
+        )
+        assert "0 total" in out
+        assert "(none)" in out
+
+    def test_pagination_advances_until_cursor(self):
+        from panopticon.sources.missive import open_conversation_age_histogram
+        from datetime import datetime, timezone
+
+        now = datetime(2025, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+        now_ts = now.timestamp()
+        page1 = [
+            {"id": f"p1_{i}", "created_at": now_ts - i * 3600,
+             "last_activity_at": now_ts - i * 3600, "assignees": []}
+            for i in range(50)
+        ]
+        page2 = [
+            {"id": "p2_0", "created_at": now_ts - 500 * 3600,
+             "last_activity_at": now_ts - 500 * 3600, "assignees": []}
+        ]
+        client, calls = self._fake_client([page1, page2, []])
+        out = open_conversation_age_histogram(client, now=now)
+        # team_inbox pagination: full page (50) then partial (1), stops.
+        # team_all fetch mirrors it by default, so 2 calls there too.
+        assert calls["team_inbox"] == 2
+        assert calls["team_all"] == 2
+        # 51 unique unassigned conversations across team_inbox and team_all.
+        assert "51 total" in out
