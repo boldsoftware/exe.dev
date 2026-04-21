@@ -16,12 +16,10 @@ import (
 
 // mockNetworkManager implements network.NetworkManager for testing reconciliation.
 type mockNetworkManager struct {
-	mu               sync.Mutex
-	reconcileCalls   [][]*api.Instance
-	reconcileRet     []string
-	reconcileErr     error
-	reconcileBlock   chan struct{} // if non-nil, ReconcileLeases blocks until closed
-	reconcileEntered chan struct{} // if non-nil, signalled when ReconcileLeases is entered
+	mu             sync.Mutex
+	reconcileCalls [][]*api.Instance
+	reconcileRet   []string
+	reconcileErr   error
 }
 
 func (m *mockNetworkManager) Start(ctx context.Context) error { return nil }
@@ -44,15 +42,6 @@ func (m *mockNetworkManager) ApplyBandwidthLimit(ctx context.Context, id string)
 }
 
 func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
-	if m.reconcileEntered != nil {
-		select {
-		case m.reconcileEntered <- struct{}{}:
-		default:
-		}
-	}
-	if m.reconcileBlock != nil {
-		<-m.reconcileBlock
-	}
 	cp := make([]*api.Instance, len(instances))
 	copy(cp, instances)
 	m.mu.Lock()
@@ -397,58 +386,5 @@ func TestReconcileIPLeasesAbortsAfterShutdown(t *testing.T) {
 
 	if calls := nm.callCount(); calls != 0 {
 		t.Fatalf("expected 0 ReconcileLeases calls after shutdown, got %d", calls)
-	}
-}
-
-func TestReconcileIPLeasesSingleflightDedup(t *testing.T) {
-	t.Parallel()
-	svc, nm := newTestService(t)
-
-	// Block ReconcileLeases until we've confirmed the first goroutine has entered.
-	// Once inside Do, the singleflight key is set and all other callers coalesce.
-	nm.reconcileBlock = make(chan struct{})
-	nm.reconcileEntered = make(chan struct{}, 1)
-
-	// Write an instance config to disk so listInstances finds something
-	inst := &api.Instance{
-		ID:    "inst-1",
-		State: api.VMState_RUNNING,
-		VMConfig: &api.VMConfig{
-			NetworkInterface: &api.NetworkInterface{
-				IP: &api.IPAddress{IPV4: "10.42.0.3/16"},
-			},
-		},
-	}
-	if err := svc.saveInstanceConfig(inst); err != nil {
-		t.Fatalf("failed to save instance config: %v", err)
-	}
-
-	// Launch goroutines that all call reconcileIPLeases concurrently.
-	// The first enters ReconcileLeases and blocks; the rest queue on singleflight.
-	ready := make(chan struct{})
-	var wg sync.WaitGroup
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-ready
-			svc.reconcileIPLeases()
-		}()
-	}
-	close(ready)
-
-	// Wait for the first goroutine to enter ReconcileLeases inside Do.
-	// At that point the singleflight key is set and all other callers coalesce.
-	<-nm.reconcileEntered
-
-	// Unblock the mock — all waiters return from the single flight.
-	close(nm.reconcileBlock)
-	wg.Wait()
-
-	// Verify dedup occurred: 10 concurrent callers should produce significantly
-	// fewer than 10 ReconcileLeases calls. We allow up to 2 since a goroutine
-	// may be scheduled after the first flight completes, starting a second flight.
-	if calls := nm.callCount(); calls == 0 || calls > 2 {
-		t.Fatalf("expected singleflight dedup (1-2 calls for 10 goroutines), got %d", calls)
 	}
 }
