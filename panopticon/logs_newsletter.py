@@ -105,7 +105,8 @@ def post_to_slack(text: str) -> None:
     footer = f"\n\n_posted from `{hostname}` · panopticon/logs_newsletter.py_"
 
     token = ensure_token()
-    slack = SlackClient(token)
+    slack_url = os.environ.get("EXE_SLACK_URL", "").strip()
+    slack = SlackClient(token=token, base_url=slack_url)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
     slack.post_message(
         channel_id,
@@ -152,7 +153,7 @@ def generate(args) -> str:
     if "clickhouse" in enabled_sources:
         needs_proxy = True
         ch_url = _require_env("EXE_CLICKHOUSE_URL")
-        ch_password = _require_env("EXE_CLICKHOUSE_PASSWORD")
+        ch_password = os.environ.get("EXE_CLICKHOUSE_PASSWORD", "").strip()
         ch_user = os.environ.get("EXE_CLICKHOUSE_USER", "readonly").strip() or "readonly"
         ch_database = os.environ.get("EXE_CLICKHOUSE_DATABASE", "").strip() or None
 
@@ -167,10 +168,14 @@ def generate(args) -> str:
         from panopticon.sources.github import GitHubClient, GitHubRepo
 
         needs_proxy = True
-        gh_token = _require_env("EXE_GITHUB_TOKEN")
+        gh_url = os.environ.get("EXE_GITHUB_URL", "").strip()
+        gh_token = os.environ.get("EXE_GITHUB_TOKEN", "").strip()
+        if not gh_url and not gh_token:
+            print("Error: EXE_GITHUB_TOKEN or EXE_GITHUB_URL must be set.", file=sys.stderr)
+            sys.exit(1)
         gh_owner = _require_env("EXE_GITHUB_OWNER")
         gh_repo = _require_env("EXE_GITHUB_REPO")
-        gh_client = GitHubClient(gh_token)
+        gh_client = GitHubClient(token=gh_token, base_url=gh_url)
         github = GitHubRepo(gh_client, gh_owner, gh_repo)
         registry.register(github)
         sig_fields["github"] = dspy.InputField(desc=GITHUB_DESC)
@@ -329,8 +334,8 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.post and not os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip():
-        print("Error: EXE_SLACK_BOT_TOKEN must be set for --post. See panopticon/.env.example.", file=sys.stderr)
+    if args.post and not os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip() and not os.environ.get("EXE_SLACK_URL", "").strip():
+        print("Error: EXE_SLACK_BOT_TOKEN or EXE_SLACK_URL must be set for --post.", file=sys.stderr)
         sys.exit(1)
 
     if args.post and not args.once and not args.dry_run:

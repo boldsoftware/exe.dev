@@ -42,14 +42,14 @@ class ClickHouseClient:
         url = (url or "").strip().rstrip("/")
         if not url:
             raise ValueError("EXE_CLICKHOUSE_URL must be set")
-        password = (password or "").strip()
-        if not password:
-            raise ValueError("EXE_CLICKHOUSE_PASSWORD must be set")
         self._url = url
         self._user = user
-        self._password = password
-        creds = base64.b64encode(f"{user}:{password}".encode()).decode()
-        self._auth_header = f"Basic {creds}"
+        self._password = (password or "").strip()
+        if self._password:
+            creds = base64.b64encode(f"{user}:{self._password}".encode()).decode()
+            self._auth_header = f"Basic {creds}"
+        else:
+            self._auth_header = ""
 
     def execute(self, sql: str, database: str | None = None) -> dict:
         """Execute a SQL query and return the parsed JSON response.
@@ -69,13 +69,13 @@ class ClickHouseClient:
 
         body = f"{sql}\nFORMAT JSON".encode("utf-8")
 
+        headers = {"Content-Type": "text/plain; charset=utf-8"}
+        if self._auth_header:
+            headers["Authorization"] = self._auth_header
         req = urllib.request.Request(
             query_url,
             data=body,
-            headers={
-                "Authorization": self._auth_header,
-                "Content-Type": "text/plain; charset=utf-8",
-            },
+            headers=headers,
             method="POST",
         )
 

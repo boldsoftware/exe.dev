@@ -11,23 +11,22 @@ class SlackError(RuntimeError):
 
 
 class SlackClient:
-    _API_BASE = "https://slack.com/api/"
-
-    def __init__(self, token: str) -> None:
-        token = (token or "").strip()
-        if not token:
-            raise SlackError("EXE_SLACK_BOT_TOKEN must be set")
-        self._token = token
+    def __init__(self, token: str = "", base_url: str = "") -> None:
+        self._token = (token or "").strip()
+        if base_url:
+            self._api_base = base_url.rstrip("/") + "/api/"
+        else:
+            self._api_base = "https://slack.com/api/"
 
     def api(self, method: str, payload: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
         body = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json; charset=utf-8"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
         req = urllib.request.Request(
-            f"{self._API_BASE}{method}",
+            f"{self._api_base}{method}",
             data=body,
-            headers={
-                "Authorization": f"Bearer {self._token}",
-                "Content-Type": "application/json; charset=utf-8",
-            },
+            headers=headers,
             method="POST",
         )
         try:
@@ -134,8 +133,10 @@ class SlackClient:
 
 
 def ensure_token() -> str:
+    """Read Slack token from env. Returns empty string if EXE_SLACK_URL is set instead."""
     token = os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip()
-    if not token:
-        print("EXE_SLACK_BOT_TOKEN must be set", file=sys.stderr)
+    url = os.environ.get("EXE_SLACK_URL", "").strip()
+    if not token and not url:
+        print("EXE_SLACK_BOT_TOKEN or EXE_SLACK_URL must be set", file=sys.stderr)
         sys.exit(1)
     return token

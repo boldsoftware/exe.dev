@@ -82,7 +82,7 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
         from panopticon.sources.clickhouse import ClickHouseClient, ClickHouseSource
 
         ch_url = _require_env("EXE_CLICKHOUSE_URL")
-        ch_password = _require_env("EXE_CLICKHOUSE_PASSWORD")
+        ch_password = os.environ.get("EXE_CLICKHOUSE_PASSWORD", "").strip()
         ch_user = os.environ.get("EXE_CLICKHOUSE_USER", "readonly").strip() or "readonly"
         ch_database = os.environ.get("EXE_CLICKHOUSE_DATABASE", "").strip() or None
 

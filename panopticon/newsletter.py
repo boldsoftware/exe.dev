@@ -116,7 +116,8 @@ def post_to_slack(header: str, items: list[str]) -> None:
     warning = "_untrusted user content, take caution with links_"
 
     token = ensure_token()
-    slack = SlackClient(token)
+    slack_url = os.environ.get("EXE_SLACK_URL", "").strip()
+    slack = SlackClient(token=token, base_url=slack_url)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
     slack.post_message(
         channel_id,
@@ -197,10 +198,14 @@ def generate(args) -> tuple[str, list[str]]:
 
     # --- GitHub ---
     if "github" in enabled_sources:
-        gh_token = _require_env("EXE_GITHUB_TOKEN")
+        gh_url = os.environ.get("EXE_GITHUB_URL", "").strip()
+        gh_token = os.environ.get("EXE_GITHUB_TOKEN", "").strip()
+        if not gh_url and not gh_token:
+            print("Error: EXE_GITHUB_TOKEN or EXE_GITHUB_URL must be set.", file=sys.stderr)
+            sys.exit(1)
         gh_owner = _require_env("EXE_GITHUB_OWNER")
         gh_repo = _require_env("EXE_GITHUB_REPO")
-        gh_client = GitHubClient(gh_token)
+        gh_client = GitHubClient(token=gh_token, base_url=gh_url)
         github = GitHubRepo(gh_client, gh_owner, gh_repo)
         registry.register(github)
         sig_fields["github"] = dspy.InputField(desc=GITHUB_DESC)
@@ -208,9 +213,13 @@ def generate(args) -> tuple[str, list[str]]:
 
     # --- Discord ---
     if "discord" in enabled_sources:
-        discord_token = _require_env("EXE_DISCORD_BOT_TOKEN")
+        discord_url = os.environ.get("EXE_DISCORD_URL", "").strip()
+        discord_token = os.environ.get("EXE_DISCORD_BOT_TOKEN", "").strip()
+        if not discord_url and not discord_token:
+            print("Error: EXE_DISCORD_BOT_TOKEN or EXE_DISCORD_URL must be set.", file=sys.stderr)
+            sys.exit(1)
         discord_guild_id = os.environ.get("EXE_DISCORD_GUILD_ID", "")
-        discord_client = DiscordClient(discord_token)
+        discord_client = DiscordClient(token=discord_token, base_url=discord_url)
         if discord_guild_id:
             guild_name = discord_guild_id
             try:
@@ -237,8 +246,12 @@ def generate(args) -> tuple[str, list[str]]:
     # --- Missive ---
     missive_client: MissiveClient | None = None
     if "missive" in enabled_sources:
-        missive_token = _require_env("EXE_MISSIVE_API_KEY")
-        missive_client = MissiveClient(missive_token)
+        missive_url = os.environ.get("EXE_MISSIVE_URL", "").strip()
+        missive_token = os.environ.get("EXE_MISSIVE_API_KEY", "").strip()
+        if not missive_url and not missive_token:
+            print("Error: EXE_MISSIVE_API_KEY or EXE_MISSIVE_URL must be set.", file=sys.stderr)
+            sys.exit(1)
+        missive_client = MissiveClient(token=missive_token, base_url=missive_url)
         missive = MissiveSource(missive_client)
         registry.register(missive)
         sig_fields["missive"] = dspy.InputField(desc=MISSIVE_DESC)
@@ -454,8 +467,8 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.post and not os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip():
-        print("Error: EXE_SLACK_BOT_TOKEN must be set for --post. See panopticon/.env.example.", file=sys.stderr)
+    if args.post and not os.environ.get("EXE_SLACK_BOT_TOKEN", "").strip() and not os.environ.get("EXE_SLACK_URL", "").strip():
+        print("Error: EXE_SLACK_BOT_TOKEN or EXE_SLACK_URL must be set for --post.", file=sys.stderr)
         sys.exit(1)
 
     if args.post and not args.once and not args.dry_run:

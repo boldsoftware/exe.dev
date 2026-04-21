@@ -256,7 +256,8 @@ def post_to_slack(header, items):
     provenance = f"_posted from `{hostname}` · <https://github.com/{GITHUB_REPO}/blob/main/scripts/daily_brief.py|scripts/daily_brief.py>_"
 
     token = ensure_token()
-    slack = SlackClient(token)
+    slack_url = os.environ.get("EXE_SLACK_URL", "").strip()
+    slack = SlackClient(token=token, base_url=slack_url)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
     slack.post_message(channel_id, f"{header}\n{provenance}", mrkdwn=True)
     for item in items:

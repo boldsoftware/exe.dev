@@ -6,6 +6,7 @@ Post a free-form message to a Slack channel using the EXE_SLACK_BOT_TOKEN.
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -49,7 +50,8 @@ def read_message(args: argparse.Namespace) -> str:
 def main() -> None:
     args = parse_args()
     token = ensure_token()
-    slack = SlackClient(token)
+    slack_url = os.environ.get("EXE_SLACK_URL", "").strip()
+    slack = SlackClient(token=token, base_url=slack_url)
     channel_id = slack.find_channel_id(args.channel)
     message = read_message(args)
 

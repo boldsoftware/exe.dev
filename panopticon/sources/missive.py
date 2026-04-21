@@ -37,9 +37,6 @@ log = logging.getLogger(__name__)
 # Client layer (host-side only)
 # ---------------------------------------------------------------------------
 
-_API_BASE = "https://public.missiveapp.com/v1"
-
-
 class MissiveClient:
     """Missive REST API client using urllib.request.
 
@@ -47,27 +44,22 @@ class MissiveClient:
     Never exposed to the sandbox — stored in _client attrs on domain objects.
     """
 
-    def __init__(self, token: str):
-        token = (token or "").strip()
-        if not token:
-            raise ValueError("EXE_MISSIVE_API_KEY must be set")
-        self._token = token
+    def __init__(self, token: str = "", base_url: str = ""):
+        self._base_url = (base_url or "").strip().rstrip("/") or "https://public.missiveapp.com/v1"
+        self._token = (token or "").strip()
 
     def _request(self, path: str, params: dict | None = None) -> dict | list:
         """Make an authenticated GET request. Returns parsed JSON."""
-        url = f"{_API_BASE}{path}"
+        url = f"{self._base_url}{path}"
         if params:
             filtered = {k: str(v) for k, v in params.items() if v is not None}
             if filtered:
                 url = f"{url}?{urlencode(filtered)}"
 
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"Bearer {self._token}",
-                "Accept": "application/json",
-            },
-        )
+        headers = {"Accept": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        req = urllib.request.Request(url, headers=headers)
 
         for attempt in range(2):
             try:

@@ -112,13 +112,15 @@ def make_discord_channel(chan_id="200", name="general", channel_type=0, topic="G
 
 class TestGitHubClient:
 
-    def test_missing_token_raises(self):
-        with pytest.raises(ValueError, match="EXE_GITHUB_TOKEN"):
-            GitHubClient("")
+    def test_empty_token_allowed(self):
+        client = GitHubClient("")
+        assert client._token == ""
+        assert client._base_url == "https://api.github.com"
 
-    def test_whitespace_token_raises(self):
-        with pytest.raises(ValueError, match="EXE_GITHUB_TOKEN"):
-            GitHubClient("   ")
+    def test_custom_base_url(self):
+        client = GitHubClient(base_url="http://github.int.exe.xyz")
+        assert client._base_url == "http://github.int.exe.xyz"
+        assert client._token == ""
 
     def test_list_issues(self, monkeypatch):
         issues = [make_github_issue(1), make_github_issue(2)]
@@ -314,9 +316,14 @@ class TestGitHubSecurity:
 
 class TestDiscordClient:
 
-    def test_missing_token_raises(self):
-        with pytest.raises(ValueError, match="EXE_DISCORD_BOT_TOKEN"):
-            DiscordClient("")
+    def test_empty_token_allowed(self):
+        client = DiscordClient("")
+        assert client._token == ""
+        assert client._base_url == "https://discord.com/api/v10"
+
+    def test_custom_base_url(self):
+        client = DiscordClient(base_url="http://discord.int.exe.xyz/api/v10")
+        assert client._base_url == "http://discord.int.exe.xyz/api/v10"
 
     def test_list_guilds(self, monkeypatch):
         guilds = [{"id": "1", "name": "Test Guild"}]
@@ -1459,13 +1466,14 @@ class TestMissiveHelpers:
 
 class TestMissiveClient:
 
-    def test_missing_token_raises(self):
-        with pytest.raises(ValueError, match="EXE_MISSIVE_API_KEY"):
-            MissiveClient("")
+    def test_empty_token_allowed(self):
+        client = MissiveClient("")
+        assert client._token == ""
+        assert client._base_url == "https://public.missiveapp.com/v1"
 
-    def test_whitespace_token_raises(self):
-        with pytest.raises(ValueError, match="EXE_MISSIVE_API_KEY"):
-            MissiveClient("   ")
+    def test_custom_base_url(self):
+        client = MissiveClient(base_url="http://missive.int.exe.xyz/v1")
+        assert client._base_url == "http://missive.int.exe.xyz/v1"
 
     def test_list_conversations(self, monkeypatch):
         convs = [make_missive_conversation()]
@@ -2180,9 +2188,9 @@ class TestClickHouseClient:
         with pytest.raises(ValueError, match="EXE_CLICKHOUSE_URL"):
             ClickHouseClient("   ", password="secret")
 
-    def test_missing_password_raises(self):
-        with pytest.raises(ValueError, match="EXE_CLICKHOUSE_PASSWORD"):
-            ClickHouseClient("https://ch.example.com:8443", password="")
+    def test_empty_password_allowed(self):
+        client = ClickHouseClient("https://ch.example.com:8443", password="")
+        assert client._auth_header == ""
 
     def test_execute_sends_post_with_auth(self, monkeypatch):
         captured_reqs = []

@@ -31,9 +31,6 @@ log = logging.getLogger(__name__)
 # Client layer (host-side only)
 # ---------------------------------------------------------------------------
 
-_API_BASE = "https://api.github.com"
-
-
 class GitHubClient:
     """GitHub REST API client using urllib.request.
 
@@ -41,11 +38,9 @@ class GitHubClient:
     Never exposed to the sandbox — stored in _client attrs on domain objects.
     """
 
-    def __init__(self, token: str):
-        token = (token or "").strip()
-        if not token:
-            raise ValueError("EXE_GITHUB_TOKEN must be set")
-        self._token = token
+    def __init__(self, token: str = "", base_url: str = ""):
+        self._base_url = (base_url or "").strip().rstrip("/") or "https://api.github.com"
+        self._token = (token or "").strip()
 
     def repo_exists(self, owner: str, repo: str) -> bool:
         """Return True if the repo is accessible with the current token."""
@@ -57,20 +52,19 @@ class GitHubClient:
 
     def _request(self, path: str, params: dict | None = None) -> tuple[dict | list, dict]:
         """Make an authenticated GET request. Returns (parsed_json, response_headers)."""
-        url = f"{_API_BASE}{path}"
+        url = f"{self._base_url}{path}"
         if params:
             filtered = {k: str(v) for k, v in params.items() if v is not None}
             if filtered:
                 url = f"{url}?{urlencode(filtered)}"
 
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"token {self._token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if self._token:
+            headers["Authorization"] = f"token {self._token}"
+        req = urllib.request.Request(url, headers=headers)
 
         for attempt in range(2):
             try:
