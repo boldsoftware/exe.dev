@@ -848,10 +848,23 @@ type ServerConfig struct {
 // NewServer creates a new Server instance with database and container management.
 func NewServer(cfg ServerConfig) (*Server, error) {
 	slog := cfg.Logger
+	// startupPhase logs how long each major phase of NewServer took, so we
+	// can reconstruct startup timing from prod logs without a profiler.
+	overallStart := time.Now()
+	phaseStart := overallStart
+	phase := func(name string, attrs ...any) {
+		now := time.Now()
+		attrs = append(attrs, "phase", name, "duration", now.Sub(phaseStart), "since_startup", now.Sub(overallStart))
+		slog.Info("startup phase complete", attrs...)
+		phaseStart = now
+	}
+	slog.Info("startup phase begin", "phase", "NewServer")
+
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, cfg.DBPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
+	phase("db_migrations")
 
 	nReaders := cfg.DBReaders
 	if nReaders == 0 {
@@ -863,9 +876,11 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	slog.Debug("opened database connection pool", "dbPath", cfg.DBPath, "nReaders", nReaders)
+	phase("db_pool_open", "readers", nReaders)
 
 	// Clean up stale data on boot.
 	cleanupOnBoot(slog, db)
+	phase("cleanup_on_boot")
 
 	// Initialize email senders
 	emailSenders := email.NewSendersFromEnv(cfg.Env.MailgunDomain())
@@ -968,11 +983,16 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		slog.Info("GitHub installation token minting disabled (missing EXE_GITHUB_APP_ID or EXE_GITHUB_APP_PRIVATE_KEY)")
 	}
 
-	// Initialize GitHub User lookup client
+	phase("external_services_init")
+
+	// Initialize GitHub User lookup client. This opens the large (~20M row)
+	// key_userid sqlite db; instrumented with a phase log because it's been
+	// a startup hot spot historically.
 	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), cfg.GHWhoAmIPath)
 	if err != nil {
 		slog.Warn("failed to create GitHub user key lookup client", "error", err)
 	}
+	phase("ghuser_init")
 
 	var baseURL string
 	httpLn := unusedListener(cfg.HTTPAddr)
@@ -1050,6 +1070,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		db.Close()
 		return nil, fmt.Errorf("failed to listen on exeprox service address %q: %w", exeproxServiceAddr, err)
 	}
+	phase("listeners_bound")
 
 	// Initialize metrics
 	sshMetrics := NewSSHMetrics(cfg.MetricsRegistry)
@@ -1075,10 +1096,22 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize tag resolver for image tag resolution
 	tagResolverInstance := tagresolver.New(db)
 
-	// Initialize exelet clients
+	// Initialize exelet clients.
+	//
+	// Each exelet requires a blocking gRPC GetSystemInfo call (up to 10s per
+	// host) to cache arch/version. We fan these out so startup time is
+	// O(slowest exelet) rather than O(sum of exelets). See
+	// devdocs/for-agents/ for the clickhouse analysis that motivated this.
+	exeletInitStart := time.Now()
 	exeletClients := make(map[string]*exeletClient)
 	exeletClientMetrics := exeletclient.NewClientMetrics(cfg.MetricsRegistry)
-	for _, addr := range cfg.ExeletAddresses {
+	type exeletInitResult struct {
+		ec *exeletClient
+	}
+	results := make([]exeletInitResult, len(cfg.ExeletAddresses))
+	var exeletWG sync.WaitGroup
+	exeletSem := make(chan struct{}, 16) // cap concurrency
+	for i, addr := range cfg.ExeletAddresses {
 		if addr == "" {
 			continue
 		}
@@ -1086,44 +1119,65 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			slog.Error("exelet address specified more than once in exed config, skipping", "addr", addr)
 			continue
 		}
+		exeletClients[addr] = nil // reserve slot to dedup
+		exeletWG.Add(1)
+		go func(i int, addr string) {
+			defer exeletWG.Done()
+			exeletSem <- struct{}{}
+			defer func() { <-exeletSem }()
 
-		// Parse region from exelet address
-		exeletRegion, err := region.ParseExeletRegion(addr)
-		if err != nil {
-			slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
-			continue
-		}
+			hostStart := time.Now()
+			exeletRegion, err := region.ParseExeletRegion(addr)
+			if err != nil {
+				slog.Error("failed to parse region from exelet address, skipping host", "addr", addr, "error", err)
+				return
+			}
 
-		client, err := exeletclient.NewClient(addr,
-			exeletclient.WithInsecure(),
-			exeletclient.WithLogger(slog),
-			exeletclient.WithClientMetrics(exeletClientMetrics))
-		if err != nil {
-			slog.Error("failed to create exelet client, skipping host", "addr", addr, "error", err)
-			continue
-		}
+			client, err := exeletclient.NewClient(addr,
+				exeletclient.WithInsecure(),
+				exeletclient.WithLogger(slog),
+				exeletclient.WithClientMetrics(exeletClientMetrics))
+			if err != nil {
+				slog.Error("failed to create exelet client, skipping host", "addr", addr, "error", err)
+				return
+			}
 
-		ec := &exeletClient{
-			addr:   addr,
-			region: exeletRegion,
-			client: client,
-		}
-		ec.up.Store(true)
-		exeletClients[addr] = ec
+			ec := &exeletClient{
+				addr:   addr,
+				region: exeletRegion,
+				client: client,
+			}
+			ec.up.Store(true)
 
-		// Try to fetch system info to cache architecture and version.
-		// Log but don't fail startup if this fails - the host may be temporarily unavailable.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		_, err = client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
-		cancel()
-		if err != nil {
-			slog.Error("failed to get system info from exelet, will retry later", "addr", addr, "error", err)
-			ec.up.Store(false)
-		} else {
-			slog.Info("initialized exelet client", "addr", addr, "region", exeletRegion.Code, "arch", client.Arch(), "version", client.Version())
-		}
+			err = func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_, err := client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
+				return err
+			}()
+			dur := time.Since(hostStart)
+			if err != nil {
+				slog.Error("failed to get system info from exelet, will retry later", "addr", addr, "error", err, "duration", dur)
+				ec.up.Store(false)
+			} else {
+				slog.Info("initialized exelet client", "addr", addr, "region", exeletRegion.Code, "arch", client.Arch(), "version", client.Version(), "duration", dur)
+			}
+			results[i] = exeletInitResult{ec: ec}
+		}(i, addr)
 	}
-	slog.Info("exelet clients initialized", "count", len(exeletClients))
+	exeletWG.Wait()
+	// Collect successfully-initialized clients (preserving input order).
+	for addr := range exeletClients {
+		delete(exeletClients, addr) // drop placeholders
+	}
+	for _, r := range results {
+		if r.ec == nil {
+			continue
+		}
+		exeletClients[r.ec.addr] = r.ec
+	}
+	slog.Info("exelet clients initialized", "count", len(exeletClients), "total", len(cfg.ExeletAddresses), "duration", time.Since(exeletInitStart))
+	phase("exelet_clients_init", "count", len(exeletClients))
 
 	docsStore, err := docspkg.Load(cfg.Env)
 	if err != nil {
@@ -1145,6 +1199,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
+	phase("docs_and_templates_loaded")
 
 	s := &Server{
 		env:                    cfg.Env,
@@ -1299,12 +1354,15 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	s.googleOAuth.WebBaseURL = s.webBaseURLNoRequest()
 
+	phase("server_struct_wired")
+
 	s.setupHTTPServer()
 	s.setupHTTPSServer()
 	s.setupProxyServers()
 	s.setupSSHServer()
 	s.setupExeproxServer()
 	s.setupLoopbackProxyData()
+	phase("http_ssh_servers_setup")
 
 	// Initialize billing subscription poller to sync subscription events from Stripe.
 	if s.billing != nil && !cfg.Env.SkipBilling {
@@ -1318,6 +1376,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		s.slog().Info("server started", "url", baseURL)
 	}()
 
+	slog.Info("startup phase complete", "phase", "NewServer", "since_startup", time.Since(overallStart))
 	return s, nil
 }
 

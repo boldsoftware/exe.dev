@@ -178,16 +178,15 @@ func openDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open github-whoami database: %w", err)
 	}
 
-	// Check row count
-	var count int64
-	err = db.QueryRow("SELECT COUNT(*) FROM key_userid").Scan(&count)
+	// Sanity-check that the table is populated. We previously used
+	// SELECT COUNT(*), but on the ~20M-row prod table that was a full table
+	// scan from cold page cache (~5s) and dominated exed startup. A single
+	// row lookup is enough to catch a truly empty/broken database.
+	var anyID int64
+	err = db.QueryRow("SELECT userID FROM key_userid LIMIT 1").Scan(&anyID)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to query database: %w", err)
-	}
-	if count < 20_000_000 {
-		db.Close()
-		return nil, fmt.Errorf("database has only %d rows, expected at least 20 million", count)
+		return nil, fmt.Errorf("failed to query github-whoami database: %w", err)
 	}
 
 	return db, nil
