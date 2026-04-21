@@ -117,7 +117,7 @@ Avoid overly destructive cleanup commands. Commands that could delete .git
 directories, home directories, or use broad wildcards require explicit paths.
 Confirm with the user before running destructive operations.
 
-To change the working directory persistently, use the change_dir tool.
+Use the change_dir tool instead of 'cd <path> && ...'; 'cd' does not persist across calls.
 
 IMPORTANT: Keep commands concise. The command input must be less than 60k tokens.
 For complex scripts, write them to a file first and then execute the file.
@@ -206,6 +206,10 @@ func (b *BashTool) Run(ctx context.Context, m json.RawMessage) llm.ToolOut {
 	out, execErr := b.executeBash(ctx, req, timeout)
 	if execErr != nil {
 		return llm.ErrorToolOut(execErr)
+	}
+	if bashkit.ChainsCdWithCommand(req.Command) {
+		hint := "[shelley hint: this command chained `cd <path>` with another command. `cd` inside a bash invocation does not persist across tool calls. Prefer calling the change_dir tool once, then running subsequent commands directly.]"
+		out = strings.TrimRight(out, "\n") + "\n\n" + hint + "\n"
 	}
 	return llm.ToolOut{LLMContent: llm.TextContent(out), Display: display}
 }

@@ -36,8 +36,9 @@ const (
 This affects the working directory used by the bash tool. The directory must exist.
 Relative paths are resolved against the current working directory.
 
-Use this to navigate the filesystem persistently across bash commands,
-rather than using 'cd' within each bash command (which doesn't persist).
+Prefer this tool over 'cd <path> && ...' in bash: 'cd' inside a bash
+invocation does not persist, so you'd have to repeat it every call. Call
+change_dir once, then run subsequent commands directly.
 `
 	changeDirInputSchema = `{
   "type": "object",

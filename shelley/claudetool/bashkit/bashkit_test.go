@@ -779,3 +779,35 @@ func TestHasSketchWipBranchChangesEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestChainsCdWithCommand(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+		want   bool
+	}{
+		{"cd and command", "cd /tmp && ls", true},
+		{"cd semicolon command", "cd /tmp; ls", true},
+		{"cd and multiple commands", "cd foo/bar && make && ./run", true},
+		{"cd with relative path", "cd ../sibling && go test ./...", true},
+		{"cd inside explicit block", "{ cd /tmp; ls; }", true},
+		{"bare cd", "cd", false},
+		{"cd no chain", "cd /tmp", false},
+		{"no cd", "ls -la", false},
+		{"pushd not flagged", "pushd /tmp && ls", false},
+		{"cd or fallback", "cd /tmp || exit 1", false},
+		// Subshells scope the cd; treat as intentional and do not flag.
+		{"cd in subshell and", "(cd /tmp && ls)", false},
+		{"cd in subshell semi", "(cd /tmp; ls)", false},
+		{"subshell then top-level cmd", "(cd /tmp && ls) && echo done", false},
+		{"unparseable", "cd /tmp &&", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ChainsCdWithCommand(tc.script)
+			if got != tc.want {
+				t.Errorf("ChainsCdWithCommand(%q) = %v, want %v", tc.script, got, tc.want)
+			}
+		})
+	}
+}
