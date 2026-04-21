@@ -15,6 +15,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/network"
+	"exe.dev/exelet/services"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
@@ -879,4 +881,23 @@ func TestCheckDuplicateIPs(t *testing.T) {
 	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
 		t.Errorf("expected duplicate_ips_detected=0 for CREATING+RUNNING transient race, got %v", got)
 	}
+
+	// In netns mode, every VM shares the same inner IP (e.g. 10.42.0.42/16)
+	// because each VM lives in its own network namespace. The check must be
+	// skipped so we don't spam error logs on every poll.
+	m.context = &services.ServiceContext{NetworkManager: netnsStubNetworkManager{}}
+	m.checkDuplicateIPs(t.Context(), []*computeapi.Instance{
+		mkInst("vm-1", "10.42.0.42/16"),
+		mkInst("vm-2", "10.42.0.42/16"),
+		mkInst("vm-3", "10.42.0.42/16"),
+	})
+	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
+		t.Errorf("expected duplicate_ips_detected=0 in netns mode, got %v", got)
+	}
 }
+
+// netnsStubNetworkManager implements network.NetworkManager plus
+// network.ExtIPLookup, which is how checkDuplicateIPs detects netns mode.
+type netnsStubNetworkManager struct{ network.NetworkManager }
+
+func (netnsStubNetworkManager) GetInstanceByExtIP(string) (string, bool) { return "", false }

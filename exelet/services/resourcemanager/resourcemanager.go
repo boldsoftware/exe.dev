@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
@@ -317,10 +318,22 @@ func (m *ResourceManager) poll(ctx context.Context) {
 
 // checkDuplicateIPs scans instances for duplicate IPv4 addresses and updates
 // the duplicate_ips_detected gauge accordingly. If duplicates are found, it
-// logs a warning with the offending VMs.
+// logs an error with the offending VMs.
+//
+// In netns mode, every VM has the same inner IP (10.42.0.42/16) because each
+// VM lives in its own network namespace, so this check does not apply. We
+// detect netns mode via the ExtIPLookup interface, which only the netns
+// network manager implements.
 func (m *ResourceManager) checkDuplicateIPs(ctx context.Context, instances []*computeapi.Instance) {
 	if m.metrics == nil {
 		return
+	}
+	if m.context != nil {
+		if _, ok := m.context.NetworkManager.(network.ExtIPLookup); ok {
+			// netns mode: duplicate inner IPs are expected and harmless.
+			m.metrics.duplicateIPs.Set(0)
+			return
+		}
 	}
 	ipToVMs := make(map[string][]string)
 	for _, inst := range instances {
