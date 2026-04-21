@@ -705,13 +705,19 @@ func (t *Terminal) writeLine(line []rune) {
 	}
 }
 
-// writeWithCRLF writes buf to w but replaces all occurrences of \n with \r\n.
-func writeWithCRLF(w io.Writer, buf []byte) (n int, err error) {
+// WriteCRLF writes buf to w but replaces all occurrences of \n with \r\n.
+// Existing \r\n sequences pass through unchanged (no double-\r). Each call is
+// independent: trailing \r state is not preserved across calls.
+func WriteCRLF(w io.Writer, buf []byte) (n int, err error) {
 	for len(buf) > 0 {
 		i := bytes.IndexByte(buf, '\n')
 		todo := len(buf)
 		if i >= 0 {
 			todo = i
+			// Strip a trailing \r so we don't emit \r\r\n.
+			if i > 0 && buf[i-1] == '\r' {
+				todo = i - 1
+			}
 		}
 
 		var nn int
@@ -723,6 +729,11 @@ func writeWithCRLF(w io.Writer, buf []byte) (n int, err error) {
 		buf = buf[todo:]
 
 		if i >= 0 {
+			// Skip the \r we stripped above.
+			if len(buf) > 0 && buf[0] == '\r' {
+				n++
+				buf = buf[1:]
+			}
 			if _, err = w.Write(crlf); err != nil {
 				return n, err
 			}
@@ -741,7 +752,7 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 	if t.cursorX == 0 && t.cursorY == 0 {
 		// This is the easy case: there's nothing on the screen that we
 		// have to move out of the way.
-		return writeWithCRLF(t.c, buf)
+		return WriteCRLF(t.c, buf)
 	}
 
 	// We have a prompt and possibly user input on the screen. We
@@ -761,7 +772,7 @@ func (t *Terminal) Write(buf []byte) (n int, err error) {
 	}
 	t.outBuf = t.outBuf[:0]
 
-	if n, err = writeWithCRLF(t.c, buf); err != nil {
+	if n, err = WriteCRLF(t.c, buf); err != nil {
 		return n, err
 	}
 

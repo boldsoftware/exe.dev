@@ -425,6 +425,39 @@ func TestCRLF(t *testing.T) {
 	}
 }
 
+func TestWriteCRLF(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"bare LF", "hello\nworld\n", "hello\r\nworld\r\n"},
+		{"existing CRLF", "hello\r\nworld\r\n", "hello\r\nworld\r\n"},
+		{"mixed", "a\nb\r\nc\n", "a\r\nb\r\nc\r\n"},
+		{"no newlines", "hello", "hello"},
+		{"empty", "", ""},
+		{"only LF", "\n", "\r\n"},
+		{"only CRLF", "\r\n", "\r\n"},
+		{"CR without LF", "hello\rworld", "hello\rworld"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			n, err := WriteCRLF(&buf, []byte(tt.input))
+			if err != nil {
+				t.Fatalf("WriteCRLF error: %v", err)
+			}
+			if n != len(tt.input) {
+				t.Errorf("returned n=%d, want %d", n, len(tt.input))
+			}
+			if got := buf.String(); got != tt.expected {
+				t.Errorf("got %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestPasswordNotSaved(t *testing.T) {
 	c := &MockTerminal{
 		toSend:       []byte("password\r\x1b[A\r"),
