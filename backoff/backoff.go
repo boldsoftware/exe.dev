@@ -4,23 +4,8 @@ import (
 	"context"
 	"iter"
 	"math/rand/v2"
-	"sync"
 	"time"
 )
-
-var timerPool = &sync.Pool{
-	New: func() any {
-		return time.NewTimer(0)
-	},
-}
-
-func putTimer(t *time.Timer) {
-	if t == nil {
-		return
-	}
-	t.Stop()
-	timerPool.Put(t)
-}
 
 // Loop returns a sequence that yields nil until the context is cancelled,
 // or the sequence is stopped, which ever comes first, with an increasing
@@ -31,9 +16,6 @@ func putTimer(t *time.Timer) {
 func Loop(ctx context.Context, maxBackoff time.Duration) iter.Seq[error] {
 	var n int
 	return func(yield func(error) bool) {
-		var t *time.Timer
-		defer putTimer(t)
-
 		for {
 			// The context may be cancelled right as we wake up.
 			// If so, prevent starting a new operation.
@@ -61,15 +43,7 @@ func Loop(ctx context.Context, maxBackoff time.Duration) iter.Seq[error] {
 			// to prevent accidental "thundering herd" problems.
 			d = time.Duration(float64(d) * (rand.Float64() + 0.5))
 
-			if t == nil {
-				t = timerPool.Get().(*time.Timer)
-			}
-			t.Reset(d)
-			select {
-			case <-ctx.Done():
-				t.Stop()
-			case <-t.C:
-			}
+			Sleep(ctx, d)
 		}
 	}
 }
