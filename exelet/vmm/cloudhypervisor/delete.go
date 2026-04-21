@@ -8,7 +8,7 @@ import (
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 )
 
-func (v *VMM) Delete(ctx context.Context, id, ip string) error {
+func (v *VMM) Delete(ctx context.Context, id, ip, mac string) error {
 	// Use retry=false - instance should exist or we proceed with cleanup
 	c, err := client.NewCloudHypervisorClient(ctx, v.apiSocketPath(id), false, v.log)
 	if err != nil {
@@ -35,7 +35,7 @@ func (v *VMM) Delete(ctx context.Context, id, ip string) error {
 	}
 
 	// remove tap and release DHCP lease
-	if err := v.networkManager.DeleteInterface(ctx, id, ip); err != nil {
+	if err := v.networkManager.DeleteInterface(ctx, id, ip, mac); err != nil {
 		return fmt.Errorf("error deleting network interface for %s: %w", id, err)
 	}
 

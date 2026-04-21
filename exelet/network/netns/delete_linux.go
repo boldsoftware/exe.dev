@@ -14,10 +14,10 @@ import (
 
 // DeleteInterface tears down the network namespace and all associated kernel
 // resources (veth pairs, TAP device, per-VM bridge) for the given instance.
-// The ip parameter is unused: unlike NAT, the netns manager tracks external
-// IPs by instance ID in memory, so releaseExtIP only needs the id. The ip
-// parameter exists to satisfy the NetworkManager interface.
-func (m *Manager) DeleteInterface(ctx context.Context, id, ip string) error {
+// The ip and mac parameters are unused: unlike NAT, the netns manager tracks
+// external IPs by instance ID in memory, so releaseExtIP only needs the id.
+// They exist to satisfy the NetworkManager interface.
+func (m *Manager) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 	ns := nsName(id)
 	br := brName(id)
 	tap := tapName(id)

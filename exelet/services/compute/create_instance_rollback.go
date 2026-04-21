@@ -40,6 +40,7 @@ type createInstanceRollback struct {
 	vmCreated          bool
 	vmStarted          bool
 	networkIP          string
+	networkMAC         string
 	// storageOverride, if set, is used for Unmount/Delete instead of
 	// serviceContext.StorageManager. This is needed when the clone was
 	// created on a non-primary pool via a resolved StorageManager.
@@ -137,7 +138,7 @@ func (r *createInstanceRollback) Rollback() {
 
 			// Delete VM (vmm.Delete also cleans up network interface)
 			if r.vmCreated {
-				if err := r.vmm.Delete(r.ctx, r.instanceID, bareIP); err != nil {
+				if err := r.vmm.Delete(r.ctx, r.instanceID, bareIP, r.networkMAC); err != nil {
 					r.log.ErrorContext(r.ctx, "rollback: failed to delete VM", "id", r.instanceID, "error", err)
 				} else {
 					r.log.DebugContext(r.ctx, "rollback: deleted VM", "id", r.instanceID)
@@ -183,7 +184,7 @@ func (r *createInstanceRollback) Rollback() {
 
 	// Delete network interface (if not already cleaned up by vmm.Delete)
 	if r.networkCreated {
-		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, bareIP); err != nil {
+		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, bareIP, r.networkMAC); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to delete network interface", "id", r.instanceID, "error", err)
 		}
 	}

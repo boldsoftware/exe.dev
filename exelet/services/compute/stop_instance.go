@@ -55,12 +55,18 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	// extract IP before clearing network interface (strip CIDR suffix)
+	// extract IP and MAC before clearing network interface (strip CIDR suffix).
+	// The MAC scopes the IPAM lease release to the specific allocation held
+	// by this VM, avoiding a TOCTOU where the IP has been reassigned.
 	ip := ""
-	if vmCfg.NetworkInterface != nil && vmCfg.NetworkInterface.IP != nil {
-		ip = vmCfg.NetworkInterface.IP.IPV4
-		if idx := strings.Index(ip, "/"); idx > 0 {
-			ip = ip[:idx]
+	mac := ""
+	if vmCfg.NetworkInterface != nil {
+		mac = vmCfg.NetworkInterface.MACAddress
+		if vmCfg.NetworkInterface.IP != nil {
+			ip = vmCfg.NetworkInterface.IP.IPV4
+			if idx := strings.Index(ip, "/"); idx > 0 {
+				ip = ip[:idx]
+			}
 		}
 	}
 
@@ -86,7 +92,7 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 	}
 
 	// delete network interface and release DHCP lease
-	if err := s.context.NetworkManager.DeleteInterface(ctx, id, ip); err != nil {
+	if err := s.context.NetworkManager.DeleteInterface(ctx, id, ip, mac); err != nil {
 		return err
 	}
 

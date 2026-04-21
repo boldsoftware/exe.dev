@@ -30,7 +30,11 @@ func (m *mockNetworkManager) Config(ctx context.Context) any  { return nil }
 func (m *mockNetworkManager) CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error) {
 	return nil, nil
 }
-func (m *mockNetworkManager) DeleteInterface(ctx context.Context, id, ip string) error { return nil }
+
+func (m *mockNetworkManager) DeleteInterface(ctx context.Context, id, ip, mac string) error {
+	return nil
+}
+
 func (m *mockNetworkManager) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) error {
 	return nil
 }

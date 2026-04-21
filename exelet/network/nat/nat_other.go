@@ -42,7 +42,7 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	return nil, errNotSupported
 }
 
-func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
+func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 	return errNotSupported
 }
 

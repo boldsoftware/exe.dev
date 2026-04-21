@@ -96,7 +96,7 @@ func (m *busyDatasetStorage) Delete(_ context.Context, _ string) error {
 
 type mockDeleteNetworkManager struct{}
 
-func (m *mockDeleteNetworkManager) DeleteInterface(_ context.Context, _, _ string) error {
+func (m *mockDeleteNetworkManager) DeleteInterface(_ context.Context, _, _, _ string) error {
 	return nil
 }
 

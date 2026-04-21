@@ -80,13 +80,15 @@ func (m *Manager) Reserve(macAddress string) (net.IP, error) {
 	}
 }
 
-// Release releases the specified IP address
-func (m *Manager) Release(ip string) error {
-	err := m.ds.Release(ip)
+// Release releases the lease identified by (mac, ip). The MAC scopes the
+// release to a specific allocation so that releasing a stale IP whose
+// ownership has since transferred to another MAC is a safe no-op.
+func (m *Manager) Release(mac, ip string) error {
+	err := m.ds.Release(mac, ip)
 	if err != nil {
-		m.log.Warn("IP lease release failed", "ip", ip, "error", err)
+		m.log.Warn("IP lease release failed", "mac", mac, "ip", ip, "error", err)
 	} else {
-		m.log.Info("IP lease released", "ip", ip)
+		m.log.Info("IP lease released", "mac", mac, "ip", ip)
 	}
 	return err
 }

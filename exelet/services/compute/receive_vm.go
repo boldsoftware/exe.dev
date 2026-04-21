@@ -76,7 +76,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 			if idx := strings.Index(delIP, "/"); idx > 0 {
 				delIP = delIP[:idx]
 			}
-			if err := s.context.NetworkManager.DeleteInterface(ctx, instanceID, delIP); err != nil {
+			if err := s.context.NetworkManager.DeleteInterface(ctx, instanceID, delIP, targetNetwork.MACAddress); err != nil {
 				s.log.WarnContext(ctx, "live: failed to delete live migration network interface", "instance", instanceID, "error", err)
 			}
 		}
@@ -361,7 +361,7 @@ type receiveVMRollback struct {
 		Delete(ctx context.Context, id string) error
 	}
 	networkManager interface {
-		DeleteInterface(ctx context.Context, id, ip string) error
+		DeleteInterface(ctx context.Context, id, ip, mac string) error
 	}
 	instanceID           string
 	instanceDir          string
@@ -441,7 +441,7 @@ func (r *receiveVMRollback) Rollback() {
 				ip = ip[:idx]
 			}
 		}
-		if err := r.networkManager.DeleteInterface(ctx, r.instanceID, ip); err != nil {
+		if err := r.networkManager.DeleteInterface(ctx, r.instanceID, ip, r.targetNetwork.MACAddress); err != nil {
 			r.log.WarnContext(ctx, "failed to delete network interface during rollback", "instance", r.instanceID, "error", err)
 		}
 	}

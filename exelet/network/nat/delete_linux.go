@@ -11,7 +11,7 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
+func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 	tapName := getTapID(id)
 
 	// Find which bridge this TAP belongs to before deleting it
@@ -38,13 +38,19 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 		}
 	}
 
-	// Release the IP lease
-	if ip != "" {
-		if err := n.ipam.Release(ip); err != nil {
-			n.log.WarnContext(ctx, "failed to release IP lease", "ip", ip, "error", err)
+	// Release the IP lease, but only when we know which MAC owns it.
+	// Releasing by bare IP is unsafe: if the IP has been reassigned to a
+	// different MAC since this delete path was entered, we would remove
+	// the new owner's lease and create a duplicate-IP conflict.
+	if ip != "" && mac != "" {
+		if err := n.ipam.Release(mac, ip); err != nil {
+			n.log.WarnContext(ctx, "failed to release IP lease", "mac", mac, "ip", ip, "error", err)
 		} else {
-			n.log.DebugContext(ctx, "released IP lease", "tap", tapName, "ip", ip)
+			n.log.DebugContext(ctx, "released IP lease", "tap", tapName, "mac", mac, "ip", ip)
 		}
+	} else if ip != "" {
+		n.log.WarnContext(ctx, "skipping IP lease release: no MAC known for instance, reconciler will recover",
+			"tap", tapName, "ip", ip, "instance", id)
 	}
 
 	return nil
@@ -107,8 +113,8 @@ func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([
 	for _, lease := range leases {
 		if _, ok := validIPs[lease.IP]; !ok {
 			n.log.WarnContext(ctx, "releasing orphaned IP lease", "ip", lease.IP, "mac", lease.MACAddress)
-			if err := n.ipam.Release(lease.IP); err != nil {
-				n.log.WarnContext(ctx, "failed to release orphaned IP lease", "ip", lease.IP, "error", err)
+			if err := n.ipam.Release(lease.MACAddress, lease.IP); err != nil {
+				n.log.WarnContext(ctx, "failed to release orphaned IP lease", "ip", lease.IP, "mac", lease.MACAddress, "error", err)
 				continue
 			}
 			released = append(released, lease.IP)

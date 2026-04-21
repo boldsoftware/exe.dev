@@ -18,7 +18,7 @@ type NetworkManager interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
-	DeleteInterface(ctx context.Context, id, ip string) error
+	DeleteInterface(ctx context.Context, id, ip, mac string) error
 }
 
 type VMM interface {
@@ -38,8 +38,9 @@ type VMM interface {
 	Console(ctx context.Context, id string) (string, error)
 	// Stop implements VM stop (hard kill)
 	Stop(ctx context.Context, id string) error
-	// Delete implements VM delete
-	Delete(ctx context.Context, id, ip string) error
+	// Delete implements VM delete. mac scopes the IPAM lease release so a
+	// concurrently reassigned IP is not wrongly released.
+	Delete(ctx context.Context, id, ip, mac string) error
 	// DeflateBalloon resets the balloon to size 0, forcing all memory back into the guest.
 	// This should be called before snapshotting to ensure all memory regions are mapped.
 	DeflateBalloon(ctx context.Context, id string) error

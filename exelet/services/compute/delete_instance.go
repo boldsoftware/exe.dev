@@ -45,23 +45,31 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			s.log.WarnContext(ctx, "error stopping vm during delete, continuing with cleanup", "instance", instance.ID, "error", err)
 		}
 
-		// extract IP from instance for DHCP release (strip CIDR suffix)
+		// extract IP and MAC from instance for DHCP release (strip CIDR suffix).
+		// The MAC scopes the IPAM release so a concurrent allocation that has
+		// since reused this IP for a different VM is not wrongly disturbed.
 		ip := ""
-		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil && instance.VMConfig.NetworkInterface.IP != nil {
-			ip = instance.VMConfig.NetworkInterface.IP.IPV4
-			if idx := strings.Index(ip, "/"); idx > 0 {
-				ip = ip[:idx]
+		mac := ""
+		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil {
+			ni := instance.VMConfig.NetworkInterface
+			mac = ni.MACAddress
+			if ni.IP != nil {
+				ip = ni.IP.IPV4
+				if idx := strings.Index(ip, "/"); idx > 0 {
+					ip = ip[:idx]
+				}
 			}
 		}
 
 		// delete vm
-		if err := s.vmm.Delete(ctx, instance.ID, ip); err != nil {
+		if err := s.vmm.Delete(ctx, instance.ID, ip, mac); err != nil {
 			return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
 		}
 
-		// Remove instance config dir immediately after vmm.Delete so that
-		// the freed IP is no longer discoverable via GetInstanceByIP /
-		// listInstances while the remaining cleanup proceeds.
+		// Remove instance config dir after vmm.Delete (which already released
+		// the IPAM lease and network resources). Keeping the dir around until
+		// now means GetInstanceByIP / listInstances continue to resolve the
+		// old IP to this instance until the lease is gone, not after.
 		if err := os.RemoveAll(s.getInstanceDir(instance.ID)); err != nil {
 			return nil, status.Errorf(codes.Internal, "error removing instance state dir: %s", err)
 		}

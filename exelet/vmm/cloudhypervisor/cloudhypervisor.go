@@ -27,7 +27,7 @@ type NetworkManager interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
-	DeleteInterface(ctx context.Context, id, ip string) error
+	DeleteInterface(ctx context.Context, id, ip, mac string) error
 }
 
 type VMM struct {

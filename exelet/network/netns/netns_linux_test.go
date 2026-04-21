@@ -363,7 +363,7 @@ func TestCreateDeleteInterface(t *testing.T) {
 	}
 
 	// Delete.
-	if err := m.DeleteInterface(ctx, id, ""); err != nil {
+	if err := m.DeleteInterface(ctx, id, "", ""); err != nil {
 		t.Fatal("DeleteInterface:", err)
 	}
 
@@ -419,13 +419,13 @@ func TestTwoVMs(t *testing.T) {
 	if err != nil {
 		t.Fatal("CreateInterface vm1:", err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "", "") })
 
 	iface2, err := m.CreateInterface(ctx, id2)
 	if err != nil {
 		t.Fatal("CreateInterface vm2:", err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id2, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id2, "", "") })
 
 	// Both get same VM IP.
 	if iface1.IP.IPV4 != iface2.IP.IPV4 {
@@ -495,13 +495,13 @@ func TestRecoverExtIPs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "", "") })
 
 	_, err = m.CreateInterface(ctx, id2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id2, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id2, "", "") })
 
 	// Remember the ext IPs before "restart".
 	ext1Before, _ := m.getExtIP(id1)
@@ -586,7 +586,7 @@ func TestReconcileLeasesDeletesOrphans(t *testing.T) {
 	if err != nil {
 		t.Fatal("CreateInterface id1:", err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id1, "", "") })
 
 	_, err = m.CreateInterface(ctx, id2)
 	if err != nil {
@@ -668,7 +668,7 @@ func TestReconcileLeasesNoOrphans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id, "", "") })
 
 	cleaned, err := m.ReconcileLeases(ctx, []*api.Instance{{ID: id}})
 	if err != nil {
@@ -788,7 +788,7 @@ func TestApplyConnectionLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal("CreateInterface:", err)
 	}
-	t.Cleanup(func() { m.DeleteInterface(context.Background(), id, "") })
+	t.Cleanup(func() { m.DeleteInterface(context.Background(), id, "", "") })
 
 	ns := nsName(id)
 

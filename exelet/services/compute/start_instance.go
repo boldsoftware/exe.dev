@@ -118,7 +118,7 @@ func (s *Service) startInstance(ctx context.Context, id string) (retErr error) {
 				ip = ip[:idx]
 			}
 		}
-		if delErr := s.context.NetworkManager.DeleteInterface(ctx, vmCfg.ID, ip); delErr != nil {
+		if delErr := s.context.NetworkManager.DeleteInterface(ctx, vmCfg.ID, ip, networkInterface.MACAddress); delErr != nil {
 			s.log.WarnContext(ctx, "failed to clean up network interface after start failure", "id", id, "error", delErr)
 		}
 	}()

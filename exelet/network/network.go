@@ -34,8 +34,13 @@ type NetworkManager interface {
 	// its IP resources. id is the instance ID. ip is the VM's IP address,
 	// used by NAT to release the IPAM lease and remove connlimit rules;
 	// the netns manager ignores ip because it tracks the external IP by
-	// instance ID internally (see releaseExtIP).
-	DeleteInterface(ctx context.Context, id, ip string) error
+	// instance ID internally (see releaseExtIP). mac is the VM's MAC
+	// address; NAT uses it to scope the IPAM release to the specific lease
+	// allocated for this VM so that a concurrent allocation that has since
+	// claimed the same IP for a different MAC is not wrongly released. An
+	// empty mac skips the IPAM release (NAT cannot safely identify the
+	// lease); reconcileIPLeases picks up anything left behind.
+	DeleteInterface(ctx context.Context, id, ip, mac string) error
 	// ApplyConnectionLimit applies a connection limit rule for a VM.
 	// Each implementation extracts the identifier it needs from the
 	// instance: NAT uses the IP address; netns uses the instance ID.

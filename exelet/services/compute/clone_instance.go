@@ -147,6 +147,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.networkCreated = true
+	rb.networkMAC = networkInterface.MACAddress
 	if networkInterface.IP != nil {
 		rb.networkIP = networkInterface.IP.IPV4
 	}

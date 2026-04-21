@@ -37,13 +37,14 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	// Track cleanup actions for rollback on error
 	var cleanupTap, cleanupIP, cleanupConnLimit bool
 	var ipStr string
+	var macAddr string
 
 	cleanup := func() {
 		if cleanupConnLimit && ipStr != "" {
 			_ = n.removeConnLimit(ctx, ipStr)
 		}
-		if cleanupIP && ipStr != "" {
-			_ = n.ipam.Release(ipStr)
+		if cleanupIP && ipStr != "" && macAddr != "" {
+			_ = n.ipam.Release(macAddr, ipStr)
 		}
 		if cleanupTap {
 			_ = n.removeBandwidthLimit(ctx, tapName)
@@ -65,6 +66,7 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 		cleanup()
 		return nil, err
 	}
+	macAddr = macAddress
 
 	ip, err := n.ipam.Reserve(macAddress)
 	if err != nil {

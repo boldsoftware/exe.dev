@@ -33,7 +33,7 @@ func (m *Manager) CreateInterface(ctx context.Context, id string) (*api.NetworkI
 	return nil, errNotSupported
 }
 
-func (m *Manager) DeleteInterface(ctx context.Context, id, ip string) error {
+func (m *Manager) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 	return errNotSupported
 }
 

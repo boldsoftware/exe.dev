@@ -168,26 +168,27 @@ func (d *Datastore) List() ([]*Lease, error) {
 	return leases, nil
 }
 
-func (d *Datastore) Release(ip string) error {
+// Release releases the lease owned by mac if (and only if) its stored IP
+// matches ip. This guards against a TOCTOU where the IP has been reassigned
+// to a different MAC between the caller reading an instance config and
+// invoking Release: in that case the lease for the current owner must not
+// be disturbed.
+func (d *Datastore) Release(mac, ip string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// delete from ips
-	lease, ok := d.db.IPs[ip]
-	if ok {
-		delete(d.db.IPs, ip)
+	lease, ok := d.db.Hosts[mac]
+	if !ok {
+		return nil
+	}
+	if lease.IP != ip {
+		return nil
 	}
 
-	// delete from hosts
-	if lease != nil {
-		delete(d.db.Hosts, lease.MACAddress)
-	}
+	delete(d.db.Hosts, mac)
+	delete(d.db.IPs, lease.IP)
 
-	if err := d.saveDB(); err != nil {
-		return err
-	}
-
-	return nil
+	return d.saveDB()
 }
 
 func (d *Datastore) saveDB() error {
