@@ -173,7 +173,7 @@ func New(token, dbPath string) (*Client, error) {
 
 func openDB(dbPath string) (*sql.DB, error) {
 	// Open database
-	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open github-whoami database: %w", err)
 	}

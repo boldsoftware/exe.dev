@@ -108,7 +108,7 @@ func createTemplateDB(slog *slog.Logger) (string, error) {
 
 // verifyTemplate opens the DB and checks that the migrations table exists and is non-empty.
 func verifyTemplate(dbPath string) error {
-	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro")
 	if err != nil {
 		return err
 	}
