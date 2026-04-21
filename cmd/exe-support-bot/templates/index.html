@@ -1,0 +1,61 @@
+{{template "header" .}}
+<section class="stats">
+  <div>Conversations: <strong>{{.TotalConvs}}</strong></div>
+  <div>Messages: <strong>{{.TotalMsgs}}</strong></div>
+  <div>Comments: <strong>{{.TotalComments}}</strong></div>
+</section>
+
+<section class="run-card">
+  <h2>Run the agent</h2>
+  <form id="run-form" onsubmit="return startRun(event)">
+    <label>Conversation id (optional): <input name="conversation" id="conv-input" placeholder="conv_…" autocomplete="off"></label>
+    <label>Prompt: <textarea name="prompt" rows="3" placeholder="Triage this conversation and produce a short internal comment."></textarea></label>
+    <button type="submit">Run</button>
+    <span id="run-status" class="muted"></span>
+  </form>
+  <div id="run-output" class="run-output hidden">
+    <div class="run-meta"><span id="run-cost">$0.0000</span> · <span id="run-tokens">0 in / 0 out tokens</span></div>
+    <div id="run-steps"></div>
+    <div id="run-final"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Recent results</h2>
+  {{if .Results}}
+  <ul class="results">
+  {{range .Results}}
+    <li>
+      <a href="/result/{{.ID}}">#{{.ID}}</a>
+      <span class="muted">{{relTime .CreatedAt}}</span>
+      {{if .ConversationID}}<span class="muted"> · conv <a href="/conversation/{{.ConversationID}}">{{.ConversationID}}</a></span>{{end}}
+      <span class="muted"> · {{money .CostUSD}} · {{.InputTokens}} in / {{.OutputTokens}} out</span>
+      <div class="snippet">{{truncate .Output 300}}</div>
+    </li>
+  {{end}}
+  </ul>
+  {{else}}<p class="muted">No results yet.</p>{{end}}
+</section>
+
+<section>
+  <h2>Recent scrapes</h2>
+  {{if .Scrapes}}
+  <table class="scrapes">
+    <thead><tr><th>#</th><th>Started</th><th>Finished</th><th>Convs</th><th>Msgs</th><th>Comments</th><th>Error</th></tr></thead>
+    <tbody>
+    {{range .Scrapes}}
+    <tr>
+      <td>{{.ID}}</td>
+      <td>{{fmtTime .StartedAt}}</td>
+      <td>{{if .FinishedAt.Valid}}{{fmtTime .FinishedAt.Int64}}{{else}}—{{end}}</td>
+      <td>{{.ConvsSeen}}</td>
+      <td>{{.MsgsSeen}}</td>
+      <td>{{.CommentsSeen}}</td>
+      <td>{{if .Error}}<span class="err">{{.Error}}</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted">No scrapes recorded. Run <code>exe-support-bot import</code>.</p>{{end}}
+</section>
+{{template "footer" .}}

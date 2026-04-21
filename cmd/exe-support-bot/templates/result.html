@@ -1,0 +1,24 @@
+{{template "header" .}}
+{{with .R}}
+<article class="result">
+  <h2>Result #{{.ID}} <span class="muted">· {{fmtTime .CreatedAt}}</span></h2>
+  <div class="run-meta">{{money .CostUSD}} · {{.InputTokens}} in / {{.OutputTokens}} out tokens
+    {{if .ConversationID}} · <a href="/conversation/{{.ConversationID}}">conversation {{.ConversationID}}</a>{{end}}
+  </div>
+  {{if .Prompt}}<details><summary>Prompt</summary><pre>{{.Prompt}}</pre></details>{{end}}
+  <section class="output"><pre>{{.Output}}</pre></section>
+</article>
+{{end}}
+<section>
+  <h3>Agent steps</h3>
+  <ol class="steps">
+  {{range .Steps}}
+    <li class="step step-{{.Kind}}{{if .Error}} err{{end}}">
+      <div class="step-head">{{.Kind}}{{if .Name}} – <code>{{.Name}}</code>{{end}}{{if eq .Kind "usage"}} – {{.InputTokens}} in / {{.OutputTokens}} out · {{money .CostUSD}}{{end}}</div>
+      {{if .Input}}<pre class="step-input">{{.Input}}</pre>{{end}}
+      {{if .Text}}<pre class="step-text">{{.Text}}</pre>{{end}}
+    </li>
+  {{end}}
+  </ol>
+</section>
+{{template "footer" .}}

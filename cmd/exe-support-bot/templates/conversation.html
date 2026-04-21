@@ -1,0 +1,30 @@
+{{template "header" .}}
+<article>
+  <h2>{{if .Subject}}{{.Subject}}{{else}}(no subject){{end}}</h2>
+  <div class="muted">{{.ID}} · team {{.Team}} · created {{fmtTime .Created}} · last activity {{fmtTime .LastActivity}}</div>
+  <form class="inline-run" onsubmit="return startRun(event, '{{.ID}}')">
+    <textarea name="prompt" rows="2" placeholder="Triage this conversation..."></textarea>
+    <button type="submit">Run agent on this conversation</button>
+  </form>
+  <div id="run-output" class="run-output hidden">
+    <div class="run-meta"><span id="run-cost">$0.0000</span> · <span id="run-tokens">0 in / 0 out tokens</span></div>
+    <div id="run-steps"></div>
+    <div id="run-final"></div>
+  </div>
+  <section class="messages">
+    <h3>Messages ({{len .Messages}})</h3>
+    {{range .Messages}}
+    <div class="msg">
+      <div class="msg-head"><strong>{{.FromName}}</strong> &lt;{{.FromAddr}}&gt; · <span class="muted">{{fmtTime .Delivered}}</span> · <em>{{.Subject}}</em></div>
+      <pre>{{.Body}}</pre>
+    </div>
+    {{end}}
+  </section>
+  <section class="comments">
+    <h3>Internal comments ({{len .Comments}})</h3>
+    {{range .Comments}}
+    <div class="cmt"><div class="muted">{{.Author}} · {{fmtTime .Created}}</div><pre>{{.Body}}</pre></div>
+    {{end}}
+  </section>
+</article>
+{{template "footer" .}}

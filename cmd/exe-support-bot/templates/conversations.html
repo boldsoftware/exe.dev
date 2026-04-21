@@ -1,0 +1,19 @@
+{{template "header" .}}
+<section>
+  <form method="get" class="search">
+    <input name="q" value="{{.Q}}" placeholder="FTS query (e.g. ssh connect)" autocomplete="off">
+    <button type="submit">Search</button>
+  </form>
+  <h2>Conversations {{if .Q}}matching <code>{{.Q}}</code>{{end}}</h2>
+  {{if .Convs}}
+  <ul class="convlist">
+  {{range .Convs}}
+    <li>
+      <a href="/conversation/{{.ID}}">{{if .Subject}}{{.Subject}}{{else}}(no subject){{end}}</a>
+      <span class="muted"> · {{relTime .LastActivity}}{{if .Team}} · {{.Team}}{{end}} · {{.ID}}</span>
+    </li>
+  {{end}}
+  </ul>
+  {{else}}<p class="muted">No conversations found.</p>{{end}}
+</section>
+{{template "footer" .}}

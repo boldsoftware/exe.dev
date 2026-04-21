@@ -1,0 +1,18 @@
+[Unit]
+Description=exe-support-bot web UI + agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+EnvironmentFile=/etc/exe-support-bot/env
+ExecStart=/usr/local/bin/exe-support-bot -db /var/lib/exe-support-bot/support.db serve -http :8666
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

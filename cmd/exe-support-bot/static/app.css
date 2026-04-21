@@ -1,0 +1,77 @@
+* { box-sizing: border-box; }
+body {
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #1f2937; background: #f9fafb; margin: 0;
+}
+header { background: #111827; color: #f3f4f6; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+header h1 { margin: 0; font-size: 18px; }
+header a { color: #f9fafb; text-decoration: none; }
+header nav a { margin-right: 12px; }
+header nav a:hover { text-decoration: underline; }
+main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+footer { text-align: center; padding: 16px; color: #6b7280; }
+
+h2 { margin: 20px 0 10px; }
+.muted { color: #6b7280; font-size: 12px; }
+.err { color: #b91c1c; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+pre { background: #f3f4f6; padding: 8px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 4px 0; }
+a { color: #2563eb; }
+
+.stats { display: flex; gap: 24px; background: #fff; padding: 12px 16px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.05); margin-bottom: 16px; flex-wrap: wrap; }
+
+.run-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.05); margin-bottom: 24px; }
+.run-card form { display: grid; gap: 8px; }
+.run-card label { display: grid; gap: 4px; font-size: 13px; color: #374151; }
+input, textarea, select { font-size: 16px; } /* prevent iOS focus-zoom */
+.run-card input, .run-card textarea { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: 16px; }
+.run-card button, .inline-run button { background: #2563eb; color: #fff; border: 0; padding: 8px 14px; border-radius: 4px; cursor: pointer; font: inherit; width: fit-content; }
+.run-card button:disabled { opacity: .5; cursor: wait; }
+.run-output { margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+.run-output.hidden { display: none; }
+.run-meta { font-family: ui-monospace, monospace; font-size: 12px; color: #374151; margin-bottom: 8px; }
+
+.step { background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 8px; margin-bottom: 6px; font-size: 13px; }
+.step.step-tool_call { border-left: 3px solid #6366f1; }
+.step.step-tool_result { border-left: 3px solid #10b981; }
+.step.step-tool_result.err { border-left-color: #b91c1c; }
+.step.step-text { border-left: 3px solid #f59e0b; }
+.step.step-usage { background: #f9fafb; color: #6b7280; font-size: 11px; }
+.step-head { font-weight: 600; font-size: 12px; }
+.step pre { max-height: 320px; overflow: auto; }
+
+.results { list-style: none; padding: 0; }
+.results li { background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 10px; margin-bottom: 8px; }
+.results .snippet { color: #374151; margin-top: 4px; white-space: pre-wrap; }
+
+table.scrapes { width: 100%; border-collapse: collapse; background: #fff; }
+.scrapes th, .scrapes td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 13px; }
+
+form.search { display: flex; gap: 8px; margin-bottom: 12px; }
+form.search input { flex: 1; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 16px; }
+.convlist { list-style: none; padding: 0; }
+.convlist li { padding: 6px 0; border-bottom: 1px solid #e5e7eb; }
+
+.msg, .cmt { background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 10px; margin: 8px 0; }
+.cmt { background: #fefce8; border-color: #fde68a; }
+.msg-head { font-size: 13px; margin-bottom: 4px; }
+.inline-run { margin: 16px 0; display: grid; gap: 6px; }
+.inline-run textarea { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: 16px; }
+.inline-run button { background: #2563eb; color: #fff; border: 0; padding: 8px 14px; border-radius: 4px; cursor: pointer; width: fit-content; }
+
+/* Judge step styling. */
+.step.step-judge { border-left: 3px solid #a855f7; background: #faf5ff; }
+
+@media (max-width: 640px) {
+  .stats { gap: 12px; }
+  main { padding: 0 10px; }
+  header { padding: 10px 12px; }
+  header h1 { font-size: 16px; }
+  h2 { font-size: 18px; }
+  .run-card, .stats { padding: 12px; }
+  .run-card button, .inline-run button { width: 100%; font-size: 16px; padding: 10px; }
+  form.search { flex-direction: column; }
+  form.search button { font-size: 16px; padding: 10px; }
+  .scrapes { display: block; overflow-x: auto; }
+  pre { font-size: 12px; }
+}
