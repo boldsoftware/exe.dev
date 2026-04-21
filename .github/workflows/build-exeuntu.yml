@@ -2,6 +2,9 @@ name: Build Exeuntu
 run-name: ${{ inputs.commit_subject || format('Build exeuntu ({0})', github.sha) }}
 
 on:
+  schedule:
+    # Tuesdays at 10am Pacific (17:00 UTC during PDT; 9am PST during winter).
+    - cron: '0 17 * * 2'
   workflow_dispatch:
     inputs:
       commit_subject:
