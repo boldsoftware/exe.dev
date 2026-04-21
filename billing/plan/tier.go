@@ -15,8 +15,9 @@ type Tier struct {
 	Category Category
 	Name     string // "Small", "Medium", "Default", etc.
 
-	StripePrices map[string]stripePriceInfo
-	Quotas       tierQuotas
+	StripePrices      map[string]stripePriceInfo
+	Quotas            tierQuotas
+	MonthlyPriceCents int // base monthly subscription price in cents (e.g. 2000 = $20)
 
 	// Entitlements overrides the plan's base entitlements when non-nil.
 	// nil = inherit from the parent Plan. Non-nil = use this set instead.
@@ -117,6 +118,23 @@ func MaxDiskForPlan(planID string) uint64 {
 	return tier.Quotas.MaxDisk
 }
 
+// NextTier returns the next larger tier in the same category, or nil if
+// the current tier is the largest. Tiers are ordered by MaxCPUs ascending.
+func NextTier(currentID string) *Tier {
+	current, err := getTierByID(currentID)
+	if err != nil {
+		return nil
+	}
+	all := TiersByCategory(current.Category)
+	for i, t := range all {
+		if t.ID == current.ID && i+1 < len(all) {
+			next := all[i+1]
+			return &next
+		}
+	}
+	return nil
+}
+
 // --- unexported ---
 
 const (
@@ -158,7 +176,8 @@ var tiers = map[string]Tier{
 			MaxDisk:          75 * gb,
 			DefaultBandwidth: 100 * gb,
 		},
-		Entitlements: nil,
+		MonthlyPriceCents: 2000,
+		Entitlements:      nil,
 	},
 	"individual:medium:monthly:20260601": {
 		ID:       "individual:medium:monthly:20260601",
@@ -177,7 +196,8 @@ var tiers = map[string]Tier{
 			MaxDisk:          75 * gb,
 			DefaultBandwidth: 100 * gb,
 		},
-		Entitlements: nil,
+		MonthlyPriceCents: 4000,
+		Entitlements:      nil,
 	},
 	"individual:large:monthly:20260601": {
 		ID:       "individual:large:monthly:20260601",
@@ -196,7 +216,8 @@ var tiers = map[string]Tier{
 			MaxDisk:          75 * gb,
 			DefaultBandwidth: 100 * gb,
 		},
-		Entitlements: nil,
+		MonthlyPriceCents: 8000,
+		Entitlements:      nil,
 	},
 	"individual:xlarge:monthly:20260601": {
 		ID:       "individual:xlarge:monthly:20260601",
@@ -215,7 +236,8 @@ var tiers = map[string]Tier{
 			MaxDisk:          75 * gb,
 			DefaultBandwidth: 100 * gb,
 		},
-		Entitlements: nil,
+		MonthlyPriceCents: 16000,
+		Entitlements:      nil,
 	},
 
 	// --- Single-tier plans: one "default" tier each ---

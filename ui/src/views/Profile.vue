@@ -77,93 +77,77 @@
 
           <!-- Full Billing UI -->
           <template v-else>
-            <!-- Header: Plan Name, Status Badge, Action Buttons -->
-            <div class="billing-header">
-              <div class="billing-header-left">
-                <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan</h3>
-                <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
-                <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
-                <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
+            <!-- Plan Section -->
+            <div class="billing-plan-section">
+              <div class="billing-plan-row">
+                <div class="billing-plan-info">
+                  <div class="billing-plan-name-row">
+                    <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan</h3>
+                    <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
+                    <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
+                    <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
+                  </div>
+                  <div v-if="data.planCapacity && data.planCapacity.poolSize" class="billing-plan-desc">{{ data.planCapacity.poolSize }}</div>
+                  <div v-if="data.planCapacity && data.planCapacity.monthlyPriceCents" class="billing-plan-price">${{ data.planCapacity.monthlyPriceCents / 100 }}<span class="billing-plan-interval">/month</span></div>
+                  <div v-if="data.billingPeriodEnd" class="billing-plan-renewal">Your subscription will auto renew on {{ formatRenewalDate(data.billingPeriodEnd) }}.</div>
+                </div>
+                <div class="billing-plan-action">
+                  <a v-if="canManageBilling" href="/billing/update?source=profile" :class="['btn', data.trial ? 'btn-upgrade' : 'btn-secondary']">{{ data.trial ? 'Upgrade' : 'Manage plan' }}</a>
+                </div>
               </div>
-              <div class="billing-header-right">
-                <a v-if="canManageBilling" href="/billing/update?source=profile" :class="['btn', data.trial ? 'btn-upgrade' : 'btn-secondary']"><i class="pi pi-cog" style="font-size: 13px"></i> {{ data.trial ? 'Upgrade' : 'Manage Plan' }}</a>
+
+              <!-- Plan includes -->
+              <div v-if="data.planCapacity" class="billing-plan-includes">
+                <span class="billing-plan-include-item">{{ data.planCapacity.maxVMs }} VMs</span>
+                <span class="billing-plan-include-sep">&middot;</span>
+                <span class="billing-plan-include-item">{{ data.planCapacity.defaultDiskGB }} GB disk<sup>+</sup></span>
+                <span class="billing-plan-include-sep">&middot;</span>
+                <span class="billing-plan-include-item">{{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></span>
+              </div>
+
+              <!-- Upsell -->
+              <div v-if="data.planCapacity && data.planCapacity.nextTier" class="billing-upsell">
+                <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
+                <a href="/billing/update?source=profile" class="billing-upsell-link">Upgrade</a>
               </div>
             </div>
 
-            <!-- Plan Details -->
-            <div v-if="data.planCapacity" class="plan-details">
-              <div class="plan-detail-row">
-                <span class="plan-detail-label">Max VM Size</span>
-                <div class="plan-detail-value">
-                  <span class="plan-detail-main">{{ data.planCapacity.maxCPUs }} vCPUs, {{ data.planCapacity.maxMemoryGB }} GB memory</span>
-                </div>
-              </div>
-              <div class="plan-detail-row">
-                <span class="plan-detail-label">Max VMs</span>
-                <div class="plan-detail-value">
-                  <span class="plan-detail-main">Up to {{ data.planCapacity.maxVMs }}</span>
-                  <span class="plan-detail-meta">concurrent virtual machines</span>
-                </div>
-              </div>
-              <div class="plan-detail-row">
-                <span class="plan-detail-label">Disk</span>
-                <div class="plan-detail-value">
-                  <span class="plan-detail-main">{{ data.planCapacity.defaultDiskGB }} GB per VM</span>
-                  <span v-if="data.planCapacity.maxDiskGB" class="plan-detail-meta">resizable to {{ data.planCapacity.maxDiskGB }} GB · $0.08/GB/mo for extra storage</span>
-                </div>
-              </div>
-              <div class="plan-detail-row">
-                <span class="plan-detail-label">Transfer</span>
-                <div class="plan-detail-value">
-                  <span class="plan-detail-main">{{ data.planCapacity.bandwidthGB }} GB/mo included</span>
-                  <span class="plan-detail-meta">$0.07/GB for additional data transfer</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Payment method -->
-            <div v-if="data.credits.selfServeBilling && data.credits.paymentMethod" class="payment-method-section">
-              <div class="pm-heading">DEFAULT PAYMENT METHOD</div>
+            <!-- Payment Section -->
+            <div v-if="data.credits.selfServeBilling && data.credits.paymentMethod" class="billing-divider-section">
+              <div class="billing-section-header">Payment</div>
               <div class="payment-method-callout">
-                <img :src="paymentIconUrl(data.credits.paymentMethod)" :alt="paymentBrandName(data.credits.paymentMethod)" class="pm-icon-img" />
-                <div class="pm-details">
-                  <span class="pm-brand-name">{{ paymentBrandName(data.credits.paymentMethod) }}</span>
-                  <span v-if="data.credits.paymentMethod.last4" class="pm-number">
-                    •••• {{ data.credits.paymentMethod.last4 }}
-                  </span>
-                  <span v-else-if="data.credits.paymentMethod.email" class="pm-email">
-                    {{ data.credits.paymentMethod.email }}
-                  </span>
-                  <span v-if="data.credits.paymentMethod.expMonth && data.credits.paymentMethod.expYear" class="pm-expiry">
-                    Exp {{ data.credits.paymentMethod.expMonth }}/{{ String(data.credits.paymentMethod.expYear).slice(-2) }}
+                <div class="pm-left">
+                  <img :src="paymentIconUrl(data.credits.paymentMethod)" :alt="paymentBrandName(data.credits.paymentMethod)" class="pm-icon-img" />
+                  <span class="pm-label">{{ paymentBrandName(data.credits.paymentMethod) }}
+                    <template v-if="data.credits.paymentMethod.last4"> •••• {{ data.credits.paymentMethod.last4 }}</template>
+                    <template v-else-if="data.credits.paymentMethod.email"> {{ data.credits.paymentMethod.email }}</template>
                   </span>
                 </div>
                 <span v-if="data.credits.paymentMethodManagedByTeam" class="pm-managed-badge">Managed by team</span>
-                <a v-else href="/billing/update?source=profile" class="pm-update-link">Update</a>
+                <a v-else href="/billing/update?source=profile" class="btn btn-secondary btn-small">Update</a>
               </div>
             </div>
 
-            <!-- Invoices (billing owners only) -->
-            <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="invoices-section">
-              <div class="invoices-header">
-                <span class="invoices-title">Invoices</span>
+            <!-- Invoices Section -->
+            <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="billing-divider-section">
+              <div class="billing-section-header-row">
+                <span class="billing-section-header">Invoices</span>
                 <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
               </div>
               <ul class="invoice-list">
                 <li v-for="(inv, idx) in data.credits.invoices" :key="idx" class="invoice-item">
-                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : inv.status === 'upcoming' ? 'invoice-icon-upcoming' : 'invoice-icon-open']">
-                    <i :class="inv.status === 'upcoming' ? 'pi pi-calendar' : 'pi pi-file'"></i>
-                  </div>
                   <div class="invoice-info">
                     <span class="invoice-desc">{{ inv.planName || inv.description }}</span>
                     <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
                   </div>
                   <div class="invoice-right">
                     <span class="invoice-amount">${{ inv.amount }}</span>
+                  </div>
+                  <div class="invoice-status-col">
                     <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
-                      <span :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
+                      <span :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
                     </a>
-                    <span v-else :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
+                    <span v-else :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
                   </div>
                 </li>
               </ul>
@@ -911,6 +895,12 @@ const apiKeyUsageExample = computed(() => {
   return `curl -X POST https://${host}/exec -H "Authorization: Bearer ${token}" -d 'whoami'`
 })
 
+function formatRenewalDate(dateStr: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+}
+
 function paymentBrandName(pm: { type: string; brand?: string }): string {
   if (pm.brand) {
     const names: Record<string, string> = {
@@ -1396,8 +1386,7 @@ async function toggleNewsletter(event: Event) {
   font-size: 12px;
 }
 
-/* Credit bar */
-/* Redesigned Billing & Credits Section */
+/* Billing Section */
 .billing-card-inner {
   background: var(--surface-ground);
   border: 1px solid var(--surface-border);
@@ -1405,171 +1394,172 @@ async function toggleNewsletter(event: Event) {
   padding: 24px;
 }
 
-/* Billing Header */
-.billing-header {
+/* Plan Section */
+.billing-plan-section {
+  padding-bottom: 4px;
+}
+.billing-plan-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
+  align-items: flex-start;
+  gap: 16px;
 }
-
-.billing-header-left {
+.billing-plan-info {
+  flex: 1;
+  min-width: 0;
+}
+.billing-plan-name-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 4px;
 }
-
 .plan-name {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
   margin: 0;
 }
-
-.billing-header-right {
-  display: flex;
-  gap: 8px;
-}
-
 .active-tag {
   background: var(--text-color) !important;
   color: var(--surface-ground) !important;
 }
-
 .trial-expiry {
   font-size: 13px;
   color: var(--warning-text);
 }
-
 .trial-expired {
   font-size: 13px;
   color: var(--danger-text);
   font-weight: 600;
 }
-
+.billing-plan-desc {
+  font-size: 14px;
+  color: var(--text-color-secondary);
+  margin-bottom: 2px;
+}
+.billing-plan-price {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+.billing-plan-interval {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-color-secondary);
+}
+.billing-plan-renewal {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  margin-top: 2px;
+}
+.billing-plan-action {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
 .btn-upgrade {
   background: transparent !important;
   color: var(--warning-color) !important;
   border-color: var(--warning-color) !important;
 }
-
 .btn-upgrade:hover {
   background: var(--warning-bg) !important;
 }
 
-/* Plan Details (compact table) */
-.plan-details {
+/* Plan includes */
+.billing-plan-includes {
   display: flex;
-  flex-direction: column;
-  margin-bottom: 16px;
-}
-.plan-detail-row {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 20px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--surface-border);
-}
-.plan-detail-row:last-child {
-  border-bottom: none;
-}
-.plan-detail-label {
-  font-size: 0.85em;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   color: var(--text-color-secondary);
-  padding-top: 2px;
+  margin-top: 12px;
 }
-.plan-detail-value {
+.billing-plan-includes sup {
+  font-size: 9px;
+}
+.billing-plan-include-sep {
+  color: var(--text-color-muted);
+}
+
+/* Upsell */
+.billing-upsell {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--surface-section, var(--surface-hover));
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  font-size: 13px;
 }
-.plan-detail-main {
-  font-size: 0.9em;
+.billing-upsell-text {
+  color: var(--text-color-secondary);
+}
+.billing-upsell-text strong {
+  color: var(--text-color);
+}
+.billing-upsell-link {
+  font-size: 13px;
   font-weight: 500;
+  color: var(--primary-color);
+  text-decoration: none;
+  white-space: nowrap;
 }
-.plan-detail-meta {
-  font-size: 0.8em;
-  color: var(--text-color-secondary);
-  line-height: 1.6;
-}
-
-@media (max-width: 480px) {
-  .plan-detail-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
+.billing-upsell-link:hover {
+  text-decoration: underline;
 }
 
-.payment-method-section {
-  margin: 12px 0 16px;
+/* Divider sections (Payment, Invoices) */
+.billing-divider-section {
+  border-top: 1px solid var(--surface-border);
+  margin-top: 20px;
+  padding-top: 20px;
 }
-.pm-heading {
-  font-size: 0.75em;
+.billing-section-header {
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-color-secondary);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
+.billing-section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* Payment method */
 .payment-method-callout {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  background: var(--surface-section, var(--surface-ground));
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
+  gap: 12px;
 }
-.pm-icon-img {
-  width: 48px;
-  height: 32px;
-  object-fit: contain;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.pm-brand-name {
-  font-weight: 600;
-  font-size: 0.95em;
-}
-.pm-details {
+.pm-left {
   display: flex;
   align-items: center;
   gap: 12px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
 }
-.pm-number {
-  font-family: monospace;
-  font-size: 0.9em;
-  letter-spacing: 0.04em;
-  color: var(--text-color-secondary);
+.pm-icon-img {
+  width: 40px;
+  height: 26px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
-.pm-email {
-  font-size: 0.9em;
-  color: var(--text-color-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.pm-label {
+  font-size: 14px;
+  color: var(--text-color);
 }
-.pm-expiry {
-  font-size: 0.85em;
-  color: var(--text-color-secondary);
-}
-.pm-update-link {
-  font-size: 0.85em;
-  color: var(--primary-color);
-  text-decoration: none;
-  white-space: nowrap;
-  margin-left: auto;
-}
-.pm-update-link:hover { text-decoration: underline; }
 .pm-managed-badge {
-  font-size: 0.8em;
+  font-size: 12px;
   color: var(--text-color-secondary);
   background: var(--surface-border);
   padding: 2px 8px;
   border-radius: 4px;
   white-space: nowrap;
-  margin-left: auto;
 }
 
 /* Credit Cards Grid — always side-by-side */
@@ -1716,27 +1706,9 @@ async function toggleNewsletter(event: Event) {
   filter: brightness(0.9);
 }
 
-/* Invoices Section */
-.invoices-section {
-  border-top: 1px solid var(--surface-border);
-  margin: 0 -24px 20px;
-  padding: 20px 24px 0;
-}
-.invoices-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.invoices-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--text-color-muted);
-}
+/* Invoices */
 .view-all-link {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-color-muted);
   text-decoration: none;
 }
@@ -1752,34 +1724,12 @@ async function toggleNewsletter(event: Event) {
 .invoice-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   padding: 10px 0;
   border-bottom: 1px solid var(--surface-border);
 }
 .invoice-item:last-child {
   border-bottom: none;
-}
-.invoice-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 14px;
-}
-.invoice-icon-paid {
-  background: #e8f5e9;
-  color: #4CAF50;
-}
-.invoice-icon-open {
-  background: #fff3e0;
-  color: #f57c00;
-}
-.invoice-icon-upcoming {
-  background: #e3f2fd;
-  color: #1976d2;
 }
 .invoice-info {
   flex: 1;
@@ -1798,34 +1748,39 @@ async function toggleNewsletter(event: Event) {
 .invoice-right {
   text-align: right;
   flex-shrink: 0;
+  min-width: 70px;
 }
 .invoice-amount {
   font-size: 14px;
   font-weight: 600;
-  display: block;
+}
+.invoice-status-col {
+  flex-shrink: 0;
+  min-width: 70px;
+  text-align: right;
 }
 .invoice-link {
   text-decoration: none;
 }
-.invoice-link:hover .invoice-status {
+.invoice-link:hover .invoice-badge {
   text-decoration: underline;
 }
-.invoice-status {
-  font-size: 11px;
+.invoice-badge {
+  font-size: 12px;
   display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-weight: 500;
 }
-.invoice-status-paid {
+.invoice-badge-paid {
   color: #4CAF50;
   background: #e8f5e9;
 }
-.invoice-status-open {
+.invoice-badge-open {
   color: #f57c00;
   background: #fff3e0;
 }
-.invoice-status-upcoming {
+.invoice-badge-upcoming {
   color: #1976d2;
   background: #e3f2fd;
 }
@@ -2141,26 +2096,23 @@ async function toggleNewsletter(event: Event) {
     padding: 16px;
   }
 
-  .billing-header {
+  .billing-plan-row {
     flex-direction: column;
-    align-items: flex-start;
     gap: 12px;
   }
 
-  .payment-method-callout {
-    gap: 10px;
-    padding: 10px 12px;
-  }
-
-  .pm-icon-img {
-    width: 36px;
-    height: 24px;
-  }
-
-  .pm-details {
+  .billing-upsell {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
   }
-  
+
+  .payment-method-callout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
   .buy-section {
     margin: 0 -16px 24px;
     padding: 16px;
@@ -2179,11 +2131,6 @@ async function toggleNewsletter(event: Event) {
     flex: 1;
     padding: 8px 8px;
     min-width: 0;
-  }
-
-  .invoices-section {
-    margin: 0 -16px 20px;
-    padding: 16px 16px 0;
   }
 
   .transaction-section {

@@ -227,12 +227,21 @@ type jsonPaymentMethod struct {
 }
 
 type jsonPlanCapacity struct {
-	MaxCPUs       uint64 `json:"maxCPUs"`
-	MaxMemoryGB   uint64 `json:"maxMemoryGB"`
-	MaxVMs        int    `json:"maxVMs"`
-	DefaultDiskGB uint64 `json:"defaultDiskGB"`
-	MaxDiskGB     uint64 `json:"maxDiskGB"`
-	BandwidthGB   uint64 `json:"bandwidthGB"`
+	MaxCPUs           uint64        `json:"maxCPUs"`
+	MaxMemoryGB       uint64        `json:"maxMemoryGB"`
+	MaxVMs            int           `json:"maxVMs"`
+	DefaultDiskGB     uint64        `json:"defaultDiskGB"`
+	MaxDiskGB         uint64        `json:"maxDiskGB"`
+	BandwidthGB       uint64        `json:"bandwidthGB"`
+	TierName          string        `json:"tierName"`
+	PoolSize          string        `json:"poolSize"`
+	MonthlyPriceCents int           `json:"monthlyPriceCents"`
+	NextTier          *jsonNextTier `json:"nextTier,omitempty"`
+}
+
+type jsonNextTier struct {
+	PoolSize          string `json:"poolSize"`
+	MonthlyPriceCents int    `json:"monthlyPriceCents"`
 }
 
 type jsonCreditInfo struct {
@@ -354,6 +363,13 @@ type jsonBoxMinimal struct {
 
 func writeJSONOK(w http.ResponseWriter, v any) {
 	writeJSON(w, http.StatusOK, v)
+}
+
+func formatPoolSize(cpus, memoryGB uint64) string {
+	if cpus == 0 && memoryGB == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d vCPUs · %d GB memory", cpus, memoryGB)
 }
 
 func formatTimePtr(t *time.Time) *string {
@@ -676,13 +692,23 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		selfServeBilling = version == plan.CategoryIndividual
 		paidPlan = plan.IsPaid(version)
 		if tier, err := plan.GetTierByID(planRow.PlanID); err == nil {
+			poolSize := formatPoolSize(tier.Quotas.MaxCPUs, tier.Quotas.MaxMemory/(1024*1024*1024))
 			planCapacity = &jsonPlanCapacity{
-				MaxCPUs:       tier.Quotas.MaxCPUs,
-				MaxMemoryGB:   tier.Quotas.MaxMemory / (1024 * 1024 * 1024),
-				MaxVMs:        tier.Quotas.MaxUserVMs,
-				DefaultDiskGB: tier.Quotas.DefaultDisk / (1024 * 1024 * 1024),
-				MaxDiskGB:     tier.Quotas.MaxDisk / (1024 * 1024 * 1024),
-				BandwidthGB:   tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024),
+				MaxCPUs:           tier.Quotas.MaxCPUs,
+				MaxMemoryGB:       tier.Quotas.MaxMemory / (1024 * 1024 * 1024),
+				MaxVMs:            tier.Quotas.MaxUserVMs,
+				DefaultDiskGB:     tier.Quotas.DefaultDisk / (1024 * 1024 * 1024),
+				MaxDiskGB:         tier.Quotas.MaxDisk / (1024 * 1024 * 1024),
+				BandwidthGB:       tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024),
+				TierName:          tier.Name,
+				PoolSize:          poolSize,
+				MonthlyPriceCents: tier.MonthlyPriceCents,
+			}
+			if next := plan.NextTier(planRow.PlanID); next != nil {
+				planCapacity.NextTier = &jsonNextTier{
+					PoolSize:          formatPoolSize(next.Quotas.MaxCPUs, next.Quotas.MaxMemory/(1024*1024*1024)),
+					MonthlyPriceCents: next.MonthlyPriceCents,
+				}
 			}
 		}
 	}
