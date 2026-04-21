@@ -6,6 +6,7 @@ FROM ubuntu:24.04
 # Switch from dash to bash by default.
 SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
+
 # Remove minimization restrictions and install packages with documentation
 # We aim for a usable non-minimal system.
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.com/mirrors.txt|' /etc/apt/sources.list && \
@@ -51,6 +52,12 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 	# Remove policy-rc.d so services can start normally (the base image includes this
 	# to prevent services from starting during build, but we run systemd at runtime)
 	rm -f /usr/sbin/policy-rc.d
+
+# Install Tailscale (keyring method, per https://tailscale.com/install.sh)
+# This must run after ca-certificates and curl are installed.
+RUN curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg && \
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list && \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale
 
 # Install latest stable Go from go.dev (the golang-go apt package lags behind)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -124,7 +131,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		apt-daily.timer \
 		plymouth-log.service && \
 	# systemd-logind is disabled but not masked. It's involved in populating the XDG runtime dir sockets... somehow
-	systemctl disable docker.service containerd.service getty.target systemd-logind.service \
+	systemctl disable docker.service containerd.service getty.target systemd-logind.service tailscaled.service \
 		nginx.service \
                    console-getty.service \
 		   atop.service \
