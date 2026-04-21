@@ -576,8 +576,11 @@ def main():
                     help="use Buildkite queue (push to kite-queue-* branch) [default]")
     p.add_argument("--no-kite", "-K", action="store_true",
                     help="use GitHub Actions queue instead of Buildkite")
-    p.add_argument("--dry-run", "-n", action="store_true",
-                    help="use Buildkite test-only (push to kite-test-* branch, no merge)")
+    invoked_as_t = os.path.basename(sys.argv[0]) == "t"
+    p.add_argument("--dry-run", "-n", action=argparse.BooleanOptionalAction,
+                    default=invoked_as_t,
+                    help="use Buildkite test-only (push to kite-test-* branch, no merge)"
+                         + (" [default when invoked as 't']" if invoked_as_t else ""))
     p.add_argument("--no-fetch", action="store_true",
                     help="skip fetching origin/main on success")
     p.add_argument("--post-success", default="",
