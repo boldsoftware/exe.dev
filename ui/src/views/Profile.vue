@@ -107,6 +107,14 @@
                 <span class="billing-plan-include-item">{{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></span>
               </div>
 
+              <div class="billing-plan-pricing-link">
+                <a href="/pricing" class="learn-more-link">View all plans and pricing</a>
+              </div>
+
+              <div v-if="data.teamInfo && !data.teamInfo.isBillingOwner && data.teamInfo.billingAdmins && data.teamInfo.billingAdmins.length > 0" class="billing-managed-by">
+                Your plan is managed by your team billing admins: {{ data.teamInfo.billingAdmins.join(', ') }}
+              </div>
+
               <!-- Upsell (commented out until stripe tier prices are configured)
               <div v-if="data.planCapacity && data.planCapacity.nextTier" class="billing-upsell">
                 <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
@@ -1482,6 +1490,19 @@ async function toggleNewsletter(event: Event) {
 }
 .billing-plan-include-sep {
   color: var(--text-color-muted);
+}
+
+/* Pricing link */
+.billing-plan-pricing-link {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* Managed by billing admins */
+.billing-managed-by {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-color-secondary);
 }
 
 /* Upsell */

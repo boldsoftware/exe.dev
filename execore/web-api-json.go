@@ -199,6 +199,7 @@ type jsonTeamInfo struct {
 	IsBillingOwner bool             `json:"isBillingOwner"`
 	OnlyMember     bool             `json:"onlyMember"`
 	Members        []jsonTeamMember `json:"members"`
+	BillingAdmins  []string         `json:"billingAdmins"`
 	BoxCount       int64            `json:"boxCount"`
 	MaxBoxes       int              `json:"maxBoxes"`
 }
@@ -927,6 +928,9 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				s := m.JoinedAt.Format(time.RFC3339)
 				mdi.JoinedAt = &s
 				ti.Members = append(ti.Members, mdi)
+				if m.Role == "billing_owner" {
+					ti.BillingAdmins = append(ti.BillingAdmins, m.Email)
+				}
 			}
 		}
 		profile.TeamInfo = ti

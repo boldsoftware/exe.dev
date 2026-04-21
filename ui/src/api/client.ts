@@ -134,6 +134,7 @@ export interface TeamInfo {
   isBillingOwner: boolean
   onlyMember: boolean
   members: TeamMemberInfo[]
+  billingAdmins: string[]
   boxCount: number
   maxBoxes: number
 }
