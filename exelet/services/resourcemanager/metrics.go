@@ -29,6 +29,8 @@ type prometheusMetrics struct {
 	memoryGauge    *prometheus.GaugeVec
 	swapGauge      *prometheus.GaugeVec
 
+	duplicateIPs prometheus.Gauge
+
 	mu    sync.Mutex
 	state map[string]*metricsState // vm_id -> state
 }
@@ -123,6 +125,13 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	)
 	registry.MustRegister(swapGauge)
 
+	duplicateIPs := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "exelet",
+		Name:      "duplicate_ips_detected",
+		Help:      "1 if two or more VMs managed by this exelet share the same IPv4 address, 0 otherwise.",
+	})
+	registry.MustRegister(duplicateIPs)
+
 	return &prometheusMetrics{
 		cpuCounter:     cpuCounter,
 		netRxCounter:   netRxCounter,
@@ -132,6 +141,7 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 		diskGauge:      diskGauge,
 		memoryGauge:    memoryGauge,
 		swapGauge:      swapGauge,
+		duplicateIPs:   duplicateIPs,
 		state:          make(map[string]*metricsState),
 	}
 }

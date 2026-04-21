@@ -308,8 +308,43 @@ func (m *ResourceManager) poll(ctx context.Context) {
 		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), inst.GetState(), now)
 	}
 
+	// Check for duplicate IPv4 addresses across instances.
+	m.checkDuplicateIPs(ctx, instances)
+
 	// Cleanup state for removed instances
 	m.cleanupMissing(ctx, seen)
+}
+
+// checkDuplicateIPs scans instances for duplicate IPv4 addresses and updates
+// the duplicate_ips_detected gauge accordingly. If duplicates are found, it
+// logs a warning with the offending VMs.
+func (m *ResourceManager) checkDuplicateIPs(ctx context.Context, instances []*computeapi.Instance) {
+	if m.metrics == nil {
+		return
+	}
+	ipToVMs := make(map[string][]string)
+	for _, inst := range instances {
+		ni := inst.GetVMConfig().GetNetworkInterface()
+		ip := ni.GetIP().GetIPV4()
+		if ip == "" {
+			continue
+		}
+		ipToVMs[ip] = append(ipToVMs[ip], inst.GetID())
+	}
+	duplicate := false
+	for ip, ids := range ipToVMs {
+		if len(ids) > 1 {
+			duplicate = true
+			m.log.WarnContext(ctx, "resource manager: duplicate VM IP detected",
+				"ip", ip,
+				"instance_ids", ids)
+		}
+	}
+	if duplicate {
+		m.metrics.duplicateIPs.Set(1)
+	} else {
+		m.metrics.duplicateIPs.Set(0)
+	}
 }
 
 func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, vmState computeapi.VMState, now time.Time) {

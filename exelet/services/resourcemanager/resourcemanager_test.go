@@ -11,10 +11,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
+
 	"exe.dev/exelet/config"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
+
+func newTestRegistry() *prometheus.Registry {
+	return prometheus.NewRegistry()
+}
+
+func metricValue(g prometheus.Gauge) float64 {
+	var m dto.Metric
+	if err := g.Write(&m); err != nil {
+		return 0
+	}
+	return m.GetGauge().GetValue()
+}
 
 func TestCapacityDetectMemory(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -799,5 +814,52 @@ func TestPollInstanceStoppedCPUPercentNotNegative(t *testing.T) {
 	// prevCPUSeconds should be updated to 0 (the new usage.cpuSeconds)
 	if state.prevCPUSeconds != 0 {
 		t.Errorf("prevCPUSeconds = %v, want 0", state.prevCPUSeconds)
+	}
+}
+
+func TestCheckDuplicateIPs(t *testing.T) {
+	m := &ResourceManager{
+		log:     slog.Default(),
+		metrics: newPrometheusMetrics(newTestRegistry()),
+	}
+
+	mkInst := func(id, ip string) *computeapi.Instance {
+		return &computeapi.Instance{
+			ID: id,
+			VMConfig: &computeapi.VMConfig{
+				NetworkInterface: &computeapi.NetworkInterface{
+					IP: &computeapi.IPAddress{IPV4: ip},
+				},
+			},
+		}
+	}
+
+	// No duplicates.
+	m.checkDuplicateIPs(t.Context(), []*computeapi.Instance{
+		mkInst("vm-1", "10.0.0.1"),
+		mkInst("vm-2", "10.0.0.2"),
+		mkInst("vm-3", ""),
+	})
+	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
+		t.Errorf("expected duplicate_ips_detected=0, got %v", got)
+	}
+
+	// Duplicates.
+	m.checkDuplicateIPs(t.Context(), []*computeapi.Instance{
+		mkInst("vm-1", "10.0.0.1"),
+		mkInst("vm-2", "10.0.0.1"),
+		mkInst("vm-3", "10.0.0.3"),
+	})
+	if got := metricValue(m.metrics.duplicateIPs); got != 1 {
+		t.Errorf("expected duplicate_ips_detected=1, got %v", got)
+	}
+
+	// Back to clean state.
+	m.checkDuplicateIPs(t.Context(), []*computeapi.Instance{
+		mkInst("vm-1", "10.0.0.1"),
+		mkInst("vm-2", "10.0.0.2"),
+	})
+	if got := metricValue(m.metrics.duplicateIPs); got != 0 {
+		t.Errorf("expected duplicate_ips_detected=0 after cleanup, got %v", got)
 	}
 }
