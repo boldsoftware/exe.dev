@@ -226,6 +226,15 @@ export interface RegionOption {
   display: string
 }
 
+export interface PlanCapacity {
+  maxCPUs: number
+  maxMemoryGB: number
+  maxVMs: number
+  defaultDiskGB: number
+  maxDiskGB: number
+  bandwidthGB: number
+}
+
 export interface ProfileData {
   user: UserInfo
   sshKeys: SSHKeyInfo[]
@@ -236,6 +245,7 @@ export interface ProfileData {
   pendingTeamInvites: PendingTeamInvite[]
   canEnableTeam: boolean
   credits: CreditInfo
+  planCapacity?: PlanCapacity
   basicUser: boolean
   showIntegrations: boolean
   inviteCount: number

@@ -63,9 +63,9 @@
         </div>
       </section>
 
-      <!-- Billing (Unified) -->
+      <!-- Billing -->
       <section class="card">
-        <h2 class="card-title">Billing & Credits</h2>
+        <h2 class="card-title">Billing</h2>
         <div class="billing-card-inner">
           <!-- Skip Billing Notice -->
           <template v-if="data.credits.skipBilling">
@@ -80,13 +80,44 @@
             <!-- Header: Plan Name, Status Badge, Action Buttons -->
             <div class="billing-header">
               <div class="billing-header-left">
-                <h3 class="plan-name">{{ data.credits.planName || 'Individual' }}</h3>
+                <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan</h3>
                 <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
                 <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
                 <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
               </div>
               <div class="billing-header-right">
                 <a v-if="canManageBilling" href="/billing/update?source=profile" :class="['btn', data.trial ? 'btn-upgrade' : 'btn-secondary']"><i class="pi pi-cog" style="font-size: 13px"></i> {{ data.trial ? 'Upgrade' : 'Manage Plan' }}</a>
+              </div>
+            </div>
+
+            <!-- Plan Details -->
+            <div v-if="data.planCapacity" class="plan-details">
+              <div class="plan-detail-row">
+                <span class="plan-detail-label">Max VM Size</span>
+                <div class="plan-detail-value">
+                  <span class="plan-detail-main">{{ data.planCapacity.maxCPUs }} vCPUs, {{ data.planCapacity.maxMemoryGB }} GB memory</span>
+                </div>
+              </div>
+              <div class="plan-detail-row">
+                <span class="plan-detail-label">Max VMs</span>
+                <div class="plan-detail-value">
+                  <span class="plan-detail-main">Up to {{ data.planCapacity.maxVMs }}</span>
+                  <span class="plan-detail-meta">concurrent virtual machines</span>
+                </div>
+              </div>
+              <div class="plan-detail-row">
+                <span class="plan-detail-label">Disk</span>
+                <div class="plan-detail-value">
+                  <span class="plan-detail-main">{{ data.planCapacity.defaultDiskGB }} GB per VM</span>
+                  <span v-if="data.planCapacity.maxDiskGB" class="plan-detail-meta">resizable to {{ data.planCapacity.maxDiskGB }} GB · $0.08/GB/mo for extra storage</span>
+                </div>
+              </div>
+              <div class="plan-detail-row">
+                <span class="plan-detail-label">Transfer</span>
+                <div class="plan-detail-value">
+                  <span class="plan-detail-main">{{ data.planCapacity.bandwidthGB }} GB/mo included</span>
+                  <span class="plan-detail-meta">$0.07/GB for additional data transfer</span>
+                </div>
               </div>
             </div>
 
@@ -111,6 +142,42 @@
                 <a v-else href="/billing/update?source=profile" class="pm-update-link">Update</a>
               </div>
             </div>
+
+            <!-- Invoices (billing owners only) -->
+            <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="invoices-section">
+              <div class="invoices-header">
+                <span class="invoices-title">Invoices</span>
+                <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
+              </div>
+              <ul class="invoice-list">
+                <li v-for="(inv, idx) in data.credits.invoices" :key="idx" class="invoice-item">
+                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : inv.status === 'upcoming' ? 'invoice-icon-upcoming' : 'invoice-icon-open']">
+                    <i :class="inv.status === 'upcoming' ? 'pi pi-calendar' : 'pi pi-file'"></i>
+                  </div>
+                  <div class="invoice-info">
+                    <span class="invoice-desc">{{ inv.planName || inv.description }}</span>
+                    <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
+                  </div>
+                  <div class="invoice-right">
+                    <span class="invoice-amount">${{ inv.amount }}</span>
+                    <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
+                      <span :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
+                    </a>
+                    <span v-else :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+          </template>
+        </div>
+      </section>
+
+      <!-- Shelley -->
+      <section v-if="!data.credits.skipBilling" class="card">
+        <h2 class="card-title">Shelley</h2>
+        <div class="billing-card-inner">
+          <template v-if="!data.credits.skipBilling">
 
             <!-- Team credits banner -->
             <Message v-if="data.teamInfo && !pooledCreditsBannerDismissed" severity="info" :closable="true" @close="dismissPooledCreditsBanner" class="team-credits-banner">
@@ -173,31 +240,6 @@
               </form>
             </div>
 
-            <!-- Invoices (billing owners only) -->
-            <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="invoices-section">
-              <div class="invoices-header">
-                <span class="invoices-title">Invoices</span>
-                <a href="/billing/update?source=profile" class="view-all-link">View all in Stripe &#x2197;</a>
-              </div>
-              <ul class="invoice-list">
-                <li v-for="(inv, idx) in data.credits.invoices" :key="idx" class="invoice-item">
-                  <div :class="['invoice-icon', inv.status === 'paid' ? 'invoice-icon-paid' : inv.status === 'upcoming' ? 'invoice-icon-upcoming' : 'invoice-icon-open']">
-                    <i :class="inv.status === 'upcoming' ? 'pi pi-calendar' : 'pi pi-file'"></i>
-                  </div>
-                  <div class="invoice-info">
-                    <span class="invoice-desc">{{ inv.planName || inv.description }}</span>
-                    <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
-                  </div>
-                  <div class="invoice-right">
-                    <span class="invoice-amount">${{ inv.amount }}</span>
-                    <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
-                      <span :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
-                    </a>
-                    <span v-else :class="['invoice-status', 'invoice-status-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
-                  </div>
-                </li>
-              </ul>
-            </div>
 
             <!-- Transaction History -->
             <div v-if="transactionHistory.length > 0" class="transaction-section">
@@ -1412,6 +1454,49 @@ async function toggleNewsletter(event: Event) {
 
 .btn-upgrade:hover {
   background: var(--warning-bg) !important;
+}
+
+/* Plan Details (compact table) */
+.plan-details {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+.plan-detail-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 20px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--surface-border);
+}
+.plan-detail-row:last-child {
+  border-bottom: none;
+}
+.plan-detail-label {
+  font-size: 0.85em;
+  color: var(--text-color-secondary);
+  padding-top: 2px;
+}
+.plan-detail-value {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan-detail-main {
+  font-size: 0.9em;
+  font-weight: 500;
+}
+.plan-detail-meta {
+  font-size: 0.8em;
+  color: var(--text-color-secondary);
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .plan-detail-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 
 .payment-method-section {

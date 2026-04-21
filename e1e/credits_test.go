@@ -295,3 +295,80 @@ func TestGiftCreditsShowInProfile(t *testing.T) {
 		t.Errorf("expected gift with reason 'profile page test gift' in /api/profile gifts, got: %+v", profile.Credits.Gifts)
 	}
 }
+
+func TestPlanCapacityInProfile(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	noGolden(t)
+
+	_, cookies, _, _ := registerForExeDevWithEmail(t, "plancap@test-credits.example")
+
+	client := newClientWithCookies(t, cookies)
+	resp, err := client.Get(fmt.Sprintf("http://localhost:%d/api/profile", Env.HTTPPort()))
+	if err != nil {
+		t.Fatalf("failed to GET /api/profile: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status from /api/profile: %d", resp.StatusCode)
+	}
+
+	var profile struct {
+		PlanCapacity *struct {
+			MaxCPUs       uint64 `json:"maxCPUs"`
+			MaxMemoryGB   uint64 `json:"maxMemoryGB"`
+			MaxVMs        int    `json:"maxVMs"`
+			DefaultDiskGB uint64 `json:"defaultDiskGB"`
+			MaxDiskGB     uint64 `json:"maxDiskGB"`
+			BandwidthGB   uint64 `json:"bandwidthGB"`
+		} `json:"planCapacity"`
+		Credits struct {
+			PlanName string `json:"planName"`
+		} `json:"credits"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		t.Fatalf("failed to decode /api/profile: %v", err)
+	}
+
+	if profile.PlanCapacity == nil {
+		t.Fatal("planCapacity is nil, expected tier quota data")
+	}
+
+	cp := profile.PlanCapacity
+	if cp.MaxCPUs == 0 {
+		t.Error("maxCPUs is 0")
+	}
+	if cp.MaxMemoryGB == 0 {
+		t.Error("maxMemoryGB is 0")
+	}
+	if cp.MaxVMs == 0 {
+		t.Error("maxVMs is 0")
+	}
+	if cp.DefaultDiskGB == 0 {
+		t.Error("defaultDiskGB is 0")
+	}
+	if cp.BandwidthGB == 0 {
+		t.Error("bandwidthGB is 0")
+	}
+
+	// Individual plan should have specific known values.
+	if cp.MaxCPUs != 2 {
+		t.Errorf("maxCPUs = %d, want 2", cp.MaxCPUs)
+	}
+	if cp.MaxMemoryGB != 8 {
+		t.Errorf("maxMemoryGB = %d, want 8", cp.MaxMemoryGB)
+	}
+	if cp.MaxVMs != 50 {
+		t.Errorf("maxVMs = %d, want 50", cp.MaxVMs)
+	}
+	if cp.DefaultDiskGB != 25 {
+		t.Errorf("defaultDiskGB = %d, want 25", cp.DefaultDiskGB)
+	}
+	if cp.MaxDiskGB != 75 {
+		t.Errorf("maxDiskGB = %d, want 75", cp.MaxDiskGB)
+	}
+	if cp.BandwidthGB != 100 {
+		t.Errorf("bandwidthGB = %d, want 100", cp.BandwidthGB)
+	}
+}

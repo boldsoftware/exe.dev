@@ -226,6 +226,15 @@ type jsonPaymentMethod struct {
 	DisplayLabel string `json:"displayLabel"`
 }
 
+type jsonPlanCapacity struct {
+	MaxCPUs       uint64 `json:"maxCPUs"`
+	MaxMemoryGB   uint64 `json:"maxMemoryGB"`
+	MaxVMs        int    `json:"maxVMs"`
+	DefaultDiskGB uint64 `json:"defaultDiskGB"`
+	MaxDiskGB     uint64 `json:"maxDiskGB"`
+	BandwidthGB   uint64 `json:"bandwidthGB"`
+}
+
 type jsonCreditInfo struct {
 	PlanName                   string             `json:"planName"`
 	SelfServeBilling           bool               `json:"selfServeBilling"`
@@ -293,6 +302,7 @@ type jsonProfileData struct {
 	PendingTeamInvites []jsonPendingInvite `json:"pendingTeamInvites"`
 	CanEnableTeam      bool                `json:"canEnableTeam"`
 	Credits            jsonCreditInfo      `json:"credits"`
+	PlanCapacity       *jsonPlanCapacity   `json:"planCapacity,omitempty"`
 	BasicUser          bool                `json:"basicUser"`
 	ShowIntegrations   bool                `json:"showIntegrations"`
 	InviteCount        int64               `json:"inviteCount"`
@@ -659,11 +669,22 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	var paidPlan bool
 	var billingStatus string
 	skipBilling := s.env.SkipBilling
+	var planCapacity *jsonPlanCapacity
 	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		version := plan.Base(planRow.PlanID)
 		planName = plan.Name(version)
 		selfServeBilling = version == plan.CategoryIndividual
 		paidPlan = plan.IsPaid(version)
+		if tier, err := plan.GetTierByID(planRow.PlanID); err == nil {
+			planCapacity = &jsonPlanCapacity{
+				MaxCPUs:       tier.Quotas.MaxCPUs,
+				MaxMemoryGB:   tier.Quotas.MaxMemory / (1024 * 1024 * 1024),
+				MaxVMs:        tier.Quotas.MaxUserVMs,
+				DefaultDiskGB: tier.Quotas.DefaultDisk / (1024 * 1024 * 1024),
+				MaxDiskGB:     tier.Quotas.MaxDisk / (1024 * 1024 * 1024),
+				BandwidthGB:   tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024),
+			}
+		}
 	}
 	billingRow, billingErr := withRxRes1(s, r.Context(), (*exedb.Queries).GetUserBilling, userID)
 	if billingErr == nil {
@@ -824,6 +845,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		SharedBoxes:        sharedBoxes,
 		Boxes:              nonNil(boxes),
 		PendingTeamInvites: make([]jsonPendingInvite, 0),
+		PlanCapacity:       planCapacity,
 		BasicUser:          basicUser,
 		ShowIntegrations:   showIntegrations,
 		InviteCount:        inviteCount,

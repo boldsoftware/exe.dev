@@ -6352,7 +6352,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			effDefaultDisk := plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)
 			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", formatBytes(planDefaultDisk), formatBytes(s.env.DefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
 			// Max Memory
-			planMaxMem := planTier.Quotas.ComputeClass.MaxMemory
+			planMaxMem := planTier.Quotas.MaxMemory
 			userMaxMem := uint64(0)
 			if limits != nil {
 				userMaxMem = limits.MaxMemory
@@ -6360,7 +6360,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			effMaxMem := GetMaxMemory(s.env, limits)
 			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(planMaxMem), formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), formatBytes(effMaxMem)})
 			// Max CPUs
-			planMaxCPUs := planTier.Quotas.ComputeClass.MaxCPUs
+			planMaxCPUs := planTier.Quotas.MaxCPUs
 			userMaxCPUs := uint64(0)
 			if limits != nil {
 				userMaxCPUs = limits.MaxCPUs
