@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"exe.dev/backoff"
 )
 
 const (
@@ -57,16 +59,11 @@ func NewCloudHypervisorClient(ctx context.Context, apiSocketPath string, retry b
 
 // dialWithBackoff attempts to connect to the unix socket with optional exponential backoff.
 func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *slog.Logger) (net.Conn, error) {
-	backoff := initialBackoff
-	attempt := 0
+	delay := initialBackoff
 	var lastErr error
-
-	for {
-		// Check context before attempting
-		select {
-		case <-ctx.Done():
+	for attempt := 0; ; attempt++ {
+		if ctx.Err() != nil {
 			return nil, wrapDialError(lastErr)
-		default:
 		}
 
 		conn, err := net.Dial("unix", socketPath)
@@ -80,21 +77,13 @@ func dialWithBackoff(ctx context.Context, socketPath string, retry bool, log *sl
 			return nil, wrapDialError(err)
 		}
 
-		log.DebugContext(ctx, "error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", backoff)
-		attempt++
+		log.DebugContext(ctx, "error connecting to api socket; retrying", "path", socketPath, "error", err, "attempt", attempt, "backoff", delay)
 
-		// Wait with backoff, respecting context
-		select {
-		case <-ctx.Done():
+		if backoff.Sleep(ctx, delay) != nil {
 			return nil, wrapDialError(lastErr)
-		case <-time.After(backoff):
 		}
 
-		// Exponential backoff with cap
-		backoff *= 2
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
+		delay = min(delay*2, maxBackoff)
 	}
 }
 

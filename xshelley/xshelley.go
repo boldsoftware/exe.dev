@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/backoff"
 	"tailscale.com/util/singleflight"
 )
 
@@ -162,7 +162,7 @@ func GetShelley(ctx context.Context, goarch string) (path string, err error) {
 	// Sample jitter once so this goroutine's fast-path and its
 	// singleflight closure agree on staleness if it becomes the
 	// executing goroutine.
-	interval := jitteredRefreshInterval()
+	interval := backoff.Jitter(refreshInterval, 0.1)
 
 	// Fast path: valid cache and binary on disk.
 	needsRefresh, _, err := shouldRefresh(metadataPath, interval)
@@ -251,10 +251,8 @@ func retryableGet(ctx context.Context, url string, header http.Header) (*http.Re
 		if attempt > 0 {
 			wait := max(retryBaseWait*time.Duration(1<<(attempt-1)), retryAfter) // exponential: 1s, 2s
 			retryAfter = 0
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(wait):
+			if err := backoff.Sleep(ctx, wait); err != nil {
+				return nil, err
 			}
 		}
 
@@ -350,13 +348,6 @@ func downloadFile(ctx context.Context, url, dest string) error {
 	}
 
 	return os.Rename(tmp, dest)
-}
-
-// jitteredRefreshInterval returns refreshInterval +/-10% to prevent
-// fleet-wide cache expiry synchronization.
-func jitteredRefreshInterval() time.Duration {
-	jitter := refreshInterval / 10
-	return refreshInterval - jitter + time.Duration(rand.Int64N(int64(2*jitter)))
 }
 
 func shouldRefresh(metadataPath string, interval time.Duration) (bool, string, error) {

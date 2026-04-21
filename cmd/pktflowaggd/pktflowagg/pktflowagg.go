@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"exe.dev/backoff"
 	api "exe.dev/pkg/api/exe/pktflow/v1"
 )
 
@@ -1004,20 +1005,18 @@ func handleDebugDDoSHosts(st *Store) http.HandlerFunc {
 // ConsumeExelet connects to an exelet and streams flow stats into the store,
 // reconnecting on failure with exponential backoff.
 func ConsumeExelet(ctx context.Context, addr string, st *Store) {
-	backoff := time.Second
+	delay := time.Second
 	for {
 		err := StreamFromExelet(ctx, addr, st)
 		if ctx.Err() != nil {
 			return
 		}
 		st.RecordError(addr, err)
-		log.Printf("pktflowaggd: stream from %s failed: %v; reconnecting in %v", addr, err, backoff)
-		select {
-		case <-ctx.Done():
+		log.Printf("pktflowaggd: stream from %s failed: %v; reconnecting in %v", addr, err, delay)
+		if backoff.Sleep(ctx, delay) != nil {
 			return
-		case <-time.After(backoff):
 		}
-		backoff = time.Duration(math.Min(float64(backoff)*2, float64(30*time.Second)))
+		delay = time.Duration(math.Min(float64(delay)*2, float64(30*time.Second)))
 	}
 }
 

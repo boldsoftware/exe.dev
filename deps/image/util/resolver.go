@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/backoff"
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
 	"github.com/distribution/reference"
@@ -48,7 +48,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	deadline := time.Now().Add(maxTotalTime)
-	backoff := initialBackoff
+	delay := initialBackoff
 
 	for {
 		resp, err := t.base.RoundTrip(req)
@@ -78,9 +78,9 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			wait = retryAfter
 		} else {
 			// Add jitter: 0.5x to 1.5x the backoff
-			wait = time.Duration(float64(backoff) * (0.5 + rand.Float64()))
+			wait = backoff.Jitter(delay, 0.5)
 			// Exponential backoff for next iteration
-			backoff *= 2
+			delay *= 2
 		}
 
 		// Check if we have time for another attempt
@@ -106,9 +106,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		slog.Debug("retrying registry request", "wait", wait, "url", req.URL.String())
 
-		select {
-		case <-time.After(wait):
-		case <-req.Context().Done():
+		if backoff.Sleep(req.Context(), wait) != nil {
 			if err != nil {
 				return nil, err
 			}

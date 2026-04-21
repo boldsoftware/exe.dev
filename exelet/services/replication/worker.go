@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"exe.dev/backoff"
 	api "exe.dev/pkg/api/exe/replication/v1"
 )
 
@@ -354,11 +355,9 @@ func (wp *WorkerPool) processVolume(volume VolumeInfo) {
 			)
 			lastErr = err
 			if attempt < MaxRetries {
-				backoff := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(backoff):
+				delay := []time.Duration{0, 5 * time.Second, 30 * time.Second}[attempt]
+				if err := backoff.Sleep(ctx, delay); err != nil {
+					return err
 				}
 			}
 		}

@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"tailscale.com/util/singleflight"
 
+	"exe.dev/backoff"
 	"exe.dev/tcprtt"
 )
 
@@ -399,10 +400,7 @@ func retryLoop[T any](ctx context.Context, retries []time.Duration, work func() 
 		}
 		errs = append(errs, err)
 
-		select {
-		case <-time.After(delay):
-		case <-ctx.Done():
-		}
+		backoff.Sleep(ctx, delay)
 	}
 
 	if err := ctx.Err(); err != nil {

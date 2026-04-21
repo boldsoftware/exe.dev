@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
+	"exe.dev/backoff"
 	"exe.dev/metricsd/types"
 )
 
@@ -89,11 +89,8 @@ func (r *MetricsDaemonReporter) Stop() {
 
 func (r *MetricsDaemonReporter) run(ctx context.Context) {
 	// Initial jittered delay to spread out reporters from multiple exelets
-	initialJitter := r.jitteredInterval()
-	select {
-	case <-ctx.Done():
+	if backoff.Sleep(ctx, backoff.Jitter(r.interval, 0.2)) != nil {
 		return
-	case <-time.After(initialJitter):
 	}
 
 	// Send initial metrics
@@ -107,14 +104,6 @@ func (r *MetricsDaemonReporter) run(ctx context.Context) {
 			r.sendMetrics(ctx)
 		}
 	}
-}
-
-// jitteredInterval returns the base interval with ±20% random jitter.
-func (r *MetricsDaemonReporter) jitteredInterval() time.Duration {
-	// Random value in range [-0.2, 0.2]
-	jitterFactor := (rand.Float64() - 0.5) * 0.4
-	jitter := time.Duration(float64(r.interval) * jitterFactor)
-	return r.interval + jitter
 }
 
 func (r *MetricsDaemonReporter) sendMetrics(ctx context.Context) {

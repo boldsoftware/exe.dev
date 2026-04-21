@@ -73,3 +73,19 @@ func Loop(ctx context.Context, maxBackoff time.Duration) iter.Seq[error] {
 		}
 	}
 }
+
+// Sleep sleeps for d or until ctx is done, whichever comes first.
+// It returns ctx.Err() if the context was cancelled.
+func Sleep(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}
+
+// Jitter scales d by a random factor in [1-frac, 1+frac).
+func Jitter(d time.Duration, frac float64) time.Duration {
+	return time.Duration(float64(d) * (1 - frac + rand.Float64()*2*frac))
+}
