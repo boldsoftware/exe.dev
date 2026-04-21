@@ -48,13 +48,14 @@ func TestAllEntitlements(t *testing.T) {
 
 	// Should contain all known concrete entitlements.
 	want := map[string]bool{
-		"llm:use":         true,
-		"credit:purchase": true,
-		"invite:request":  true,
-		"team:create":     true,
-		"vm:create":       true,
-		"vm:run":          true,
-		"disk:resize":     true,
+		"llm:use":           true,
+		"credit:purchase":   true,
+		"invite:request":    true,
+		"team:create":       true,
+		"vm:create":         true,
+		"vm:run":            true,
+		"disk:resize":       true,
+		"billing:selfserve": true,
 	}
 	got := make(map[string]bool)
 	for _, e := range all {
@@ -96,6 +97,34 @@ func TestDiskResizeEntitlementByPlan(t *testing.T) {
 		got := Grants(p.ID, DiskResize)
 		if got != want {
 			t.Errorf("plan %q: Grants(DiskResize) = %v, want %v", cat, got, want)
+		}
+	}
+}
+
+// TestBillingSelfServeEntitlementByPlan verifies which plans grant BillingSelfServe.
+// Individual, Trial, and Basic can access the billing/update flow; others cannot.
+func TestBillingSelfServeEntitlementByPlan(t *testing.T) {
+	wantSelfServe := map[Category]bool{
+		CategoryVIP:           true, // via All wildcard
+		CategoryEnterprise:    false,
+		CategoryTeam:          false,
+		CategoryIndividual:    true,
+		CategoryFriend:        false,
+		CategoryGrandfathered: false,
+		CategoryTrial:         true,
+		CategoryBasic:         true,
+		CategoryRestricted:    false,
+	}
+
+	for cat, want := range wantSelfServe {
+		p, ok := plans[cat]
+		if !ok {
+			t.Errorf("plan %q not found in plans map", cat)
+			continue
+		}
+		got := Grants(p.ID, BillingSelfServe)
+		if got != want {
+			t.Errorf("plan %q: Grants(BillingSelfServe) = %v, want %v", cat, got, want)
 		}
 	}
 }

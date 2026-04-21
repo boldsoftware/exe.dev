@@ -689,7 +689,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	if planRow, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		version := plan.Base(planRow.PlanID)
 		planName = plan.Name(version)
-		selfServeBilling = version == plan.CategoryIndividual
+		selfServeBilling = plan.Grants(planRow.PlanID, plan.BillingSelfServe)
 		paidPlan = plan.IsPaid(version)
 		if tier, err := plan.GetTierByID(planRow.PlanID); err == nil {
 			poolSize := formatPoolSize(tier.Quotas.MaxCPUs, tier.Quotas.MaxMemory/(1024*1024*1024))

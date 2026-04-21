@@ -303,13 +303,14 @@ var plans = map[Category]Plan{
 		// new subscribers and legacy IDs without an explicit tier component.
 		DefaultTier: "individual:small:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:         true,
-			CreditPurchase: true,
-			InviteRequest:  true,
-			TeamCreate:     true,
-			VMCreate:       true,
-			VMRun:          true,
-			DiskResize:     true,
+			LLMUse:           true,
+			CreditPurchase:   true,
+			InviteRequest:    true,
+			TeamCreate:       true,
+			VMCreate:         true,
+			VMRun:            true,
+			DiskResize:       true,
+			BillingSelfServe: true,
 		},
 	},
 	CategoryFriend: {
@@ -346,10 +347,11 @@ var plans = map[Category]Plan{
 		Name:        "Trial",
 		DefaultTier: "trial:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:     true,
-			VMCreate:   true,
-			VMRun:      true,
-			DiskResize: true,
+			LLMUse:           true,
+			VMCreate:         true,
+			VMRun:            true,
+			DiskResize:       true,
+			BillingSelfServe: true,
 		},
 	},
 	CategoryBasic: {
@@ -359,7 +361,8 @@ var plans = map[Category]Plan{
 		Name:        "Basic",
 		DefaultTier: "basic:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			LLMUse: true,
+			LLMUse:           true,
+			BillingSelfServe: true,
 		},
 	},
 	CategoryRestricted: {

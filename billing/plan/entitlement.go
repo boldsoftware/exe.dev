@@ -32,6 +32,9 @@ var (
 	// Disk operations.
 	DiskResize = Entitlement{"disk:resize", "Resize VM Disks"}
 
+	// Billing operations.
+	BillingSelfServe = Entitlement{"billing:selfserve", "Self-Service Billing Management"}
+
 	// All is a wildcard that grants every entitlement.
 	All = Entitlement{"*", "All Entitlements"}
 )
@@ -47,6 +50,7 @@ func AllEntitlements() []Entitlement {
 		VMCreate,
 		VMRun,
 		DiskResize,
+		BillingSelfServe,
 	}
 }
 
