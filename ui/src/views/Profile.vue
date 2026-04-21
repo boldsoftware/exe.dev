@@ -127,7 +127,7 @@
                   </span>
                 </div>
                 <span v-if="data.credits.paymentMethodManagedByTeam" class="pm-managed-badge">Managed by team</span>
-                <a v-else href="/billing/update?source=profile" class="btn btn-secondary btn-small">Update</a>
+                <a v-else href="/billing/update?source=profile" class="btn btn-secondary">Update</a>
               </div>
             </div>
 

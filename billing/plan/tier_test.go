@@ -875,3 +875,80 @@ func TestIncludedBandwidth(t *testing.T) {
 		}
 	})
 }
+
+func TestNextTier(t *testing.T) {
+	t.Run("small has medium as next", func(t *testing.T) {
+		next := NextTier("individual:small:monthly:20260601")
+		if next == nil {
+			t.Fatal("expected next tier, got nil")
+		}
+		if next.Name != "Medium" {
+			t.Errorf("next tier name = %q, want Medium", next.Name)
+		}
+		if next.Quotas.MaxCPUs != 4 {
+			t.Errorf("next tier MaxCPUs = %d, want 4", next.Quotas.MaxCPUs)
+		}
+	})
+
+	t.Run("medium has large as next", func(t *testing.T) {
+		next := NextTier("individual:medium:monthly:20260601")
+		if next == nil {
+			t.Fatal("expected next tier, got nil")
+		}
+		if next.Name != "Large" {
+			t.Errorf("next tier name = %q, want Large", next.Name)
+		}
+	})
+
+	t.Run("large has xlarge as next", func(t *testing.T) {
+		next := NextTier("individual:large:monthly:20260601")
+		if next == nil {
+			t.Fatal("expected next tier, got nil")
+		}
+		if next.Name != "XLarge" {
+			t.Errorf("next tier name = %q, want XLarge", next.Name)
+		}
+	})
+
+	t.Run("xlarge has no next tier", func(t *testing.T) {
+		next := NextTier("individual:xlarge:monthly:20260601")
+		if next != nil {
+			t.Errorf("expected nil for largest tier, got %q", next.Name)
+		}
+	})
+
+	t.Run("single-tier plan has no next", func(t *testing.T) {
+		next := NextTier("team:default:monthly:20260601")
+		if next != nil {
+			t.Errorf("expected nil for single-tier plan, got %q", next.Name)
+		}
+	})
+
+	t.Run("unknown tier returns nil", func(t *testing.T) {
+		next := NextTier("bogus:tier:id:x")
+		if next != nil {
+			t.Errorf("expected nil for unknown tier, got %q", next.Name)
+		}
+	})
+}
+
+func TestTierMonthlyPriceCents(t *testing.T) {
+	tests := []struct {
+		tierID string
+		want   int
+	}{
+		{"individual:small:monthly:20260601", 2000},
+		{"individual:medium:monthly:20260601", 4000},
+		{"individual:large:monthly:20260601", 8000},
+		{"individual:xlarge:monthly:20260601", 16000},
+		{"team:default:monthly:20260601", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tierID, func(t *testing.T) {
+			tier := mustgetTierByID(t, tt.tierID)
+			if tier.MonthlyPriceCents != tt.want {
+				t.Errorf("MonthlyPriceCents = %d, want %d", tier.MonthlyPriceCents, tt.want)
+			}
+		})
+	}
+}

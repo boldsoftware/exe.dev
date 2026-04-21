@@ -316,12 +316,19 @@ func TestPlanCapacityInProfile(t *testing.T) {
 
 	var profile struct {
 		PlanCapacity *struct {
-			MaxCPUs       uint64 `json:"maxCPUs"`
-			MaxMemoryGB   uint64 `json:"maxMemoryGB"`
-			MaxVMs        int    `json:"maxVMs"`
-			DefaultDiskGB uint64 `json:"defaultDiskGB"`
-			MaxDiskGB     uint64 `json:"maxDiskGB"`
-			BandwidthGB   uint64 `json:"bandwidthGB"`
+			MaxCPUs           uint64 `json:"maxCPUs"`
+			MaxMemoryGB       uint64 `json:"maxMemoryGB"`
+			MaxVMs            int    `json:"maxVMs"`
+			DefaultDiskGB     uint64 `json:"defaultDiskGB"`
+			MaxDiskGB         uint64 `json:"maxDiskGB"`
+			BandwidthGB       uint64 `json:"bandwidthGB"`
+			TierName          string `json:"tierName"`
+			PoolSize          string `json:"poolSize"`
+			MonthlyPriceCents int    `json:"monthlyPriceCents"`
+			NextTier          *struct {
+				PoolSize          string `json:"poolSize"`
+				MonthlyPriceCents int    `json:"monthlyPriceCents"`
+			} `json:"nextTier"`
 		} `json:"planCapacity"`
 		Credits struct {
 			PlanName string `json:"planName"`
@@ -370,5 +377,25 @@ func TestPlanCapacityInProfile(t *testing.T) {
 	}
 	if cp.BandwidthGB != 100 {
 		t.Errorf("bandwidthGB = %d, want 100", cp.BandwidthGB)
+	}
+
+	// New billing card fields.
+	if cp.TierName != "Small" {
+		t.Errorf("tierName = %q, want Small", cp.TierName)
+	}
+	if cp.PoolSize != "2 vCPUs \u00b7 8 GB memory" {
+		t.Errorf("poolSize = %q, want %q", cp.PoolSize, "2 vCPUs \u00b7 8 GB memory")
+	}
+	if cp.MonthlyPriceCents != 2000 {
+		t.Errorf("monthlyPriceCents = %d, want 2000", cp.MonthlyPriceCents)
+	}
+	if cp.NextTier == nil {
+		t.Fatal("nextTier is nil, expected upsell data for small tier")
+	}
+	if cp.NextTier.PoolSize != "4 vCPUs \u00b7 16 GB memory" {
+		t.Errorf("nextTier.poolSize = %q, want %q", cp.NextTier.PoolSize, "4 vCPUs \u00b7 16 GB memory")
+	}
+	if cp.NextTier.MonthlyPriceCents != 4000 {
+		t.Errorf("nextTier.monthlyPriceCents = %d, want 4000", cp.NextTier.MonthlyPriceCents)
 	}
 }
