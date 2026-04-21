@@ -231,10 +231,12 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		"accounts/fireworks/models/qwen3-reranker-8b":  {Input: 20, Type: ModelTypeReranker},
 
 		// GLM models
+		"accounts/fireworks/models/glm-5p1": {Input: 140, Output: 440, CacheRead: 26},
 		"accounts/fireworks/models/glm-5":   {Input: 100, Output: 320, CacheRead: 20},
 		"accounts/fireworks/models/glm-4p7": {Input: 60, Output: 220, CacheRead: 30},
 
 		// Kimi models
+		"accounts/fireworks/models/kimi-k2p6": {Input: 95, Output: 400, CacheRead: 16},
 		"accounts/fireworks/models/kimi-k2p5": {Input: 60, Output: 300, CacheRead: 10},
 
 		// DeepSeek models
