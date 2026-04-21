@@ -42,6 +42,16 @@ export default function (pi: ExtensionAPI) {
 
       // GLM
       {
+        id: "accounts/fireworks/models/glm-5p1",
+        name: "GLM 5.1 (Fireworks)",
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 202752,
+        maxTokens: 16384,
+        cost: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
+        compat: fwCompat,
+      },
+      {
         id: "accounts/fireworks/models/glm-5",
         name: "GLM 5 (Fireworks)",
         reasoning: false,
@@ -63,6 +73,16 @@ export default function (pi: ExtensionAPI) {
       },
 
       // Kimi
+      {
+        id: "accounts/fireworks/models/kimi-k2p6",
+        name: "Kimi K2.6 (Fireworks)",
+        reasoning: true,
+        input: ["text", "image"],
+        contextWindow: 262144,
+        maxTokens: 16384,
+        cost: { input: 0.95, output: 4.0, cacheRead: 0.16, cacheWrite: 0 },
+        compat: { ...fwCompat, thinkingFormat: "openai" as const },
+      },
       {
         id: "accounts/fireworks/models/kimi-k2p5",
         name: "Kimi K2.5 (Fireworks)",
