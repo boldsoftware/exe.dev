@@ -174,6 +174,10 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
+	// Startup profile (captured when exed is started with -profile-startup).
+	mux.HandleFunc("GET /debug/startup-profile", s.handleDebugStartupProfile)
+	mux.HandleFunc("GET /debug/startup-profile/view", s.handleDebugStartupProfileView)
+
 	// expvar at /debug/vars
 	mux.Handle("/debug/vars", expvar.Handler())
 

@@ -59,6 +59,7 @@ func run() error {
 	preflight := flag.Bool("preflight", false, "Run database migrations and exit (for preflight checks)")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (local/test only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
+	profileStartup := flag.Duration("profile-startup", 0, "If set, CPU-profile the first <duration> of server startup. The profile is written to $TMPDIR and served at /debug/startup-profile (speedscope viewer at /debug/startup-profile/view).")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet locally or on lima-exe-ctr (local/test only)")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
@@ -227,6 +228,18 @@ func run() error {
 		}()
 
 		slog.Info("CPU profiling started for 30 seconds", "path", profPath)
+	}
+
+	// Startup profiling: captures a CPU profile of the first *profileStartup
+	// of server startup, writes it to a file under $TMPDIR, and registers
+	// the path with execore so /debug/startup-profile can serve it.
+	if *profileStartup > 0 {
+		if enableProfiling {
+			return fmt.Errorf("-profile-startup cannot be combined with -profile")
+		}
+		if err := startStartupProfile(*profileStartup); err != nil {
+			return err
+		}
 	}
 
 	// Parse exelet addresses
@@ -1056,4 +1069,28 @@ func warnIfUIStale() {
 	if stale {
 		slog.Warn("dashboard UI is out of date, rebuild: cd ui && pnpm build && go build -o /tmp/exed-local ./cmd/exed/")
 	}
+}
+
+// startStartupProfile begins a CPU profile that captures the first d of
+// exed startup. The pprof file is written to $TMPDIR and its path is
+// registered with execore so /debug/startup-profile can stream it.
+func startStartupProfile(d time.Duration) error {
+	path := filepath.Join(os.TempDir(), fmt.Sprintf("exed-startup-profile-%d.pprof", time.Now().Unix()))
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create startup profile file: %w", err)
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		f.Close()
+		return fmt.Errorf("start startup CPU profile: %w", err)
+	}
+	execore.BeginStartupProfile(path, time.Now(), d)
+	slog.Info("startup CPU profiling started", "duration", d, "path", path)
+	go func() {
+		time.Sleep(d)
+		pprof.StopCPUProfile()
+		execore.FinishStartupProfile(f.Close())
+		slog.Info("startup CPU profile captured", "path", path, "url", "/debug/startup-profile/view")
+	}()
+	return nil
 }
