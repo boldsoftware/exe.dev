@@ -9283,21 +9283,47 @@ func (s *Server) handleDebugStalePDXCleanup(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	fmt.Fprintf(w, "<p>PDX users eligible for region cleanup: %d</p>", len(users))
-	fmt.Fprint(w, `<fieldset><legend>Run batch</legend><p>Dry run accepts an optional limit. Apply requires an explicit limit; recommended starting batch size is 1000 users in reverse-chronological (newest first) order.</p><form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block;margin-bottom:8px"><input type="hidden" name="mode" value="dry_run"><label>limit <input type="number" name="limit" min="1" placeholder="1000"></label><button type="submit">Dry Run</button></form>`)
+	fmt.Fprint(w, `<fieldset><legend>Run batch</legend><p>Dry run accepts an optional limit. Apply requires an explicit limit; recommended starting batch size is 1000 users in reverse-chronological (newest first) order. Users without VMs are processed first; users with VMs are processed only after the no-VM cohort is exhausted.</p><form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block;margin-bottom:8px"><input type="hidden" name="mode" value="dry_run"><label>limit <input type="number" name="limit" min="1" placeholder="1000"></label><button type="submit">Dry Run</button></form>`)
 	fmt.Fprintf(w, `<form method="post" action="/debug/stale-pdx-cleanup/run" style="display:block"><input type="hidden" name="mode" value="apply"><label>limit <input type="number" name="limit" min="1" value="%d" required></label><button type="submit" onclick="return confirm('Apply stale PDX cleanup batch?')">Apply batch</button></form></fieldset>`, defaultStalePDXApplyBatchSize)
-	fmt.Fprint(w, "<table><thead><tr><th>user_id</th><th>email</th><th>current</th><th>target</th><th>source</th><th>reason</th></tr></thead><tbody>")
+
+	type stalePDXRow struct {
+		decision stalePDXDecision
+		err      error
+		user     exedb.User
+	}
+	var noVM, withVM []stalePDXRow
 	for i, user := range users {
-		decision, err := s.deriveStalePDXDecision(ctx, user)
-		if err != nil {
-			fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td colspan=\"4\">error: %s</td></tr>", html.EscapeString(user.UserID), html.EscapeString(user.Email), html.EscapeString(err.Error()))
+		decision, derr := s.deriveStalePDXDecision(ctx, user)
+		boxCount, _ := withRxRes1(s, ctx, (*exedb.Queries).CountBoxesForUser, user.UserID)
+		row := stalePDXRow{decision: decision, err: derr, user: user}
+		if boxCount > 0 {
+			withVM = append(withVM, row)
 		} else {
-			fmt.Fprintf(w, "<tr><td><a href=\"/debug/user?userId=%s\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>", html.EscapeString(url.QueryEscape(decision.User.UserID)), html.EscapeString(decision.User.UserID), html.EscapeString(decision.User.Email), html.EscapeString(decision.User.Region), html.EscapeString(decision.TargetRegion), html.EscapeString(decision.DecisionSource), html.EscapeString(decision.DecisionReason))
+			noVM = append(noVM, row)
 		}
 		if ok && (i+1)%25 == 0 {
 			flush.Flush()
 		}
 	}
-	fmt.Fprint(w, "</tbody></table>")
+
+	renderTable := func(title, note string, rows []stalePDXRow) {
+		fmt.Fprintf(w, "<h2 style=\"margin-top:24px\">%s (%d)</h2>", html.EscapeString(title), len(rows))
+		if note != "" {
+			fmt.Fprintf(w, "<p style=\"color:#666\">%s</p>", html.EscapeString(note))
+		}
+		fmt.Fprint(w, "<table><thead><tr><th>user_id</th><th>email</th><th>current</th><th>target</th><th>source</th><th>reason</th></tr></thead><tbody>")
+		for _, row := range rows {
+			if row.err != nil {
+				fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td colspan=\"4\">error: %s</td></tr>", html.EscapeString(row.user.UserID), html.EscapeString(row.user.Email), html.EscapeString(row.err.Error()))
+				continue
+			}
+			d := row.decision
+			fmt.Fprintf(w, "<tr><td><a href=\"/debug/user?userId=%s\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>", html.EscapeString(url.QueryEscape(d.User.UserID)), html.EscapeString(d.User.UserID), html.EscapeString(d.User.Email), html.EscapeString(d.User.Region), html.EscapeString(d.TargetRegion), html.EscapeString(d.DecisionSource), html.EscapeString(d.DecisionReason))
+		}
+		fmt.Fprint(w, "</tbody></table>")
+	}
+	renderTable("Users without VMs", "No boxes; lower risk.", noVM)
+	renderTable("Users with VMs", "Has one or more boxes; higher risk — migrate with care.", withVM)
 	fmt.Fprint(w, `<h2 style="margin-top:24px">Rollback</h2><form method="post" action="/debug/stale-pdx-cleanup/rollback"><input type="text" name="batch_id" placeholder="apply batch id" required><button type="submit">Rollback batch</button></form>`)
 	fmt.Fprint(w, "</body></html>")
 }
