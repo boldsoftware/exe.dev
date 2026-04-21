@@ -488,7 +488,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			tierID:        "individual:medium:monthly:20260601",
 			billingOption: "monthly",
 			want: stripePriceInfo{
-				LookupKey: "individual_medium_monthly",
+				LookupKey: "individual:medium:monthly:20160102",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},
@@ -498,7 +498,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			tierID:        "individual:large:monthly:20260601",
 			billingOption: "monthly",
 			want: stripePriceInfo{
-				LookupKey: "individual_large_monthly",
+				LookupKey: "individual:large:monthly:20160102",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},
@@ -508,7 +508,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 			tierID:        "individual:xlarge:monthly:20260601",
 			billingOption: "monthly",
 			want: stripePriceInfo{
-				LookupKey: "individual_xlarge_monthly",
+				LookupKey: "individual:xlarge:monthly:20160102",
 				Model:     "subscription",
 				Interval:  "monthly",
 			},

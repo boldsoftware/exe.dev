@@ -184,7 +184,7 @@ var tiers = map[string]Tier{
 		Category: CategoryIndividual,
 		Name:     "Medium",
 		StripePrices: map[string]stripePriceInfo{
-			"monthly":         {LookupKey: "individual_medium_monthly", Model: "subscription", Interval: "monthly"},
+			"monthly":         {LookupKey: "individual:medium:monthly:20160102", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
@@ -204,7 +204,7 @@ var tiers = map[string]Tier{
 		Category: CategoryIndividual,
 		Name:     "Large",
 		StripePrices: map[string]stripePriceInfo{
-			"monthly":         {LookupKey: "individual_large_monthly", Model: "subscription", Interval: "monthly"},
+			"monthly":         {LookupKey: "individual:large:monthly:20160102", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
@@ -224,7 +224,7 @@ var tiers = map[string]Tier{
 		Category: CategoryIndividual,
 		Name:     "XLarge",
 		StripePrices: map[string]stripePriceInfo{
-			"monthly":         {LookupKey: "individual_xlarge_monthly", Model: "subscription", Interval: "monthly"},
+			"monthly":         {LookupKey: "individual:xlarge:monthly:20160102", Model: "subscription", Interval: "monthly"},
 			"usage-disk":      {LookupKey: "individual:usage-disk:20260106", Model: "metered", Interval: ""},
 			"usage-bandwidth": {LookupKey: "individual:usage-bandwidth:20260106", Model: "metered", Interval: ""},
 		},
