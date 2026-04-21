@@ -77,6 +77,13 @@ type deploy struct {
 	// rollout-driven deploys (the rollout owns that lock). Called from
 	// Manager.finish.
 	releaseProdLock func()
+
+	// prefetched, when non-nil, is the rollout-level prefetch entry for
+	// this deploy's target. The upload step waits on it and skips its
+	// stream-to-/tmp phase if the prefetch already wrote the same temp
+	// file. nil for single-host deploys and for rollouts running under a
+	// test runner. See prefetch.go.
+	prefetched *prefetchState
 }
 
 // StepNames returns the deploy steps for a given process, accounting for

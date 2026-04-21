@@ -124,6 +124,13 @@ type rollout struct {
 	// rollout was started, one per distinct stage. Called (and cleared)
 	// by Manager.finishRollout.
 	releaseProdLocks []func()
+
+	// prefetcher uploads each target's binary to /tmp ahead of the wave
+	// that will install it, so slow links (e.g. exeprox over distant
+	// connections) do not gate subsequent waves on the upload phase.
+	// Set once in StartRollout before the orchestrator goroutine starts;
+	// nil when the manager's runDeploy hook is overridden (test mode).
+	prefetcher *prefetcher
 }
 
 // waveState is the internal mutable form of a Wave.

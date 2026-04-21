@@ -166,6 +166,17 @@ func (m *Manager) start(req Request, rolloutID string, prodLockRelease func()) (
 	if len(m.deploys) > maxHistory {
 		m.deploys = m.deploys[:maxHistory]
 	}
+	// Attach the rollout's prefetch entry for this target if any. The
+	// rollout's prefetcher is set in StartRollout before runRollout
+	// starts, so it is safe to read here without additional locking.
+	if rolloutID != "" {
+		for _, r := range m.rollouts {
+			if r.id == rolloutID {
+				d.prefetched = r.prefetcher.stateFor(req.DNSName)
+				break
+			}
+		}
+	}
 	m.mu.Unlock()
 
 	m.log.Info("deploy started",
@@ -552,35 +563,37 @@ func (m *Manager) buildArtifact(ctx context.Context, d *deploy, process, sha str
 	return outputPath, summary, nil
 }
 
-func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPath string) (string, error) {
-	info, err := os.Stat(localPath)
-	if err != nil {
-		return "", fmt.Errorf("stat local: %w", err)
-	}
-	size := info.Size()
+// tmpUploadPath is the deterministic /tmp path used to stage an
+// artifact on a remote host before install. Keying on (binary, sha[:12])
+// means re-uploading the same SHA is idempotent and two distinct SHAs
+// never collide. Shared by Manager.upload and the rollout prefetcher.
+func tmpUploadPath(recipe Recipe, sha string) string {
+	return "/tmp/deploy-" + recipe.BinaryName + "-" + sha[:12]
+}
 
-	ts := time.Now().Format("20060102-150405")
-	remotePath := fmt.Sprintf("%s/%s.%s-%s", recipe.RemoteDir, recipe.BinaryName, ts, d.sha[:12])
-	tmpName := fmt.Sprintf("deploy-%s-%s", recipe.BinaryName, d.sha[:12])
-	tmpPath := "/tmp/" + tmpName
-
+// streamToTmp uploads localPath (size bytes) to tmpUploadPath on the
+// remote host via `ssh ... 'cat > tmp'`, streaming through a progress
+// reader. When d is non-nil, live MB/s progress is published to its
+// current step. When d is nil (used by the rollout prefetcher, which
+// runs before any deploy struct exists), progress is silently dropped.
+//
+// Returns the temp path written, the bytes sent, the elapsed duration,
+// and any error. The caller is responsible for moving the temp file
+// into place and chmod'ing it executable.
+func (m *Manager) streamToTmp(ctx context.Context, d *deploy, recipe Recipe, sha, dnsName, localPath string, size int64) (string, int64, time.Duration, error) {
+	tmpPath := tmpUploadPath(recipe, sha)
 	user := recipe.remoteUser()
 
-	// Stream the binary over ssh using `cat > tmpPath`. Piping through
-	// stdin lets us wrap the reader and track bytes sent, so we can
-	// publish live progress on the "upload" step — scp has no
-	// machine-readable progress output.
 	f, err := os.Open(localPath)
 	if err != nil {
-		return "", fmt.Errorf("open local: %w", err)
+		return tmpPath, 0, 0, fmt.Errorf("open local: %w", err)
 	}
 	defer f.Close()
 
 	pr := &progressReader{r: f}
 	pr.total.Store(size)
 
-	uploadStart := time.Now()
-	// Background ticker publishes live progress to the step output.
+	start := time.Now()
 	progressStop := make(chan struct{})
 	progressDone := make(chan struct{})
 	go func() {
@@ -592,8 +605,11 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 			case <-progressStop:
 				return
 			case <-ticker.C:
+				if d == nil {
+					continue
+				}
 				sent := pr.sent.Load()
-				elapsed := time.Since(uploadStart).Seconds()
+				elapsed := time.Since(start).Seconds()
 				var mbps float64
 				if elapsed > 0 {
 					mbps = float64(sent) / 1024 / 1024 / elapsed
@@ -610,26 +626,84 @@ func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPat
 
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
-		user+"@"+d.dnsName, "cat > "+tmpPath)
+		user+"@"+dnsName, "cat > "+tmpPath)
 	cmd.Stdin = pr
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	runErr := cmd.Run()
 	close(progressStop)
 	<-progressDone
+	dur := time.Since(start)
+	sent := pr.sent.Load()
 	if runErr != nil {
-		return "", fmt.Errorf("upload: %w\n%s", runErr, stderr.String())
+		return tmpPath, sent, dur, fmt.Errorf("upload: %w\n%s", runErr, stderr.String())
 	}
 	// Safety check: ensure we actually sent the full file. A partial
 	// transfer with a clean exit on the remote side (unlikely but
 	// possible) would otherwise pass a truncated binary forward.
-	if got := pr.sent.Load(); got != size {
-		return "", fmt.Errorf("upload short: sent %d of %d bytes", got, size)
+	if sent != size {
+		return tmpPath, sent, dur, fmt.Errorf("upload short: sent %d of %d bytes", sent, size)
+	}
+	return tmpPath, sent, dur, nil
+}
+
+func (m *Manager) upload(ctx context.Context, d *deploy, recipe Recipe, localPath string) (string, error) {
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return "", fmt.Errorf("stat local: %w", err)
+	}
+	size := info.Size()
+
+	ts := time.Now().Format("20060102-150405")
+	remotePath := fmt.Sprintf("%s/%s.%s-%s", recipe.RemoteDir, recipe.BinaryName, ts, d.sha[:12])
+	tmpPath := tmpUploadPath(recipe, d.sha)
+	user := recipe.remoteUser()
+
+	var (
+		bytes        = size
+		dur          time.Duration
+		prefetchUsed bool
+	)
+
+	// If the rollout prefetcher already streamed this binary to /tmp,
+	// wait for it to settle and skip the inline ssh upload. On any
+	// prefetch failure we fall through to the normal inline upload —
+	// safe because the prefetch wrote (or partially wrote) the same
+	// deterministic /tmp path that streamToTmp will overwrite.
+	if st := d.prefetched; st != nil {
+		select {
+		case <-st.done:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+		if st.err == nil {
+			prefetchUsed = true
+			bytes = st.bytes
+			dur = st.dur
+		} else {
+			d.setStepOutput(fmt.Sprintf("prefetch failed (%v); uploading inline", st.err))
+		}
 	}
 
-	uploadDur := time.Since(uploadStart)
-	mbps := float64(size) / 1024 / 1024 / uploadDur.Seconds()
-	d.setStepOutput(fmt.Sprintf("%s in %s (%.1f MB/s) → %s", formatBytes(size), uploadDur.Round(time.Millisecond), mbps, remotePath))
+	if !prefetchUsed {
+		_, sent, d2, err := m.streamToTmp(ctx, d, recipe, d.sha, d.dnsName, localPath, size)
+		if err != nil {
+			return "", err
+		}
+		bytes = sent
+		dur = d2
+	}
+
+	mbps := 0.0
+	if dur > 0 {
+		mbps = float64(bytes) / 1024 / 1024 / dur.Seconds()
+	}
+	label := "uploaded"
+	if prefetchUsed {
+		label = "prefetched"
+	}
+	d.setStepOutput(fmt.Sprintf("%s %s in %s (%.1f MB/s) → %s",
+		label, formatBytes(bytes), dur.Round(time.Millisecond), mbps, remotePath))
 
 	if err := m.ssh(ctx, user, d.dnsName, "sudo", "mv", tmpPath, remotePath); err != nil {
 		return "", fmt.Errorf("mv: %w", err)
@@ -883,6 +957,15 @@ func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
 		"targets", len(req.Targets), "waves", len(waves),
 		"batch_size", r.batchSize, "cooldown", r.cooldown,
 		"initiated_by", r.initiatedBy)
+
+	// Kick off cross-wave prefetch as soon as the rollout exists, so
+	// slow links can transfer in parallel with earlier waves' install
+	// steps. Skipped when an alternate deploy runner is installed
+	// (test mode), since tests don't want real ssh streams.
+	if m.runDeploy == nil {
+		r.prefetcher = newPrefetcher(m, r)
+		r.prefetcher.start(m.ctx)
+	}
 
 	go m.runRollout(r)
 	return r.snapshot(), nil
@@ -1224,6 +1307,16 @@ func (m *Manager) markRemainingSkipped(r *rollout, from int) {
 
 // finishRollout removes the rollout from the active map and stamps doneAt.
 func (m *Manager) finishRollout(r *rollout) {
+	// Cancel any still-running prefetches and wait for their goroutines
+	// to drain before we declare the rollout finished. In a successful
+	// rollout these will already be done (every deploy waited on its
+	// prefetch state); in a cancelled or failed rollout this releases
+	// the in-flight ssh processes and prevents goroutine leaks.
+	if r.prefetcher != nil {
+		r.prefetcher.cancel()
+		r.prefetcher.wait()
+	}
+
 	r.mu.Lock()
 	r.doneAt = time.Now()
 	releases := r.releaseProdLocks
