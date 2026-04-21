@@ -179,7 +179,7 @@ func (s *Service) Requires() []services.Type {
 func (s *Service) Start(ctx context.Context) error {
 	s.reconcileCtx, s.reconcileCancel = context.WithCancel(context.Background())
 
-	instances, err := s.initServiceState(ctx)
+	instances, listErr, err := s.initServiceState(ctx)
 	if err != nil {
 		s.reconcileCancel()
 		return err
@@ -201,7 +201,16 @@ func (s *Service) Start(ctx context.Context) error {
 	// IPs, which would be seen as orphans if reconciliation ran after.
 	// Uses the Start ctx directly (not s.reconcileCtx) since this is synchronous
 	// and should respect the startup context's lifecycle.
-	s.reconcileIPLeasesFromInstances(ctx, instances)
+	//
+	// Skip reconciliation if the instance list is known to be partial:
+	// reconciling against a partial list would release leases for VMs
+	// whose configs we simply failed to read, and those IPs could then
+	// be reassigned — producing duplicate-IP conflicts.
+	if listErr != nil {
+		s.log.ErrorContext(ctx, "skipping IPAM reconciliation: instance list is incomplete", "error", listErr)
+	} else {
+		s.reconcileIPLeasesFromInstances(ctx, instances)
+	}
 
 	// start stopped instances if enabled
 	if s.config.EnableInstanceBootOnStartup {
@@ -228,14 +237,28 @@ func (s *Service) Start(ctx context.Context) error {
 
 // initServiceState loads instances, recovers processes, and initializes service
 // state. Acquires s.mu for the duration to serialize with concurrent operations.
-func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error) {
+//
+// Returns (instances, listErr, fatalErr):
+//   - fatalErr: unrecoverable — Start should abort.
+//   - listErr: some instance configs failed to load; `instances` is a
+//     partial list. Startup should continue (keep gRPC up, log the error)
+//     but callers MUST NOT reconcile durable state (IPAM) against a partial
+//     list — doing so releases leases for VMs whose configs temporarily
+//     failed to read, causing duplicate-IP conflicts when those IPs get
+//     reassigned.
+func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Load existing instances
-	instances, err := s.listInstances(ctx)
-	if err != nil {
-		return nil, err
+	// Load existing instances. A listErr with a non-nil `instances` slice
+	// is a partial-load signal: startup continues on the partial list,
+	// but IPAM reconciliation is skipped by the caller.
+	instances, listErr := s.listInstances(ctx)
+	if listErr != nil && instances == nil {
+		return nil, nil, listErr
+	}
+	if listErr != nil {
+		s.log.ErrorContext(ctx, "failed to load some instance configs; continuing startup with partial list", "error", listErr)
 	}
 
 	// Mark SSH ports as allocated in the port allocator
@@ -292,7 +315,7 @@ func (s *Service) initServiceState(ctx context.Context) ([]*api.Instance, error)
 	}
 	s.stopLogRotation = s.vmm.StartLogRotation(ctx, interval, maxBytes, keepBytes)
 
-	return instances, nil
+	return instances, listErr, nil
 }
 
 // applyStartupNetworkLimits applies connection limits and bandwidth limits to
@@ -335,7 +358,10 @@ func (s *Service) reconcileIPLeases() {
 		}
 		instances, err := s.listInstances(ctx)
 		if err != nil {
-			s.log.WarnContext(ctx, "failed to list instances for IP reconciliation", "error", err)
+			// Partial or failed load. Skip reconciliation: acting on a
+			// partial list can release leases for VMs whose configs
+			// failed to read, causing duplicate-IP conflicts.
+			s.log.ErrorContext(ctx, "skipping IPAM reconciliation: failed to list instances", "error", err)
 			return struct{}{}, nil
 		}
 		s.reconcileIPLeasesFromInstances(ctx, instances)

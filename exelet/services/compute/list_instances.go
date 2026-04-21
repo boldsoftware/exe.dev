@@ -29,12 +29,21 @@ func (s *Service) ListInstances(req *api.ListInstancesRequest, stream api.Comput
 	return nil
 }
 
+// listInstances returns all readable instance configs. If one or more configs
+// fail to load, those are skipped and a non-nil error is returned alongside
+// the partial list. Callers that mutate durable state based on this list
+// (e.g. IPAM reconciliation) MUST treat a non-nil error as "do not act" —
+// a partial list combined with destructive reconciliation caused the
+// duplicate-IP incident that motivated this contract. Callers that only
+// read the list (startup recovery, gRPC ListInstances) can proceed on the
+// partial list after logging the error.
 func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 	configs, err := filepath.Glob(filepath.Join(s.getInstanceDir("*"), "config.json"))
 	if err != nil {
 		return nil, err
 	}
 	instances := []*api.Instance{}
+	var loadErrs []string
 	for _, config := range configs {
 		id := filepath.Base(filepath.Dir(config))
 		r, err := s.GetInstance(ctx, &api.GetInstanceRequest{
@@ -47,7 +56,8 @@ func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 			if status.Code(err) == codes.NotFound {
 				continue
 			}
-			return nil, fmt.Errorf("loading instance %s: %w", id, err)
+			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", id, err))
+			continue
 		}
 		// update instance placement
 		r.Instance.Placement = &api.Placement{
@@ -58,5 +68,8 @@ func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 		instances = append(instances, r.Instance)
 	}
 
+	if len(loadErrs) > 0 {
+		return instances, fmt.Errorf("failed to load %d instance config(s): %s", len(loadErrs), loadErrs)
+	}
 	return instances, nil
 }
