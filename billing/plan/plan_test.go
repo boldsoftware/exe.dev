@@ -26,7 +26,7 @@ func TestGetPlanCategory(t *testing.T) {
 		},
 		{
 			name:   "canceled overrides trial",
-			inputs: userPlanInputs{BillingStatus: "canceled", PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: userPlanInputs{BillingStatus: "canceled", PlanID: new("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryBasic,
 		},
 		{
@@ -36,7 +36,7 @@ func TestGetPlanCategory(t *testing.T) {
 		},
 		{
 			name:   "friend without overrides",
-			inputs: userPlanInputs{PlanID: strPtr("friend")},
+			inputs: userPlanInputs{PlanID: new("friend")},
 			want:   CategoryFriend,
 		},
 		{
@@ -46,12 +46,12 @@ func TestGetPlanCategory(t *testing.T) {
 		},
 		{
 			name:   "trial not expired is trial",
-			inputs: userPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &future},
+			inputs: userPlanInputs{PlanID: new("trial:monthly:20260106"), TrialExpiresAt: &future},
 			want:   CategoryTrial,
 		},
 		{
 			name:   "trial expired falls through",
-			inputs: userPlanInputs{PlanID: strPtr("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
+			inputs: userPlanInputs{PlanID: new("trial:monthly:20260106"), TrialExpiresAt: &past, CreatedAt: &newDate},
 			want:   CategoryBasic,
 		},
 		{
@@ -359,7 +359,7 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "friend plan",
 			row: exedb.GetUserPlanDataRow{
-				PlanID:    strPtr("friend"),
+				PlanID:    new("friend"),
 				CreatedAt: &newDate,
 			},
 			want: CategoryFriend,
@@ -367,7 +367,7 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "vip plan",
 			row: exedb.GetUserPlanDataRow{
-				PlanID:               strPtr("vip:monthly:20260106"),
+				PlanID:               new("vip:monthly:20260106"),
 				HasExplicitOverrides: 1,
 				CreatedAt:            &newDate,
 			},
@@ -376,7 +376,7 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "active trial",
 			row: exedb.GetUserPlanDataRow{
-				PlanID:         strPtr("trial:monthly:20260106"),
+				PlanID:         new("trial:monthly:20260106"),
 				TrialExpiresAt: &future,
 				CreatedAt:      &newDate,
 			},
@@ -385,7 +385,7 @@ func TestGetPlanForUser(t *testing.T) {
 		{
 			name: "expired trial",
 			row: exedb.GetUserPlanDataRow{
-				PlanID:         strPtr("trial:monthly:20260106"),
+				PlanID:         new("trial:monthly:20260106"),
 				TrialExpiresAt: &past,
 				CreatedAt:      &newDate,
 			},
@@ -395,7 +395,7 @@ func TestGetPlanForUser(t *testing.T) {
 			name: "individual plan",
 			row: exedb.GetUserPlanDataRow{
 				BillingStatus: "active",
-				PlanID:        strPtr("individual:monthly:20260106"),
+				PlanID:        new("individual:monthly:20260106"),
 				CreatedAt:     &newDate,
 			},
 			want: CategoryIndividual,
@@ -426,7 +426,7 @@ func TestGetPlanForUser(t *testing.T) {
 			name: "canceled overrides all",
 			row: exedb.GetUserPlanDataRow{
 				BillingStatus:  "canceled",
-				PlanID:         strPtr("trial:monthly:20260106"),
+				PlanID:         new("trial:monthly:20260106"),
 				TrialExpiresAt: &future,
 				CreatedAt:      &oldDate,
 			},
@@ -459,10 +459,6 @@ func (m *mockQueries) GetUserPlanData(ctx context.Context, userID string) (exedb
 		return exedb.GetUserPlanDataRow{}, m.err
 	}
 	return m.row, nil
-}
-
-func strPtr(s string) *string {
-	return &s
 }
 
 func TestCategoryFromProductName(t *testing.T) {

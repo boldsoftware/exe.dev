@@ -72,8 +72,6 @@ func newTestRunner(t *testing.T, db *sqlite.DB) (*Runner, *[]sentEmail) {
 	return r, &sent
 }
 
-func strPtr(s string) *string { return &s }
-
 // createTrialUser creates a user with a trial plan, returning the user_id.
 func createTrialUser(t *testing.T, ctx context.Context, db *sqlite.DB, emailAddr string, createdAt time.Time) string {
 	t.Helper()
@@ -100,7 +98,7 @@ func createTrialUser(t *testing.T, ctx context.Context, db *sqlite.DB, emailAddr
 			PlanID:         "trial:monthly:20260106",
 			StartedAt:      createdAt,
 			TrialExpiresAt: &expires,
-			ChangedBy:      strPtr("test"),
+			ChangedBy:      new("test"),
 		}); err != nil {
 			return err
 		}
@@ -343,7 +341,7 @@ func TestFullLifecycleOneStepAtATime(t *testing.T) {
 			Campaign:   "trial_onboarding",
 			Step:       step,
 			Status:     statSkipped,
-			SkipReason: strPtr("test setup"),
+			SkipReason: new("test setup"),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -405,7 +403,7 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 			AccountID: accountID,
 			PlanID:    "individual:monthly:20260106",
 			StartedAt: testNow,
-			ChangedBy: strPtr("stripe:event"),
+			ChangedBy: new("stripe:event"),
 		}); err != nil {
 			return err
 		}

@@ -167,7 +167,7 @@ func TestInsertAndGetActiveAccountPlan(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("InsertAccountPlan: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestInsertAndGetActiveAccountPlan(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "individual",
 		StartedAt: now2,
-		ChangedBy: strPtr("stripe:event"),
+		ChangedBy: new("stripe:event"),
 	}); err != nil {
 		t.Fatalf("InsertAccountPlan individual: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestGetActivePlanForUserWithParent(t *testing.T) {
 		AccountID: teamAcctID,
 		PlanID:    "team",
 		StartedAt: now,
-		ChangedBy: strPtr("system:test"),
+		ChangedBy: new("system:test"),
 	}); err != nil {
 		t.Fatalf("insert team plan: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestGetActivePlanForUserWithParent(t *testing.T) {
 		AccountID: memberAcctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:test"),
+		ChangedBy: new("system:test"),
 	}); err != nil {
 		t.Fatalf("insert member plan: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestGetActivePlanForUserWithParent(t *testing.T) {
 		AccountID: soloAcctID,
 		PlanID:    "individual",
 		StartedAt: now,
-		ChangedBy: strPtr("stripe:event"),
+		ChangedBy: new("stripe:event"),
 	}); err != nil {
 		t.Fatalf("insert solo plan: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 		AccountID: ownerAcctID,
 		PlanID:    "enterprise:monthly:20260106",
 		StartedAt: now,
-		ChangedBy: strPtr("test:setup"),
+		ChangedBy: new("test:setup"),
 	}); err != nil {
 		t.Fatalf("insert owner enterprise plan: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 		AccountID: memberAcctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("test:setup"),
+		ChangedBy: new("test:setup"),
 	}); err != nil {
 		t.Fatalf("insert member basic plan: %v", err)
 	}
@@ -402,10 +402,6 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string {
-	return &s
-}
-
 func TestHadTrial(t *testing.T) {
 	t.Parallel()
 
@@ -435,7 +431,7 @@ func TestHadTrial(t *testing.T) {
 		AccountID: accountID,
 		PlanID:    "basic:monthly:20260106",
 		StartedAt: time.Now(),
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("InsertAccountPlan: %v", err)
 	}
@@ -450,7 +446,7 @@ func TestHadTrial(t *testing.T) {
 	// Close that plan, add a stripeless trial plan.
 	if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 		AccountID: accountID,
-		EndedAt:   timePtr(time.Now()),
+		EndedAt:   new(time.Now()),
 	}); err != nil {
 		t.Fatalf("CloseAccountPlan: %v", err)
 	}
@@ -458,8 +454,8 @@ func TestHadTrial(t *testing.T) {
 		AccountID:      accountID,
 		PlanID:         "trial:monthly:20260106",
 		StartedAt:      time.Now(),
-		TrialExpiresAt: timePtr(time.Now().Add(7 * 24 * time.Hour)),
-		ChangedBy:      strPtr("system:stripeless_trial"),
+		TrialExpiresAt: new(time.Now().Add(7 * 24 * time.Hour)),
+		ChangedBy:      new("system:stripeless_trial"),
 	}); err != nil {
 		t.Fatalf("InsertAccountPlan: %v", err)
 	}
@@ -474,7 +470,7 @@ func TestHadTrial(t *testing.T) {
 	// Close the trial plan — should still report true (checks history, not just active).
 	if err := queries.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 		AccountID: accountID,
-		EndedAt:   timePtr(time.Now()),
+		EndedAt:   new(time.Now()),
 	}); err != nil {
 		t.Fatalf("CloseAccountPlan: %v", err)
 	}
@@ -499,8 +495,8 @@ func TestHadTrial(t *testing.T) {
 		AccountID:      stripeAccountID,
 		PlanID:         "individual:monthly:20260106",
 		StartedAt:      time.Now(),
-		TrialExpiresAt: timePtr(time.Now().Add(7 * 24 * time.Hour)),
-		ChangedBy:      strPtr("stripe:event"),
+		TrialExpiresAt: new(time.Now().Add(7 * 24 * time.Hour)),
+		ChangedBy:      new("stripe:event"),
 	}); err != nil {
 		t.Fatalf("InsertAccountPlan: %v", err)
 	}
@@ -533,7 +529,7 @@ func TestNextExpiredTrialUser(t *testing.T) {
 			PlanID:         planID,
 			StartedAt:      time.Now().Add(-48 * time.Hour),
 			TrialExpiresAt: trialExpiresAt,
-			ChangedBy:      strPtr("system:stripeless_trial"),
+			ChangedBy:      new("system:stripeless_trial"),
 		}); err != nil {
 			t.Fatalf("InsertAccountPlan: %v", err)
 		}
@@ -549,9 +545,9 @@ func TestNextExpiredTrialUser(t *testing.T) {
 		}
 	}
 
-	oldExpired := timePtr(time.Now().Add(-2 * time.Hour))
-	newExpired := timePtr(time.Now().Add(-1 * time.Hour))
-	active := timePtr(time.Now().Add(6 * 24 * time.Hour))
+	oldExpired := new(time.Now().Add(-2 * time.Hour))
+	newExpired := new(time.Now().Add(-1 * time.Hour))
+	active := new(time.Now().Add(6 * 24 * time.Hour))
 
 	// Case 1: older expired trial + running box -> should be returned first.
 	setup(t, "usr_exp_run", "acct_exp_run", "trial:monthly:20260106", oldExpired, "running")

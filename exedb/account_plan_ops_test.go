@@ -34,7 +34,7 @@ func TestReplaceAccountPlan(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("insert initial plan: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestReplaceAccountPlanWithTrial(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("insert initial plan: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestReplaceAccountPlanMultipleTimes(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("insert initial plan: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestReplaceAccountPlanChangedBy(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("insert initial plan: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestReplaceAccountPlanDifferentSources(t *testing.T) {
 		AccountID: acctID,
 		PlanID:    "basic",
 		StartedAt: now,
-		ChangedBy: strPtr("system:signup"),
+		ChangedBy: new("system:signup"),
 	}); err != nil {
 		t.Fatalf("insert initial plan: %v", err)
 	}

@@ -60,7 +60,7 @@ func TestTrialExpiryEnforcerSkipsSubscribedUser(t *testing.T) {
 	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
 		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
 			AccountID: accountID,
-			EndedAt:   timePtr(time.Now()),
+			EndedAt:   new(time.Now()),
 		}); err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func TestTrialExpiryEnforcerSkipsSubscribedUser(t *testing.T) {
 			AccountID: accountID,
 			PlanID:    "individual:monthly:20260106",
 			StartedAt: time.Now(),
-			ChangedBy: strPtr("stripe:event"),
+			ChangedBy: new("stripe:event"),
 		})
 	}); err != nil {
 		t.Fatalf("swap trial for individual plan: %v", err)
@@ -117,7 +117,7 @@ func TestTrialExpiryEnforcerWakesOnNotify(t *testing.T) {
 
 	if err := withTx1(s, ctx, (*exedb.Queries).DebugSetTrialExpiresAt, exedb.DebugSetTrialExpiresAtParams{
 		AccountID:      accountID,
-		TrialExpiresAt: timePtr(time.Now().Add(-1 * time.Hour)),
+		TrialExpiresAt: new(time.Now().Add(-1 * time.Hour)),
 	}); err != nil {
 		t.Fatalf("DebugSetTrialExpiresAt: %v", err)
 	}
@@ -331,7 +331,7 @@ func createTrialUserWithBox(t *testing.T, s *Server, ctx context.Context, userID
 			PlanID:         planID,
 			StartedAt:      time.Now().Add(-48 * time.Hour),
 			TrialExpiresAt: &trialExpiresAt,
-			ChangedBy:      strPtr("system:stripeless_trial"),
+			ChangedBy:      new("system:stripeless_trial"),
 		}); err != nil {
 			return err
 		}
@@ -350,6 +350,3 @@ func createTrialUserWithBox(t *testing.T, s *Server, ctx context.Context, userID
 		t.Fatalf("createTrialUserWithBox(%s): %v", userID, err)
 	}
 }
-
-func strPtr(s string) *string        { return &s }
-func timePtr(t time.Time) *time.Time { return &t }

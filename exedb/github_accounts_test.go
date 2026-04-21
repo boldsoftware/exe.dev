@@ -390,8 +390,8 @@ func TestListGitHubUserTokensNeedingRenewal(t *testing.T) {
 		GitHubLogin:           "testuser",
 		AccessToken:           "ghu_test",
 		RefreshToken:          "ghr_test",
-		AccessTokenExpiresAt:  timePtr(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
-		RefreshTokenExpiresAt: timePtr(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
+		AccessTokenExpiresAt:  new(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
+		RefreshTokenExpiresAt: new(time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -570,5 +570,3 @@ func TestGitHubDeleteOrphanedTokensKeepsAll(t *testing.T) {
 		t.Fatalf("got %d tokens, want 1", len(tokens))
 	}
 }
-
-func timePtr(t time.Time) *time.Time { return &t }
