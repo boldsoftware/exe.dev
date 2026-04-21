@@ -278,6 +278,40 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "glm-5.1-fireworks",
+			Provider:        ProviderFireworks,
+			Description:     "GLM-5.1 on Fireworks",
+			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.FireworksAPIKey == "" {
+					return nil, fmt.Errorf("glm-5.1-fireworks requires FIREWORKS_API_KEY")
+				}
+				svc := &oai.Service{Model: oai.GLM51Fireworks, APIKey: config.FireworksAPIKey, HTTPC: httpc}
+				if url := config.getFireworksURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
+			ID:              "kimi-k2.6-fireworks",
+			Provider:        ProviderFireworks,
+			Description:     "Kimi K2.6 on Fireworks",
+			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.FireworksAPIKey == "" {
+					return nil, fmt.Errorf("kimi-k2.6-fireworks requires FIREWORKS_API_KEY")
+				}
+				svc := &oai.Service{Model: oai.KimiK26Fireworks, APIKey: config.FireworksAPIKey, HTTPC: httpc}
+				if url := config.getFireworksURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "gpt-5.4",
 			Provider:        ProviderOpenAI,
 			Description:     "GPT-5.4",

@@ -220,6 +220,20 @@ var (
 		APIKeyEnv: FireworksAPIKeyEnv,
 	}
 
+	GLM51Fireworks = Model{
+		UserName:  "glm-5.1-fireworks",
+		ModelName: "accounts/fireworks/models/glm-5p1",
+		URL:       FireworksURL,
+		APIKeyEnv: FireworksAPIKeyEnv,
+	}
+
+	KimiK26Fireworks = Model{
+		UserName:  "kimi-k2.6-fireworks",
+		ModelName: "accounts/fireworks/models/kimi-k2p6",
+		URL:       FireworksURL,
+		APIKeyEnv: FireworksAPIKeyEnv,
+	}
+
 	GPTOSS20B = Model{
 		UserName:  "gpt-oss-20b",
 		ModelName: "accounts/fireworks/models/gpt-oss-20b",
@@ -340,6 +354,8 @@ var ModelsRegistry = []Model{
 	MistralMedium,
 	DevstralSmall,
 	GLM47Fireworks,
+	GLM51Fireworks,
+	KimiK26Fireworks,
 	GPTOSS120B,
 	GPTOSS20B,
 	LlamaCPP,
