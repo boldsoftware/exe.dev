@@ -48,25 +48,22 @@ func TestTrialExpiryEnforcerSkipsSubscribedUser(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	if err := withTx1(s, ctx, (*exedb.Queries).SetTrialExpiryEnforcerEnabled, "true"); err != nil {
-		t.Fatalf("SetTrialExpiryEnforcerEnabled: %v", err)
-	}
-	if err := withTx1(s, ctx, (*exedb.Queries).SetTrialExpiryRateLimit, "1ms"); err != nil {
-		t.Fatalf("SetTrialExpiryRateLimit: %v", err)
-	}
-
+	// Set up the user (expired trial → individual subscription) before
+	// enabling the enforcer, so the auto-started enforcer (see exe.go's
+	// startTrialExpiryEnforcer goroutine launched during Serve) cannot
+	// race with the plan swap and transition the user to basic.
 	userID := "usr_trial_then_sub"
 	accountID := "acct_trial_then_sub"
 	createTrialUserWithBox(t, s, ctx, userID, accountID,
 		"trial:monthly:20260106", time.Now().Add(-1*time.Hour), "running")
 
-	if err := withTx1(s, ctx, (*exedb.Queries).CloseAccountPlan, exedb.CloseAccountPlanParams{
-		AccountID: accountID,
-		EndedAt:   timePtr(time.Now()),
-	}); err != nil {
-		t.Fatalf("CloseAccountPlan: %v", err)
-	}
 	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		if err := q.CloseAccountPlan(ctx, exedb.CloseAccountPlanParams{
+			AccountID: accountID,
+			EndedAt:   timePtr(time.Now()),
+		}); err != nil {
+			return err
+		}
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: accountID,
 			PlanID:    "individual:monthly:20260106",
@@ -74,7 +71,7 @@ func TestTrialExpiryEnforcerSkipsSubscribedUser(t *testing.T) {
 			ChangedBy: strPtr("stripe:event"),
 		})
 	}); err != nil {
-		t.Fatalf("InsertAccountPlan (individual): %v", err)
+		t.Fatalf("swap trial for individual plan: %v", err)
 	}
 	if err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Conn().ExecContext(ctx, `INSERT INTO billing_events (account_id, event_type, event_at) VALUES (?, 'active', datetime('now'))`,
@@ -85,6 +82,13 @@ func TestTrialExpiryEnforcerSkipsSubscribedUser(t *testing.T) {
 	}
 
 	assertPlanCategory(t, s, ctx, userID, plan.CategoryIndividual)
+
+	if err := withTx1(s, ctx, (*exedb.Queries).SetTrialExpiryEnforcerEnabled, "true"); err != nil {
+		t.Fatalf("SetTrialExpiryEnforcerEnabled: %v", err)
+	}
+	if err := withTx1(s, ctx, (*exedb.Queries).SetTrialExpiryRateLimit, "1ms"); err != nil {
+		t.Fatalf("SetTrialExpiryRateLimit: %v", err)
+	}
 
 	go s.startTrialExpiryEnforcer(ctx)
 	assertUserRemainsRunning(t, s, ctx, userID)
