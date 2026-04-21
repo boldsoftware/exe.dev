@@ -295,5 +295,6 @@ func (ca *cmdActor) transferredAction(ctx context.Context, key string, fds []int
 		return errors.New("unexpected arguments to transferred command")
 	}
 	ca.pipeInstance.transferringNew.Store(false)
+	ca.pipeInstance.lg.InfoContext(ctx, "transferred all listeners from old exepipe")
 	return nil
 }
