@@ -335,7 +335,7 @@ func (m *ResourceManager) checkDuplicateIPs(ctx context.Context, instances []*co
 	for ip, ids := range ipToVMs {
 		if len(ids) > 1 {
 			duplicate = true
-			m.log.WarnContext(ctx, "resource manager: duplicate VM IP detected",
+			m.log.ErrorContext(ctx, "resource manager: duplicate VM IP detected",
 				"ip", ip,
 				"instance_ids", ids)
 		}
