@@ -6747,6 +6747,34 @@ function makeRummydDashboard() {
     }
   );
 
+  // SSH health check — rummyd connects to exe.dev:22 every minute, does an SSH
+  // handshake, and verifies the host key matches. Code: cmd/rummyd/main.go (checkSSH).
+  addTimeseriesChart(
+    "SSH exe.dev Health Check",
+    `rummy_ssh_up`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 6 },
+      alert: {
+        threshold: 1,
+        condition: "lt",
+        forDuration: "5m",
+        summary: "ssh exe.dev down",
+        description: "rummy_ssh_up has been 0 for 5+ minutes. rummyd connects to exe.dev:22 every minute, performs an SSH handshake, and verifies the host key. This failing means the SSH endpoint is unreachable or the host key has changed. Code: cmd/rummyd/main.go (checkSSH).",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  addTimeseriesChart(
+    "SSH exe.dev Latency",
+    `rummy_ssh_latency_seconds`,
+    {
+      panelCustomization: (x) => x.unit("s").min(0),
+      gridPos: { w: 12, h: 6 },
+    }
+  );
+
   return dash;
 }
 

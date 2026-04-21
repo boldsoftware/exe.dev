@@ -5,13 +5,16 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +27,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/crypto/ssh"
 )
 
 func main() {
@@ -85,7 +89,23 @@ func main() {
 		Help: "Unix timestamp of the last cert canary check.",
 	})
 
-	registry.MustRegister(blogUp, blogCurlLatency, blogTotalLatency, blogGitSHA, checksTotal, lastCheckTime, certCanaryUp, certCanaryLatency, certCanaryLastCheck)
+	// SSH health check for exe.dev — verifies the SSH endpoint is up and
+	// presenting the expected host key. Alert: "ssh exe.dev down" in
+	// observability/dashboards.mts.
+	sshUp := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "rummy_ssh_up",
+		Help: "Whether exe.dev:22 is reachable and presenting the expected SSH host key (1=up, 0=down).",
+	})
+	sshLatency := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "rummy_ssh_latency_seconds",
+		Help: "Latency of the SSH host key check to exe.dev.",
+	})
+	sshLastCheck := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "rummy_ssh_last_check_timestamp_seconds",
+		Help: "Unix timestamp of the last SSH check.",
+	})
+
+	registry.MustRegister(blogUp, blogCurlLatency, blogTotalLatency, blogGitSHA, checksTotal, lastCheckTime, certCanaryUp, certCanaryLatency, certCanaryLastCheck, sshUp, sshLatency, sshLastCheck)
 
 	status := &statusPage{}
 
@@ -94,6 +114,14 @@ func main() {
 		for {
 			checkCertCanary(certCanaryUp, certCanaryLatency, certCanaryLastCheck, status)
 			time.Sleep(1 * time.Hour)
+		}
+	}()
+
+	// SSH health check loop — runs every minute.
+	go func() {
+		for {
+			checkSSH(sshUp, sshLatency, sshLastCheck, status)
+			time.Sleep(1 * time.Minute)
 		}
 	}()
 
@@ -242,6 +270,7 @@ type statusPage struct {
 	mu          sync.Mutex
 	hosts       map[string]hostStatus
 	certCanary  certCanaryStatus
+	sshCheck    sshCheckStatus
 	lastCheckAt time.Time
 }
 
@@ -264,9 +293,18 @@ type certCanaryStatus struct {
 	Error     string
 }
 
+type sshCheckStatus struct {
+	Host      string
+	Up        bool
+	Latency   float64 // seconds
+	CheckedAt time.Time
+	Error     string
+}
+
 type statusData struct {
 	Hosts      []hostStatus
 	CertCanary certCanaryStatus
+	SSHCheck   sshCheckStatus
 	LastCheck  time.Time
 	Now        time.Time
 }
@@ -284,6 +322,12 @@ func (s *statusPage) setCertCanary(cs certCanaryStatus) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.certCanary = cs
+}
+
+func (s *statusPage) setSSHCheck(ss sshCheckStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sshCheck = ss
 }
 
 func (s *statusPage) setLastCheck(t time.Time) {
@@ -308,6 +352,7 @@ func (s *statusPage) snapshot() statusData {
 	return statusData{
 		Hosts:      hosts,
 		CertCanary: s.certCanary,
+		SSHCheck:   s.sshCheck,
 		LastCheck:  s.lastCheckAt,
 		Now:        time.Now(),
 	}
@@ -361,6 +406,17 @@ var indexTmpl = template.Must(template.New("index").Funcs(template.FuncMap{
   <td>{{ago .CheckedAt}}</td>
 </tr>
 {{end}}
+</table>
+
+<h2>SSH Health Check</h2>
+<table>
+<tr><th>Host</th><th>Status</th><th>Latency</th><th>Checked</th></tr>
+<tr>
+  <td><code>{{.SSHCheck.Host}}</code></td>
+  <td>{{if .SSHCheck.Up}}<span class="up">UP</span>{{else}}<span class="down">DOWN{{if .SSHCheck.Error}} — {{.SSHCheck.Error}}{{end}}</span>{{end}}</td>
+  <td>{{if .SSHCheck.Up}}{{ms .SSHCheck.Latency}}{{else}}—{{end}}</td>
+  <td>{{ago .SSHCheck.CheckedAt}}</td>
+</tr>
 </table>
 
 <h2>ACME Cert Issuance Canary</h2>
@@ -491,6 +547,97 @@ func checkCertCanary(up, latencyGauge, lastCheck prometheus.Gauge, sp *statusPag
 	latencyGauge.Set(elapsed.Seconds())
 	lastCheck.SetToCurrentTime()
 	sp.setCertCanary(certCanaryStatus{Domain: domain, Up: true, Latency: elapsed.Seconds(), CheckedAt: time.Now()})
+}
+
+// checkSSH connects to exe.dev:22, performs an SSH handshake, and verifies
+// the host presents the expected RSA public key. This is an ssh-keyscan
+// equivalent that alerts if the SSH endpoint goes down or the key changes.
+func checkSSH(up, latencyGauge, lastCheck prometheus.Gauge, sp *statusPage) {
+	const host = "exe.dev:22"
+
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", host, 10*time.Second)
+	if err != nil {
+		elapsed := time.Since(start)
+		log.Printf("ssh check %s: FAIL dial: %v", host, err)
+		up.Set(0)
+		lastCheck.SetToCurrentTime()
+		sp.setSSHCheck(sshCheckStatus{Host: host, Up: false, Latency: elapsed.Seconds(), CheckedAt: time.Now(), Error: err.Error()})
+		return
+	}
+
+	sshConn, _, _, err := ssh.NewClientConn(conn, host, &ssh.ClientConfig{
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			if !sshHostKeyMatchesExeDev(key) {
+				return fmt.Errorf("ssh: host key mismatch")
+			}
+			return nil
+		},
+		Timeout: 10 * time.Second,
+	})
+	elapsed := time.Since(start)
+	if sshConn != nil {
+		sshConn.Close()
+	} else {
+		conn.Close()
+	}
+	// We only care that the SSH handshake completed and the host key matched.
+	// Authentication failure is expected (we don't send credentials) and means
+	// the server is up and presenting the correct key.
+	if err != nil && !strings.Contains(err.Error(), "unable to authenticate") {
+		log.Printf("ssh check %s: FAIL handshake: %v", host, err)
+		up.Set(0)
+		lastCheck.SetToCurrentTime()
+		sp.setSSHCheck(sshCheckStatus{Host: host, Up: false, Latency: elapsed.Seconds(), CheckedAt: time.Now(), Error: err.Error()})
+		return
+	}
+
+	log.Printf("ssh check %s: OK in %s", host, elapsed)
+	up.Set(1)
+	latencyGauge.Set(elapsed.Seconds())
+	lastCheck.SetToCurrentTime()
+	sp.setSSHCheck(sshCheckStatus{Host: host, Up: true, Latency: elapsed.Seconds(), CheckedAt: time.Now()})
+}
+
+// sshHostKeyMatchesExeDev checks whether the given SSH public key matches the
+// expected exe.dev RSA host key. Handles ssh-rsa, rsa-sha2-256, rsa-sha2-512
+// algorithm names and ssh.Certificate wrappers — all of which present the same
+// underlying RSA key.
+func sshHostKeyMatchesExeDev(key ssh.PublicKey) bool {
+	// If it's a certificate, extract the underlying key.
+	if cert, ok := key.(*ssh.Certificate); ok {
+		key = cert.Key
+	}
+	// Extract the crypto public key for comparison.
+	cpk, ok := key.(ssh.CryptoPublicKey)
+	if !ok {
+		return false
+	}
+	got, ok := cpk.CryptoPublicKey().(*rsa.PublicKey)
+	if !ok {
+		return false
+	}
+	want := exeDevSSHHostKey.(ssh.CryptoPublicKey).CryptoPublicKey().(*rsa.PublicKey)
+	return got.Equal(want)
+}
+
+// exeDevSSHHostKey is the expected RSA host key for exe.dev:22.
+// Obtained via: ssh-keyscan exe.dev
+var exeDevSSHHostKey = mustParseRSAPublicKey(
+	// ssh-rsa public key base64
+	"AAAAB3NzaC1yc2EAAAADAQABAAABAQDEKtEcRW8OBtro5B/MG+EaisD+ZVwwHFa5m7M8wFwBlMmPJJssY+1aGBRW3b9InAeCnTU2Kt7gazqbg/9od1KnK6x5piQNVQZ4C/lrjsC2ScBrOydnw9ry9G2+voFCAk+dQGabIrIT6gqqDJNOqxgFiG/lA3Xx6KwpfwI2BH5f3ab2fHCR2BGAC5jlB2RJXPgly80hMxYEHqexhJxYRwC+deeLrQSG795we9rSzPmdz58t9+9jLTKkyyqWKe/hmBvty1AYrEmRsefu6/TUrIGi/UWJfa+RBIQtFgWqN6xT1F6rRwELeVOfwwr5tZbsmgWY5frZU3EOtVWcF7Ve3gfL",
+)
+
+func mustParseRSAPublicKey(b64 string) ssh.PublicKey {
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		panic(fmt.Sprintf("decode ssh host key base64: %v", err))
+	}
+	key, err := ssh.ParsePublicKey(data)
+	if err != nil {
+		panic(fmt.Sprintf("parse ssh host key: %v", err))
+	}
+	return key
 }
 
 var gitSHARe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
