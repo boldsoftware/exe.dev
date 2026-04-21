@@ -83,7 +83,9 @@
                 <div class="billing-plan-info">
                   <div class="billing-plan-name-row">
                     <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan</h3>
+                    <!-- TODO: uncomment when billing status states are implemented
                     <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
+                    -->
                     <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
                     <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
                   </div>
@@ -105,11 +107,12 @@
                 <span class="billing-plan-include-item">{{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></span>
               </div>
 
-              <!-- Upsell -->
+              <!-- Upsell (commented out until stripe tier prices are configured)
               <div v-if="data.planCapacity && data.planCapacity.nextTier" class="billing-upsell">
                 <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
                 <a href="/billing/update?source=profile" class="billing-upsell-link">Upgrade</a>
               </div>
+              -->
             </div>
 
             <!-- Payment Section -->
@@ -1533,18 +1536,18 @@ async function toggleNewsletter(event: Event) {
 .payment-method-callout {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 .pm-left {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
   min-width: 0;
 }
 .pm-icon-img {
-  width: 40px;
-  height: 26px;
+  width: 36px;
+  height: 24px;
   object-fit: contain;
   border-radius: 4px;
   flex-shrink: 0;
