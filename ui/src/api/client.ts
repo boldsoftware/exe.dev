@@ -233,6 +233,13 @@ export interface PlanCapacity {
   defaultDiskGB: number
   maxDiskGB: number
   bandwidthGB: number
+  tierName: string
+  poolSize: string
+  monthlyPriceCents: number
+  nextTier?: {
+    poolSize: string
+    monthlyPriceCents: number
+  }
 }
 
 export interface ProfileData {
