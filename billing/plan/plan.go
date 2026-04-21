@@ -253,7 +253,13 @@ var plans = map[Category]Plan{
 		MonthlyLLMCreditUSD: 500,
 		DefaultTier:         "vip:default:monthly:20260601",
 		Entitlements: map[Entitlement]bool{
-			All: true,
+			LLMUse:         true,
+			CreditPurchase: true,
+			InviteRequest:  true,
+			TeamCreate:     true,
+			VMCreate:       true,
+			VMRun:          true,
+			DiskResize:     true,
 		},
 	},
 	CategoryEnterprise: {

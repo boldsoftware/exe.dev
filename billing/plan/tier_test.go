@@ -242,12 +242,11 @@ func TestTierGrants(t *testing.T) {
 	}
 
 	vip := mustgetTierByID(t, "vip:default:monthly:20260601")
-	// VIP plan has All wildcard — tierGrants should respect it.
 	if !tierGrants(vip, VMCreate) {
-		t.Error("vip:default should grant VMCreate via wildcard")
+		t.Error("vip:default should grant VMCreate")
 	}
-	if !tierGrants(vip, Entitlement{"anything:new", "New"}) {
-		t.Error("vip:default should grant unknown entitlements via wildcard")
+	if tierGrants(vip, Entitlement{"anything:new", "New"}) {
+		t.Error("vip:default should not grant unknown entitlements")
 	}
 }
 
@@ -270,9 +269,9 @@ func TestGrants(t *testing.T) {
 		t.Error("bare 'individual' should grant VMCreate")
 	}
 
-	// VIP wildcard
-	if !Grants("vip:default:monthly:20260601", Entitlement{"anything:new", "New"}) {
-		t.Error("vip should grant unknown entitlements via wildcard")
+	// VIP explicit entitlements (no wildcard)
+	if Grants("vip:default:monthly:20260601", Entitlement{"anything:new", "New"}) {
+		t.Error("vip should not grant unknown entitlements")
 	}
 
 	// Basic plan should not grant VMCreate

@@ -77,7 +77,7 @@ func TestAllEntitlements(t *testing.T) {
 // Plans with MaxDisk > 0 should have it; basic and restricted should not.
 func TestDiskResizeEntitlementByPlan(t *testing.T) {
 	wantDiskResize := map[Category]bool{
-		CategoryVIP:           true, // via All wildcard
+		CategoryVIP:           true,
 		CategoryEnterprise:    true,
 		CategoryTeam:          true,
 		CategoryIndividual:    true,
@@ -105,7 +105,7 @@ func TestDiskResizeEntitlementByPlan(t *testing.T) {
 // Individual, Trial, and Basic can access the billing/update flow; others cannot.
 func TestBillingSelfServeEntitlementByPlan(t *testing.T) {
 	wantSelfServe := map[Category]bool{
-		CategoryVIP:           true, // via All wildcard
+		CategoryVIP:           false,
 		CategoryEnterprise:    false,
 		CategoryTeam:          false,
 		CategoryIndividual:    true,
