@@ -709,12 +709,10 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				PoolSize:          poolSize,
 				MonthlyPriceCents: tier.MonthlyPriceCents,
 			}
-			if s.env.WebHost != "exe.dev" {
-				if next := plan.NextTier(planRow.PlanID); next != nil {
-					planCapacity.NextTier = &jsonNextTier{
-						PoolSize:          formatPoolSize(next.Quotas.MaxCPUs, next.Quotas.MaxMemory/(1024*1024*1024)),
-						MonthlyPriceCents: next.MonthlyPriceCents,
-					}
+			if next := plan.NextTier(planRow.PlanID); next != nil {
+				planCapacity.NextTier = &jsonNextTier{
+					PoolSize:          formatPoolSize(next.Quotas.MaxCPUs, next.Quotas.MaxMemory/(1024*1024*1024)),
+					MonthlyPriceCents: next.MonthlyPriceCents,
 				}
 			}
 		}
