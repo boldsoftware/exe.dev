@@ -371,10 +371,10 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 {{if .Quotas}}
 <h3 style="margin-top:15px;">Quotas</h3>
 <table class="info">
-<thead><tr><th>Quota</th><th>User Limits</th><th>Plan Quotas</th><th>Cgroup</th><th>Effective</th></tr></thead>
+<thead><tr><th>Quota</th><th>Stage</th><th>User Limits</th><th>Plan Quotas</th><th>Cgroup</th><th>Effective</th></tr></thead>
 <tbody>
 {{range .Quotas}}
-<tr><td>{{.Name}}</td><td>{{.UserLimits}}</td><td>{{.PlanQuota}}</td><td>{{.Cgroup}}</td><td><strong>{{.Effective}}</strong></td></tr>
+<tr><td>{{.Name}}</td><td>{{.Stage}}</td><td>{{.UserLimits}}</td><td>{{.PlanQuota}}</td><td>{{.Cgroup}}</td><td><strong>{{.Effective}}</strong></td></tr>
 {{end}}
 </tbody>
 </table>

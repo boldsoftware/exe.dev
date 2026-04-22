@@ -5653,6 +5653,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	}
 	type quotaRow struct {
 		Name       string
+		Stage      string
 		UserLimits string
 		PlanQuota  string
 		Cgroup     string
@@ -5934,10 +5935,10 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxBoxes = limits.MaxBoxes
 			}
 			effMaxBoxes := GetMaxBoxes(limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", planMaxUserVMs), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", planMaxUserVMs), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
 			// Max VMs (team)
 			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", "\u2014", fmt.Sprintf("%d", planMaxTeamVMs), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", fmt.Sprintf("%d", planMaxTeamVMs), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
 			// Max Disk
 			planMaxDisk := planTier.Quotas.MaxDisk
 			userMaxDisk := uint64(0)
@@ -5945,11 +5946,11 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxDisk = limits.MaxDisk
 			}
 			effMaxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, s.env.DefaultDisk)
-			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(userMaxDisk), formatBytes(planMaxDisk), "\u2014", formatBytes(effMaxDisk)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(s.env.DefaultDisk), formatBytes(userMaxDisk), formatBytes(planMaxDisk), "\u2014", formatBytes(effMaxDisk)})
 			// Default Disk
 			planDefaultDisk := planTier.Quotas.DefaultDisk
 			effDefaultDisk := plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)
-			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", "\u2014", formatBytes(planDefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
+			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", formatBytes(s.env.DefaultDisk), "\u2014", formatBytes(planDefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
 			// Max Memory
 			planMaxMem := planTier.Quotas.MaxMemory
 			userMaxMem := uint64(0)
@@ -5957,7 +5958,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxMem = limits.MaxMemory
 			}
 			effMaxMem := GetMaxMemory(s.env, limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(userMaxMem), formatBytes(planMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), formatBytes(planMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
 			// Max CPUs
 			planMaxCPUs := planTier.Quotas.MaxCPUs
 			userMaxCPUs := uint64(0)
@@ -5965,7 +5966,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxCPUs = limits.MaxCPUs
 			}
 			effMaxCPUs := GetMaxCPUs(s.env, limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
 		}
 	}
 
