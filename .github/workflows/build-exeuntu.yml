@@ -11,10 +11,6 @@ on:
         description: "Commit subject line"
         required: false
         type: string
-      shelley_version:
-        description: "Shelley version tag (e.g. v0.89.914374232). Leave empty to match shelley/ tree hash."
-        required: false
-        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -28,10 +24,8 @@ jobs:
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
-            shelley_asset: shelley_linux_amd64
           - platform: linux/arm64
             runner: linux-arm64-ubuntu-2404-8-core
-            shelley_asset: shelley_linux_arm64
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -60,22 +54,6 @@ jobs:
           ./bin/retry.sh sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
           sudo systemctl start docker
           sudo chmod 666 /var/run/docker.sock
-
-      - name: Find matching Shelley release
-        id: find-release
-        run: |
-          if [ -n "${{ inputs.shelley_version }}" ]; then
-            VERSION=$(./scripts/find-shelley-release.py --version="${{ inputs.shelley_version }}")
-          else
-            TREE_HASH=$(git rev-parse HEAD:shelley)
-            VERSION=$(./scripts/find-shelley-release.py "$TREE_HASH")
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Download Shelley
-        run: |
-          ./scripts/download-shelley.sh "${{ steps.find-release.outputs.version }}" "${{ matrix.shelley_asset }}" exeuntu/shelley
-          echo "SHELLEY_VERSION=${{ steps.find-release.outputs.version }}" >> $GITHUB_ENV
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
