@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/netip"
-	"strings"
 
 	"exe.dev/email"
 	"exe.dev/exeweb"
@@ -282,13 +281,7 @@ func (ged *grpcExeproxData) TopLevelCert(ctx context.Context, hello *tls.ClientH
 		return nil, err
 	}
 	if resp.Error != "" {
-		if strings.Contains(resp.Error, "wildcard cname") {
-			// These happen too often to issue an error.
-			ged.lg.WarnContext(ctx, "TopLevelCert error", "host", hello.ServerName, "error", err)
-		} else {
-			ged.lg.ErrorContext(ctx, "TopLevelCert error", "host", hello.ServerName, "error", err)
-		}
-
+		ged.lg.ErrorContext(ctx, "TopLevelCert error", "host", hello.ServerName, "error", err)
 		return nil, errors.New(resp.Error)
 	}
 
