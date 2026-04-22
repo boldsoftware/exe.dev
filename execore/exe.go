@@ -544,7 +544,14 @@ func (ec *exeletClient) countInstances(ctx context.Context) (int, error) {
 // updateUsage updates the current exelet machine usage.
 // This does not return an error; it just logs it
 // and doesn't update the usage.
+//
+// Each RPC is bounded by updateUsageRPCTimeout so that an unreachable
+// exelet cannot stall the caller (e.g., the initial heartbeat that gates
+// exed startup). With grpc.WaitForReady(true) on the client, an RPC to
+// an unresolvable address would otherwise block indefinitely.
 func (ec *exeletClient) updateUsage(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, updateUsageRPCTimeout)
+	defer cancel()
 	usage, err := ec.client.GetMachineUsage(ctx, &resourceapi.GetMachineUsageRequest{})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to update exelet machine usage", "addr", ec.addr, "error", err)
@@ -3159,12 +3166,18 @@ func (s *Server) start() error {
 		}
 	}()
 
-	// Sync instances with exelet hosts before accepting connections
+	// Sync instances with exelet hosts in the background. This used to
+	// block startup, but listInstancesWithRetry has a 3-minute deadline
+	// per host and will retry on unreachable exelets; that would turn a
+	// single down exelet into an exed that refuses to boot. Running in
+	// the background lets exed come up immediately; the sync converges
+	// per-host as each exelet becomes reachable.
 	if len(s.exeletClients) > 0 {
-		if err := s.syncInstancesWithHosts(ctx); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to sync instances with exelet hosts", "error", err)
-			// Continue anyway - we can sync later
-		}
+		go func() {
+			if err := s.syncInstancesWithHosts(ctx); err != nil {
+				s.slog().ErrorContext(ctx, "Failed to sync instances with exelet hosts", "error", err)
+			}
+		}()
 	}
 
 	// Start tag resolver for keeping image tag resolutions fresh
@@ -4502,6 +4515,10 @@ func (s *Server) selectExeletClient(ctx context.Context, userID string) (*exelet
 // updateUsageConcurrency is the number of exelets for which
 // to update usage concurrently.
 const updateUsageConcurrency = 3
+
+// updateUsageRPCTimeout bounds individual GetMachineUsage /
+// ListInstances calls inside updateUsage.
+const updateUsageRPCTimeout = 10 * time.Second
 
 // updateAllExeletUsage updates usage information for all exelets in parallel.
 func (s *Server) updateAllExeletUsage(ctx context.Context) {

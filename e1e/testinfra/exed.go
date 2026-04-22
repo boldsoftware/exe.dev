@@ -47,6 +47,8 @@ type ExedInstance struct {
 	exedLoggerDone chan bool // closed when logging goroutine done
 
 	onRestart func(*ExedInstance) // called after a successful restart
+
+	stopped bool // true once Stop has run; makes Stop idempotent across Restart
 }
 
 // guidRegex picks out exed logs that are sent on the
@@ -510,7 +512,15 @@ func addExedEnvKeys(env []string) []string {
 // This does not return an error; errors are just logged.
 // If midTest is true we are in the middle of a test
 // and should not remove the database.
+//
+// Stop is idempotent: calling it twice in a row (e.g. a test that stops
+// exed manually, then calls Restart which also calls Stop) is a no-op
+// on the second call.
 func (ei *ExedInstance) Stop(ctx context.Context, testRunID string, midTest bool) {
+	if ei.stopped {
+		return
+	}
+	ei.stopped = true
 	if !midTest {
 		if err := ei.checkBoxesCleanedUp(ctx, testRunID); err != nil {
 			slog.ErrorContext(ctx, "boxes not cleaned up", "error", err)
@@ -613,6 +623,10 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	}
 
 	ei.Stop(ctx, testRunID, midTest)
+	// Keep ei.stopped=true until the new exed is fully up. If startup
+	// fails below we return with the instance still marked stopped, so
+	// a later Stop/Restart won't double-close the old Errors/GUIDLog
+	// channels we closed above.
 
 	restartArgs := []string{
 		"-db=" + ei.dbPath,
@@ -694,6 +708,7 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	ei.Errors = result.Errors
 	ei.GUIDLog = result.GUIDLog
 	ei.exedLoggerDone = result.LoggerDone
+	ei.stopped = false
 
 	if ei.onRestart != nil {
 		ei.onRestart(ei)
