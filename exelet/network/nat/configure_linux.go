@@ -899,7 +899,18 @@ func sourceIPFilterArgs(tapName, ip string) []string {
 }
 
 // applySourceIPFilter installs the per-TAP source-IP drop rule. Idempotent.
+//
+// First flushes any stale rules for this tap: when a VM is shut down from
+// inside (not via StopInstance), exelet's DeleteInterface never runs, so
+// the tap survives with its old filter rule. The next StartInstance
+// reuses the same tap (createTapInterface is idempotent) but allocates a
+// new IP, and without this cleanup the stale rule drops the new VM's
+// traffic alongside the new rule.
 func (n *NAT) applySourceIPFilter(ctx context.Context, tapName, ip string) error {
+	if err := n.flushSourceIPFilter(ctx, tapName); err != nil {
+		return err
+	}
+
 	rule := sourceIPFilterArgs(tapName, ip)
 
 	checkArgs := append([]string{"-t", "raw", "-C", "PREROUTING"}, rule...)
@@ -912,6 +923,52 @@ func (n *NAT) applySourceIPFilter(ctx context.Context, tapName, ip string) error
 	insertArgs := append([]string{"-t", "raw", "-I", "PREROUTING", "1"}, rule...)
 	if err := exec.CommandContext(ctx, "iptables", insertArgs...).Run(); err != nil {
 		return fmt.Errorf("failed to add source-IP filter rule for tap %s ip %s: %w", tapName, ip, err)
+	}
+	return nil
+}
+
+// flushSourceIPFilter removes every source-IP DROP rule targeting the given
+// tap, regardless of source IP. Used before installing a fresh rule so a
+// stale rule from a previous instance on the same tap cannot black-hole
+// the new VM.
+func (n *NAT) flushSourceIPFilter(ctx context.Context, tapName string) error {
+	if tapName == "" {
+		return nil
+	}
+	// iptables -S shows rules in their canonical insert form; parse them
+	// back out as -D args. Bounded loop in case of concurrent modifications.
+	for i := 0; i < 32; i++ {
+		out, err := exec.CommandContext(ctx, "iptables", "-t", "raw", "-S", "PREROUTING").Output()
+		if err != nil {
+			return fmt.Errorf("list raw/PREROUTING: %w", err)
+		}
+		var stale []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if !strings.Contains(line, "--physdev-in "+tapName+" ") && !strings.HasSuffix(line, "--physdev-in "+tapName) {
+				continue
+			}
+			if !strings.HasSuffix(line, "-j DROP") {
+				continue
+			}
+			if !strings.HasPrefix(line, "-A PREROUTING ") {
+				continue
+			}
+			stale = append(stale, line)
+		}
+		if len(stale) == 0 {
+			return nil
+		}
+		for _, line := range stale {
+			rest := strings.TrimPrefix(line, "-A PREROUTING ")
+			args := append([]string{"-t", "raw", "-D", "PREROUTING"}, strings.Fields(rest)...)
+			if err := exec.CommandContext(ctx, "iptables", args...).Run(); err != nil {
+				n.log.DebugContext(ctx, "failed to delete stale source-IP filter rule",
+					"tap", tapName, "rule", line, "error", err)
+			} else {
+				n.log.DebugContext(ctx, "removed stale source-IP filter rule",
+					"tap", tapName, "rule", line)
+			}
+		}
 	}
 	return nil
 }
