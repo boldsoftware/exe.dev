@@ -83,16 +83,15 @@ class ClickHouseClient:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return json.loads(resp.read())
         except urllib.error.HTTPError as exc:
-            # ClickHouse returns error details in the response body
+            # ClickHouse returns error details in the response body; log and
+            # re-raise so callers can inspect the original HTTPError.
             error_body = ""
             try:
                 error_body = exc.read().decode("utf-8", errors="replace")[:500]
             except Exception:
                 pass
             log.error("ClickHouse HTTP %d: %s", exc.code, error_body)
-            raise RuntimeError(
-                f"ClickHouse error: {error_body}"
-            ) from exc
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -111,17 +110,14 @@ class ClickHouseSource(ProxyObject):
     def __init__(self, client: ClickHouseClient, database: str | None = None):
         self._client = client
         self._database = database
-
-        doc = "ClickHouse analytics database. Write standard ClickHouse SQL."
-
-        schema = self._fetch_schema_summary()
-        if schema:
-            doc += f"\n\nTable schemas:\n{schema}"
+        # Schema doc is fetched lazily on first _proxy_doc read so construction
+        # is network-free and the sandbox pays the cost only if it asks.
+        self._cached_proxy_doc: str | None = None
 
         super().__init__(
             proxy_id="clickhouse",
             type_name="ClickHouseSource",
-            doc=doc,
+            doc="",  # computed lazily; see _proxy_doc property below
             dir_attrs=["databases", "tables", "query", "describe_table"],
             attr_docs={
                 "databases": "List of database names on the server (excludes system databases).",
@@ -146,6 +142,20 @@ class ClickHouseSource(ProxyObject):
         self._databases_fetched_at = 0.0
         self._tables = None
         self._tables_fetched_at = 0.0
+
+    @property  # type: ignore[override]
+    def _proxy_doc(self) -> str:
+        if self._cached_proxy_doc is None:
+            base = "ClickHouse analytics database. Write standard ClickHouse SQL."
+            schema = self._fetch_schema_summary()
+            self._cached_proxy_doc = base + (f"\n\nTable schemas:\n{schema}" if schema else "")
+        return self._cached_proxy_doc
+
+    @_proxy_doc.setter
+    def _proxy_doc(self, value: str) -> None:
+        # super().__init__() writes the placeholder doc here; we compute lazily,
+        # so ignore all writes.
+        pass
 
     def _fetch_schema_summary(self) -> str:
         """Fetch column names and types for all non-system tables (one query)."""
