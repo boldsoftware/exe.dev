@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"regexp"
@@ -262,5 +263,48 @@ VALUES (?,?,?,?,?,?,?,?)`,
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	// Best-effort: post the result as an internal comment on the Missive
+	// conversation with a link back to the full result page. Failures are
+	// logged but don't break publishing (the UI is still the source of truth).
+	if conversationID != "" {
+		go postResultComment(context.WithoutCancel(ctx), id, conversationID, output)
+	}
+	return id, nil
+}
+
+// publicBaseURL is the externally-reachable URL for this bot's web UI. Used
+// to build links in Missive comments. Override with EXE_SUPPORT_BOT_BASE_URL.
+func publicBaseURL() string {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv("EXE_SUPPORT_BOT_BASE_URL")), "/"); v != "" {
+		return v
+	}
+	return "https://exe-support-bot.exe.xyz"
+}
+
+func postResultComment(ctx context.Context, resultID int64, conversationID, output string) {
+	cfg, ok := resolveMissive()
+	if !ok {
+		slog.WarnContext(ctx, "publish_result: no missive config; skipping comment", "result", resultID)
+		return
+	}
+	link := fmt.Sprintf("%s/result/%d", publicBaseURL(), resultID)
+	md := strings.TrimSpace(output) + "\n\n---\n[Full agent run →](" + link + ")"
+	// Notification body is plain text; keep it short.
+	notifBody := truncate(strings.TrimSpace(output), 140)
+	if notifBody == "" {
+		notifBody = link
+	}
+	client := newMissiveClient(cfg)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	postID, err := client.postComment(ctx, conversationID, md, "exe-support-bot", notifBody)
+	if err != nil {
+		slog.WarnContext(ctx, "publish_result: missive comment failed", "result", resultID, "conv", conversationID, "err", err)
+		return
+	}
+	slog.InfoContext(ctx, "publish_result: posted missive comment", "result", resultID, "conv", conversationID, "post", postID)
 }

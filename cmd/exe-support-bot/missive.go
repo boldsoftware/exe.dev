@@ -67,6 +67,85 @@ func newMissiveClient(cfg missiveConfig) *missiveClient {
 	}
 }
 
+// post sends a JSON POST body to Missive. Same retry/429 handling as get.
+func (c *missiveClient) post(ctx context.Context, path string, body, out any) error {
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	u := c.cfg.Base + path
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(buf)))
+		if err != nil {
+			return err
+		}
+		if c.cfg.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		resp, err := c.http.Do(req)
+		if err != nil {
+			lastErr = err
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+			continue
+		}
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == 429 {
+			return fmt.Errorf("%w: POST %s HTTP 429", errRateLimited, path)
+		}
+		if resp.StatusCode >= 500 {
+			retry := 2
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if n, err := strconv.Atoi(ra); err == nil {
+					retry = n
+				}
+			}
+			lastErr = fmt.Errorf("missive POST %s: HTTP %d", path, resp.StatusCode)
+			time.Sleep(time.Duration(retry) * time.Second)
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			return fmt.Errorf("missive POST %s: HTTP %d: %s", path, resp.StatusCode, truncate(string(respBody), 400))
+		}
+		if out == nil {
+			return nil
+		}
+		return json.Unmarshal(respBody, out)
+	}
+	if lastErr == nil {
+		lastErr = errors.New("missive: exhausted retries")
+	}
+	return lastErr
+}
+
+// postComment creates a Missive "post" (internal comment/note) on the given
+// conversation. markdown is the rendered body; notification is what shows in
+// the team feed. Returns the new post id.
+func (c *missiveClient) postComment(ctx context.Context, conversationID, markdown, notificationTitle, notificationBody string) (string, error) {
+	body := map[string]any{
+		"posts": map[string]any{
+			"conversation": conversationID,
+			"markdown":     markdown,
+			"notification": map[string]string{
+				"title": notificationTitle,
+				"body":  notificationBody,
+			},
+		},
+	}
+	var resp struct {
+		Posts struct {
+			ID string `json:"id"`
+		} `json:"posts"`
+	}
+	if err := c.post(ctx, "/posts", body, &resp); err != nil {
+		return "", err
+	}
+	return resp.Posts.ID, nil
+}
+
 func (c *missiveClient) get(ctx context.Context, path string, params url.Values, out any) error {
 	u := c.cfg.Base + path
 	if len(params) > 0 {
