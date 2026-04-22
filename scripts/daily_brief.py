@@ -289,8 +289,8 @@ def send_alert(subject, body):
 
 
 # ---------------------------------------------------------------------------
-# Self-deploy: fast-forward to origin/main between cycles so a merge is
-# enough to ship. On pull failure, email an alert once per process lifetime
+# Self-deploy: reset --hard to origin/main between cycles so a merge is
+# enough to ship. On reset failure, email an alert once per process lifetime
 # and keep running on the old code rather than crash-looping.
 # ---------------------------------------------------------------------------
 
@@ -307,10 +307,10 @@ def _git_rev_parse(rev, *, short=False):
 
 
 def _autodeploy_check():
-    """Return True iff origin/main advanced and we just fast-forwarded.
+    """Return True iff origin/main advanced and we just reset to it.
 
     The caller should exit so systemd restarts us with fresh code. On
-    pull failure, email a one-shot alert and return False.
+    reset failure, email a one-shot alert and return False.
     """
     global _autodeploy_alert_sent
 
@@ -327,20 +327,24 @@ def _autodeploy_check():
     if not local or not remote or local == remote:
         return False
 
-    pull = subprocess.run(
-        ["git", "pull", "--ff-only", "--quiet", "origin", "main"],
+    # Use reset --hard rather than pull --ff-only: the worktree may be
+    # shared with another daemon racing its own autodeploy, and concurrent
+    # git pulls can fail with "Cannot fast-forward to multiple branches."
+    # A pointer move to the already-fetched origin/main is idempotent.
+    reset = subprocess.run(
+        ["git", "reset", "--hard", "--quiet", "origin/main"],
         capture_output=True, text=True, timeout=60,
     )
-    if pull.returncode == 0:
+    if reset.returncode == 0:
         log(f"self-deployed {local[:12]} → {(_git_rev_parse('HEAD') or remote)[:12]}")
         return True
 
     if not _autodeploy_alert_sent:
         _autodeploy_alert_sent = True
-        err = (pull.stderr.strip() or pull.stdout.strip()) or "no output"
+        err = (reset.stderr.strip() or reset.stdout.strip()) or "no output"
         send_alert(
             "daily_brief autodeploy stuck",
-            f"scripts/daily_brief.py cannot fast-forward to {remote[:12]}.\n"
+            f"scripts/daily_brief.py cannot reset to {remote[:12]}.\n"
             f"Running on stale code at {local[:12]} on {socket.gethostname()}.\n"
             f"Fix the worktree on the host.\n\n{err}",
         )
