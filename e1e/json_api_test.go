@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/e1e/testinfra"
+	"exe.dev/stage"
 )
 
 // TestExeDevAPI tests a variety of exe.dev commands/repls.
@@ -157,6 +158,15 @@ func TestExeDevAPI(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339, vm0.CreatedAt); err != nil {
 		t.Errorf("expected created_at to be valid RFC3339, got %q: %v", vm0.CreatedAt, err)
 	}
+	if want := stage.Test().DefaultDisk; vm0.DiskCapacityBytes != want {
+		t.Errorf("expected disk_capacity_bytes %d in ls output, got %d", want, vm0.DiskCapacityBytes)
+	}
+	if want := stage.Test().DefaultMemory; vm0.MemoryCapacityBytes != want {
+		t.Errorf("expected memory_capacity_bytes %d in ls output, got %d", want, vm0.MemoryCapacityBytes)
+	}
+	if want := stage.Test().DefaultCPUs; vm0.AllocatedCPUs != want {
+		t.Errorf("expected allocated_cpus %d in ls output, got %d", want, vm0.AllocatedCPUs)
+	}
 	// TODO: check image name
 
 	t.Run("share_show_no_null", func(t *testing.T) {
@@ -266,13 +276,16 @@ type newBoxOutput struct {
 }
 
 type vmListEntry struct {
-	VMName     string `json:"vm_name"`
-	SSHDest    string `json:"ssh_dest"`
-	Status     string `json:"status"`
-	Region     string `json:"region"`
-	HTTPS      string `json:"https_url"`
-	ShelleyURL string `json:"shelley_url"`
-	CreatedAt  string `json:"created_at"`
+	VMName              string `json:"vm_name"`
+	SSHDest             string `json:"ssh_dest"`
+	Status              string `json:"status"`
+	Region              string `json:"region"`
+	HTTPS               string `json:"https_url"`
+	ShelleyURL          string `json:"shelley_url"`
+	CreatedAt           string `json:"created_at"`
+	DiskCapacityBytes   uint64 `json:"disk_capacity_bytes"`
+	MemoryCapacityBytes uint64 `json:"memory_capacity_bytes"`
+	AllocatedCPUs       uint64 `json:"allocated_cpus"`
 }
 
 type vmListOutput struct {

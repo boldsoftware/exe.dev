@@ -849,6 +849,15 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if vm.CreatedAt != nil {
 				box["created_at"] = vm.CreatedAt.UTC().Format(time.RFC3339)
 			}
+			if vm.DiskCapacityBytes > 0 {
+				box["disk_capacity_bytes"] = vm.DiskCapacityBytes
+			}
+			if vm.MemoryCapacityBytes > 0 {
+				box["memory_capacity_bytes"] = vm.MemoryCapacityBytes
+			}
+			if vm.AllocatedCpus != nil {
+				box["allocated_cpus"] = *vm.AllocatedCpus
+			}
 			vmList = append(vmList, box)
 		}
 
