@@ -15,7 +15,6 @@ import (
 	"exe.dev/billing/plan"
 	"exe.dev/boxname"
 	"exe.dev/container"
-	"exe.dev/errorz"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -678,7 +677,7 @@ done:
 		}
 		// Check if this is a gRPC user error (e.g., invalid image name)
 		// and convert it to a CommandClientError for proper display.
-		if gs, ok := errorz.AsType[grpcStatuser](createErr); ok {
+		if gs, ok := errors.AsType[grpcStatuser](createErr); ok {
 			switch gs.GRPCStatus().Code() {
 			case codes.InvalidArgument, codes.FailedPrecondition:
 				return cc.Errorf("%s", gs.GRPCStatus().Message())

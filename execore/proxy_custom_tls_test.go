@@ -3,12 +3,12 @@ package execore
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"strings"
 	"testing"
 
 	"exe.dev/cobble"
-	"exe.dev/errorz"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -53,7 +53,7 @@ func TestServerGetCertificate(t *testing.T) {
 	}
 
 	_, err = s.getCertificate(&tls.ClientHelloInfo{ServerName: "nonexistent.com"})
-	got, ok := errorz.AsType[*net.DNSError](err)
+	got, ok := errors.AsType[*net.DNSError](err)
 	if !ok {
 		t.Fatalf("expected DNSError for nonexistent.com, got: %v", err)
 	}

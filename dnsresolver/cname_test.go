@@ -2,11 +2,11 @@ package dnsresolver
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
 
-	"exe.dev/errorz"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
@@ -145,7 +145,7 @@ func TestLookupCNAMENXDOMAIN(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	dnsErr, ok := errorz.AsType[*net.DNSError](err)
+	dnsErr, ok := errors.AsType[*net.DNSError](err)
 	if !ok || !dnsErr.IsNotFound {
 		t.Fatalf("expected net.DNSError IsNotFound, got %v", err)
 	}

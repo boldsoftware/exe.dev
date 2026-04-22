@@ -96,7 +96,7 @@ func (dr *DomainResolver) ResolveCustomDomainBoxName(ctx context.Context, host s
 
 	cname, err := dr.lookupCNAME(ctx, host)
 	if err != nil {
-		if dnsErr, ok := errorz.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
+		if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 			// No CNAME found for host – treat as apex domain.
 			return dr.resolveApexDomainBoxName(ctx, host)
 		}

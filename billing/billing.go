@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"exe.dev/billing/plan"
-	"exe.dev/errorz"
 	"exe.dev/exedb"
 	"exe.dev/logging"
 	"exe.dev/sqlite"
@@ -450,17 +449,17 @@ func (m *Manager) upsertCustomer(ctx context.Context, billingID, email string) e
 }
 
 func isExists(err error) bool {
-	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	stripeErr, ok := errors.AsType[*stripe.Error](err)
 	return ok && stripeErr.Code == stripe.ErrorCodeResourceAlreadyExists
 }
 
 func isNotExists(err error) bool {
-	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	stripeErr, ok := errors.AsType[*stripe.Error](err)
 	return ok && stripeErr.Code == stripe.ErrorCodeResourceMissing
 }
 
 func isRateLimited(err error) bool {
-	stripeErr, ok := errorz.AsType[*stripe.Error](err)
+	stripeErr, ok := errors.AsType[*stripe.Error](err)
 	return ok && stripeErr.HTTPStatusCode == 429
 }
 
@@ -582,7 +581,7 @@ func (m *Manager) hasActiveSubscription(ctx context.Context, c *stripe.Client, c
 
 func withRequestID(err error) slog.Attr {
 	var requestID string
-	if stripeErr, ok := errorz.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
+	if stripeErr, ok := errors.AsType[*stripe.Error](err); ok && stripeErr.LastResponse != nil {
 		requestID = stripeErr.LastResponse.RequestID
 	}
 	return slog.String("stripe_request_id", requestID)

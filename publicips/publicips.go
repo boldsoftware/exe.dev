@@ -288,7 +288,7 @@ func isUnavailable(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	if netErr, ok := errorz.AsType[net.Error](err); ok {
+	if netErr, ok := errors.AsType[net.Error](err); ok {
 		if netErr.Timeout() {
 			return true
 		}

@@ -10,12 +10,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
-	"exe.dev/errorz"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
@@ -58,7 +58,7 @@ func LookupCNAME(ctx context.Context, host string) (string, error) {
 	if err == nil {
 		return answer, nil
 	}
-	if dnsErr, ok := errorz.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
+	if dnsErr, ok := errors.AsType[*net.DNSError](err); ok && dnsErr.IsNotFound {
 		return "", err
 	}
 	return "", err

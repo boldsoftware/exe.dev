@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -12,7 +13,6 @@ import (
 
 	"exe.dev/billing/httprr"
 	"exe.dev/billing/stripetest"
-	"exe.dev/errorz"
 	"exe.dev/exedb"
 	exesqlite "exe.dev/sqlite"
 	_ "exe.dev/sqlite/sqltest"
@@ -131,7 +131,7 @@ func (tc *testClock) Sleep(d time.Duration) {
 }
 
 func isStripeParamError(err error, param string) bool {
-	if e, ok := errorz.AsType[*stripe.Error](err); ok {
+	if e, ok := errors.AsType[*stripe.Error](err); ok {
 		return e.Param == param
 	}
 	return false
