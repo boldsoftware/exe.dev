@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/sshpool2"
+	"exe.dev/tracing"
 )
 
 // LMTPServer handles incoming emails via LMTP protocol.
@@ -224,6 +226,9 @@ func (s *lmtpSession) Data(r io.Reader) error {
 func (s *lmtpSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+	// Attach a trace ID so all log lines for this delivery share it and we can
+	// surface it to owners when we email them about a delivery failure.
+	ctx = tracing.ContextWithTraceID(ctx, tracing.GenerateTraceID())
 
 	const maxSize = 1024 * 1024 // 1MB
 
@@ -250,6 +255,7 @@ func (s *lmtpSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 		if err := deliverEmailToBox(ctx, s.backend.server.sshPool, &rcpt.box, rcpt.address, data); err != nil {
 			s.backend.server.slog().ErrorContext(ctx, "LMTP delivery failed",
 				"to", rcpt.address, "box", rcpt.box.Name, "error", err)
+			s.recordAndMaybeNotifyDeliveryFailure(ctx, &rcpt.box, err)
 			status.SetStatus(rcpt.address, &smtp.SMTPError{
 				Code:         451,
 				EnhancedCode: smtp.EnhancedCode{4, 3, 0},
@@ -258,6 +264,25 @@ func (s *lmtpSession) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 		} else {
 			s.backend.server.slog().InfoContext(ctx, "LMTP delivery succeeded", "from", s.from, "to", rcpt.address, "box", rcpt.box.Name)
 			status.SetStatus(rcpt.address, nil)
+
+			// Clear any accumulated failure rows so the notification throttle
+			// is per-incident. Without this, a box that recovers between
+			// incidents (disk full → user frees space → succeeds → disk full
+			// again days later, still within lmtpDeliveryNotifyInterval) would
+			// silently skip the second notification.
+			//
+			// Read-check first: the overwhelming majority of boxes have zero
+			// failure rows, so a blind DELETE would take a write transaction
+			// on the hot path for a no-op. HasLMTPDeliveryFailures runs under
+			// a read transaction (no write lock in WAL mode).
+			has, err := exedb.WithRxRes1(s.backend.server.db, ctx, (*exedb.Queries).HasLMTPDeliveryFailures, rcpt.box.ID)
+			if err != nil {
+				s.backend.server.slog().ErrorContext(ctx, "failed to check LMTP delivery failures", "box", rcpt.box.Name, "error", err)
+			} else if has != 0 {
+				if err := exedb.WithTx1(s.backend.server.db, ctx, (*exedb.Queries).ClearLMTPDeliveryFailures, rcpt.box.ID); err != nil {
+					s.backend.server.slog().ErrorContext(ctx, "failed to clear LMTP delivery failures", "box", rcpt.box.Name, "error", err)
+				}
+			}
 
 			// Check email count and auto-disable if over limit
 			s.checkAndEnforceEmailLimit(ctx, &rcpt.box)
@@ -356,6 +381,182 @@ func (s *lmtpSession) countMaildirEmails(ctx context.Context, box *exedb.Box) (i
 		return 0, fmt.Errorf("failed to parse email count: %w", err)
 	}
 	return count, nil
+}
+
+// lmtpDeliveryNotifyInterval is the minimum time between notification emails
+// sent to a box owner for the same (box, error class) pair.
+const lmtpDeliveryNotifyInterval = 3 * 24 * time.Hour
+
+// lmtpErrorClass categorizes LMTP delivery errors so we can group failures and
+// tailor the notification copy. The string value is also persisted.
+type lmtpErrorClass string
+
+const (
+	lmtpErrDiskFull       lmtpErrorClass = "disk_full"
+	lmtpErrMaildirMissing lmtpErrorClass = "maildir_missing"
+	lmtpErrOther          lmtpErrorClass = "other"
+)
+
+// classifyLMTPError inspects err's message for known markers and returns a
+// coarse category. Matching is case-insensitive against substrings so it
+// tolerates wrapped errors that embed remote stderr (see scpToBox).
+func classifyLMTPError(err error) lmtpErrorClass {
+	if err == nil {
+		return lmtpErrOther
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no space left on device"),
+		strings.Contains(msg, "disk full"),
+		strings.Contains(msg, "quota exceeded"):
+		return lmtpErrDiskFull
+	case strings.Contains(msg, "maildir path not configured"),
+		// The remote Maildir directory (or its "new" subdir) has been
+		// deleted after email receiving was enabled. scpToBox fails at the
+		// mv step; the destination path embedded in the wrapped cmd= includes
+		// "Maildir/new", and the stderr output contains "No such file or
+		// directory". Requiring both substrings keeps the classifier from
+		// over-matching generic path errors unrelated to the maildir.
+		strings.Contains(msg, "no such file or directory") && strings.Contains(msg, "maildir"):
+		return lmtpErrMaildirMissing
+	default:
+		return lmtpErrOther
+	}
+}
+
+// recordAndMaybeNotifyDeliveryFailure persists the failure in
+// lmtp_delivery_failures and, for user-actionable error classes, dispatches a
+// background notification if the lmtpDeliveryNotifyInterval has elapsed since
+// the last one. Only disk_full and maildir_missing are surfaced to owners;
+// other classes (SSH timeouts, unclassified errors) are recorded for
+// operators but not emailed, since they are often transient (e.g. a stopped
+// VM) and the user has nothing actionable to do.
+func (s *lmtpSession) recordAndMaybeNotifyDeliveryFailure(ctx context.Context, box *exedb.Box, deliveryErr error) {
+	srv := s.backend.server
+	class := classifyLMTPError(deliveryErr)
+	// Cap the stored error message so one pathological error doesn't bloat the row.
+	lastErr := deliveryErr.Error()
+	if len(lastErr) > 1000 {
+		lastErr = lastErr[:1000]
+	}
+
+	if err := exedb.WithTx1(srv.db, ctx, (*exedb.Queries).RecordLMTPDeliveryFailure, exedb.RecordLMTPDeliveryFailureParams{
+		BoxID:      box.ID,
+		ErrorClass: string(class),
+		LastError:  lastErr,
+	}); err != nil {
+		srv.slog().ErrorContext(ctx, "failed to record LMTP delivery failure",
+			"box", box.Name, "error_class", class, "error", err)
+		return
+	}
+
+	if class != lmtpErrDiskFull && class != lmtpErrMaildirMissing {
+		return
+	}
+
+	// Dispatch the notification asynchronously so the LMTP response is not
+	// held hostage by the Postmark call (which can be slow). The claim is
+	// atomic in SQL, so concurrent deliveries for the same (box, class) produce
+	// at most one email per interval; if the subsequent send fails we drop the
+	// notification rather than retry, preferring zero emails to two.
+	go s.claimAndNotifyDeliveryFailure(context.WithoutCancel(ctx), box, class)
+}
+
+// claimAndNotifyDeliveryFailure atomically claims the notification slot for
+// (box, class) and, on success, emails the owner. Called from a goroutine;
+// not tied to the LMTP context deadline.
+func (s *lmtpSession) claimAndNotifyDeliveryFailure(ctx context.Context, box *exedb.Box, class lmtpErrorClass) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	srv := s.backend.server
+
+	_, err := exedb.WithTxRes1(srv.db, ctx, (*exedb.Queries).ClaimLMTPDeliveryFailureNotification, exedb.ClaimLMTPDeliveryFailureNotificationParams{
+		BoxID:           box.ID,
+		ErrorClass:      string(class),
+		IntervalSeconds: int64(lmtpDeliveryNotifyInterval.Seconds()),
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		// Another delivery already claimed the slot, or the interval has not
+		// elapsed. Nothing to do.
+		return
+	}
+	if err != nil {
+		srv.slog().ErrorContext(ctx, "failed to claim LMTP delivery failure notification",
+			"box", box.Name, "error_class", class, "error", err)
+		return
+	}
+
+	// Best-effort: if the send below fails, we do not roll back the claim.
+	// Zero emails on a transient Postmark hiccup is preferable to two emails.
+	s.notifyOwnerLMTPDeliveryFailed(ctx, box, class)
+}
+
+// notifyOwnerLMTPDeliveryFailed sends an email to the box owner informing
+// them that inbound email delivery is failing. The caller is responsible for
+// having atomically claimed the notification slot beforehand.
+func (s *lmtpSession) notifyOwnerLMTPDeliveryFailed(ctx context.Context, box *exedb.Box, class lmtpErrorClass) {
+	srv := s.backend.server
+
+	boxInfo, err := exedb.WithRxRes1(srv.db, ctx, (*exedb.Queries).GetBoxWithOwnerEmailByID, box.ID)
+	if err != nil {
+		srv.slog().ErrorContext(ctx, "failed to get box owner email for LMTP delivery failure", "box", box.Name, "error", err)
+		return
+	}
+
+	env := srv.env
+	subject := fmt.Sprintf("Email delivery failing for %s.%s", box.Name, env.BoxHost)
+
+	var reason string
+	switch class {
+	case lmtpErrDiskFull:
+		reason = fmt.Sprintf(`%s.%s is out of disk space. Delivery will resume automatically once there is free space. You can resize %s.%s's disk by running:
+
+    ssh %s resize %s --disk=<size>`, box.Name, env.BoxHost, box.Name, env.BoxHost, env.ReplHost, box.Name)
+	case lmtpErrMaildirMissing:
+		reason = fmt.Sprintf(`The Maildir directory is not available on %s.%s (it may have been deleted). Re-create it and re-enable inbound email by running:
+
+    ssh %s share receive-email %s on`, box.Name, env.BoxHost, env.ReplHost, box.Name)
+	default:
+		// Defense in depth: the caller gates on the two classes above, so
+		// reaching here means the gate and this switch have drifted. Log and
+		// bail rather than send an email with an empty reason paragraph.
+		srv.slog().ErrorContext(ctx, "unhandled LMTP error class in notification", "box", box.Name, "error_class", class)
+		return
+	}
+
+	body := fmt.Sprintf(`Inbound email delivery to %s.%s is failing.
+
+%s
+
+This message will repeat once every 3 days, as long as the issue continues.
+
+You may disable inbound emails by running:
+
+    ssh %s share receive-email %s off
+
+Trace ID: %s
+`, box.Name, env.BoxHost, reason, env.ReplHost, box.Name, tracing.TraceIDFromContext(ctx))
+
+	if err := srv.sendEmail(ctx, sendEmailParams{
+		emailType: email.TypeLMTPDeliveryFailure,
+		to:        boxInfo.OwnerEmail,
+		subject:   subject,
+		body:      body,
+		fromName:  "",
+		replyTo:   "",
+		attrs: []slog.Attr{
+			slog.String("user_id", boxInfo.CreatedByUserID),
+			slog.String("box", box.Name),
+			slog.String("error_class", string(class)),
+		},
+	}); err != nil {
+		srv.slog().ErrorContext(ctx, "failed to send LMTP delivery failure notification",
+			"box", box.Name, "to", boxInfo.OwnerEmail, "error_class", class, "error", err)
+		return
+	}
+
+	srv.slog().InfoContext(ctx, "sent LMTP delivery failure notification",
+		"box", box.Name, "to", boxInfo.OwnerEmail, "error_class", class)
 }
 
 // notifyOwnerEmailLimitExceeded sends an email to the box owner informing them

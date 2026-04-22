@@ -282,6 +282,15 @@ type InviteCodePool struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type LMTPDeliveryFailure struct {
+	BoxID          int        `db:"box_id" json:"box_id"`
+	ErrorClass     string     `db:"error_class" json:"error_class"`
+	FailureCount   int64      `db:"failure_count" json:"failure_count"`
+	LastFailureAt  time.Time  `db:"last_failure_at" json:"last_failure_at"`
+	LastError      string     `db:"last_error" json:"last_error"`
+	LastNotifiedAt *time.Time `db:"last_notified_at" json:"last_notified_at"`
+}
+
 type Migration struct {
 	MigrationName   string     `db:"migration_name" json:"migration_name"`
 	MigrationNumber int64      `db:"migration_number" json:"migration_number"`

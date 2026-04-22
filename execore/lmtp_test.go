@@ -2,6 +2,8 @@ package execore
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,6 +16,30 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
+
+func TestClassifyLMTPError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		err  error
+		want lmtpErrorClass
+	}{
+		{"nil", nil, lmtpErrOther},
+		{"no space left wrapped", fmt.Errorf("write to temp file failed: cmd=%q output=%q: %w", "cat > x", "cat: write error: No space left on device\n", errors.New("exit status 1")), lmtpErrDiskFull},
+		{"quota exceeded", errors.New("Disk quota exceeded"), lmtpErrDiskFull},
+		{"maildir missing", errors.New("maildir path not configured"), lmtpErrMaildirMissing},
+		{"maildir deleted on remote", fmt.Errorf(`move to destination failed: cmd=%q output=%q: %w`, "sudo mv /home/user/.exe-tmp/scp.x /home/user/Maildir/new/abc.eml", "mv: cannot move '/home/user/.exe-tmp/scp.x' to '/home/user/Maildir/new/abc.eml': No such file or directory\n", errors.New("exit status 1")), lmtpErrMaildirMissing},
+		{"generic no-such-file without maildir", errors.New("connection error: No such file or directory"), lmtpErrOther},
+		{"other", errors.New("connection refused"), lmtpErrOther},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyLMTPError(tt.err); got != tt.want {
+				t.Errorf("classifyLMTPError(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestLMTP_PerRecipientStatus(t *testing.T) {
 	t.Parallel()

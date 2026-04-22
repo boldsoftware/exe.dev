@@ -69,6 +69,32 @@ func (q *Queries) GetBoxWithOwnerEmail(ctx context.Context, name string) (GetBox
 	return i, err
 }
 
+const getBoxWithOwnerEmailByID = `-- name: GetBoxWithOwnerEmailByID :one
+SELECT b.id, b.name, b.created_by_user_id, u.email as owner_email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.id = ?
+`
+
+type GetBoxWithOwnerEmailByIDRow struct {
+	ID              int    `db:"id" json:"id"`
+	Name            string `db:"name" json:"name"`
+	CreatedByUserID string `db:"created_by_user_id" json:"created_by_user_id"`
+	OwnerEmail      string `db:"owner_email" json:"owner_email"`
+}
+
+func (q *Queries) GetBoxWithOwnerEmailByID(ctx context.Context, id int) (GetBoxWithOwnerEmailByIDRow, error) {
+	row := q.queryRow(ctx, q.getBoxWithOwnerEmailByIDStmt, getBoxWithOwnerEmailByID, id)
+	var i GetBoxWithOwnerEmailByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedByUserID,
+		&i.OwnerEmail,
+	)
+	return i, err
+}
+
 const updateBoxEmailCredit = `-- name: UpdateBoxEmailCredit :exec
 UPDATE box_email_credit
 SET available_credit = ?, last_refresh_at = ?, total_sent = total_sent + 1

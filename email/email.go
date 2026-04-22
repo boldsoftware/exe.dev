@@ -31,6 +31,7 @@ const (
 	TypeInvitesAllocated         Type = "invites_allocated"
 	TypeSendFromInsideVM         Type = "send_from_inside_vm"
 	TypeEmailLimitExceeded       Type = "email_limit_exceeded"
+	TypeLMTPDeliveryFailure      Type = "lmtp_delivery_failure"
 	TypeBoxMaintenance           Type = "box_maintenance"
 	TypeAccessRequest            Type = "access_request"
 	TypeTeamInvitation           Type = "team_invitation"
@@ -51,6 +52,7 @@ var postmarkMessageStreams = map[Type]string{
 	TypeInvitesAllocated:         "general-notification",
 	TypeSendFromInsideVM:         "send-from-inside-vm",
 	TypeEmailLimitExceeded:       "general-notification",
+	TypeLMTPDeliveryFailure:      "general-notification",
 	TypeBoxMaintenance:           "general-notification",
 	TypeAccessRequest:            "general-notification",
 	TypeTeamInvitation:           "general-notification",

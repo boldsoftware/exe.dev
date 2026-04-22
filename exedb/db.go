@@ -51,6 +51,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
+	if q.claimLMTPDeliveryFailureNotificationStmt, err = db.PrepareContext(ctx, claimLMTPDeliveryFailureNotification); err != nil {
+		return nil, fmt.Errorf("error preparing query ClaimLMTPDeliveryFailureNotification: %w", err)
+	}
 	if q.cleanupExpiredOAuthStatesStmt, err = db.PrepareContext(ctx, cleanupExpiredOAuthStates); err != nil {
 		return nil, fmt.Errorf("error preparing query CleanupExpiredOAuthStates: %w", err)
 	}
@@ -62,6 +65,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.clearAccountParentIDStmt, err = db.PrepareContext(ctx, clearAccountParentID); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearAccountParentID: %w", err)
+	}
+	if q.clearLMTPDeliveryFailuresStmt, err = db.PrepareContext(ctx, clearLMTPDeliveryFailures); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearLMTPDeliveryFailures: %w", err)
 	}
 	if q.clearPreferredExeletStmt, err = db.PrepareContext(ctx, clearPreferredExelet); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearPreferredExelet: %w", err)
@@ -453,6 +459,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxWithOwnerEmailStmt, err = db.PrepareContext(ctx, getBoxWithOwnerEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxWithOwnerEmail: %w", err)
 	}
+	if q.getBoxWithOwnerEmailByIDStmt, err = db.PrepareContext(ctx, getBoxWithOwnerEmailByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxWithOwnerEmailByID: %w", err)
+	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
 	}
@@ -782,6 +791,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.hasDripSendStmt, err = db.PrepareContext(ctx, hasDripSend); err != nil {
 		return nil, fmt.Errorf("error preparing query HasDripSend: %w", err)
+	}
+	if q.hasLMTPDeliveryFailuresStmt, err = db.PrepareContext(ctx, hasLMTPDeliveryFailures); err != nil {
+		return nil, fmt.Errorf("error preparing query HasLMTPDeliveryFailures: %w", err)
 	}
 	if q.hasPushTokensStmt, err = db.PrepareContext(ctx, hasPushTokens); err != nil {
 		return nil, fmt.Errorf("error preparing query HasPushTokens: %w", err)
@@ -1119,6 +1131,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordBoxLLMUsageStmt, err = db.PrepareContext(ctx, recordBoxLLMUsage); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordBoxLLMUsage: %w", err)
 	}
+	if q.recordLMTPDeliveryFailureStmt, err = db.PrepareContext(ctx, recordLMTPDeliveryFailure); err != nil {
+		return nil, fmt.Errorf("error preparing query RecordLMTPDeliveryFailure: %w", err)
+	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
@@ -1418,6 +1433,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
 		}
 	}
+	if q.claimLMTPDeliveryFailureNotificationStmt != nil {
+		if cerr := q.claimLMTPDeliveryFailureNotificationStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing claimLMTPDeliveryFailureNotificationStmt: %w", cerr)
+		}
+	}
 	if q.cleanupExpiredOAuthStatesStmt != nil {
 		if cerr := q.cleanupExpiredOAuthStatesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing cleanupExpiredOAuthStatesStmt: %w", cerr)
@@ -1436,6 +1456,11 @@ func (q *Queries) Close() error {
 	if q.clearAccountParentIDStmt != nil {
 		if cerr := q.clearAccountParentIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearAccountParentIDStmt: %w", cerr)
+		}
+	}
+	if q.clearLMTPDeliveryFailuresStmt != nil {
+		if cerr := q.clearLMTPDeliveryFailuresStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearLMTPDeliveryFailuresStmt: %w", cerr)
 		}
 	}
 	if q.clearPreferredExeletStmt != nil {
@@ -2088,6 +2113,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxWithOwnerEmailStmt: %w", cerr)
 		}
 	}
+	if q.getBoxWithOwnerEmailByIDStmt != nil {
+		if cerr := q.getBoxWithOwnerEmailByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxWithOwnerEmailByIDStmt: %w", cerr)
+		}
+	}
 	if q.getBoxesByHostStmt != nil {
 		if cerr := q.getBoxesByHostStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesByHostStmt: %w", cerr)
@@ -2636,6 +2666,11 @@ func (q *Queries) Close() error {
 	if q.hasDripSendStmt != nil {
 		if cerr := q.hasDripSendStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing hasDripSendStmt: %w", cerr)
+		}
+	}
+	if q.hasLMTPDeliveryFailuresStmt != nil {
+		if cerr := q.hasLMTPDeliveryFailuresStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasLMTPDeliveryFailuresStmt: %w", cerr)
 		}
 	}
 	if q.hasPushTokensStmt != nil {
@@ -3198,6 +3233,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordBoxLLMUsageStmt: %w", cerr)
 		}
 	}
+	if q.recordLMTPDeliveryFailureStmt != nil {
+		if cerr := q.recordLMTPDeliveryFailureStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recordLMTPDeliveryFailureStmt: %w", cerr)
+		}
+	}
 	if q.recordUserEventStmt != nil {
 		if cerr := q.recordUserEventStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
@@ -3661,10 +3701,12 @@ type Queries struct {
 	boxWithNameExistsStmt                      *sql.Stmt
 	boxWithOwnerNamedStmt                      *sql.Stmt
 	boxesForUserStmt                           *sql.Stmt
+	claimLMTPDeliveryFailureNotificationStmt   *sql.Stmt
 	cleanupExpiredOAuthStatesStmt              *sql.Stmt
 	cleanupExpiredPasskeyChallengesStmt        *sql.Stmt
 	cleanupExpiredRedirectsStmt                *sql.Stmt
 	clearAccountParentIDStmt                   *sql.Stmt
+	clearLMTPDeliveryFailuresStmt              *sql.Stmt
 	clearPreferredExeletStmt                   *sql.Stmt
 	closeAccountPlanStmt                       *sql.Stmt
 	closeAccountPlansByPlanIDStmt              *sql.Stmt
@@ -3795,6 +3837,7 @@ type Queries struct {
 	getBoxSharesByBoxIDStmt                    *sql.Stmt
 	getBoxTeamSharesByBoxIDStmt                *sql.Stmt
 	getBoxWithOwnerEmailStmt                   *sql.Stmt
+	getBoxWithOwnerEmailByIDStmt               *sql.Stmt
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
@@ -3905,6 +3948,7 @@ type Queries struct {
 	grantBillingUpgradeBonusOnceStmt           *sql.Stmt
 	hadTrialStmt                               *sql.Stmt
 	hasDripSendStmt                            *sql.Stmt
+	hasLMTPDeliveryFailuresStmt                *sql.Stmt
 	hasPushTokensStmt                          *sql.Stmt
 	hasUserAccessToBoxStmt                     *sql.Stmt
 	hasUserUsedShareLinksStmt                  *sql.Stmt
@@ -4017,6 +4061,7 @@ type Queries struct {
 	nextExpiredTrialUserStmt                   *sql.Stmt
 	nextTrialExpiryStmt                        *sql.Stmt
 	recordBoxLLMUsageStmt                      *sql.Stmt
+	recordLMTPDeliveryFailureStmt              *sql.Stmt
 	recordUserEventStmt                        *sql.Stmt
 	setAccountParentIDStmt                     *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
@@ -4115,10 +4160,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                      q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                      q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                           q.boxesForUserStmt,
+		claimLMTPDeliveryFailureNotificationStmt:   q.claimLMTPDeliveryFailureNotificationStmt,
 		cleanupExpiredOAuthStatesStmt:              q.cleanupExpiredOAuthStatesStmt,
 		cleanupExpiredPasskeyChallengesStmt:        q.cleanupExpiredPasskeyChallengesStmt,
 		cleanupExpiredRedirectsStmt:                q.cleanupExpiredRedirectsStmt,
 		clearAccountParentIDStmt:                   q.clearAccountParentIDStmt,
+		clearLMTPDeliveryFailuresStmt:              q.clearLMTPDeliveryFailuresStmt,
 		clearPreferredExeletStmt:                   q.clearPreferredExeletStmt,
 		closeAccountPlanStmt:                       q.closeAccountPlanStmt,
 		closeAccountPlansByPlanIDStmt:              q.closeAccountPlansByPlanIDStmt,
@@ -4249,6 +4296,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxSharesByBoxIDStmt:                    q.getBoxSharesByBoxIDStmt,
 		getBoxTeamSharesByBoxIDStmt:                q.getBoxTeamSharesByBoxIDStmt,
 		getBoxWithOwnerEmailStmt:                   q.getBoxWithOwnerEmailStmt,
+		getBoxWithOwnerEmailByIDStmt:               q.getBoxWithOwnerEmailByIDStmt,
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
@@ -4359,6 +4407,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		grantBillingUpgradeBonusOnceStmt:           q.grantBillingUpgradeBonusOnceStmt,
 		hadTrialStmt:                               q.hadTrialStmt,
 		hasDripSendStmt:                            q.hasDripSendStmt,
+		hasLMTPDeliveryFailuresStmt:                q.hasLMTPDeliveryFailuresStmt,
 		hasPushTokensStmt:                          q.hasPushTokensStmt,
 		hasUserAccessToBoxStmt:                     q.hasUserAccessToBoxStmt,
 		hasUserUsedShareLinksStmt:                  q.hasUserUsedShareLinksStmt,
@@ -4471,6 +4520,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		nextExpiredTrialUserStmt:                   q.nextExpiredTrialUserStmt,
 		nextTrialExpiryStmt:                        q.nextTrialExpiryStmt,
 		recordBoxLLMUsageStmt:                      q.recordBoxLLMUsageStmt,
+		recordLMTPDeliveryFailureStmt:              q.recordLMTPDeliveryFailureStmt,
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,

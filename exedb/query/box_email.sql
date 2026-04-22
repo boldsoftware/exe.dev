@@ -15,3 +15,9 @@ SELECT b.id, b.name, b.created_by_user_id, u.email as owner_email
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 WHERE b.name = ?;
+
+-- name: GetBoxWithOwnerEmailByID :one
+SELECT b.id, b.name, b.created_by_user_id, u.email as owner_email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.id = ?;
