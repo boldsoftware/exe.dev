@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -94,32 +93,12 @@ type importer struct {
 	convsSeen      int
 	msgsSeen       int
 	commentsSeen   int
-	// NewInboundConvs is filled with the ids of conversations that gained an
-	// inbound (non-staff) message during this scrape. Used by the poll loop to
-	// auto-run the agent.
+	// NewInboundConvs is filled with the ids of conversations whose very first
+	// message was observed for the first time during this scrape. The agent
+	// only auto-runs on first messages (not replies) regardless of sender, so
+	// legitimate questions coming in from staff personal addresses still get
+	// triaged.
 	NewInboundConvs []string
-}
-
-// isStaffAddr returns true if a from-address looks like someone on the exe.dev
-// team (so we shouldn't auto-run the agent on their outbound replies).
-func isStaffAddr(addr string) bool {
-	addr = strings.ToLower(strings.TrimSpace(addr))
-	if addr == "" {
-		return false
-	}
-	for _, d := range []string{"@exe.xyz", "@exe.dev", "@sketch.dev"} {
-		if strings.HasSuffix(addr, d) {
-			return true
-		}
-	}
-	// Known founder personal addresses (they show up as the From on some
-	// support replies sent before proper aliasing).
-	for _, a := range []string{"philip.zeyliger@gmail.com", "david.crawshaw@gmail.com"} {
-		if addr == a {
-			return true
-		}
-	}
-	return false
 }
 
 func (imp *importer) scrapeMailbox(ctx context.Context, base url.Values, maxPages int) error {
@@ -256,29 +235,44 @@ ON CONFLICT(id) DO UPDATE SET
 	return isNew, nil
 }
 
-// scrapeMessages pulls messages for a conversation and returns true if any
-// NEW inbound (non-staff) message was observed.
+// scrapeMessages pulls messages for a conversation and returns true if the
+// scrape added the conversation's very first message (i.e. the conversation
+// is brand new to us and has exactly one message total). Replies and later
+// messages never flip the flag, so the agent only fires on first contact.
 func (imp *importer) scrapeMessages(ctx context.Context, convID string) (bool, error) {
 	var until string
-	newInbound := false
+	addedAny := false
+	done := func() (bool, error) {
+		if !addedAny {
+			return false, nil
+		}
+		// Only treat this as a "new inbound" when the conversation has exactly
+		// one message in the DB: i.e. this scrape observed the very first
+		// message. Replies never fire the agent.
+		var total int
+		if err := imp.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id=?`, convID).Scan(&total); err != nil {
+			return false, err
+		}
+		return total == 1, nil
+	}
 	for page := 0; page < 100; page++ {
 		metas, raws, err := imp.client.listMessages(ctx, convID, until)
 		if err != nil {
-			return newInbound, err
+			return false, err
 		}
 		if len(metas) == 0 {
-			return newInbound, nil
+			return done()
 		}
 		var minDelivered float64
 		seenAny := false
 		for i, m := range metas {
 			wasNew, err := imp.upsertMessage(ctx, convID, m, raws[i])
 			if err != nil {
-				return newInbound, err
+				return false, err
 			}
 			imp.msgsSeen++
-			if wasNew && m.FromField != nil && !isStaffAddr(m.FromField.Address) {
-				newInbound = true
+			if wasNew {
+				addedAny = true
 			}
 			if m.DeliveredAt > 0 && (minDelivered == 0 || m.DeliveredAt < minDelivered) {
 				minDelivered = m.DeliveredAt
@@ -286,18 +280,18 @@ func (imp *importer) scrapeMessages(ctx context.Context, convID string) (bool, e
 			seenAny = true
 		}
 		if !seenAny || len(metas) < 10 {
-			return newInbound, nil
+			return done()
 		}
 		if minDelivered == 0 {
-			return newInbound, nil
+			return done()
 		}
 		nextUntil := strconv.FormatFloat(minDelivered, 'f', -1, 64)
 		if nextUntil == until {
-			return newInbound, nil
+			return done()
 		}
 		until = nextUntil
 	}
-	return newInbound, nil
+	return done()
 }
 
 // upsertMessage returns (wasNew, err). wasNew==true when this message id was
