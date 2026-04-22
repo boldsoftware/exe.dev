@@ -61,11 +61,15 @@ func NewPostmarkBouncePoller(apiKey string, store BounceStore, logger *slog.Logg
 }
 
 // Start begins the polling loop.
+//
+// The first poll runs inside the spawned goroutine rather than in the
+// caller: pollOnce() makes blocking HTTPS requests to api.postmarkapp.com
+// to fetch bounces since the last poll time, which at exed startup was
+// costing ~250ms on the critical path. Bounces are only consulted when
+// we're about to send mail, so there's no need to block startup on them.
 func (p *PostmarkBouncePoller) Start() {
-	// Poll immediately on start
-	p.pollOnce()
-
 	go func() {
+		p.pollOnce()
 		ticker := time.NewTicker(p.interval)
 		defer ticker.Stop()
 		for {

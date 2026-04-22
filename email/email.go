@@ -295,9 +295,15 @@ func NewPostmarkStatsCollector(apiKey string, logger *slog.Logger) *PostmarkStat
 }
 
 // Start begins polling Postmark stats every 10 minutes.
+//
+// The first poll runs inside the spawned goroutine rather than in the
+// caller: poll() makes two blocking HTTPS requests to api.postmarkapp.com,
+// which at exed startup was costing ~250ms on the critical path even
+// though the resulting /metrics data isn't needed until Prometheus
+// scrapes us.
 func (c *PostmarkStatsCollector) Start() {
-	c.poll() // Poll immediately on start
 	go func() {
+		c.poll()
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
 		for {
