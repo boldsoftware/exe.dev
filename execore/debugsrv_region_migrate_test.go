@@ -142,13 +142,15 @@ func TestHandleDebugUserMigrateVMs(t *testing.T) {
 
 	// Create a box on the source (pdx) exelet.
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -236,13 +238,15 @@ func TestHandleDebugUserMigrateVMsRequiresConfirmation(t *testing.T) {
 
 	// Create a box on the source (pdx) exelet.
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          "confirm-test-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                "confirm-test-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -2181,6 +2181,16 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			}
 			return cc.Errorf("failed to grow disk: %v", err)
 		}
+
+		// Persist the new disk capacity so subsequent reads don't need the exelet.
+		if diskGrowResult.NewSize != diskGrowResult.OldSize {
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxDiskCapacityBytes, exedb.UpdateBoxDiskCapacityBytesParams{
+				DiskCapacityBytes: int64(diskGrowResult.NewSize),
+				ID:                box.ID,
+			}); err != nil {
+				slog.ErrorContext(ctx, "failed to update disk_capacity_bytes after resize", "box", boxName, "err", err)
+			}
+		}
 	}
 
 	// Handle memory/CPU resize if specified
@@ -2244,6 +2254,16 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				ID:            box.ID,
 			}); err != nil {
 				slog.ErrorContext(ctx, "failed to update allocated_cpus after resize", "box", boxName, "err", err)
+			}
+		}
+
+		// Update memory_capacity_bytes in DB if memory changed.
+		if req.Memory != nil && resizeResult.NewMemory != resizeResult.OldMemory {
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxMemoryCapacityBytes, exedb.UpdateBoxMemoryCapacityBytesParams{
+				MemoryCapacityBytes: int64(resizeResult.NewMemory),
+				ID:                  box.ID,
+			}); err != nil {
+				slog.ErrorContext(ctx, "failed to update memory_capacity_bytes after resize", "box", boxName, "err", err)
 			}
 		}
 	}

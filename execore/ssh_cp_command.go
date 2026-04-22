@@ -167,14 +167,29 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	if cpuOverride > 0 {
 		cloneCPUs = cpuOverride
 	}
+	// For the clone, copy capacity from the source box. If the source is 0
+	// (pre-backfill), the clone will also be 0 and the backfill job will
+	// populate it later. If an override was supplied on the command line,
+	// use that instead so the DB reflects what's actually being provisioned
+	// on the exelet.
+	cloneMemoryBytes := sourceBox.MemoryCapacityBytes
+	if memoryOverride > 0 {
+		cloneMemoryBytes = int64(memoryOverride)
+	}
+	cloneDiskBytes := sourceBox.DiskCapacityBytes
+	if diskOverride > 0 {
+		cloneDiskBytes = int64(diskOverride)
+	}
 	boxID, err := ss.server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        user.ID,
-		ctrhost:       exeletAddr,
-		name:          newName,
-		image:         sourceBox.Image,
-		noShard:       false,
-		region:        sourceBox.Region,
-		allocatedCPUs: cloneCPUs,
+		userID:              user.ID,
+		ctrhost:             exeletAddr,
+		name:                newName,
+		image:               sourceBox.Image,
+		noShard:             false,
+		region:              sourceBox.Region,
+		allocatedCPUs:       cloneCPUs,
+		memoryCapacityBytes: cloneMemoryBytes,
+		diskCapacityBytes:   cloneDiskBytes,
 	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):
@@ -397,6 +412,31 @@ done:
 	// Update box with container info
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, clonedInstance.ID, sshUser, sshKeys, int(clonedInstance.SSHPort)); err != nil {
 		return err
+	}
+
+	// Persist the authoritative capacity reported by the exelet so the DB
+	// reflects what was actually provisioned, regardless of the source box's
+	// (possibly pre-backfill) values. Only overwrite with positive values;
+	// fall back to what preCreateBox inserted if the exelet didn't report one.
+	// Best-effort; a failure here is repaired by the backfill job.
+	if cfg := clonedInstance.VMConfig; cfg != nil {
+		newDisk := cloneDiskBytes
+		if cfg.Disk > 0 {
+			newDisk = int64(cfg.Disk)
+		}
+		newMemory := cloneMemoryBytes
+		if cfg.Memory > 0 {
+			newMemory = int64(cfg.Memory)
+		}
+		if newDisk != cloneDiskBytes || newMemory != cloneMemoryBytes {
+			if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxCapacityBytes, exedb.UpdateBoxCapacityBytesParams{
+				DiskCapacityBytes:   newDisk,
+				MemoryCapacityBytes: newMemory,
+				ID:                  boxID,
+			}); err != nil {
+				slog.ErrorContext(ctx, "failed to update capacity after clone", "box", newName, "err", err)
+			}
+		}
 	}
 
 	// Copy routing from source box if available

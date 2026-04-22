@@ -83,13 +83,15 @@ func TestExeletDesiredWithBoxes(t *testing.T) {
 
 	// Create a box with 2 allocated CPUs
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "testbox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "testbox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -177,13 +179,15 @@ func TestExeletDesiredNoCpuMaxWhenAllocatedCpusNull(t *testing.T) {
 
 	// Create a box without allocated CPUs (legacy box, allocatedCPUs=0 means NULL)
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "legacybox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 0,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "legacybox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       0,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -238,13 +242,15 @@ func TestExeletDesiredSkipsBoxesWithoutContainerID(t *testing.T) {
 
 	// Create a box but don't set container_id (simulates "creating" state)
 	_, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "creatingbox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "creatingbox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -282,13 +288,15 @@ func TestExeletDesiredWithBoxCgroupOverrides(t *testing.T) {
 
 	// Create a box with 2 allocated CPUs
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "overridebox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "overridebox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -371,13 +379,15 @@ func TestExeletDesiredWithUserCgroupOverrides(t *testing.T) {
 
 	// Create a box
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "userbox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "userbox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -458,13 +468,15 @@ func TestExeletDesiredBoxOverrideRemovesCpuMax(t *testing.T) {
 	userID := createTestUser(t, server, "removeoverride@example.com")
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "removebox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "removebox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -544,13 +556,15 @@ func TestExeletDesiredGroupDefaultUsesMaxCPUs(t *testing.T) {
 		{"bigvm", 4, "container-big"},
 	} {
 		boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-			userID:        userID,
-			ctrhost:       addr,
-			name:          tc.name,
-			image:         "ubuntu:latest",
-			noShard:       true,
-			region:        "pdx",
-			allocatedCPUs: tc.cpus,
+			userID:              userID,
+			ctrhost:             addr,
+			name:                tc.name,
+			image:               "ubuntu:latest",
+			noShard:             true,
+			region:              "pdx",
+			allocatedCPUs:       tc.cpus,
+			memoryCapacityBytes: 0,
+			diskCapacityBytes:   0,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -613,13 +627,15 @@ func TestExeletDesiredWithIOMaxOverrides(t *testing.T) {
 	userID := createTestUser(t, server, "iooverride@example.com")
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "iobox",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "iobox",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -21,13 +21,15 @@ func TestAPIVMComputeUsage(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 	_, err = server.preCreateBox(t.Context(), preCreateBoxOptions{
-		userID:        user.UserID,
-		name:          "test-vm-history",
-		image:         "ubuntu:latest",
-		region:        "pdx",
-		ctrhost:       "",
-		noShard:       false,
-		allocatedCPUs: 0,
+		userID:              user.UserID,
+		name:                "test-vm-history",
+		image:               "ubuntu:latest",
+		region:              "pdx",
+		ctrhost:             "",
+		noShard:             false,
+		allocatedCPUs:       0,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatalf("preCreateBox: %v", err)

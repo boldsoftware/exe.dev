@@ -73,25 +73,29 @@ func TestResolveTeamShardCollisions(t *testing.T) {
 
 	// Create a box for each user (noShard), then manually assign both to shard 1.
 	aliceBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        aliceID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "alice-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              aliceID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "alice-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	bobBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        bobID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "bob-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              bobID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "bob-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -187,25 +191,29 @@ func TestResolveTeamShardCollisions_NoCollision(t *testing.T) {
 	bobID := createTestUser(t, server, "bob@no-collision.example")
 
 	aliceBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        aliceID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "alice-nc-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              aliceID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "alice-nc-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	bobBoxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        bobID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "bob-nc-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              bobID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "bob-nc-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -310,13 +318,15 @@ func TestAllocateIPShardReusesShardForTeamsOverLimit(t *testing.T) {
 	for i := 1; i <= server.env.NumShards; i++ {
 		name := fmt.Sprintf("shard-vm%d", i)
 		_, err := server.preCreateBox(ctx, preCreateBoxOptions{
-			userID:        userID,
-			ctrhost:       "tcp://fake:9080",
-			name:          name,
-			image:         "ubuntu:latest",
-			noShard:       false,
-			region:        "pdx",
-			allocatedCPUs: 1,
+			userID:              userID,
+			ctrhost:             "tcp://fake:9080",
+			name:                name,
+			image:               "ubuntu:latest",
+			noShard:             false,
+			region:              "pdx",
+			allocatedCPUs:       1,
+			memoryCapacityBytes: 0,
+			diskCapacityBytes:   0,
 		})
 		if err != nil {
 			t.Fatalf("failed to create box %d: %v", i, err)
@@ -325,13 +335,15 @@ func TestAllocateIPShardReusesShardForTeamsOverLimit(t *testing.T) {
 
 	// 26th box should succeed, reusing shard 1.
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "vm-overflow",
-		image:         "ubuntu:latest",
-		noShard:       false,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              userID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "vm-overflow",
+		image:               "ubuntu:latest",
+		noShard:             false,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatalf("expected overflow box to succeed, got: %v", err)
@@ -366,13 +378,15 @@ func TestAllocateIPShardFailsForNonTeamUser(t *testing.T) {
 	for i := 1; i <= server.env.NumShards; i++ {
 		name := fmt.Sprintf("solovm%d", i)
 		_, err := server.preCreateBox(ctx, preCreateBoxOptions{
-			userID:        userID,
-			ctrhost:       "tcp://fake:9080",
-			name:          name,
-			image:         "ubuntu:latest",
-			noShard:       false,
-			region:        "pdx",
-			allocatedCPUs: 1,
+			userID:              userID,
+			ctrhost:             "tcp://fake:9080",
+			name:                name,
+			image:               "ubuntu:latest",
+			noShard:             false,
+			region:              "pdx",
+			allocatedCPUs:       1,
+			memoryCapacityBytes: 0,
+			diskCapacityBytes:   0,
 		})
 		if err != nil {
 			t.Fatalf("failed to create box %d: %v", i, err)
@@ -381,13 +395,15 @@ func TestAllocateIPShardFailsForNonTeamUser(t *testing.T) {
 
 	// 26th box should fail for a non-team user.
 	_, err = server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       "tcp://fake:9080",
-		name:          "solo-vm-overflow",
-		image:         "ubuntu:latest",
-		noShard:       false,
-		region:        "pdx",
-		allocatedCPUs: 1,
+		userID:              userID,
+		ctrhost:             "tcp://fake:9080",
+		name:                "solo-vm-overflow",
+		image:               "ubuntu:latest",
+		noShard:             false,
+		region:              "pdx",
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err == nil {
 		t.Fatal("expected error for non-team user exceeding shard count, got nil")

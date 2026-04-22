@@ -2281,13 +2281,15 @@ func (s *Server) vscodeURL(boxName string) string {
 //
 //exe:completeinit
 type preCreateBoxOptions struct {
-	userID        string
-	ctrhost       string
-	name          string
-	image         string
-	noShard       bool
-	region        string // region code (e.g., "pdx", "lax")
-	allocatedCPUs uint64 // number of CPUs allocated to the VM
+	userID              string
+	ctrhost             string
+	name                string
+	image               string
+	noShard             bool
+	region              string // region code (e.g., "pdx", "lax")
+	allocatedCPUs       uint64 // number of CPUs allocated to the VM
+	memoryCapacityBytes int64  // provisioned memory in bytes; 0 = unknown (will be backfilled)
+	diskCapacityBytes   int64  // provisioned disk in bytes; 0 = unknown (will be backfilled)
 }
 
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {
@@ -2316,14 +2318,16 @@ func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (in
 			allocCPUs = &v
 		}
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			Ctrhost:         opts.ctrhost,
-			Name:            opts.name,
-			Status:          "creating",
-			Image:           opts.image,
-			CreatedByUserID: opts.userID,
-			Routes:          routes,
-			Region:          opts.region,
-			AllocatedCpus:   allocCPUs,
+			Ctrhost:             opts.ctrhost,
+			Name:                opts.name,
+			Status:              "creating",
+			Image:               opts.image,
+			CreatedByUserID:     opts.userID,
+			Routes:              routes,
+			Region:              opts.region,
+			AllocatedCpus:       allocCPUs,
+			MemoryCapacityBytes: opts.memoryCapacityBytes,
+			DiskCapacityBytes:   opts.diskCapacityBytes,
 		})
 		if err != nil {
 			return err

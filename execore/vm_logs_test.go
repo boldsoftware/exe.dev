@@ -81,13 +81,15 @@ func setupStoppedBoxWithLogs(t *testing.T, boxName string, logs []string) (*Serv
 	userID := createTestUser(t, server, boxName+"@example.com")
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -251,13 +253,15 @@ func TestStoppedVMBannerNoContainerID(t *testing.T) {
 
 	userID := createTestUser(t, server, "ghost-vm@example.com")
 	_, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "ghost-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "ghost-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)

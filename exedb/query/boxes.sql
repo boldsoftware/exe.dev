@@ -11,8 +11,9 @@ SELECT * FROM boxes WHERE name = ?;
 
 -- name: InsertBox :execlastid
 INSERT INTO boxes (
-    ctrhost, name, status, image, container_id, created_by_user_id, routes, region, allocated_cpus
-) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?);
+    ctrhost, name, status, image, container_id, created_by_user_id, routes, region,
+    allocated_cpus, memory_capacity_bytes, disk_capacity_bytes
+) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?);
 
 -- name: BoxesForUser :many
 SELECT *
@@ -125,6 +126,33 @@ UPDATE boxes SET allocated_cpus = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 -- name: GetBoxesWithNullAllocatedCPUs :many
 SELECT * FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
+ORDER BY id
+LIMIT ?;
+
+-- name: UpdateBoxDiskCapacityBytes :exec
+-- Used by the resize path; bumps updated_at so the row appears recently modified.
+UPDATE boxes SET disk_capacity_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: UpdateBoxMemoryCapacityBytes :exec
+-- Used by the resize path; bumps updated_at so the row appears recently modified.
+UPDATE boxes SET memory_capacity_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: UpdateBoxCapacityBytes :exec
+-- Used by the backfill path; sets both columns atomically and does NOT bump
+-- updated_at so a bulk backfill doesn't reorder user-facing VM lists (which
+-- sort by updated_at DESC).
+UPDATE boxes SET disk_capacity_bytes = ?, memory_capacity_bytes = ? WHERE id = ?;
+
+-- name: GetBoxesWithMissingCapacity :many
+-- Returns boxes with id > ? that are missing disk_capacity_bytes or
+-- memory_capacity_bytes (0 is the sentinel for "not filled out yet"),
+-- intended for chunked backfill from exelet VMConfig. Pass 0 for after_id
+-- on the first call; pass the last id seen for each subsequent call to
+-- walk forward past rows that could not be updated.
+SELECT * FROM boxes
+WHERE id > ?
+  AND (disk_capacity_bytes = 0 OR memory_capacity_bytes = 0)
+  AND container_id IS NOT NULL AND status != 'failed'
 ORDER BY id
 LIMIT ?;
 

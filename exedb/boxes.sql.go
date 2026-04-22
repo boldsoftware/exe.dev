@@ -11,7 +11,7 @@ import (
 )
 
 const boxNamed = `-- name: BoxNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE name = ?
 `
 
 // This is not a secure API!
@@ -46,6 +46,8 @@ func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
@@ -62,7 +64,7 @@ func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, er
 }
 
 const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
 `
 
 type BoxWithOwnerNamedParams struct {
@@ -100,12 +102,14 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
 
 const boxesForUser = `-- name: BoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes
 FROM boxes
 WHERE created_by_user_id = ?
 ORDER BY updated_at DESC, id DESC
@@ -147,6 +151,8 @@ func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]B
 			&i.Tags,
 			&i.LockReason,
 			&i.Emoji,
+			&i.DiskCapacityBytes,
+			&i.MemoryCapacityBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +275,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 }
 
 const getBoxByContainerID = `-- name: GetBoxByContainerID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE container_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE container_id = ?
 `
 
 func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) (Box, error) {
@@ -302,12 +308,14 @@ func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) 
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
 
 const getBoxByID = `-- name: GetBoxByID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE id = ?
 `
 
 func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
@@ -340,12 +348,14 @@ func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE name = ? AND created_by_user_id = ?
 `
 
 type GetBoxByNameAndAllocParams struct {
@@ -383,12 +393,14 @@ func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndA
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
 
 const getBoxByNameWithSupportAccess = `-- name: GetBoxByNameWithSupportAccess :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND support_access_allowed = 1
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE name = ? AND support_access_allowed = 1
 `
 
 func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string) (Box, error) {
@@ -421,6 +433,8 @@ func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string
 		&i.Tags,
 		&i.LockReason,
 		&i.Emoji,
+		&i.DiskCapacityBytes,
+		&i.MemoryCapacityBytes,
 	)
 	return i, err
 }
@@ -473,7 +487,7 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 }
 
 const getBoxesByHost = `-- name: GetBoxesByHost :many
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji, b.disk_capacity_bytes, b.memory_capacity_bytes
 FROM boxes b
 WHERE b.ctrhost = ? AND b.status != 'failed'
 `
@@ -514,6 +528,8 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.Tags,
 			&i.LockReason,
 			&i.Emoji,
+			&i.DiskCapacityBytes,
+			&i.MemoryCapacityBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -623,8 +639,79 @@ func (q *Queries) GetBoxesWithEmptyEmoji(ctx context.Context, limit int64) ([]Ge
 	return items, nil
 }
 
+const getBoxesWithMissingCapacity = `-- name: GetBoxesWithMissingCapacity :many
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes
+WHERE id > ?
+  AND (disk_capacity_bytes = 0 OR memory_capacity_bytes = 0)
+  AND container_id IS NOT NULL AND status != 'failed'
+ORDER BY id
+LIMIT ?
+`
+
+type GetBoxesWithMissingCapacityParams struct {
+	ID    int   `db:"id" json:"id"`
+	Limit int64 `db:"limit" json:"limit"`
+}
+
+// Returns boxes with id > ? that are missing disk_capacity_bytes or
+// memory_capacity_bytes (0 is the sentinel for "not filled out yet"),
+// intended for chunked backfill from exelet VMConfig. Pass 0 for after_id
+// on the first call; pass the last id seen for each subsequent call to
+// walk forward past rows that could not be updated.
+func (q *Queries) GetBoxesWithMissingCapacity(ctx context.Context, arg GetBoxesWithMissingCapacityParams) ([]Box, error) {
+	rows, err := q.query(ctx, q.getBoxesWithMissingCapacityStmt, getBoxesWithMissingCapacity, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Box{}
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.Ctrhost,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
+			&i.Routes,
+			&i.SSHServerIdentityKey,
+			&i.SSHAuthorizedKeys,
+			&i.SSHClientPrivateKey,
+			&i.SSHPort,
+			&i.SSHUser,
+			&i.CreationLog,
+			&i.SupportAccessAllowed,
+			&i.Region,
+			&i.EmailReceiveEnabled,
+			&i.EmailMaildirPath,
+			&i.AllocatedCpus,
+			&i.CgroupOverrides,
+			&i.Tags,
+			&i.LockReason,
+			&i.Emoji,
+			&i.DiskCapacityBytes,
+			&i.MemoryCapacityBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBoxesWithNullAllocatedCPUs = `-- name: GetBoxesWithNullAllocatedCPUs :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
 ORDER BY id
 LIMIT ?
@@ -666,6 +753,8 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 			&i.Tags,
 			&i.LockReason,
 			&i.Emoji,
+			&i.DiskCapacityBytes,
+			&i.MemoryCapacityBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -681,7 +770,7 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 }
 
 const getRunningBoxesForUser = `-- name: GetRunningBoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE created_by_user_id = ? AND status = 'running'
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes WHERE created_by_user_id = ? AND status = 'running'
 `
 
 // Returns all running boxes owned by a user.
@@ -721,6 +810,8 @@ func (q *Queries) GetRunningBoxesForUser(ctx context.Context, createdByUserID st
 			&i.Tags,
 			&i.LockReason,
 			&i.Emoji,
+			&i.DiskCapacityBytes,
+			&i.MemoryCapacityBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -816,19 +907,22 @@ func (q *Queries) GetUsersWithOutOfRegionBoxes(ctx context.Context) ([]GetUsersW
 
 const insertBox = `-- name: InsertBox :execlastid
 INSERT INTO boxes (
-    ctrhost, name, status, image, container_id, created_by_user_id, routes, region, allocated_cpus
-) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+    ctrhost, name, status, image, container_id, created_by_user_id, routes, region,
+    allocated_cpus, memory_capacity_bytes, disk_capacity_bytes
+) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertBoxParams struct {
-	Ctrhost         string  `db:"ctrhost" json:"ctrhost"`
-	Name            string  `db:"name" json:"name"`
-	Status          string  `db:"status" json:"status"`
-	Image           string  `db:"image" json:"image"`
-	CreatedByUserID string  `db:"created_by_user_id" json:"created_by_user_id"`
-	Routes          *string `db:"routes" json:"routes"`
-	Region          string  `db:"region" json:"region"`
-	AllocatedCpus   *int64  `db:"allocated_cpus" json:"allocated_cpus"`
+	Ctrhost             string  `db:"ctrhost" json:"ctrhost"`
+	Name                string  `db:"name" json:"name"`
+	Status              string  `db:"status" json:"status"`
+	Image               string  `db:"image" json:"image"`
+	CreatedByUserID     string  `db:"created_by_user_id" json:"created_by_user_id"`
+	Routes              *string `db:"routes" json:"routes"`
+	Region              string  `db:"region" json:"region"`
+	AllocatedCpus       *int64  `db:"allocated_cpus" json:"allocated_cpus"`
+	MemoryCapacityBytes int64   `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
+	DiskCapacityBytes   int64   `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
 }
 
 func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, error) {
@@ -841,6 +935,8 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 		arg.Routes,
 		arg.Region,
 		arg.AllocatedCpus,
+		arg.MemoryCapacityBytes,
+		arg.DiskCapacityBytes,
 	)
 	if err != nil {
 		return 0, err
@@ -970,6 +1066,24 @@ func (q *Queries) UpdateBoxAllocatedCPUs(ctx context.Context, arg UpdateBoxAlloc
 	return err
 }
 
+const updateBoxCapacityBytes = `-- name: UpdateBoxCapacityBytes :exec
+UPDATE boxes SET disk_capacity_bytes = ?, memory_capacity_bytes = ? WHERE id = ?
+`
+
+type UpdateBoxCapacityBytesParams struct {
+	DiskCapacityBytes   int64 `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
+	MemoryCapacityBytes int64 `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
+	ID                  int   `db:"id" json:"id"`
+}
+
+// Used by the backfill path; sets both columns atomically and does NOT bump
+// updated_at so a bulk backfill doesn't reorder user-facing VM lists (which
+// sort by updated_at DESC).
+func (q *Queries) UpdateBoxCapacityBytes(ctx context.Context, arg UpdateBoxCapacityBytesParams) error {
+	_, err := q.exec(ctx, q.updateBoxCapacityBytesStmt, updateBoxCapacityBytes, arg.DiskCapacityBytes, arg.MemoryCapacityBytes, arg.ID)
+	return err
+}
+
 const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec
 UPDATE boxes SET 
     container_id = ?,
@@ -1018,6 +1132,36 @@ type UpdateBoxCreationLogParams struct {
 
 func (q *Queries) UpdateBoxCreationLog(ctx context.Context, arg UpdateBoxCreationLogParams) error {
 	_, err := q.exec(ctx, q.updateBoxCreationLogStmt, updateBoxCreationLog, arg.CreationLog, arg.Name)
+	return err
+}
+
+const updateBoxDiskCapacityBytes = `-- name: UpdateBoxDiskCapacityBytes :exec
+UPDATE boxes SET disk_capacity_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateBoxDiskCapacityBytesParams struct {
+	DiskCapacityBytes int64 `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
+	ID                int   `db:"id" json:"id"`
+}
+
+// Used by the resize path; bumps updated_at so the row appears recently modified.
+func (q *Queries) UpdateBoxDiskCapacityBytes(ctx context.Context, arg UpdateBoxDiskCapacityBytesParams) error {
+	_, err := q.exec(ctx, q.updateBoxDiskCapacityBytesStmt, updateBoxDiskCapacityBytes, arg.DiskCapacityBytes, arg.ID)
+	return err
+}
+
+const updateBoxMemoryCapacityBytes = `-- name: UpdateBoxMemoryCapacityBytes :exec
+UPDATE boxes SET memory_capacity_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateBoxMemoryCapacityBytesParams struct {
+	MemoryCapacityBytes int64 `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
+	ID                  int   `db:"id" json:"id"`
+}
+
+// Used by the resize path; bumps updated_at so the row appears recently modified.
+func (q *Queries) UpdateBoxMemoryCapacityBytes(ctx context.Context, arg UpdateBoxMemoryCapacityBytesParams) error {
+	_, err := q.exec(ctx, q.updateBoxMemoryCapacityBytesStmt, updateBoxMemoryCapacityBytes, arg.MemoryCapacityBytes, arg.ID)
 	return err
 }
 

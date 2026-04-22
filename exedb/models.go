@@ -100,6 +100,8 @@ type Box struct {
 	Tags                 string     `db:"tags" json:"tags"`
 	LockReason           *string    `db:"lock_reason" json:"lock_reason"`
 	Emoji                string     `db:"emoji" json:"emoji"`
+	DiskCapacityBytes    int64      `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
+	MemoryCapacityBytes  int64      `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
 }
 
 type BoxEmailCredit struct {

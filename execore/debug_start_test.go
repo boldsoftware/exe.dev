@@ -95,13 +95,15 @@ func setupMigratedBox(t *testing.T, boxName string, sshPort int32) (*Server, str
 	userID := createTestUser(t, server, boxName+"@example.com")
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -186,13 +188,15 @@ func TestDebugStartPreservesExistingSSHPort(t *testing.T) {
 	userID := createTestUser(t, server, "normal-start@example.com")
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       addr,
-		name:          "normal-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             addr,
+		name:                "normal-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)

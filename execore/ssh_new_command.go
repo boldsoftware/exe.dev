@@ -298,13 +298,15 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		imageToStore = "boldsoftware/exeuntu"
 	}
 	boxID, err := ss.server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        user.ID,
-		ctrhost:       exeletAddr,
-		name:          boxName,
-		image:         imageToStore,
-		noShard:       noShard,
-		region:        exeletClient.region.Code,
-		allocatedCPUs: cpus,
+		userID:              user.ID,
+		ctrhost:             exeletAddr,
+		name:                boxName,
+		image:               imageToStore,
+		noShard:             noShard,
+		region:              exeletClient.region.Code,
+		allocatedCPUs:       cpus,
+		memoryCapacityBytes: int64(memory),
+		diskCapacityBytes:   int64(disk),
 	})
 	switch {
 	case errors.Is(err, errNoIPShardsAvailable):

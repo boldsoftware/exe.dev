@@ -259,13 +259,15 @@ func TestMigrateVMLiveColdBootedPropagation(t *testing.T) {
 			// Create a box on the source.
 			userID := createTestUser(t, server, "migrate-propagation@example.com")
 			boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-				userID:        userID,
-				ctrhost:       sourceAddr,
-				name:          "propagation-vm",
-				image:         "ubuntu:latest",
-				noShard:       true,
-				region:        "pdx",
-				allocatedCPUs: 2,
+				userID:              userID,
+				ctrhost:             sourceAddr,
+				name:                "propagation-vm",
+				image:               "ubuntu:latest",
+				noShard:             true,
+				region:              "pdx",
+				allocatedCPUs:       2,
+				memoryCapacityBytes: 0,
+				diskCapacityBytes:   0,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -350,13 +352,15 @@ func TestMigrateVMLivePreMetadataStatus(t *testing.T) {
 
 	userID := createTestUser(t, server, "migrate-status@example.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          "status-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                "status-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -481,13 +485,15 @@ func TestMigrateBoxColdBootSendsEmail(t *testing.T) {
 	const boxName = "coldboot-email-vm"
 	userID := createTestUser(t, server, boxName+"@boldvm.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -581,13 +587,15 @@ func TestHandleDebugBoxMigrateRetriesSourceDeleteWhileMigrationUnlocks(t *testin
 	const boxName = "delete-retry-vm"
 	userID := createTestUser(t, server, boxName+"@boldvm.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -673,13 +681,15 @@ func TestHandleDebugBoxMigrateSSHFailureFallsBackToCold(t *testing.T) {
 	const boxName = "ssh-fallback-vm"
 	userID := createTestUser(t, server, boxName+"@boldvm.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -815,13 +825,15 @@ func TestHandleDebugBoxMigrateIPReconfigFailureFallsBackToCold(t *testing.T) {
 	const boxName = "ip-reconfig-fallback-vm"
 	userID := createTestUser(t, server, boxName+"@boldvm.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1034,13 +1046,15 @@ func TestRestartSourceVMUpdatesDBStatusWhenVMStopped(t *testing.T) {
 			// Create a box in "running" state.
 			userID := createTestUser(t, server, tt.name+"@example.com")
 			boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-				userID:        userID,
-				ctrhost:       sourceAddr,
-				name:          tt.boxName,
-				image:         "ubuntu:latest",
-				noShard:       true,
-				region:        "pdx",
-				allocatedCPUs: 2,
+				userID:              userID,
+				ctrhost:             sourceAddr,
+				name:                tt.boxName,
+				image:               "ubuntu:latest",
+				noShard:             true,
+				region:              "pdx",
+				allocatedCPUs:       2,
+				memoryCapacityBytes: 0,
+				diskCapacityBytes:   0,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -1126,13 +1140,15 @@ func TestHandleDebugBoxMigrateFailedLiveUpdatesDB(t *testing.T) {
 	const boxName = "failed-live-db"
 	userID := createTestUser(t, server, boxName+"@example.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1354,13 +1370,15 @@ func TestCancelMigrationMidFlight(t *testing.T) {
 	const boxName = "cancel-midflight"
 	userID := createTestUser(t, server, boxName+"@example.com")
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          boxName,
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                boxName,
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1465,13 +1483,15 @@ func TestHandleDebugBatchMigrate(t *testing.T) {
 
 	// Create boxes for user1.
 	box1ID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        user1ID,
-		ctrhost:       sourceAddr,
-		name:          "batch-vm1",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              user1ID,
+		ctrhost:             sourceAddr,
+		name:                "batch-vm1",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1488,13 +1508,15 @@ func TestHandleDebugBatchMigrate(t *testing.T) {
 
 	// Create boxes for user2.
 	box2ID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        user2ID,
-		ctrhost:       sourceAddr,
-		name:          "batch-vm2",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              user2ID,
+		ctrhost:             sourceAddr,
+		name:                "batch-vm2",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1591,13 +1613,15 @@ func TestHandleDebugBatchMigrateCancel(t *testing.T) {
 	}
 
 	boxID, err := server.preCreateBox(ctx, preCreateBoxOptions{
-		userID:        userID,
-		ctrhost:       sourceAddr,
-		name:          "batch-cancel-vm",
-		image:         "ubuntu:latest",
-		noShard:       true,
-		region:        "pdx",
-		allocatedCPUs: 2,
+		userID:              userID,
+		ctrhost:             sourceAddr,
+		name:                "batch-cancel-vm",
+		image:               "ubuntu:latest",
+		noShard:             true,
+		region:              "pdx",
+		allocatedCPUs:       2,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatal(err)

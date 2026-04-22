@@ -474,6 +474,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesWithEmptyEmojiStmt, err = db.PrepareContext(ctx, getBoxesWithEmptyEmoji); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesWithEmptyEmoji: %w", err)
 	}
+	if q.getBoxesWithMissingCapacityStmt, err = db.PrepareContext(ctx, getBoxesWithMissingCapacity); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesWithMissingCapacity: %w", err)
+	}
 	if q.getBoxesWithNullAllocatedCPUsStmt, err = db.PrepareContext(ctx, getBoxesWithNullAllocatedCPUs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesWithNullAllocatedCPUs: %w", err)
 	}
@@ -1239,11 +1242,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxAllocatedCPUsStmt, err = db.PrepareContext(ctx, updateBoxAllocatedCPUs); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxAllocatedCPUs: %w", err)
 	}
+	if q.updateBoxCapacityBytesStmt, err = db.PrepareContext(ctx, updateBoxCapacityBytes); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxCapacityBytes: %w", err)
+	}
 	if q.updateBoxContainerAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerAndStatus: %w", err)
 	}
 	if q.updateBoxCreationLogStmt, err = db.PrepareContext(ctx, updateBoxCreationLog); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxCreationLog: %w", err)
+	}
+	if q.updateBoxDiskCapacityBytesStmt, err = db.PrepareContext(ctx, updateBoxDiskCapacityBytes); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxDiskCapacityBytes: %w", err)
 	}
 	if q.updateBoxEmailCreditStmt, err = db.PrepareContext(ctx, updateBoxEmailCredit); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxEmailCredit: %w", err)
@@ -1253,6 +1262,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxIPShardUserStmt, err = db.PrepareContext(ctx, updateBoxIPShardUser); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxIPShardUser: %w", err)
+	}
+	if q.updateBoxMemoryCapacityBytesStmt, err = db.PrepareContext(ctx, updateBoxMemoryCapacityBytes); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxMemoryCapacityBytes: %w", err)
 	}
 	if q.updateBoxMigrationStmt, err = db.PrepareContext(ctx, updateBoxMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxMigration: %w", err)
@@ -2136,6 +2148,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesWithEmptyEmojiStmt != nil {
 		if cerr := q.getBoxesWithEmptyEmojiStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesWithEmptyEmojiStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesWithMissingCapacityStmt != nil {
+		if cerr := q.getBoxesWithMissingCapacityStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesWithMissingCapacityStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesWithNullAllocatedCPUsStmt != nil {
@@ -3413,6 +3430,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxAllocatedCPUsStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxCapacityBytesStmt != nil {
+		if cerr := q.updateBoxCapacityBytesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxCapacityBytesStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxContainerAndStatusStmt != nil {
 		if cerr := q.updateBoxContainerAndStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxContainerAndStatusStmt: %w", cerr)
@@ -3421,6 +3443,11 @@ func (q *Queries) Close() error {
 	if q.updateBoxCreationLogStmt != nil {
 		if cerr := q.updateBoxCreationLogStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxCreationLogStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxDiskCapacityBytesStmt != nil {
+		if cerr := q.updateBoxDiskCapacityBytesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxDiskCapacityBytesStmt: %w", cerr)
 		}
 	}
 	if q.updateBoxEmailCreditStmt != nil {
@@ -3436,6 +3463,11 @@ func (q *Queries) Close() error {
 	if q.updateBoxIPShardUserStmt != nil {
 		if cerr := q.updateBoxIPShardUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxIPShardUserStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxMemoryCapacityBytesStmt != nil {
+		if cerr := q.updateBoxMemoryCapacityBytesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxMemoryCapacityBytesStmt: %w", cerr)
 		}
 	}
 	if q.updateBoxMigrationStmt != nil {
@@ -3842,6 +3874,7 @@ type Queries struct {
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
 	getBoxesWithEmptyEmojiStmt                 *sql.Stmt
+	getBoxesWithMissingCapacityStmt            *sql.Stmt
 	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
 	getCreditBalanceStmt                       *sql.Stmt
@@ -4097,11 +4130,14 @@ type Queries struct {
 	updateAuthCookieLastUsedStmt               *sql.Stmt
 	updateAuthTokenUsedAtStmt                  *sql.Stmt
 	updateBoxAllocatedCPUsStmt                 *sql.Stmt
+	updateBoxCapacityBytesStmt                 *sql.Stmt
 	updateBoxContainerAndStatusStmt            *sql.Stmt
 	updateBoxCreationLogStmt                   *sql.Stmt
+	updateBoxDiskCapacityBytesStmt             *sql.Stmt
 	updateBoxEmailCreditStmt                   *sql.Stmt
 	updateBoxIPShardStmt                       *sql.Stmt
 	updateBoxIPShardUserStmt                   *sql.Stmt
+	updateBoxMemoryCapacityBytesStmt           *sql.Stmt
 	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxNameByIDStmt                      *sql.Stmt
 	updateBoxOwnerStmt                         *sql.Stmt
@@ -4301,6 +4337,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
 		getBoxesWithEmptyEmojiStmt:                 q.getBoxesWithEmptyEmojiStmt,
+		getBoxesWithMissingCapacityStmt:            q.getBoxesWithMissingCapacityStmt,
 		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
 		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
@@ -4556,11 +4593,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateAuthCookieLastUsedStmt:               q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:                  q.updateAuthTokenUsedAtStmt,
 		updateBoxAllocatedCPUsStmt:                 q.updateBoxAllocatedCPUsStmt,
+		updateBoxCapacityBytesStmt:                 q.updateBoxCapacityBytesStmt,
 		updateBoxContainerAndStatusStmt:            q.updateBoxContainerAndStatusStmt,
 		updateBoxCreationLogStmt:                   q.updateBoxCreationLogStmt,
+		updateBoxDiskCapacityBytesStmt:             q.updateBoxDiskCapacityBytesStmt,
 		updateBoxEmailCreditStmt:                   q.updateBoxEmailCreditStmt,
 		updateBoxIPShardStmt:                       q.updateBoxIPShardStmt,
 		updateBoxIPShardUserStmt:                   q.updateBoxIPShardUserStmt,
+		updateBoxMemoryCapacityBytesStmt:           q.updateBoxMemoryCapacityBytesStmt,
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxNameByIDStmt:                      q.updateBoxNameByIDStmt,
 		updateBoxOwnerStmt:                         q.updateBoxOwnerStmt,

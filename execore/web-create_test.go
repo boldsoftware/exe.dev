@@ -393,13 +393,15 @@ func TestShareAddLinkJSONViaWeb(t *testing.T) {
 	// Create a box owned by the user.
 	boxName := "share-link-test"
 	_, err = server.preCreateBox(t.Context(), preCreateBoxOptions{
-		userID:        user.UserID,
-		ctrhost:       "test-host",
-		name:          boxName,
-		image:         "exeuntu-24.04",
-		region:        "pdx",
-		noShard:       true,
-		allocatedCPUs: 1,
+		userID:              user.UserID,
+		ctrhost:             "test-host",
+		name:                boxName,
+		image:               "exeuntu-24.04",
+		region:              "pdx",
+		noShard:             true,
+		allocatedCPUs:       1,
+		memoryCapacityBytes: 0,
+		diskCapacityBytes:   0,
 	})
 	if err != nil {
 		t.Fatalf("preCreateBox: %v", err)
