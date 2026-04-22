@@ -62,11 +62,11 @@ table.info th { width: 200px; }
 <h4>Quotas</h4>
 <table class="info">
 <thead>
-<tr><th>Quota</th><th>Plan</th><th>Stage</th><th>User Limit</th><th>Effective</th></tr>
+<tr><th>Quota</th><th>Plan</th><th>Stage</th><th>User Limit</th><th>Cgroup</th><th>Effective</th></tr>
 </thead>
 <tbody>
 {{range $.Quotas}}
-<tr><td>{{.Name}}</td><td>{{.Plan}}</td><td>{{.Stage}}</td><td>{{.UserLimit}}</td><td>{{.Effective}}</td></tr>
+<tr><td>{{.Name}}</td><td>{{.Plan}}</td><td>{{.Stage}}</td><td>{{.UserLimit}}</td><td>{{.Cgroup}}</td><td><strong>{{.Effective}}</strong></td></tr>
 {{end}}
 </tbody>
 </table>

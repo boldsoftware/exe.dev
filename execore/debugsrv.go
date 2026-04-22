@@ -5583,6 +5583,19 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		Subject    string
 		CreatedAt  string
 	}
+	type planHistoryRow struct {
+		PlanID    string
+		StartedAt string
+		EndedAt   string
+		ChangedBy string
+	}
+	type quotaRow struct {
+		Name       string
+		UserLimits string
+		PlanQuota  string
+		Cgroup     string
+		Effective  string
+	}
 	var dripList []dripSendInfo
 	for _, ds := range dripSends {
 		info := dripSendInfo{
@@ -5670,6 +5683,13 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		TeamName            string
 		TeamRole            string
 		DripSends           []dripSendInfo
+		PaymentMethod       *billing.PaymentMethodInfo
+		PlanHistory         []planHistoryRow
+		BillingPeriodStart  string
+		BillingPeriodEnd    string
+		NextInvoiceDate     string
+		NextInvoiceAmount   string
+		Quotas              []quotaRow
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5756,6 +5776,135 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditRefreshPerHrOverride = credit.RefreshPerHour
 		data.CreditTotalUsedUSD = credit.TotalUsed
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
+	}
+
+	// Fetch additional billing details for the first account
+	if len(userAccounts) > 0 {
+		firstAccount := userAccounts[0]
+
+		// Payment method
+		if pm, err := s.billing.GetPaymentMethod(ctx, firstAccount.ID); err != nil {
+			s.slog().WarnContext(ctx, "failed to get payment method", "error", err, "account_id", firstAccount.ID)
+		} else {
+			data.PaymentMethod = pm
+		}
+
+		// Plan history
+		if history, err := withRxRes1(s, ctx, (*exedb.Queries).ListAccountPlanHistory, firstAccount.ID); err == nil {
+			for _, h := range history {
+				row := planHistoryRow{
+					PlanID:    h.PlanID,
+					StartedAt: h.StartedAt.Format(time.RFC3339),
+				}
+				if h.EndedAt != nil {
+					row.EndedAt = h.EndedAt.Format(time.RFC3339)
+				}
+				if h.ChangedBy != nil {
+					row.ChangedBy = *h.ChangedBy
+				}
+				data.PlanHistory = append(data.PlanHistory, row)
+			}
+		}
+
+		// Billing period and next invoice
+		if period, err := s.billing.CurrentBillingPeriod(ctx, firstAccount.ID); err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch billing period", "error", err, "account_id", firstAccount.ID)
+		} else if period != nil {
+			data.BillingPeriodStart = period.Start.Format("2006-01-02")
+			data.BillingPeriodEnd = period.End.Format("2006-01-02")
+		}
+		if inv, err := s.billing.UpcomingInvoice(ctx, firstAccount.ID); err != nil {
+			s.slog().WarnContext(ctx, "failed to fetch upcoming invoice", "error", err, "account_id", firstAccount.ID)
+		} else if inv != nil {
+			data.NextInvoiceDate = inv.PeriodEnd.Format("2006-01-02")
+			data.NextInvoiceAmount = fmt.Sprintf("$%.2f", float64(inv.AmountPaid)/100)
+		}
+	}
+
+	// Populate quotas (simplified 5-column format with cgroup overrides)
+	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
+		limits := ParseUserLimits(&exedb.User{Limits: user.Limits})
+		planTier, tierErr := plan.GetTierByID(planRow.PlanID)
+		if tierErr == nil {
+			formatBytes := func(b uint64) string {
+				if b == 0 {
+					return "\u2014"
+				}
+				return fmt.Sprintf("%.0f GB", float64(b)/(1024*1024*1024))
+			}
+
+			// Parse cgroup overrides to extract CPU and memory values.
+			cgroupSettings := desiredstate.ParseOverrides(ptrStr(user.CgroupOverrides))
+			var cgroupCPU, cgroupMem string
+			for _, cs := range cgroupSettings {
+				switch cs.Path {
+				case "cpu.max":
+					parts := strings.Fields(cs.Value)
+					if len(parts) == 2 {
+						if quota, err := strconv.ParseFloat(parts[0], 64); err == nil {
+							if period, err := strconv.ParseFloat(parts[1], 64); err == nil && period > 0 {
+								cores := quota / period
+								if cores == float64(int(cores)) {
+									cgroupCPU = fmt.Sprintf("%.0f", cores)
+								} else {
+									cgroupCPU = fmt.Sprintf("%.1f", cores)
+								}
+							}
+						}
+					}
+				case "memory.max":
+					if bytes, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
+						cgroupMem = formatBytes(bytes)
+					}
+				}
+			}
+			cgroupOrDash := func(s string) string {
+				if s == "" {
+					return "\u2014"
+				}
+				return s
+			}
+
+			// Max VMs (user)
+			planMaxUserVMs := planTier.Quotas.MaxUserVMs
+			userMaxBoxes := 0
+			if limits != nil {
+				userMaxBoxes = limits.MaxBoxes
+			}
+			effMaxBoxes := GetMaxBoxes(limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", planMaxUserVMs), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
+			// Max VMs (team)
+			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", "\u2014", fmt.Sprintf("%d", planMaxTeamVMs), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			// Max Disk
+			planMaxDisk := planTier.Quotas.MaxDisk
+			userMaxDisk := uint64(0)
+			if limits != nil {
+				userMaxDisk = limits.MaxDisk
+			}
+			effMaxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, s.env.DefaultDisk)
+			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(userMaxDisk), formatBytes(planMaxDisk), "\u2014", formatBytes(effMaxDisk)})
+			// Default Disk
+			planDefaultDisk := planTier.Quotas.DefaultDisk
+			effDefaultDisk := plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)
+			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", "\u2014", formatBytes(planDefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
+			// Max Memory
+			planMaxMem := planTier.Quotas.MaxMemory
+			userMaxMem := uint64(0)
+			if limits != nil {
+				userMaxMem = limits.MaxMemory
+			}
+			effMaxMem := GetMaxMemory(s.env, limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(userMaxMem), formatBytes(planMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
+			// Max CPUs
+			planMaxCPUs := planTier.Quotas.MaxCPUs
+			userMaxCPUs := uint64(0)
+			if limits != nil {
+				userMaxCPUs = limits.MaxCPUs
+			}
+			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
+		}
 	}
 
 	// Compute deletion block reasons.
@@ -6206,6 +6355,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			Plan      string
 			Stage     string
 			UserLimit string
+			Cgroup    string
 			Effective string
 		}
 		BillingPeriodStart       string
@@ -6317,7 +6467,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Populate quotas: plan value, user-limit override, effective.
+	// Populate quotas: plan value, user-limit override, cgroup override, effective.
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		const gib = 1 << 30
 		data.IncludedDiskGB = float64(plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)) / gib
@@ -6336,8 +6486,43 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				Plan      string
 				Stage     string
 				UserLimit string
+				Cgroup    string
 				Effective string
 			}
+
+			// Parse cgroup overrides to extract CPU and memory values.
+			cgroupSettings := desiredstate.ParseOverrides(ptrStr(user.CgroupOverrides))
+			var cgroupCPU, cgroupMem string
+			for _, cs := range cgroupSettings {
+				switch cs.Path {
+				case "cpu.max":
+					// Format: "quota period" e.g. "6400000 100000" means 64 cores
+					parts := strings.Fields(cs.Value)
+					if len(parts) == 2 {
+						if quota, err := strconv.ParseFloat(parts[0], 64); err == nil {
+							if period, err := strconv.ParseFloat(parts[1], 64); err == nil && period > 0 {
+								cores := quota / period
+								if cores == float64(int(cores)) {
+									cgroupCPU = fmt.Sprintf("%.0f", cores)
+								} else {
+									cgroupCPU = fmt.Sprintf("%.1f", cores)
+								}
+							}
+						}
+					}
+				case "memory.max":
+					if bytes, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
+						cgroupMem = formatBytes(bytes)
+					}
+				}
+			}
+			cgroupOrDash := func(s string) string {
+				if s == "" {
+					return "\u2014"
+				}
+				return s
+			}
+
 			// Max VMs (user)
 			planMaxUserVMs := planTier.Quotas.MaxUserVMs
 			userMaxBoxes := 0
@@ -6345,10 +6530,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxBoxes = limits.MaxBoxes
 			}
 			effMaxBoxes := GetMaxBoxes(limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", planMaxUserVMs), fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", effMaxBoxes)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", planMaxUserVMs), fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
 			// Max VMs (team)
 			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", planMaxTeamVMs), fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", planMaxTeamVMs), fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
 			// Max Disk
 			planMaxDisk := planTier.Quotas.MaxDisk
 			userMaxDisk := uint64(0)
@@ -6356,11 +6541,11 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxDisk = limits.MaxDisk
 			}
 			effMaxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, s.env.DefaultDisk)
-			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(planMaxDisk), formatBytes(s.env.DefaultDisk), formatBytes(userMaxDisk), formatBytes(effMaxDisk)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max Disk", formatBytes(planMaxDisk), formatBytes(s.env.DefaultDisk), formatBytes(userMaxDisk), "\u2014", formatBytes(effMaxDisk)})
 			// Default Disk
 			planDefaultDisk := planTier.Quotas.DefaultDisk
 			effDefaultDisk := plan.IncludedDisk(planRow.PlanID, s.env.DefaultDisk)
-			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", formatBytes(planDefaultDisk), formatBytes(s.env.DefaultDisk), "\u2014", formatBytes(effDefaultDisk)})
+			data.Quotas = append(data.Quotas, quotaRow{"Default Disk", formatBytes(planDefaultDisk), formatBytes(s.env.DefaultDisk), "\u2014", "\u2014", formatBytes(effDefaultDisk)})
 			// Max Memory
 			planMaxMem := planTier.Quotas.MaxMemory
 			userMaxMem := uint64(0)
@@ -6368,7 +6553,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxMem = limits.MaxMemory
 			}
 			effMaxMem := GetMaxMemory(s.env, limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(planMaxMem), formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), formatBytes(effMaxMem)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(planMaxMem), formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
 			// Max CPUs
 			planMaxCPUs := planTier.Quotas.MaxCPUs
 			userMaxCPUs := uint64(0)
@@ -6376,7 +6561,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxCPUs = limits.MaxCPUs
 			}
 			effMaxCPUs := GetMaxCPUs(s.env, limits)
-			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", planMaxCPUs), fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", effMaxCPUs)})
+			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", planMaxCPUs), fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
 		}
 	}
 

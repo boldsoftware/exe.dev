@@ -334,6 +334,76 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 <p>No billing accounts.</p>
 {{end}}
 
+{{if .PaymentMethod}}
+<h3 style="margin-top:15px;">Payment Method</h3>
+<table class="info">
+<tr><th>Type</th><td>{{.PaymentMethod.Type}}</td></tr>
+<tr><th>Display</th><td>{{.PaymentMethod.DisplayLabel}}</td></tr>
+{{if .PaymentMethod.Brand}}<tr><th>Brand</th><td>{{.PaymentMethod.Brand}}</td></tr>{{end}}
+{{if .PaymentMethod.Last4}}<tr><th>Last 4</th><td>{{.PaymentMethod.Last4}}</td></tr>{{end}}
+{{if .PaymentMethod.ExpMonth}}<tr><th>Expires</th><td>{{.PaymentMethod.ExpMonth}}/{{.PaymentMethod.ExpYear}}</td></tr>{{end}}
+{{if .PaymentMethod.Email}}<tr><th>Email</th><td>{{.PaymentMethod.Email}}</td></tr>{{end}}
+</table>
+{{end}}
+
+{{if .BillingAccounts}}
+<h3 style="margin-top:15px;">Plan Details</h3>
+<table class="info">
+<tr><th>Plan ID</th><td><code>{{if index .BillingAccounts 0}}{{(index .BillingAccounts 0).PlanID}}{{else}}(none){{end}}</code></td></tr>
+<tr><th>Trial Expires At</th><td>{{if .TrialExpiresAt}}{{.TrialExpiresAt}}{{else}}—{{end}}</td></tr>
+<tr><th>Current Period</th><td>{{if .BillingPeriodStart}}{{.BillingPeriodStart}} → {{.BillingPeriodEnd}}{{else}}—{{end}}</td></tr>
+<tr><th>Next Invoice</th><td>{{if .NextInvoiceDate}}{{.NextInvoiceAmount}} on {{.NextInvoiceDate}}{{else}}—{{end}}</td></tr>
+</table>
+{{end}}
+
+{{if .PlanHistory}}
+<h3 style="margin-top:15px;">Plan Changes</h3>
+<table class="info">
+<thead><tr><th>Plan ID</th><th>Started At</th><th>Ended At</th><th>Changed By</th></tr></thead>
+<tbody>
+{{range .PlanHistory}}
+<tr><td><code>{{.PlanID}}</code></td><td>{{.StartedAt}}</td><td>{{if .EndedAt}}{{.EndedAt}}{{else}}<em>(active)</em>{{end}}</td><td style="color:#888;font-size:12px;">{{.ChangedBy}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+{{if .Quotas}}
+<h3 style="margin-top:15px;">Quotas</h3>
+<table class="info">
+<thead><tr><th>Quota</th><th>User Limits</th><th>Plan Quotas</th><th>Cgroup</th><th>Effective</th></tr></thead>
+<tbody>
+{{range .Quotas}}
+<tr><td>{{.Name}}</td><td>{{.UserLimits}}</td><td>{{.PlanQuota}}</td><td>{{.Cgroup}}</td><td><strong>{{.Effective}}</strong></td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
+<h3 style="margin-top:15px;">Cgroup Overrides{{if not .CgroupOverrides}} (none){{end}}</h3>
+<p style="font-size:13px;color:#666;">Group-level cgroup limits applied to all VMs owned by this user.<br>
+Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...</code></p>
+{{if .CgroupOverrides}}
+<p><strong>Current overrides:</strong></p>
+<pre style="background:#f8f9fa;padding:10px;border:1px solid #dee2e6;border-radius:4px;">{{.CgroupOverrides}}</pre>
+{{end}}
+<form method="post" action="/debug/users/set-cgroup-overrides" style="margin-top:10px;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<table class="info" style="max-width:400px;">
+<tr>
+<th>CPU (cores)</th>
+<td><input type="number" name="cpu" id="cgroupCpu" step="1" min="0" placeholder="e.g. 64" style="width:120px;padding:6px;"></td>
+</tr>
+<tr>
+<th>Memory</th>
+<td><input type="text" name="memory" id="cgroupMemory" placeholder="e.g. 128G" style="width:120px;padding:6px;"></td>
+</tr>
+</table>
+<p style="font-size:12px;color:#666;margin-top:8px;">Leave blank to keep current value. Memory accepts: 4G, 128GB, 4096M, etc.</p>
+<button type="submit" style="margin-top:8px;padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
+<button type="button" onclick="if(confirm('Clear all cgroup overrides?')){document.getElementById('cgroupCpu').value='';document.getElementById('cgroupMemory').value='';var f=this.form;var h=document.createElement('input');h.type='hidden';h.name='clear';h.value='1';f.appendChild(h);f.submit();}" style="margin-top:8px;padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Clear All</button>
+</form>
+
 {{if .CanGrantTrial}}
 <h3 style="margin-top:15px;">Grant Trial</h3>
 <p style="font-size:13px;color:#666;">Grants a trial plan to this user. Also re-enables VM creation if it was disabled.</p>
@@ -457,34 +527,6 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 {{else}}
 <p>No VMs.</p>
 {{end}}
-</div>
-</div>
-
-<div class="section">
-<h2>Cgroup Overrides{{if not .CgroupOverrides}} (none){{end}}</h2>
-<div class="section-content">
-<p style="font-size:13px;color:#666;">Group-level cgroup limits applied to all VMs owned by this user.<br>
-Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...</code></p>
-{{if .CgroupOverrides}}
-<p><strong>Current overrides:</strong></p>
-<pre style="background:#f8f9fa;padding:10px;border:1px solid #dee2e6;border-radius:4px;">{{.CgroupOverrides}}</pre>
-{{end}}
-<form method="post" action="/debug/users/set-cgroup-overrides" style="margin-top:10px;">
-<input type="hidden" name="user_id" value="{{.UserID}}">
-<table class="info" style="max-width:400px;">
-<tr>
-<th>CPU (cores)</th>
-<td><input type="number" name="cpu" id="cgroupCpu" step="1" min="0" placeholder="e.g. 64" style="width:120px;padding:6px;"></td>
-</tr>
-<tr>
-<th>Memory</th>
-<td><input type="text" name="memory" id="cgroupMemory" placeholder="e.g. 128G" style="width:120px;padding:6px;"></td>
-</tr>
-</table>
-<p style="font-size:12px;color:#666;margin-top:8px;">Leave blank to keep current value. Memory accepts: 4G, 128GB, 4096M, etc.</p>
-<button type="submit" style="margin-top:8px;padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
-<button type="button" onclick="if(confirm('Clear all cgroup overrides?')){document.getElementById('cgroupCpu').value='';document.getElementById('cgroupMemory').value='';var f=this.form;var h=document.createElement('input');h.type='hidden';h.name='clear';h.value='1';f.appendChild(h);f.submit();}" style="margin-top:8px;padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Clear All</button>
-</form>
 </div>
 </div>
 
