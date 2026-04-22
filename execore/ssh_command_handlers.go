@@ -418,6 +418,17 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},
+		{
+			Name:              "emoji",
+			Hidden:            true,
+			AllowTagScoped:    true,
+			Description:       "Set the emoji for a VM",
+			Usage:             "emoji <hostname> <emoji>",
+			Handler:           ss.handleEmojiCommand,
+			FlagSetFunc:       jsonOnlyFlags("emoji"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
 		ss.shareCommand(),
 		{
 			Name:           "whoami",
@@ -555,6 +566,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Usage:             "backfill-allocated-cpus <count>",
 			HasPositionalArgs: true,
 			Handler:           ss.handleBackfillAllocatedCPUs,
+		},
+		{
+			Name:              "backfill-emoji",
+			Hidden:            true,
+			RequiresSudo:      true,
+			Description:       "Backfill VM emojis by asking Claude Haiku (support only)",
+			Usage:             "backfill-emoji <count>",
+			HasPositionalArgs: true,
+			Handler:           ss.handleBackfillEmoji,
 		},
 		{
 			Name:              "throttle-vm",

@@ -255,6 +255,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		Host                 string `json:"host"`
 		ID                   string `json:"id,omitempty"`
 		Name                 string `json:"name"`
+		Emoji                string `json:"emoji"`
 		Status               string `json:"status"`
 		OwnerUserID          string `json:"owner_user_id,omitempty"`
 		OwnerEmail           string `json:"owner_email,omitempty"`
@@ -330,6 +331,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 			info := boxInfo{
 				Host:                 b.Ctrhost,
 				Name:                 b.Name,
+				Emoji:                b.Emoji,
 				Status:               b.Status,
 				OwnerUserID:          b.OwnerUserID,
 				OwnerEmail:           b.OwnerEmail,

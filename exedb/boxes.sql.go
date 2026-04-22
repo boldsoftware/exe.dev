@@ -11,7 +11,7 @@ import (
 )
 
 const boxNamed = `-- name: BoxNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ?
 `
 
 // This is not a secure API!
@@ -45,6 +45,7 @@ func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
@@ -61,7 +62,7 @@ func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, er
 }
 
 const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?
 `
 
 type BoxWithOwnerNamedParams struct {
@@ -98,12 +99,13 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const boxesForUser = `-- name: BoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji
 FROM boxes
 WHERE created_by_user_id = ?
 ORDER BY updated_at DESC, id DESC
@@ -144,6 +146,7 @@ func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]B
 			&i.CgroupOverrides,
 			&i.Tags,
 			&i.LockReason,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}
@@ -234,7 +237,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 }
 
 const getBoxByContainerID = `-- name: GetBoxByContainerID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE container_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE container_id = ?
 `
 
 func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) (Box, error) {
@@ -266,12 +269,13 @@ func (q *Queries) GetBoxByContainerID(ctx context.Context, containerID *string) 
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByID = `-- name: GetBoxByID :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE id = ?
 `
 
 func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
@@ -303,12 +307,13 @@ func (q *Queries) GetBoxByID(ctx context.Context, id int) (Box, error) {
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND created_by_user_id = ?
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND created_by_user_id = ?
 `
 
 type GetBoxByNameAndAllocParams struct {
@@ -345,12 +350,13 @@ func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndA
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByNameWithSupportAccess = `-- name: GetBoxByNameWithSupportAccess :one
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE name = ? AND support_access_allowed = 1
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE name = ? AND support_access_allowed = 1
 `
 
 func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string) (Box, error) {
@@ -382,6 +388,7 @@ func (q *Queries) GetBoxByNameWithSupportAccess(ctx context.Context, name string
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
@@ -434,7 +441,7 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 }
 
 const getBoxesByHost = `-- name: GetBoxesByHost :many
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
 FROM boxes b
 WHERE b.ctrhost = ? AND b.status != 'failed'
 `
@@ -474,6 +481,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.CgroupOverrides,
 			&i.Tags,
 			&i.LockReason,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}
@@ -551,8 +559,40 @@ func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, createdByUserID 
 	return items, nil
 }
 
+const getBoxesWithEmptyEmoji = `-- name: GetBoxesWithEmptyEmoji :many
+SELECT id, name FROM boxes WHERE emoji = '' ORDER BY id LIMIT ?
+`
+
+type GetBoxesWithEmptyEmojiRow struct {
+	ID   int    `db:"id" json:"id"`
+	Name string `db:"name" json:"name"`
+}
+
+func (q *Queries) GetBoxesWithEmptyEmoji(ctx context.Context, limit int64) ([]GetBoxesWithEmptyEmojiRow, error) {
+	rows, err := q.query(ctx, q.getBoxesWithEmptyEmojiStmt, getBoxesWithEmptyEmoji, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBoxesWithEmptyEmojiRow{}
+	for rows.Next() {
+		var i GetBoxesWithEmptyEmojiRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBoxesWithNullAllocatedCPUs = `-- name: GetBoxesWithNullAllocatedCPUs :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
 ORDER BY id
 LIMIT ?
@@ -593,6 +633,7 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 			&i.CgroupOverrides,
 			&i.Tags,
 			&i.LockReason,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}
@@ -608,7 +649,7 @@ func (q *Queries) GetBoxesWithNullAllocatedCPUs(ctx context.Context, limit int64
 }
 
 const getRunningBoxesForUser = `-- name: GetRunningBoxesForUser :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason FROM boxes WHERE created_by_user_id = ? AND status = 'running'
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji FROM boxes WHERE created_by_user_id = ? AND status = 'running'
 `
 
 // Returns all running boxes owned by a user.
@@ -647,6 +688,7 @@ func (q *Queries) GetRunningBoxesForUser(ctx context.Context, createdByUserID st
 			&i.CgroupOverrides,
 			&i.Tags,
 			&i.LockReason,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}
@@ -775,7 +817,7 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 }
 
 const listAllBoxesWithOwner = `-- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, b.support_access_allowed
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, b.support_access_allowed, b.emoji
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name
@@ -790,6 +832,7 @@ type ListAllBoxesWithOwnerRow struct {
 	OwnerEmail           string  `db:"owner_email" json:"owner_email"`
 	Region               string  `db:"region" json:"region"`
 	SupportAccessAllowed int64   `db:"support_access_allowed" json:"support_access_allowed"`
+	Emoji                string  `db:"emoji" json:"emoji"`
 }
 
 func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWithOwnerRow, error) {
@@ -810,6 +853,7 @@ func (q *Queries) ListAllBoxesWithOwner(ctx context.Context) ([]ListAllBoxesWith
 			&i.OwnerEmail,
 			&i.Region,
 			&i.SupportAccessAllowed,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}
@@ -835,6 +879,20 @@ type SetBoxCgroupOverridesParams struct {
 
 func (q *Queries) SetBoxCgroupOverrides(ctx context.Context, arg SetBoxCgroupOverridesParams) error {
 	_, err := q.exec(ctx, q.setBoxCgroupOverridesStmt, setBoxCgroupOverrides, arg.CgroupOverrides, arg.ID)
+	return err
+}
+
+const setBoxEmoji = `-- name: SetBoxEmoji :exec
+UPDATE boxes SET emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type SetBoxEmojiParams struct {
+	Emoji string `db:"emoji" json:"emoji"`
+	ID    int    `db:"id" json:"id"`
+}
+
+func (q *Queries) SetBoxEmoji(ctx context.Context, arg SetBoxEmojiParams) error {
+	_, err := q.exec(ctx, q.setBoxEmojiStmt, setBoxEmoji, arg.Emoji, arg.ID)
 	return err
 }
 

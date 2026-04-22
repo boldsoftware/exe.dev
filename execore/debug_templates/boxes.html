@@ -23,6 +23,7 @@ h1 { margin-bottom: 10px; }
 <table id="boxesTable" class="display stripe hover">
 <thead>
 <tr>
+<th>Emoji</th>
 <th>Name</th>
 <th>Exelet</th>
 <th>Region</th>
@@ -32,6 +33,7 @@ h1 { margin-bottom: 10px; }
 <th>Actions</th>
 </tr>
 <tr class="filters">
+<th>Emoji</th>
 <th>Name</th>
 <th>Exelet</th>
 <th>Region</th>
@@ -73,9 +75,10 @@ $(document).ready(function() {
         },
         pageLength: 100,
         lengthMenu: [[25, 50, 100, 250, -1], [25, 50, 100, 250, "All"]],
-        order: [[0, 'asc']],
+        order: [[1, 'asc']],
         orderCellsTop: true,
         columns: [
+            { data: 'emoji', defaultContent: '' },
             { data: 'name', render: function(d) {
                 return '<a href="/debug/vms/' + d + '">' + d + '</a>';
             }},

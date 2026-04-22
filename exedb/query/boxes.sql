@@ -99,10 +99,16 @@ SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
 UPDATE boxes SET creation_log = ? WHERE name = ?;
 
 -- name: ListAllBoxesWithOwner :many
-SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, b.support_access_allowed
+SELECT b.name, b.status, b.ctrhost, b.container_id, b.created_by_user_id as owner_user_id, u.email as owner_email, b.region, b.support_access_allowed, b.emoji
 FROM boxes b
 JOIN users u ON u.user_id = b.created_by_user_id
 ORDER BY b.name;
+
+-- name: SetBoxEmoji :exec
+UPDATE boxes SET emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: GetBoxesWithEmptyEmoji :many
+SELECT id, name FROM boxes WHERE emoji = '' ORDER BY id LIMIT ?;
 
 -- name: UpdateBoxNameByID :exec
 UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;

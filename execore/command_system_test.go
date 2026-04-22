@@ -950,6 +950,7 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 	wantSudo := map[string]bool{
 		"exelets":                 true,
 		"backfill-allocated-cpus": true,
+		"backfill-emoji":          true,
 		"sudo-exe":                true,
 		"sudo-exe add-gift":       true,
 		"sudo-exe llm-credits":    true,

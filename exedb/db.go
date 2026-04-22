@@ -459,6 +459,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
+	if q.getBoxesWithEmptyEmojiStmt, err = db.PrepareContext(ctx, getBoxesWithEmptyEmoji); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesWithEmptyEmoji: %w", err)
+	}
 	if q.getBoxesWithNullAllocatedCPUsStmt, err = db.PrepareContext(ctx, getBoxesWithNullAllocatedCPUs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesWithNullAllocatedCPUs: %w", err)
 	}
@@ -1118,6 +1121,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.setBoxEmailReceiveStmt, err = db.PrepareContext(ctx, setBoxEmailReceive); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxEmailReceive: %w", err)
+	}
+	if q.setBoxEmojiStmt, err = db.PrepareContext(ctx, setBoxEmoji); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxEmoji: %w", err)
 	}
 	if q.setBoxLockReasonStmt, err = db.PrepareContext(ctx, setBoxLockReason); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxLockReason: %w", err)
@@ -2081,6 +2087,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesSharedWithUserStmt != nil {
 		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesWithEmptyEmojiStmt != nil {
+		if cerr := q.getBoxesWithEmptyEmojiStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesWithEmptyEmojiStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesWithNullAllocatedCPUsStmt != nil {
@@ -3183,6 +3194,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxEmailReceiveStmt: %w", cerr)
 		}
 	}
+	if q.setBoxEmojiStmt != nil {
+		if cerr := q.setBoxEmojiStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxEmojiStmt: %w", cerr)
+		}
+	}
 	if q.setBoxLockReasonStmt != nil {
 		if cerr := q.setBoxLockReasonStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxLockReasonStmt: %w", cerr)
@@ -3757,6 +3773,7 @@ type Queries struct {
 	getBoxesByHostStmt                         *sql.Stmt
 	getBoxesForUserDashboardStmt               *sql.Stmt
 	getBoxesSharedWithUserStmt                 *sql.Stmt
+	getBoxesWithEmptyEmojiStmt                 *sql.Stmt
 	getBoxesWithNullAllocatedCPUsStmt          *sql.Stmt
 	getCheckoutParamsStmt                      *sql.Stmt
 	getCreditBalanceStmt                       *sql.Stmt
@@ -3977,6 +3994,7 @@ type Queries struct {
 	setAccountParentIDStmt                     *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
+	setBoxEmojiStmt                            *sql.Stmt
 	setBoxLockReasonStmt                       *sql.Stmt
 	setBoxSupportAccessAllowedStmt             *sql.Stmt
 	setIPAbuseFilterDisabledStmt               *sql.Stmt
@@ -4206,6 +4224,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                         q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:               q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:                 q.getBoxesSharedWithUserStmt,
+		getBoxesWithEmptyEmojiStmt:                 q.getBoxesWithEmptyEmojiStmt,
 		getBoxesWithNullAllocatedCPUsStmt:          q.getBoxesWithNullAllocatedCPUsStmt,
 		getCheckoutParamsStmt:                      q.getCheckoutParamsStmt,
 		getCreditBalanceStmt:                       q.getCreditBalanceStmt,
@@ -4426,6 +4445,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
+		setBoxEmojiStmt:                            q.setBoxEmojiStmt,
 		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,
 		setBoxSupportAccessAllowedStmt:             q.setBoxSupportAccessAllowedStmt,
 		setIPAbuseFilterDisabledStmt:               q.setIPAbuseFilterDisabledStmt,

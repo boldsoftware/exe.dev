@@ -111,7 +111,7 @@ func (q *Queries) DeleteTeamMember(ctx context.Context, arg DeleteTeamMemberPara
 }
 
 const getBoxAccessibleByTeamAdmin = `-- name: GetBoxAccessibleByTeamAdmin :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN team_members tm_admin ON tm_creator.team_id = tm_admin.team_id
@@ -154,12 +154,13 @@ func (q *Queries) GetBoxAccessibleByTeamAdmin(ctx context.Context, arg GetBoxAcc
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByTeamAdminAndShard = `-- name: GetBoxByTeamAdminAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON bis.user_id = tm_creator.user_id
@@ -203,12 +204,13 @@ func (q *Queries) GetBoxByTeamAdminAndShard(ctx context.Context, arg GetBoxByTea
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByTeamSSHAndName = `-- name: GetBoxByTeamSSHAndName :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
 FROM boxes b
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
 JOIN team_members tm_requester ON tm_creator.team_id = tm_requester.team_id
@@ -252,12 +254,13 @@ func (q *Queries) GetBoxByTeamSSHAndName(ctx context.Context, arg GetBoxByTeamSS
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }
 
 const getBoxByTeamSSHAndShard = `-- name: GetBoxByTeamSSHAndShard :one
-SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log, b.support_access_allowed, b.region, b.email_receive_enabled, b.email_maildir_path, b.allocated_cpus, b.cgroup_overrides, b.tags, b.lock_reason, b.emoji
 FROM boxes b
 JOIN box_ip_shard bis ON b.id = bis.box_id
 JOIN team_members tm_creator ON b.created_by_user_id = tm_creator.user_id
@@ -302,6 +305,7 @@ func (q *Queries) GetBoxByTeamSSHAndShard(ctx context.Context, arg GetBoxByTeamS
 		&i.CgroupOverrides,
 		&i.Tags,
 		&i.LockReason,
+		&i.Emoji,
 	)
 	return i, err
 }

@@ -100,6 +100,7 @@ type Box struct {
 	CgroupOverrides      *string    `db:"cgroup_overrides" json:"cgroup_overrides"`
 	Tags                 string     `db:"tags" json:"tags"`
 	LockReason           *string    `db:"lock_reason" json:"lock_reason"`
+	Emoji                string     `db:"emoji" json:"emoji"`
 }
 
 type BoxEmailCredit struct {
