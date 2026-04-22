@@ -11,6 +11,7 @@ import (
 
 	"exe.dev/dnsresolver"
 	"exe.dev/domz"
+	"golang.org/x/net/publicsuffix"
 )
 
 type dnsCheckResult struct {
@@ -32,6 +33,12 @@ type dnsCheckResult struct {
 
 	// Whether a wildcard CNAME was detected
 	WildcardCNAME bool `json:"wildcardCname,omitempty"`
+
+	// Whether the domain is an apex that has a CNAME record.
+	// This violates RFC 1912 § 2.4 (CNAMEs cannot coexist with the
+	// SOA/NS/MX records every apex has) and tends to break email
+	// and nameserver delegation.
+	ApexCNAME bool `json:"apexCname,omitempty"`
 
 	// The resolved box name, if any
 	BoxName string `json:"boxName,omitempty"`
@@ -118,6 +125,12 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 		result.WildcardCNAME = detectWildcardCNAME(ctx, domain, result.CNAME)
 	}
 
+	// Step 1c: Apex-with-CNAME detection. A CNAME on an apex domain
+	// violates RFC 1912 § 2.4 and breaks MX/NS records.
+	if result.CNAME != "" && isApexDomain(domain) {
+		result.ApexCNAME = true
+	}
+
 	// Step 2: A record lookup
 	addrs, aErr := dnsresolver.Resolver().LookupNetIP(ctx, "ip4", domain)
 	if aErr != nil {
@@ -192,6 +205,17 @@ func (s *Server) extractBoxName(hostname string) string {
 	return ""
 }
 
+// isApexDomain reports whether domain is the registrable apex under
+// the public suffix list (e.g. "example.com" or "example.co.uk"),
+// where placing a CNAME is illegal per RFC 1912 § 2.4.
+func isApexDomain(domain string) bool {
+	etld1, err := publicsuffix.EffectiveTLDPlusOne(domain)
+	if err != nil {
+		return false
+	}
+	return etld1 == domain
+}
+
 func (s *Server) isExeIP(addr netip.Addr) bool {
 	if s.LobbyIP.IsValid() && addr == s.LobbyIP {
 		return true
@@ -232,6 +256,11 @@ func detectWildcardCNAME(ctx context.Context, domain, cname string) bool {
 }
 
 func classifyDNSResult(r *dnsCheckResult, boxHost string) (status, message string) {
+	// Case 0: CNAME on an apex domain is an RFC violation.
+	if r.ApexCNAME {
+		return "error", "CNAME records are not allowed on apex domains (RFC 1912 § 2.4). A CNAME on " + r.Domain + " will break MX, NS, and other records. Replace it with an A, ALIAS, ANAME, or flattened-CNAME record pointing to your VM."
+	}
+
 	// Case 1: CNAME directly points to exe.xyz
 	if r.CNAMEPointsToExe {
 		return "ok", "CNAME points to " + r.CNAME + ". Your domain is correctly configured."

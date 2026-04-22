@@ -2,6 +2,7 @@ package exeweb
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -196,25 +197,50 @@ func (dr *DomainResolver) IsWildcardCNAME(ctx context.Context, host string) bool
 }
 
 // isWildcardCNAME reports probable wildcard CNAME records.
-// Given host X.Y.Z with CNAME target T, it checks whether the parent
-// domain Y.Z also has a CNAME pointing to T. If so, X.Y.Z is likely
-// the result of a wildcard CNAME (e.g. *.Y.Z -> T) which could allow
-// unbounded certificate issuance.
+// Given host X.Y.Z with CNAME target T, it probes a random sibling
+// name (e.g. exe-cname-probe-<rand>.Y.Z) to see whether it also
+// resolves to T. If so, X.Y.Z is likely the result of a wildcard
+// CNAME (e.g. *.Y.Z -> T) which could allow unbounded certificate
+// issuance.
+//
+// A probe (rather than simply checking the parent's CNAME) is
+// required because we want users to be able to configure multiple
+// explicit CNAMEs to the same VM if they want to — e.g.
+// foo.example.com and foo.foo.example.com both pointing at the same
+// exe.dev VM — without us mistaking their explicit records for a
+// wildcard.
 func (dr *DomainResolver) isWildcardCNAME(ctx context.Context, host, cname string) bool {
 	parent := parentDomain(host)
 	if parent == "" {
 		return false
 	}
-	parentCNAME, err := dr.lookupCNAME(ctx, parent)
+	// Probe label is "exe-cname-probe-" + random base32 suffix. We
+	// want as much entropy as possible while staying within:
+	//   - 63 chars per DNS label
+	//   - 253 chars total for the full name
+	// We know `host` (= someLabel + "." + parent) already fit, and
+	// someLabel was at least one char, so parent+2 ≤ 253 and there
+	// is always room for at least a single random char.
+	const prefix = "exe-cname-probe-"
+	maxLabel := 63 - len(prefix)                    // fit in a single DNS label
+	maxTotal := 253 - len(prefix) - 1 - len(parent) // fit in full name ("." + parent)
+	n := min(maxLabel, maxTotal)
+	n = min(n, 16) // 16 base32 chars = 80 bits, plenty
+	if n < 1 {
+		n = 1
+	}
+	probe := prefix + strings.ToLower(rand.Text()[:n]) + "." + parent
+	probeCNAME, err := dr.lookupCNAME(ctx, probe)
 	if err != nil {
-		// Parent has no CNAME or lookup failed — not a wildcard.
+		// Probe does not exist — no wildcard.
 		return false
 	}
-	parentCNAME = domz.Canonicalize(parentCNAME)
-	if parentCNAME == cname {
+	probeCNAME = domz.Canonicalize(probeCNAME)
+	if probeCNAME == cname {
 		dr.Lg.WarnContext(ctx, "probable wildcard CNAME detected",
 			"host", host,
 			"parent", parent,
+			"probe", probe,
 			"cname", cname,
 		)
 		return true

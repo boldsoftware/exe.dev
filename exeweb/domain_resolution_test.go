@@ -41,25 +41,41 @@ func TestIsWildcardCNAME(t *testing.T) {
 		name  string
 		host  string
 		cname string
-		// CNAME responses: host -> target
-		cnames map[string]string
-		result bool
+		// wildcardParents are parent domains under which ANY
+		// subdomain resolves to wildcardTarget.
+		wildcardParents map[string]string
+		// explicit CNAME responses for specific hosts.
+		explicit map[string]string
+		result   bool
 	}{
 		{
 			name:  "wildcard detected",
 			host:  "random.attacker.com",
 			cname: "mybox.exe.xyz",
-			cnames: map[string]string{
+			wildcardParents: map[string]string{
 				"attacker.com": "mybox.exe.xyz",
 			},
 			result: true,
 		},
 		{
-			name:  "parent has different CNAME",
-			host:  "sub.legit.com",
-			cname: "mybox.exe.xyz",
-			cnames: map[string]string{
-				"legit.com": "otherbox.exe.xyz",
+			name:  "parent has CNAME but no wildcard (apex + sibling both explicit)",
+			host:  "api.example.com",
+			cname: "myvm.exe.xyz",
+			// example.com has a CNAME pointing to the same target,
+			// but *.example.com does not resolve. This is not a wildcard.
+			explicit: map[string]string{
+				"example.com":     "myvm.exe.xyz",
+				"api.example.com": "myvm.exe.xyz",
+			},
+			result: false,
+		},
+		{
+			name:  "multiple explicit CNAMEs at different depths (not a wildcard)",
+			host:  "foo.foo.example.com",
+			cname: "myvm.exe.xyz",
+			explicit: map[string]string{
+				"foo.example.com":     "myvm.exe.xyz",
+				"foo.foo.example.com": "myvm.exe.xyz",
 			},
 			result: false,
 		},
@@ -67,21 +83,19 @@ func TestIsWildcardCNAME(t *testing.T) {
 			name:   "parent has no CNAME",
 			host:   "sub.legit.com",
 			cname:  "mybox.exe.xyz",
-			cnames: map[string]string{},
 			result: false,
 		},
 		{
 			name:   "two-label host has no parent to check",
 			host:   "legit.com",
 			cname:  "mybox.exe.xyz",
-			cnames: map[string]string{},
 			result: false,
 		},
 		{
 			name:  "deep wildcard detected",
 			host:  "a.b.attacker.com",
 			cname: "mybox.exe.xyz",
-			cnames: map[string]string{
+			wildcardParents: map[string]string{
 				"b.attacker.com": "mybox.exe.xyz",
 			},
 			result: true,
@@ -95,8 +109,13 @@ func TestIsWildcardCNAME(t *testing.T) {
 				Lg:  tslog.Slogger(t),
 				Env: ptrTo(stage.Prod()),
 				LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
-					if target, ok := tt.cnames[host]; ok {
+					if target, ok := tt.explicit[host]; ok {
 						return target, nil
+					}
+					for parent, target := range tt.wildcardParents {
+						if strings.HasSuffix(host, "."+parent) {
+							return target, nil
+						}
 					}
 					return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 				},
@@ -104,7 +123,7 @@ func TestIsWildcardCNAME(t *testing.T) {
 
 			got := dr.isWildcardCNAME(context.Background(), tt.host, tt.cname)
 			if got != tt.result {
-				t.Errorf("isWildcardName(%q, %q) = %t, want %t", tt.host, tt.cname, got, tt.result)
+				t.Errorf("isWildcardCNAME(%q, %q) = %t, want %t", tt.host, tt.cname, got, tt.result)
 			}
 		})
 	}
@@ -117,15 +136,12 @@ func TestIsWildcardCNAMEFromHost(t *testing.T) {
 		Lg:  tslog.Slogger(t),
 		Env: ptrTo(stage.Prod()),
 		LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
-			switch host {
-			case "random.attacker.com":
+			// Every name under attacker.com resolves to the same target —
+			// this is a wildcard CNAME (*.attacker.com).
+			if host == "attacker.com" || strings.HasSuffix(host, ".attacker.com") {
 				return "mybox.exe.xyz", nil
-			case "attacker.com":
-				// Same target — this is a wildcard CNAME (*.attacker.com)
-				return "mybox.exe.xyz", nil
-			default:
-				return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 			}
+			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		},
 	}
 

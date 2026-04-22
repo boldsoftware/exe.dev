@@ -61,6 +61,17 @@ func TestClassifyDNSResult(t *testing.T) {
 			wantStatus: "error",
 		},
 		{
+			name: "apex with CNAME (RFC 1912 violation)",
+			result: dnsCheckResult{
+				Domain:           "example.com",
+				CNAME:            "myvm.exe.xyz",
+				CNAMEPointsToExe: true,
+				BoxName:          "myvm",
+				ApexCNAME:        true,
+			},
+			wantStatus: "error",
+		},
+		{
 			name: "no records at all",
 			result: dnsCheckResult{
 				Domain:     "nonexistent.example.com",
@@ -81,5 +92,23 @@ func TestClassifyDNSResult(t *testing.T) {
 				t.Error("classifyDNSResult() returned empty message")
 			}
 		})
+	}
+}
+
+func TestIsApexDomain(t *testing.T) {
+	tests := []struct {
+		domain string
+		want   bool
+	}{
+		{"example.com", true},
+		{"app.example.com", false},
+		{"example.co.uk", true},
+		{"foo.example.co.uk", false},
+		{"com", false},
+	}
+	for _, tt := range tests {
+		if got := isApexDomain(tt.domain); got != tt.want {
+			t.Errorf("isApexDomain(%q) = %v, want %v", tt.domain, got, tt.want)
+		}
 	}
 }

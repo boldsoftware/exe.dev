@@ -310,6 +310,13 @@ function renderDNSResult(d: any): string {
 
   html += '</tbody></table>'
 
+  if (d.apexCname) {
+    html += '<p class="dns-wildcard-warn">⚠ <strong>' + escapeHtml(d.domain) + '</strong> is an apex domain, but it has a <code>CNAME</code> record. '
+      + '<a href="https://datatracker.ietf.org/doc/html/rfc1912#section-2.4" target="_blank" rel="noopener">RFC\u00a01912\u00a0\u00a72.4</a> forbids CNAMEs on a name that also has SOA/NS/MX records, and every apex has them. '
+      + 'This will break email (MX), nameserver delegation (NS), and other records. '
+      + 'Replace the CNAME with an <code>A</code>, <code>ALIAS</code>, <code>ANAME</code>, or flattened-CNAME record pointing to your VM.</p>'
+  }
+
   if (d.wildcardCname) {
     html += '<p class="dns-wildcard-warn">⚠ It\'ll work for now, but we recommend against wildcard CNAME records, as they can allow for certificate issuance abuse.</p>'
   }
