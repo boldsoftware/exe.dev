@@ -34,7 +34,7 @@ func TestDebugUserBillingAccountsOneAccount(t *testing.T) {
 
 	body := debugUserPageBody(t, s, userID)
 
-	requireAccountRow(t, body, account.ID, "active")
+	requireAccountRow(t, body, account.ID)
 	billingPageURL := "/debug/billing?userId=" + userID
 	if !strings.Contains(body, billingPageURL) {
 		t.Fatalf("expected billing page URL for user %q", userID)
@@ -72,7 +72,7 @@ func TestDebugUserBillingAccountWithMixedEvents(t *testing.T) {
 	}
 
 	body := debugUserPageBody(t, s, userID)
-	requireAccountRow(t, body, account.ID, "active")
+	requireAccountRow(t, body, account.ID)
 }
 
 // TestDebugBillingEntitlementTablePresent verifies the entitlement table section
@@ -244,12 +244,12 @@ func debugBillingPageBody(t *testing.T, s *Server, userID string) string {
 	return w.Body.String()
 }
 
-func requireAccountRow(t *testing.T, body, accountID, status string) {
+func requireAccountRow(t *testing.T, body, accountID string) {
 	t.Helper()
 	row := regexp.MustCompile(
-		`<td>` + regexp.QuoteMeta(accountID) + `</td>\s*<td><code>[^<]*</code></td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`,
+		`<td>` + regexp.QuoteMeta(accountID) + `</td>\s*<td><code>[^<]*</code></td>`,
 	)
 	if !row.MatchString(body) {
-		t.Fatalf("expected billing row account=%q status=%q", accountID, status)
+		t.Fatalf("expected billing row account=%q", accountID)
 	}
 }

@@ -60,10 +60,10 @@ INSERT INTO billing_events (account_id, event_type, event_at)
 SELECT id, 'active', ?2 FROM accounts WHERE created_by = ?1;
 
 -- name: GetAccount :one
-SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE id = ?;
+SELECT id, created_by, created_at, parent_id FROM accounts WHERE id = ?;
 
 -- name: GetAccountByUserID :one
-SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE created_by = ?;
+SELECT id, created_by, created_at, parent_id FROM accounts WHERE created_by = ?;
 
 -- name: GetAccountWithBillingStatus :one
 -- Returns account info with billing status derived from billing_events.
@@ -78,7 +78,7 @@ SELECT a.id, a.created_by, a.created_at,
 FROM accounts a WHERE a.created_by = ?;
 
 -- name: ListAllAccounts :many
-SELECT id, created_by, created_at, parent_id, status FROM accounts;
+SELECT id, created_by, created_at, parent_id FROM accounts;
 
 -- name: GetUserBillingStatus :one
 -- Returns the user's billing information for determining payment status.

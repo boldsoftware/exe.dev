@@ -32,7 +32,7 @@ func setupAccountTestDB(t *testing.T) (*sql.DB, *exedb.Queries) {
 
 // TestAccountsHaveParentIDAndStatus verifies that migration 119 added parent_id and status
 // columns to the accounts table with correct constraints.
-func TestAccountsHaveParentIDAndStatus(t *testing.T) {
+func TestAccountsHaveParentID(t *testing.T) {
 	t.Parallel()
 
 	db, _ := setupAccountTestDB(t)
@@ -45,11 +45,11 @@ func TestAccountsHaveParentIDAndStatus(t *testing.T) {
 		t.Fatalf("parent_id column missing from accounts: %v", err)
 	}
 
-	// Verify status column exists.
+	// Verify status column was dropped.
 	var statusName string
 	err = db.QueryRowContext(ctx, `SELECT name FROM pragma_table_info('accounts') WHERE name = 'status'`).Scan(&statusName)
-	if err != nil {
-		t.Fatalf("status column missing from accounts: %v", err)
+	if err == nil {
+		t.Fatal("status column should have been dropped from accounts")
 	}
 
 	// NULL parent_id (top-level account) must be valid.
@@ -59,27 +59,6 @@ func TestAccountsHaveParentIDAndStatus(t *testing.T) {
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by) VALUES (?, ?)`, "exe_migtest00001", userID); err != nil {
 		t.Fatalf("insert account with NULL parent_id: %v", err)
-	}
-
-	// Default status must be 'active'.
-	var status string
-	if err := db.QueryRowContext(ctx, `SELECT status FROM accounts WHERE id = 'exe_migtest00001'`).Scan(&status); err != nil {
-		t.Fatalf("read status: %v", err)
-	}
-	if status != "active" {
-		t.Errorf("expected default status='active', got %q", status)
-	}
-
-	// CHECK constraint must reject unknown status values.
-	if _, err := db.ExecContext(ctx, `UPDATE accounts SET status = 'badvalue' WHERE id = 'exe_migtest00001'`); err == nil {
-		t.Error("expected CHECK constraint to reject unknown status 'badvalue', got nil")
-	}
-
-	// All valid statuses must be accepted.
-	for _, v := range []string{"active", "restricted", "past_due"} {
-		if _, err := db.ExecContext(ctx, `UPDATE accounts SET status = ? WHERE id = 'exe_migtest00001'`, v); err != nil {
-			t.Errorf("valid status %q rejected: %v", v, err)
-		}
 	}
 }
 

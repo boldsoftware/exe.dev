@@ -17,7 +17,6 @@ table.info th { width: 200px; }
 <h2>Account: {{.AccountID}}</h2>
 <table class="info">
 <tr><th>User ID</th><td><code>{{$.UserID}}</code></td></tr>
-<tr><th>Account Status</th><td>{{.AccountStatus}}</td></tr>
 <tr><th>Parent Account</th><td>{{if .ParentID}}<a href="/debug/billing?userId={{.ParentCreatedBy}}"><code>{{.ParentID}}</code></a>{{else}}—{{end}}</td></tr>
 <tr><th>Stripe Dashboard</th><td><a href="{{.StripeDashboardURL}}" target="_blank">{{.StripeDashboardURL}}</a></td></tr>
 </table>

@@ -300,7 +300,7 @@ func (q *Queries) DeleteAccountsByUserID(ctx context.Context, createdBy string) 
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE id = ?
+SELECT id, created_by, created_at, parent_id FROM accounts WHERE id = ?
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
@@ -311,13 +311,12 @@ func (q *Queries) GetAccount(ctx context.Context, id string) (Account, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.ParentID,
-		&i.Status,
 	)
 	return i, err
 }
 
 const getAccountByUserID = `-- name: GetAccountByUserID :one
-SELECT id, created_by, created_at, parent_id, status FROM accounts WHERE created_by = ?
+SELECT id, created_by, created_at, parent_id FROM accounts WHERE created_by = ?
 `
 
 func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Account, error) {
@@ -328,7 +327,6 @@ func (q *Queries) GetAccountByUserID(ctx context.Context, createdBy string) (Acc
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.ParentID,
-		&i.Status,
 	)
 	return i, err
 }
@@ -870,7 +868,7 @@ func (q *Queries) ListActiveSubscribersByPlanID(ctx context.Context, planID stri
 }
 
 const listAllAccounts = `-- name: ListAllAccounts :many
-SELECT id, created_by, created_at, parent_id, status FROM accounts
+SELECT id, created_by, created_at, parent_id FROM accounts
 `
 
 func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
@@ -887,7 +885,6 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.ParentID,
-			&i.Status,
 		); err != nil {
 			return nil, err
 		}

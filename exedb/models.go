@@ -13,7 +13,6 @@ type Account struct {
 	CreatedBy string    `db:"created_by" json:"created_by"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	ParentID  *string   `db:"parent_id" json:"parent_id"`
-	Status    string    `db:"status" json:"status"`
 }
 
 type AccountPlan struct {

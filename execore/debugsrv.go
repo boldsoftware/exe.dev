@@ -6035,7 +6035,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 	type accountInfo struct {
 		AccountID          string
-		AccountStatus      string
 		BillingURL         string
 		StripeDashboardURL string
 		CreditBalance      string
@@ -6063,7 +6062,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	for _, a := range userAccounts {
 		info := accountInfo{
 			AccountID:          a.ID,
-			AccountStatus:      a.Status,
 			BillingURL:         "/debug/billing?userId=" + url.QueryEscape(userID),
 			StripeDashboardURL: billing.MakeCustomerDashboardURL(a.ID),
 		}
