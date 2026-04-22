@@ -3,8 +3,8 @@ set -euo pipefail
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "Usage: $0 <target-host> <environment> [addr]"
-    echo "  <environment>  Tailscale tag to filter peers (e.g. 'staging', 'prod')."
-    echo "                 Written to a systemd drop-in as EXE_OPS_TAG=<environment>."
+    echo "  <environment>  Environment label displayed in the UI (e.g. 'staging', 'prod')."
+    echo "                 Written to a systemd drop-in as EXE_OPS_ENVIRONMENT=<environment>."
     echo "  [addr]         Listen address. Default ':443' for Tailscale automatic HTTPS."
     echo "                 Pass ':5555' (or similar) for a non-privileged port."
     exit 1
@@ -80,12 +80,12 @@ ssh "$TARGET" "test -f /etc/default/exe-ops-server" || {
     ssh "$TARGET" "sudo mv /tmp/exe-ops-server.env /etc/default/exe-ops-server"
 }
 
-# Install/refresh the environment drop-in that pins the Tailscale tag filter,
+# Install/refresh the environment drop-in that pins the environment label,
 # listen address, and TLS mode (Tailscale automatic HTTPS via tscert).
-echo "Writing systemd drop-in: EXE_OPS_TAG=$ENVIRONMENT EXE_OPS_ADDR=$ADDR EXE_OPS_TLS=true"
+echo "Writing systemd drop-in: EXE_OPS_ENVIRONMENT=$ENVIRONMENT EXE_OPS_ADDR=$ADDR EXE_OPS_TLS=true"
 ssh "$TARGET" "sudo mkdir -p $DROPIN_DIR && sudo tee $DROPIN_DIR/$DROPIN_FILE >/dev/null" <<EOF
 [Service]
-Environment=EXE_OPS_TAG=$ENVIRONMENT
+Environment=EXE_OPS_ENVIRONMENT=$ENVIRONMENT
 Environment=EXE_OPS_ADDR=$ADDR
 Environment=EXE_OPS_TLS=true
 EOF

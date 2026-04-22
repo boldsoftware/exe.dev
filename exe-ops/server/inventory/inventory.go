@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,38 +36,20 @@ type Process struct {
 
 // Inventory polls tailscale status and maintains an in-memory process list.
 type Inventory struct {
-	mu        sync.RWMutex
-	procs     []Process
-	refreshC  chan struct{} // signals an on-demand refresh
-	log       *slog.Logger
-	gitRepo   *GitRepo
-	client    *http.Client
-	tagFilter map[string]bool // if non-empty, only peers with ≥1 matching tag are included
+	mu       sync.RWMutex
+	procs    []Process
+	refreshC chan struct{} // signals an on-demand refresh
+	log      *slog.Logger
+	gitRepo  *GitRepo
+	client   *http.Client
 }
 
-// New creates a new Inventory service. If tagFilter is non-empty, only
-// Tailscale peers carrying at least one of the given tags are included.
-// Tag values may be supplied with or without the "tag:" prefix.
-func New(log *slog.Logger, gitRepo *GitRepo, tagFilter []string) *Inventory {
-	var filter map[string]bool
-	if len(tagFilter) > 0 {
-		filter = make(map[string]bool, len(tagFilter))
-		for _, t := range tagFilter {
-			t = strings.TrimSpace(t)
-			if t == "" {
-				continue
-			}
-			if !strings.HasPrefix(t, "tag:") {
-				t = "tag:" + t
-			}
-			filter[t] = true
-		}
-	}
+// New creates a new Inventory service.
+func New(log *slog.Logger, gitRepo *GitRepo) *Inventory {
 	return &Inventory{
-		log:       log,
-		gitRepo:   gitRepo,
-		refreshC:  make(chan struct{}, 1),
-		tagFilter: filter,
+		log:      log,
+		gitRepo:  gitRepo,
+		refreshC: make(chan struct{}, 1),
 		client: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{
@@ -84,13 +65,6 @@ func New(log *slog.Logger, gitRepo *GitRepo, tagFilter []string) *Inventory {
 
 // Run starts the inventory polling loop. It blocks until ctx is cancelled.
 func (inv *Inventory) Run(ctx context.Context) {
-	if len(inv.tagFilter) > 0 {
-		tags := make([]string, 0, len(inv.tagFilter))
-		for t := range inv.tagFilter {
-			tags = append(tags, t)
-		}
-		inv.log.Info("inventory tag filter active", "tags", tags)
-	}
 	inv.refresh(ctx)
 
 	ticker := time.NewTicker(60 * time.Second)
@@ -115,21 +89,6 @@ func (inv *Inventory) Refresh() {
 	case inv.refreshC <- struct{}{}:
 	default: // refresh already pending
 	}
-}
-
-// TagFilter returns the configured tag filter with the "tag:" prefix
-// stripped. Returns nil if no filter is configured. Result is sorted so
-// callers can use it for stable display.
-func (inv *Inventory) TagFilter() []string {
-	if len(inv.tagFilter) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(inv.tagFilter))
-	for t := range inv.tagFilter {
-		out = append(out, strings.TrimPrefix(t, "tag:"))
-	}
-	sort.Strings(out)
-	return out
 }
 
 // Processes returns a copy of the current process list.
@@ -187,19 +146,19 @@ type tailscalePeer struct {
 	DNSName  string    `json:"DNSName"`
 	Online   bool      `json:"Online"`
 	LastSeen time.Time `json:"LastSeen"`
-	Tags     []string  `json:"Tags"`
 }
 
 // Hostname patterns.
 var (
-	reExelet      = regexp.MustCompile(`^exelet-([a-z0-9]+)-([a-z]+)-\d+$`)
-	reExeCtr      = regexp.MustCompile(`^exe-ctr-(\d+)$`)
-	reExeprox     = regexp.MustCompile(`^exeprox-([a-z0-9]+)-([a-z]+)-\d+$`)
-	reExeproxNA1  = regexp.MustCompile(`^exeprox-na-([a-z0-9]+)-\d+$`)
-	reExeproxNA2  = regexp.MustCompile(`^exeprox-([a-z0-9]+)-na-\d+$`)
-	reExed        = regexp.MustCompile(`^exed-\d+$`)
-	reExedStaging = regexp.MustCompile(`^exed-staging-\d+$`)
-	reExeOps      = regexp.MustCompile(`^exe-ops$`)
+	reExelet        = regexp.MustCompile(`^exelet-([a-z0-9]+)-([a-z]+)-\d+$`)
+	reExeCtr        = regexp.MustCompile(`^exe-ctr-(\d+)$`)
+	reExeprox       = regexp.MustCompile(`^exeprox-([a-z0-9]+)-([a-z]+)-\d+$`)
+	reExeproxNA1    = regexp.MustCompile(`^exeprox-na-([a-z0-9]+)-\d+$`)
+	reExeproxNA2    = regexp.MustCompile(`^exeprox-([a-z0-9]+)-na-\d+$`)
+	reExed          = regexp.MustCompile(`^exed-\d+$`)
+	reExedStaging   = regexp.MustCompile(`^exed-staging-\d+$`)
+	reExeOps        = regexp.MustCompile(`^exe-ops$`)
+	reExeOpsStaging = regexp.MustCompile(`^exe-ops-staging$`)
 )
 
 func classifyHost(hostname string) (role, stage, region string, ok bool) {
@@ -227,8 +186,11 @@ func classifyHost(hostname string) (role, stage, region string, ok bool) {
 	if reExed.MatchString(hostname) {
 		return "exed", "prod", "", true
 	}
+	if reExeOpsStaging.MatchString(hostname) {
+		return "exe-ops", "staging", "", true
+	}
 	if reExeOps.MatchString(hostname) {
-		return "exe-ops", "global", "", true
+		return "exe-ops", "prod", "", true
 	}
 	return "", "", "", false
 }
@@ -300,9 +262,6 @@ func (inv *Inventory) refresh(ctx context.Context) {
 	var procs []Process
 	for _, p := range peers {
 		if !p.Online && !p.LastSeen.IsZero() && p.LastSeen.Before(staleThreshold) {
-			continue
-		}
-		if !inv.peerMatchesTagFilter(p) {
 			continue
 		}
 		role, stage, region, ok := classifyHost(p.HostName)
@@ -463,20 +422,6 @@ func (inv *Inventory) fetchUptime(ctx context.Context, p *Process, url string, n
 		}
 		return
 	}
-}
-
-// peerMatchesTagFilter reports whether p should be included given the
-// configured tag filter. If no filter is configured, all peers match.
-func (inv *Inventory) peerMatchesTagFilter(p tailscalePeer) bool {
-	if len(inv.tagFilter) == 0 {
-		return true
-	}
-	for _, t := range p.Tags {
-		if inv.tagFilter[t] {
-			return true
-		}
-	}
-	return false
 }
 
 func findSpec(role, process string) *processSpec {

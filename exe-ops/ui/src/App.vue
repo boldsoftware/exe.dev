@@ -4,7 +4,7 @@
       <div class="sidebar-header">
         <button v-if="!sidebarCollapsed" class="sidebar-logo logo-collapse" @click="sidebarCollapsed = true" title="Collapse sidebar">
           <img src="/exe.png" alt="" class="logo-icon" />
-          <span class="logo-text">{{ titleText }}</span>
+          <span class="logo-text">exe-ops</span>
         </button>
         <button v-else class="sidebar-logo logo-expand" @click="sidebarCollapsed = false" title="Expand sidebar">
           <img src="/exe.png" alt="exe-ops" class="logo-icon" />
@@ -73,7 +73,7 @@
         <button class="mobile-menu-btn" @click="sidebarOpen = true" aria-label="Open navigation">
           <i class="pi pi-bars"></i>
         </button>
-        <span class="mobile-title"><img src="/exe.png" alt="" class="mobile-logo-icon" /> {{ titleText }}</span>
+        <span class="mobile-title"><img src="/exe.png" alt="" class="mobile-logo-icon" /> exe-ops</span>
       </header>
       <main class="layout-content">
         <router-view />

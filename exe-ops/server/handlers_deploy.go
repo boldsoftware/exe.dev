@@ -36,11 +36,22 @@ func (h *Handlers) HandleDeployInventory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	headSHA, headSubject, headDate := h.inventory.HeadCommit()
+	procs := h.inventory.Processes()
+	if h.environment != "" {
+		env := normalizeStage(h.environment)
+		filtered := procs[:0]
+		for _, p := range procs {
+			if normalizeStage(p.Stage) == env {
+				filtered = append(filtered, p)
+			}
+		}
+		procs = filtered
+	}
 	writeJSON(w, map[string]any{
 		"head_sha":     headSHA,
 		"head_subject": headSubject,
 		"head_date":    headDate,
-		"processes":    h.inventory.Processes(),
+		"processes":    procs,
 	})
 }
 

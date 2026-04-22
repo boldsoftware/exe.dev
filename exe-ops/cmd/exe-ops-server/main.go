@@ -58,10 +58,10 @@ func main() {
 				Usage:   "Slack bot token for deploy notifications (posts to #ship/#boat)",
 				EnvVars: []string{"EXE_SLACK_BOT_TOKEN"},
 			},
-			&cli.StringSliceFlag{
-				Name:    "tag",
-				Usage:   "only include Tailscale peers carrying one of these tags (repeatable; e.g. --tag=staging). If unset, all peers are included.",
-				EnvVars: []string{"EXE_OPS_TAG"},
+			&cli.StringFlag{
+				Name:    "environment",
+				Usage:   "environment this exe-ops serves (e.g. prod, staging); displayed in the UI title",
+				EnvVars: []string{"EXE_OPS_ENVIRONMENT"},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -81,8 +81,9 @@ func main() {
 
 			// Initialize git repo and inventory services.
 			gitRepoDir := c.String("git-repo-dir")
+			environment := c.String("environment")
 			gitRepo := inventory.NewGitRepo(log, gitRepoDir, c.String("git-repo-url"))
-			inv := inventory.New(log, gitRepo, c.StringSlice("tag"))
+			inv := inventory.New(log, gitRepo)
 
 			// Initialize deploy manager (shares the bare git clone with inventory).
 			deployer := deploy.NewManager(ctx, log, gitRepoDir, "deploy-cache")
@@ -96,7 +97,7 @@ func main() {
 			// Refresh inventory after each deploy so the UI sees updated versions.
 			deployer.OnDeploy(inv.Refresh)
 
-			handler := server.New(uiFS, log, inv, deployer)
+			handler := server.New(uiFS, log, environment, inv, deployer)
 
 			srv := &http.Server{
 				Addr:        c.String("addr"),

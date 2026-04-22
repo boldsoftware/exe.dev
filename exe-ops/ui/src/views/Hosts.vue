@@ -20,20 +20,6 @@
     <template v-else>
       <!-- Toolbar: filters + search -->
       <div class="toolbar-row">
-        <div class="filter-dropdown" v-if="uniqueStages.length > 0">
-          <button class="dropdown-trigger" @click="toggleDropdown('stage')" :class="{ 'has-selection': activeStages.size > 0 }">
-            <span class="dropdown-label">Stage</span>
-            <span class="dropdown-value">{{ activeStages.size === 0 ? 'All' : [...activeStages].join(', ') }}</span>
-            <i class="pi pi-chevron-down dropdown-chevron"></i>
-          </button>
-          <div v-if="openDropdown === 'stage'" class="dropdown-menu">
-            <label v-for="s in uniqueStages" :key="'stage-' + s" class="dropdown-option">
-              <input type="checkbox" :checked="activeStages.has(s)" @change="toggleFilter(activeStages, s)" />
-              <span>{{ s }}</span>
-            </label>
-            <button v-if="activeStages.size > 0" class="dropdown-clear" @click="activeStages.clear()">Clear</button>
-          </div>
-        </div>
         <div class="filter-dropdown" v-if="uniqueRoles.length > 0">
           <button class="dropdown-trigger" @click="toggleDropdown('role')" :class="{ 'has-selection': activeRoles.size > 0 }">
             <span class="dropdown-label">Role</span>
@@ -173,7 +159,6 @@ const loading = ref(true)
 const error = ref('')
 const search = ref('')
 const openDropdown = ref<string | null>(null)
-const activeStages = reactive(new Set<string>())
 const activeRoles = reactive(new Set<string>())
 const sortCol = ref<string>('hostname')
 const sortDir = ref<'asc' | 'desc'>('asc')
@@ -212,12 +197,10 @@ async function loadHosts() {
   }
 }
 
-const uniqueStages = computed(() => [...new Set(hosts.value.map(h => h.stage).filter(Boolean))].sort())
 const uniqueRoles = computed(() => [...new Set(hosts.value.map(h => h.role).filter(Boolean))].sort())
 
 const filteredHosts = computed(() => {
   let list = hosts.value
-  if (activeStages.size > 0) list = list.filter(h => activeStages.has(h.stage))
   if (activeRoles.size > 0) list = list.filter(h => activeRoles.has(h.role))
   if (search.value) {
     const q = search.value.toLowerCase()

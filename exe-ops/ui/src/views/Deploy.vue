@@ -32,20 +32,6 @@
 
       <!-- Toolbar: filters + search -->
       <div class="toolbar-row">
-        <div class="filter-dropdown" v-if="uniqueStages.length > 0">
-          <button class="dropdown-trigger" @click="toggleDropdown('stage')" :class="{ 'has-selection': activeStages.size > 0 }">
-            <span class="dropdown-label">Stage</span>
-            <span class="dropdown-value">{{ activeStages.size === 0 ? 'All' : [...activeStages].join(', ') }}</span>
-            <i class="pi pi-chevron-down dropdown-chevron"></i>
-          </button>
-          <div v-if="openDropdown === 'stage'" class="dropdown-menu">
-            <label v-for="s in uniqueStages" :key="'stage-' + s" class="dropdown-option">
-              <input type="checkbox" :checked="activeStages.has(s)" @change="toggleStageFilter(s)" />
-              <span>{{ s }}</span>
-            </label>
-            <button v-if="activeStages.size > 0" class="dropdown-clear" @click="activeStages.clear()">Clear</button>
-          </div>
-        </div>
         <div class="filter-dropdown" v-if="uniqueRoles.length > 0">
           <button class="dropdown-trigger" @click="toggleDropdown('role')" :class="{ 'has-selection': activeRoles.size > 0 }">
             <span class="dropdown-label">Role</span>
@@ -1051,16 +1037,15 @@ const error = ref('')
 const sortCol = ref<'hostname' | 'version' | 'uptime'>('hostname')
 const sortDir = ref<'asc' | 'desc'>('asc')
 const search = ref('')
-const activeStages = reactive(new Set<string>())
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
 const route = useRoute()
 const validTabs = new Set(['fleet', 'versions', 'history'])
 const initialTab = validTabs.has(route.query.tab as string) ? (route.query.tab as 'fleet' | 'versions' | 'history') : 'fleet'
 const activeTab = ref<'fleet' | 'versions' | 'history'>(initialTab)
-const openDropdown = ref<'stage' | 'role' | 'process' | null>(null)
+const openDropdown = ref<'role' | 'process' | null>(null)
 
-function toggleDropdown(name: 'stage' | 'role' | 'process') {
+function toggleDropdown(name: 'role' | 'process') {
   openDropdown.value = openDropdown.value === name ? null : name
 }
 
@@ -1106,21 +1091,11 @@ async function copyDnsName(dnsName: string) {
 }
 
 try {
-  const savedStages = sessionStorage.getItem('exe-ops-deploy-stage-filter')
-  if (savedStages) for (const s of JSON.parse(savedStages)) activeStages.add(s)
   const savedRoles = sessionStorage.getItem('exe-ops-deploy-role-filter')
   if (savedRoles) for (const r of JSON.parse(savedRoles)) activeRoles.add(r)
   const savedProcs = sessionStorage.getItem('exe-ops-deploy-process-filter')
   if (savedProcs) for (const p of JSON.parse(savedProcs)) activeProcesses.add(p)
 } catch {}
-
-watch(activeStages, () => {
-  if (activeStages.size > 0) {
-    sessionStorage.setItem('exe-ops-deploy-stage-filter', JSON.stringify([...activeStages]))
-  } else {
-    sessionStorage.removeItem('exe-ops-deploy-stage-filter')
-  }
-})
 
 watch(activeRoles, () => {
   if (activeRoles.size > 0) {
@@ -1138,11 +1113,6 @@ watch(activeProcesses, () => {
   }
 })
 
-function toggleStageFilter(value: string) {
-  if (activeStages.has(value)) activeStages.delete(value)
-  else activeStages.add(value)
-}
-
 function toggleRoleFilter(value: string) {
   if (activeRoles.has(value)) activeRoles.delete(value)
   else activeRoles.add(value)
@@ -1152,10 +1122,6 @@ function toggleProcessFilter(value: string) {
   if (activeProcesses.has(value)) activeProcesses.delete(value)
   else activeProcesses.add(value)
 }
-
-const uniqueStages = computed(() =>
-  [...new Set(procs.value.map(p => p.stage).filter(Boolean))].sort()
-)
 
 const uniqueRoles = computed(() =>
   [...new Set(procs.value.map(p => p.role).filter(Boolean))].sort()
@@ -1167,7 +1133,6 @@ const uniqueProcesses = computed(() =>
 
 const baseFilteredProcs = computed(() => {
   return procs.value.filter(p => {
-    if (activeStages.size > 0 && !activeStages.has(p.stage)) return false
     if (activeRoles.size > 0 && !activeRoles.has(p.role)) return false
     if (activeProcesses.size > 0 && !activeProcesses.has(p.process)) return false
     return true

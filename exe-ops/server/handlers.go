@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
-	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/inventory"
@@ -15,14 +14,16 @@ import (
 
 // Handlers holds API handler dependencies.
 type Handlers struct {
-	log       *slog.Logger
-	inventory *inventory.Inventory
-	deployer  *deploy.Manager
+	log         *slog.Logger
+	environment string
+	inventory   *inventory.Inventory
+	deployer    *deploy.Manager
 }
 
-// NewHandlers creates a new Handlers.
-func NewHandlers(log *slog.Logger, inv *inventory.Inventory, deployer *deploy.Manager) *Handlers {
-	return &Handlers{log: log, inventory: inv, deployer: deployer}
+// NewHandlers creates a new Handlers. environment is surfaced on
+// /api/v1/version for UI display; empty means unset.
+func NewHandlers(log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager) *Handlers {
+	return &Handlers{log: log, environment: environment, inventory: inv, deployer: deployer}
 }
 
 // HandleServerVersion handles GET /api/v1/version.
@@ -32,8 +33,8 @@ func (h *Handlers) HandleServerVersion(w http.ResponseWriter, r *http.Request) {
 		"commit":  version.Commit,
 		"date":    version.Date,
 	}
-	if tags := h.inventory.TagFilter(); len(tags) > 0 {
-		resp["environment"] = strings.Join(tags, ",")
+	if h.environment != "" {
+		resp["environment"] = h.environment
 	}
 	writeJSON(w, resp)
 }

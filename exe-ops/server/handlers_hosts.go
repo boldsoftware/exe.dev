@@ -124,23 +124,26 @@ func (h *Handlers) HandleHosts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter by configured Tailscale tag (e.g. "staging"/"prod"). The
-	// Prometheus `stage` label values match the stripped tags.
-	stageFilter := make(map[string]bool, len(h.inventory.TagFilter()))
-	for _, t := range h.inventory.TagFilter() {
-		stageFilter[t] = true
-	}
-
-	// Convert to slice.
+	// Prometheus scrapes every environment, so filter to the environment
+	// this exe-ops serves. Prometheus uses "production" for the prod
+	// stage label, while --environment and the inventory hostname
+	// classifier use "prod"; treat them as equivalent.
 	out := make([]HostMetrics, 0, len(hosts))
 	for _, hm := range hosts {
-		if len(stageFilter) > 0 && !stageFilter[hm.Stage] {
+		if h.environment != "" && normalizeStage(hm.Stage) != normalizeStage(h.environment) {
 			continue
 		}
 		out = append(out, *hm)
 	}
 
 	writeJSON(w, out)
+}
+
+func normalizeStage(s string) string {
+	if s == "production" {
+		return "prod"
+	}
+	return s
 }
 
 func getOrCreate(hosts map[string]*HostMetrics, inst string, labels map[string]string) *HostMetrics {

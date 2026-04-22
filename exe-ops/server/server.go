@@ -12,9 +12,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// New creates a configured HTTP handler with all routes.
-func New(uiFS fs.FS, log *slog.Logger, inv *inventory.Inventory, deployer *deploy.Manager) http.Handler {
-	h := NewHandlers(log, inv, deployer)
+// New creates a configured HTTP handler with all routes. environment is
+// the label for the environment this exe-ops serves (e.g. "prod",
+// "staging"); it is returned from /api/v1/version for UI display. Empty
+// means unset.
+func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager) http.Handler {
+	h := NewHandlers(log, environment, inv, deployer)
 	mux := http.NewServeMux()
 
 	// Deploy inventory and deploy management.
