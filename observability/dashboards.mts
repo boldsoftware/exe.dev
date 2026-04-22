@@ -425,6 +425,26 @@ function makeExeDevVMsDashboard() {
     }
   );
 
+  // Duplicate IPs detected
+  addTimeseriesChart(
+    "Duplicate IPs Detected",
+    `exelet_duplicate_ips_detected{${STAGE_FILTER}}`,
+    {
+      panelCustomization: (x) => x.min(0).max(1),
+      gridPos: { w: 12, h: 8 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alertQueryOverride: `max(exelet_duplicate_ips_detected{stage="production"})`,
+      alert: {
+        threshold: 0,
+        condition: "gt",
+        forDuration: "2m",
+        summary: "Duplicate IPs detected",
+        description: "An exelet reports two or more VMs sharing the same IPv4 address. Check the affected host to resolve the IP conflict.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
   // Row 6: Top Consumers
   dash.withRow(new RowBuilder("Top Consumers"));
 
