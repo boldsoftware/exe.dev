@@ -203,10 +203,12 @@ func (s *Server) enforceExpiredTrialForUser(ctx context.Context, userID string) 
 			ChangedBy: "system:trial_expired",
 		})
 	}); err != nil {
-		s.slog().ErrorContext(ctx, "trial expiry: failed to enforce",
-			"user_id", userID,
-			"error", err,
-		)
+		if !errors.Is(err, errSkipUser) {
+			s.slog().ErrorContext(ctx, "trial expiry: failed to enforce",
+				"user_id", userID,
+				"error", err,
+			)
+		}
 		return
 	}
 	s.slog().InfoContext(ctx, "trial expiry: transitioned plan to basic",
