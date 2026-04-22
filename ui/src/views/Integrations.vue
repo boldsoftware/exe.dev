@@ -519,12 +519,12 @@
           </div>
           <div v-if="!proxyModal.usePeer" class="form-row">
             <label>Auth method</label>
-            <select v-model="proxyModal.authMethod" class="form-input">
-              <option value="none">None</option>
-              <option value="basic">HTTP Basic Auth</option>
-              <option value="bearer">Bearer Token</option>
-              <option value="header">Custom Header</option>
-            </select>
+            <div class="radio-group">
+              <label class="radio-label"><input type="radio" v-model="proxyModal.authMethod" value="none" /> None</label>
+              <label class="radio-label"><input type="radio" v-model="proxyModal.authMethod" value="basic" /> HTTP Basic Auth</label>
+              <label class="radio-label"><input type="radio" v-model="proxyModal.authMethod" value="bearer" /> Bearer Token</label>
+              <label class="radio-label"><input type="radio" v-model="proxyModal.authMethod" value="header" /> Custom Header</label>
+            </div>
           </div>
           <div v-if="proxyModal.authMethod === 'basic'" class="form-row">
             <label>Username</label>
@@ -532,7 +532,7 @@
           </div>
           <div v-if="proxyModal.authMethod === 'basic'" class="form-row">
             <label>Password</label>
-            <input v-model="proxyModal.basicPass" type="password" class="form-input" placeholder="password" autocomplete="new-password" />
+            <input v-model="proxyModal.basicPass" type="text" class="form-input" placeholder="password" autocomplete="off" />
           </div>
           <div v-if="proxyModal.authMethod === 'bearer'" class="form-row">
             <label>Token</label>
@@ -1224,7 +1224,7 @@ function proxyEffectiveTarget(): string {
 function buildProxyCommands(mask: boolean): string[] {
   if (!proxyModal.name.trim() || !proxyModal.target.trim()) return []
   const name = proxyModal.name.trim()
-  const target = mask ? proxyModal.target.trim() : proxyEffectiveTarget()
+  const target = (mask && proxyModal.authMethod !== 'basic') ? proxyModal.target.trim() : proxyEffectiveTarget()
   let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(target)}`
   if (proxyModal.team) cmd += ' --team'
   if (proxyModal.usePeer && detectedPeerVM.value) {
@@ -2442,6 +2442,26 @@ function confirmUnlinkGitHub(installationID: number) {
 
 select.form-input {
   cursor: pointer;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  cursor: pointer;
+  color: var(--text-color);
+}
+
+.radio-label input[type="radio"] {
+  margin: 0;
+  accent-color: var(--primary-color, #6366f1);
 }
 
 /* Repo combobox */
