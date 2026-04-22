@@ -220,7 +220,8 @@ RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && ch
 COPY motd-snippet.bash /tmp/motd-snippet.bash
 RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
-# Create systemd socket and service for Shelley (socket activation)
+# Create systemd socket and service for Shelley (socket activation).
+# The shelley binary itself is installed at vm creation.
 COPY shelley.socket /etc/systemd/system/shelley.socket
 COPY shelley.service /etc/systemd/system/shelley.service
 RUN chmod 644 /etc/systemd/system/shelley.socket /etc/systemd/system/shelley.service && \
@@ -295,12 +296,6 @@ RUN chmod 644 /var/www/html/index.html
 # Install xterm-ghostty terminfo for Ghostty terminal support
 COPY xterm-ghostty.terminfo /tmp/xterm-ghostty.terminfo
 RUN tic -x - < /tmp/xterm-ghostty.terminfo && rm /tmp/xterm-ghostty.terminfo
-
-# Copy the pre-built shelley binary (built externally for the target architecture)
-# This is placed late in the Dockerfile to maximize layer cache reuse, since
-# shelley is the most frequently changing component.
-COPY shelley /usr/local/bin/shelley
-RUN chmod +x /usr/local/bin/shelley && /usr/local/bin/shelley -help
 
 # Expose the web server ports
 EXPOSE 8000 9999
