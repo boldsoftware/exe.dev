@@ -60,6 +60,7 @@ export interface BoxInfo {
   displayTags: string[]
   hasCreationLog: boolean
   isTeamShared: boolean
+  emoji: string
 }
 
 export interface SharedBoxInfo {

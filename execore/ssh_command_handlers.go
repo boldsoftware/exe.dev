@@ -436,11 +436,11 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Hidden:            true,
 			AllowTagScoped:    true,
 			Description:       "Set the emoji for a VM",
-			Usage:             "emoji <hostname> <emoji>",
+			Usage:             "emoji <hostname> <emoji-or-:shortcode:>",
 			Handler:           ss.handleEmojiCommand,
 			FlagSetFunc:       jsonOnlyFlags("emoji"),
 			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeBoxNames,
+			CompleterFunc:     ss.completeEmojiArgs,
 		},
 		ss.shareCommand(),
 		{

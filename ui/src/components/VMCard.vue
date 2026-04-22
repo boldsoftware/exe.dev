@@ -2,7 +2,24 @@
   <div class="box-row" :class="{ expanded }" @click="onRowClick">
     <!-- Collapsed row -->
     <div class="box-main">
-      <StatusDot :status="box.status" />
+      <span ref="emojiAnchor" class="emoji-anchor">
+        <StatusDot
+          :status="box.status"
+          :emoji="box.emoji"
+          clickable
+          @edit="openEmojiPicker"
+        />
+      </span>
+      <EmojiPicker
+        :open="emojiOpen"
+        :anchor-el="emojiAnchor"
+        :current="box.emoji"
+        :recents="recentEmojis"
+        :saving="emojiSaving"
+        :error-msg="emojiError"
+        @close="closeEmojiPicker"
+        @pick="onEmojiPick"
+      />
       <router-link :to="`/vm/${box.name}`" class="box-name" @click.stop>{{ box.name }} <i class="pi pi-angle-right box-name-arrow"></i></router-link>
       <span v-if="box.totalShareCount > 0" class="share-badge" :title="`Shared with ${box.sharedUserCount} user(s) and ${box.shareLinkCount} link(s)`">
         👥 {{ box.totalShareCount }}
@@ -166,10 +183,21 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { BoxInfo, VMUsageEntry } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CopyButton from './CopyButton.vue'
 import CoolS from './CoolS.vue'
+import EmojiPicker from './EmojiPicker.vue'
+import { useCommand } from '../composables/useCommand'
+import { shellQuote } from '../api/client'
+
+const emojiAnchor = ref<HTMLElement | null>(null)
+const emojiOpen = ref(false)
+const emojiSaving = ref(false)
+const emojiError = ref('')
+const emojiCmd = useCommand()
+
 const props = defineProps<{
   box: BoxInfo
   expanded: boolean
@@ -177,7 +205,35 @@ const props = defineProps<{
   usage?: VMUsageEntry
   billingPeriodStart?: string
   billingPeriodEnd?: string
+  recentEmojis?: string[]
 }>()
+
+function openEmojiPicker() {
+  emojiError.value = ''
+  emojiOpen.value = true
+}
+
+function closeEmojiPicker() {
+  emojiOpen.value = false
+}
+
+async function onEmojiPick(emoji: string) {
+  if (!emoji || emoji === props.box.emoji) {
+    closeEmojiPicker()
+    return
+  }
+  emojiSaving.value = true
+  emojiError.value = ''
+  const cmd = `emoji ${shellQuote(props.box.name)} ${shellQuote(emoji)}`
+  const result = await emojiCmd.execute(cmd)
+  emojiSaving.value = false
+  if (result.success) {
+    closeEmojiPicker()
+    emit('action', { type: 'emoji-changed', boxName: props.box.name, extra: emoji })
+  } else {
+    emojiError.value = result.output || result.error || 'Failed to update emoji'
+  }
+}
 
 function formatPeriod(start?: string, end?: string): string {
   if (!start || !end) return ''
@@ -214,6 +270,12 @@ function onRowClick(event: MouseEvent) {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.emoji-anchor {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .box-name {

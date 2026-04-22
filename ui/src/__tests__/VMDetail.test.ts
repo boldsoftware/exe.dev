@@ -32,6 +32,7 @@ function makeBox(overrides: Partial<BoxInfo> = {}): BoxInfo {
     displayTags: [],
     hasCreationLog: false,
     isTeamShared: false,
+    emoji: '',
     ...overrides,
   }
 }

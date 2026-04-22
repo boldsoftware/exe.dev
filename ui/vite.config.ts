@@ -64,7 +64,13 @@ for (const [name, { title, extras }] of Object.entries(pages)) {
 }
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue({
+    template: {
+      compilerOptions: {
+        isCustomElement: (tag) => tag === 'emoji-picker',
+      },
+    },
+  })],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

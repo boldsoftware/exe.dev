@@ -36,7 +36,8 @@ WHERE id = ?;
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
-       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags
+       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags,
+       m.emoji
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC;

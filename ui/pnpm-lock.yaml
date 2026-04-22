@@ -26,6 +26,9 @@ importers:
       chart.js:
         specifier: ^4.5.1
         version: 4.5.1
+      emoji-picker-element:
+        specifier: ^1.29.1
+        version: 1.29.1
       primeicons:
         specifier: ^7.0.0
         version: 7.0.0
@@ -608,6 +611,9 @@ packages:
     resolution: {integrity: sha512-e0GOtq/aTQhVdNyDU9e02+wz9oDDM+SIOQxWME2QRjzRX5yyLAuHDE+0aE8vHb9XRC8XD37eO2u57+F09JqFhw==}
     engines: {node: '>=14'}
     hasBin: true
+
+  emoji-picker-element@1.29.1:
+    resolution: {integrity: sha512-TOiHzu9Dqib3x4MwcAi3wi3RdyT4SoeB4b15AvH1ks4SBwTl7DeebhZ0d3x6dNi4XfNU7IGRZ7NBQllj0RqwrQ==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -1403,6 +1409,8 @@ snapshots:
       commander: 10.0.1
       minimatch: 9.0.9
       semver: 7.7.4
+
+  emoji-picker-element@1.29.1: {}
 
   emoji-regex@8.0.0: {}
 

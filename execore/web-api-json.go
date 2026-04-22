@@ -48,6 +48,7 @@ type jsonBoxInfo struct {
 	DisplayTags     []string        `json:"displayTags"`
 	HasCreationLog  bool            `json:"hasCreationLog"`
 	IsTeamShared    bool            `json:"isTeamShared"`
+	Emoji           string          `json:"emoji"`
 }
 
 type jsonShareLink struct {
@@ -509,6 +510,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			DisplayTags:     nonNil(box.GetTags()),
 			HasCreationLog:  box.CreationLog != nil && *box.CreationLog != "",
 			IsTeamShared:    teamSharedSet[int64(box.ID)],
+			Emoji:           result.Emoji,
 		})
 	}
 

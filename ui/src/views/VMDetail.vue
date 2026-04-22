@@ -24,7 +24,23 @@
       <!-- Header -->
       <div class="vm-header">
         <div class="vm-header-left">
-          <StatusDot :status="box.status" />
+          <span ref="emojiAnchor" class="emoji-anchor">
+            <StatusDot
+              :status="box.status"
+              :emoji="box.emoji"
+              clickable
+              @edit="openEmojiPicker"
+            />
+          </span>
+          <EmojiPicker
+            :open="emojiOpen"
+            :anchor-el="emojiAnchor"
+            :current="box.emoji"
+            :saving="emojiSaving"
+            :error-msg="emojiError"
+            @close="emojiOpen = false"
+            @pick="onEmojiPick"
+          />
           <h1 class="vm-name">{{ box.name }}</h1>
           <span v-if="box.proxyShare === 'public'" class="badge badge-public">PUBLIC</span>
           <span v-if="box.isTeamShared" class="badge badge-team">TEAM</span>
@@ -284,6 +300,8 @@ import {
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
+import EmojiPicker from '../components/EmojiPicker.vue'
+import { useCommand } from '../composables/useCommand'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import UsageChart from '../components/UsageChart.vue'
@@ -299,6 +317,39 @@ const loadError = ref('')
 const box = ref<BoxInfo | null>(null)
 const hasTeam = ref(false)
 const allBoxes = ref<BoxInfo[]>([])
+
+// Emoji picker
+const emojiAnchor = ref<HTMLElement | null>(null)
+const emojiOpen = ref(false)
+const emojiSaving = ref(false)
+const emojiError = ref('')
+const emojiCmd = useCommand()
+
+function openEmojiPicker() {
+  emojiError.value = ''
+  emojiOpen.value = true
+}
+
+async function onEmojiPick(emoji: string) {
+  if (!box.value) return
+  if (!emoji || emoji === box.value.emoji) {
+    emojiOpen.value = false
+    return
+  }
+  emojiSaving.value = true
+  emojiError.value = ''
+  const name = box.value.name
+  const cmd = `emoji ${shellQuote(name)} ${shellQuote(emoji)}`
+  const result = await emojiCmd.execute(cmd)
+  emojiSaving.value = false
+  if (result.success) {
+    emojiOpen.value = false
+    if (box.value) box.value = { ...box.value, emoji }
+    load()
+  } else {
+    emojiError.value = result.output || result.error || 'Failed to update emoji'
+  }
+}
 
 // Billing / usage
 const usageLoading = ref(true)
@@ -590,6 +641,7 @@ function doAction(type: string, extra?: any) {
         description: 'Only you and shared users can access this VM.',
       })
       break
+
     case 'set-port': {
       const proxyURL = extra || ''
       let desc = 'The proxy port is the port on your VM that the HTTPS proxy connects to.'
@@ -731,6 +783,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.emoji-anchor {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .vm-name {

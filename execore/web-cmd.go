@@ -18,6 +18,7 @@ import (
 // The key is the command prefix (first 1-2 words), value is true if allowed.
 var allowedCommands = map[string]bool{
 	"cp":                       true,
+	"emoji":                    true,
 	"rename":                   true,
 	"restart":                  true,
 	"rm":                       true,

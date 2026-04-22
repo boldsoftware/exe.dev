@@ -548,7 +548,8 @@ const getBoxesForUserDashboard = `-- name: GetBoxesForUserDashboard :many
 SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
-       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags
+       COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags,
+       m.emoji
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC
@@ -568,6 +569,7 @@ type GetBoxesForUserDashboardRow struct {
 	Routes          *string    `db:"routes" json:"routes"`
 	Region          string     `db:"region" json:"region"`
 	Tags            string     `db:"tags" json:"tags"`
+	Emoji           string     `db:"emoji" json:"emoji"`
 }
 
 func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, createdByUserID string) ([]GetBoxesForUserDashboardRow, error) {
@@ -593,6 +595,7 @@ func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, createdByUserID 
 			&i.Routes,
 			&i.Region,
 			&i.Tags,
+			&i.Emoji,
 		); err != nil {
 			return nil, err
 		}

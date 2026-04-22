@@ -508,3 +508,61 @@ func TestRegionDisplay(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIDashboardExposesEmoji(t *testing.T) {
+	s := newTestServer(t)
+	appToken := createTestUserWithAppToken(t, s, "emoji-dash@example.com")
+
+	var userID string
+	s.db.Rx(context.Background(), func(_ context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "emoji-dash@example.com").Scan(&userID)
+	})
+	if userID == "" {
+		t.Fatal("user not found")
+	}
+
+	var boxID int64
+	err := s.withTx(context.Background(), func(ctx context.Context, q *exedb.Queries) error {
+		var err error
+		boxID, err = q.InsertBox(ctx, exedb.InsertBoxParams{
+			Ctrhost: "test-host", Name: "emojibox", Status: "running",
+			Image: "test-image", CreatedByUserID: userID, Region: "pdx",
+		})
+		if err != nil {
+			return err
+		}
+		return q.SetBoxEmoji(ctx, exedb.SetBoxEmojiParams{Emoji: "\xf0\x9f\x9a\x80", ID: int(boxID)})
+	})
+	if err != nil {
+		t.Fatalf("insert/set: %v", err)
+	}
+
+	req, _ := http.NewRequest("GET", s.httpURL()+"/api/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+appToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+	}
+	var dash DashboardData
+	if err := json.NewDecoder(resp.Body).Decode(&dash); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found *jsonBoxInfo
+	for i := range dash.Boxes {
+		if dash.Boxes[i].Name == "emojibox" {
+			found = &dash.Boxes[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("box not found")
+	}
+	if found.Emoji != "\xf0\x9f\x9a\x80" {
+		t.Errorf("Emoji = %q, want 🚀", found.Emoji)
+	}
+	_ = time.Now
+}

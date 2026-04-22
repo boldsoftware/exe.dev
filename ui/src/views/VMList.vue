@@ -57,6 +57,7 @@
             :billing-period-start="billingPeriodStart"
             :billing-period-end="billingPeriodEnd"
             :expanded="expandedBoxes.has(box.name)"
+            :recent-emojis="recentEmojis"
             @toggle="toggleExpand(box.name)"
             @action="handleAction"
           />
@@ -80,6 +81,7 @@
               :billing-period-start="billingPeriodStart"
               :billing-period-end="billingPeriodEnd"
               :expanded="expandedBoxes.has(box.name)"
+              :recent-emojis="recentEmojis"
               @toggle="toggleExpand(box.name)"
               @action="handleAction"
             />
@@ -441,6 +443,19 @@ const allKnownTags = computed(() => {
   return [...set].sort((a, b) => a.localeCompare(b))
 })
 
+// Emojis the user has already used on their boxes, in MRU order.
+const recentEmojis = computed(() => {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const b of boxes.value) {
+    if (b.emoji && !seen.has(b.emoji)) {
+      seen.add(b.emoji)
+      out.push(b.emoji)
+    }
+  }
+  return out.slice(0, 16)
+})
+
 watch(searchQuery, (val) => syncFilterToURL(val))
 
 // When the route query changes (e.g. clicking the logo navigates to "/" without ?filter),
@@ -780,6 +795,10 @@ function handleAction(action: ActionEvent) {
         description: 'Remove this tag from the VM.',
         danger: true,
       })
+      break
+    case 'emoji-changed':
+      // VMCard invoked the emoji change inline; just refresh.
+      onModalSuccess()
       break
   }
 }
