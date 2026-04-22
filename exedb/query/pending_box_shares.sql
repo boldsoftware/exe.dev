@@ -43,3 +43,6 @@ JOIN boxes b ON pbs.box_id = b.id
 WHERE b.created_by_user_id = ?
 AND b.status != 'failed'
 ORDER BY pbs.box_id, pbs.created_at DESC;
+
+-- name: DeletePendingBoxSharesByBox :exec
+DELETE FROM pending_box_shares WHERE box_id = ?;

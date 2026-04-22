@@ -104,6 +104,15 @@ func (q *Queries) DeleteBoxShareLinkByBoxAndToken(ctx context.Context, arg Delet
 	return err
 }
 
+const deleteBoxShareLinksByBox = `-- name: DeleteBoxShareLinksByBox :exec
+DELETE FROM box_share_links WHERE box_id = ?
+`
+
+func (q *Queries) DeleteBoxShareLinksByBox(ctx context.Context, boxID int64) error {
+	_, err := q.exec(ctx, q.deleteBoxShareLinksByBoxStmt, deleteBoxShareLinksByBox, boxID)
+	return err
+}
+
 const getAllBoxShareLinksByBoxID = `-- name: GetAllBoxShareLinksByBoxID :many
 SELECT bsl.id, bsl.box_id, bsl.share_token, bsl.created_by_user_id, bsl.created_at, bsl.last_used_at, bsl.use_count, u.email as created_by_email FROM box_share_links bsl
 JOIN users u ON bsl.created_by_user_id = u.user_id

@@ -953,6 +953,7 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 		"backfill-emoji":          true,
 		"sudo-exe":                true,
 		"sudo-exe add-gift":       true,
+		"sudo-exe chown":          true,
 		"sudo-exe llm-credits":    true,
 		"sudo-exe set-limits":     true,
 		"team create":             true,

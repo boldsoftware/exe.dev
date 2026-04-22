@@ -179,6 +179,11 @@ UPDATE boxes SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 -- name: UpdateBoxOwner :exec
 UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
+-- name: UpdateBoxOwnerIfCurrent :execrows
+-- Updates the box owner only if the current owner matches, for optimistic locking.
+-- Returns the number of rows changed (1 on success, 0 if another writer moved the box).
+UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?;
+
 -- name: SetBoxLockReason :exec
 UPDATE boxes SET lock_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 

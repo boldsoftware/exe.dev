@@ -18,6 +18,15 @@ func (q *Queries) DeleteReleasedBoxName(ctx context.Context, name string) error 
 	return err
 }
 
+const deleteReleasedBoxNamesByBoxID = `-- name: DeleteReleasedBoxNamesByBoxID :exec
+DELETE FROM released_box_names WHERE box_id = ?
+`
+
+func (q *Queries) DeleteReleasedBoxNamesByBoxID(ctx context.Context, boxID int64) error {
+	_, err := q.exec(ctx, q.deleteReleasedBoxNamesByBoxIDStmt, deleteReleasedBoxNamesByBoxID, boxID)
+	return err
+}
+
 const getReleasedBoxName = `-- name: GetReleasedBoxName :one
 SELECT name, box_id, user_id, released_at FROM released_box_names WHERE name = ? AND released_at > datetime('now', '-24 hours')
 `

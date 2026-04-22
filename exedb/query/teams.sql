@@ -226,6 +226,9 @@ AND json_extract(b.routes, '$.team_shelley') = 1;
 -- name: DeleteBoxTeamSharesByTeamID :exec
 DELETE FROM box_team_shares WHERE team_id = ?;
 
+-- name: DeleteBoxTeamSharesByBoxID :exec
+DELETE FROM box_team_shares WHERE box_id = ?;
+
 -- name: DeletePendingTeamInvitesByTeamID :exec
 DELETE FROM pending_team_invites WHERE team_id = ?;
 

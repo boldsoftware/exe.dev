@@ -51,6 +51,15 @@ func (q *Queries) DeleteBoxTeamShare(ctx context.Context, arg DeleteBoxTeamShare
 	return err
 }
 
+const deleteBoxTeamSharesByBoxID = `-- name: DeleteBoxTeamSharesByBoxID :exec
+DELETE FROM box_team_shares WHERE box_id = ?
+`
+
+func (q *Queries) DeleteBoxTeamSharesByBoxID(ctx context.Context, boxID int64) error {
+	_, err := q.exec(ctx, q.deleteBoxTeamSharesByBoxIDStmt, deleteBoxTeamSharesByBoxID, boxID)
+	return err
+}
+
 const deleteBoxTeamSharesByTeamID = `-- name: DeleteBoxTeamSharesByTeamID :exec
 DELETE FROM box_team_shares WHERE team_id = ?
 `

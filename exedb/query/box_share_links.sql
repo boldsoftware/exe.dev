@@ -52,3 +52,6 @@ WHERE b.created_by_user_id = sqlc.arg(user_id)
 AND bsl.created_by_user_id = sqlc.arg(user_id)
 AND b.status != 'failed'
 ORDER BY bsl.box_id, bsl.created_at DESC;
+
+-- name: DeleteBoxShareLinksByBox :exec
+DELETE FROM box_share_links WHERE box_id = ?;

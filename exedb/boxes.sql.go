@@ -1218,6 +1218,26 @@ func (q *Queries) UpdateBoxOwner(ctx context.Context, arg UpdateBoxOwnerParams) 
 	return err
 }
 
+const updateBoxOwnerIfCurrent = `-- name: UpdateBoxOwnerIfCurrent :execrows
+UPDATE boxes SET created_by_user_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND created_by_user_id = ?
+`
+
+type UpdateBoxOwnerIfCurrentParams struct {
+	CreatedByUserID   string `db:"created_by_user_id" json:"created_by_user_id"`
+	ID                int    `db:"id" json:"id"`
+	CreatedByUserID_2 string `db:"created_by_user_id_2" json:"created_by_user_id_2"`
+}
+
+// Updates the box owner only if the current owner matches, for optimistic locking.
+// Returns the number of rows changed (1 on success, 0 if another writer moved the box).
+func (q *Queries) UpdateBoxOwnerIfCurrent(ctx context.Context, arg UpdateBoxOwnerIfCurrentParams) (int64, error) {
+	result, err := q.exec(ctx, q.updateBoxOwnerIfCurrentStmt, updateBoxOwnerIfCurrent, arg.CreatedByUserID, arg.ID, arg.CreatedByUserID_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateBoxRoutes = `-- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?
 `

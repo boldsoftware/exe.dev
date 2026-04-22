@@ -222,11 +222,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
 	}
+	if q.deleteBoxShareLinksByBoxStmt, err = db.PrepareContext(ctx, deleteBoxShareLinksByBox); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinksByBox: %w", err)
+	}
 	if q.deleteBoxSharesByBoxStmt, err = db.PrepareContext(ctx, deleteBoxSharesByBox); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxSharesByBox: %w", err)
 	}
 	if q.deleteBoxTeamShareStmt, err = db.PrepareContext(ctx, deleteBoxTeamShare); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxTeamShare: %w", err)
+	}
+	if q.deleteBoxTeamSharesByBoxIDStmt, err = db.PrepareContext(ctx, deleteBoxTeamSharesByBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxTeamSharesByBoxID: %w", err)
 	}
 	if q.deleteBoxTeamSharesByTeamIDStmt, err = db.PrepareContext(ctx, deleteBoxTeamSharesByTeamID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxTeamSharesByTeamID: %w", err)
@@ -276,6 +282,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingBoxShareByBoxAndEmailStmt, err = db.PrepareContext(ctx, deletePendingBoxShareByBoxAndEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingBoxShareByBoxAndEmail: %w", err)
 	}
+	if q.deletePendingBoxSharesByBoxStmt, err = db.PrepareContext(ctx, deletePendingBoxSharesByBox); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingBoxSharesByBox: %w", err)
+	}
 	if q.deletePendingRegistrationByTokenStmt, err = db.PrepareContext(ctx, deletePendingRegistrationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingRegistrationByToken: %w", err)
 	}
@@ -299,6 +308,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteReleasedBoxNameStmt, err = db.PrepareContext(ctx, deleteReleasedBoxName); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteReleasedBoxName: %w", err)
+	}
+	if q.deleteReleasedBoxNamesByBoxIDStmt, err = db.PrepareContext(ctx, deleteReleasedBoxNamesByBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteReleasedBoxNamesByBoxID: %w", err)
 	}
 	if q.deleteSSHKeyByIDStmt, err = db.PrepareContext(ctx, deleteSSHKeyByID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteSSHKeyByID: %w", err)
@@ -1275,6 +1287,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxOwnerStmt, err = db.PrepareContext(ctx, updateBoxOwner); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxOwner: %w", err)
 	}
+	if q.updateBoxOwnerIfCurrentStmt, err = db.PrepareContext(ctx, updateBoxOwnerIfCurrent); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxOwnerIfCurrent: %w", err)
+	}
 	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
 	}
@@ -1730,6 +1745,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxShareLinkByBoxAndTokenStmt: %w", cerr)
 		}
 	}
+	if q.deleteBoxShareLinksByBoxStmt != nil {
+		if cerr := q.deleteBoxShareLinksByBoxStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareLinksByBoxStmt: %w", cerr)
+		}
+	}
 	if q.deleteBoxSharesByBoxStmt != nil {
 		if cerr := q.deleteBoxSharesByBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxSharesByBoxStmt: %w", cerr)
@@ -1738,6 +1758,11 @@ func (q *Queries) Close() error {
 	if q.deleteBoxTeamShareStmt != nil {
 		if cerr := q.deleteBoxTeamShareStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxTeamShareStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxTeamSharesByBoxIDStmt != nil {
+		if cerr := q.deleteBoxTeamSharesByBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxTeamSharesByBoxIDStmt: %w", cerr)
 		}
 	}
 	if q.deleteBoxTeamSharesByTeamIDStmt != nil {
@@ -1820,6 +1845,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deletePendingBoxShareByBoxAndEmailStmt: %w", cerr)
 		}
 	}
+	if q.deletePendingBoxSharesByBoxStmt != nil {
+		if cerr := q.deletePendingBoxSharesByBoxStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingBoxSharesByBoxStmt: %w", cerr)
+		}
+	}
 	if q.deletePendingRegistrationByTokenStmt != nil {
 		if cerr := q.deletePendingRegistrationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingRegistrationByTokenStmt: %w", cerr)
@@ -1858,6 +1888,11 @@ func (q *Queries) Close() error {
 	if q.deleteReleasedBoxNameStmt != nil {
 		if cerr := q.deleteReleasedBoxNameStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteReleasedBoxNameStmt: %w", cerr)
+		}
+	}
+	if q.deleteReleasedBoxNamesByBoxIDStmt != nil {
+		if cerr := q.deleteReleasedBoxNamesByBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteReleasedBoxNamesByBoxIDStmt: %w", cerr)
 		}
 	}
 	if q.deleteSSHKeyByIDStmt != nil {
@@ -3485,6 +3520,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxOwnerStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxOwnerIfCurrentStmt != nil {
+		if cerr := q.updateBoxOwnerIfCurrentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxOwnerIfCurrentStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxRoutesStmt != nil {
 		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
@@ -3790,8 +3830,10 @@ type Queries struct {
 	deleteBoxIPShardStmt                       *sql.Stmt
 	deleteBoxShareByBoxAndUserStmt             *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt        *sql.Stmt
+	deleteBoxShareLinksByBoxStmt               *sql.Stmt
 	deleteBoxSharesByBoxStmt                   *sql.Stmt
 	deleteBoxTeamShareStmt                     *sql.Stmt
+	deleteBoxTeamSharesByBoxIDStmt             *sql.Stmt
 	deleteBoxTeamSharesByTeamIDStmt            *sql.Stmt
 	deleteEmailBounceStmt                      *sql.Stmt
 	deleteEmailQualityBypassStmt               *sql.Stmt
@@ -3808,6 +3850,7 @@ type Queries struct {
 	deletePasskeyStmt                          *sql.Stmt
 	deletePasskeyChallengeStmt                 *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt     *sql.Stmt
+	deletePendingBoxSharesByBoxStmt            *sql.Stmt
 	deletePendingRegistrationByTokenStmt       *sql.Stmt
 	deletePendingSSHKeyByTokenStmt             *sql.Stmt
 	deletePendingTeamInviteStmt                *sql.Stmt
@@ -3816,6 +3859,7 @@ type Queries struct {
 	deletePrivateExeletStmt                    *sql.Stmt
 	deletePushTokenStmt                        *sql.Stmt
 	deleteReleasedBoxNameStmt                  *sql.Stmt
+	deleteReleasedBoxNamesByBoxIDStmt          *sql.Stmt
 	deleteSSHKeyByIDStmt                       *sql.Stmt
 	deleteSSHKeysByIntegrationIDStmt           *sql.Stmt
 	deleteTagResolutionStmt                    *sql.Stmt
@@ -4141,6 +4185,7 @@ type Queries struct {
 	updateBoxMigrationStmt                     *sql.Stmt
 	updateBoxNameByIDStmt                      *sql.Stmt
 	updateBoxOwnerStmt                         *sql.Stmt
+	updateBoxOwnerIfCurrentStmt                *sql.Stmt
 	updateBoxRoutesStmt                        *sql.Stmt
 	updateBoxSSHPortStmt                       *sql.Stmt
 	updateBoxStatusStmt                        *sql.Stmt
@@ -4253,8 +4298,10 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxIPShardStmt:                       q.deleteBoxIPShardStmt,
 		deleteBoxShareByBoxAndUserStmt:             q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:        q.deleteBoxShareLinkByBoxAndTokenStmt,
+		deleteBoxShareLinksByBoxStmt:               q.deleteBoxShareLinksByBoxStmt,
 		deleteBoxSharesByBoxStmt:                   q.deleteBoxSharesByBoxStmt,
 		deleteBoxTeamShareStmt:                     q.deleteBoxTeamShareStmt,
+		deleteBoxTeamSharesByBoxIDStmt:             q.deleteBoxTeamSharesByBoxIDStmt,
 		deleteBoxTeamSharesByTeamIDStmt:            q.deleteBoxTeamSharesByTeamIDStmt,
 		deleteEmailBounceStmt:                      q.deleteEmailBounceStmt,
 		deleteEmailQualityBypassStmt:               q.deleteEmailQualityBypassStmt,
@@ -4271,6 +4318,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePasskeyStmt:                          q.deletePasskeyStmt,
 		deletePasskeyChallengeStmt:                 q.deletePasskeyChallengeStmt,
 		deletePendingBoxShareByBoxAndEmailStmt:     q.deletePendingBoxShareByBoxAndEmailStmt,
+		deletePendingBoxSharesByBoxStmt:            q.deletePendingBoxSharesByBoxStmt,
 		deletePendingRegistrationByTokenStmt:       q.deletePendingRegistrationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:             q.deletePendingSSHKeyByTokenStmt,
 		deletePendingTeamInviteStmt:                q.deletePendingTeamInviteStmt,
@@ -4279,6 +4327,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePrivateExeletStmt:                    q.deletePrivateExeletStmt,
 		deletePushTokenStmt:                        q.deletePushTokenStmt,
 		deleteReleasedBoxNameStmt:                  q.deleteReleasedBoxNameStmt,
+		deleteReleasedBoxNamesByBoxIDStmt:          q.deleteReleasedBoxNamesByBoxIDStmt,
 		deleteSSHKeyByIDStmt:                       q.deleteSSHKeyByIDStmt,
 		deleteSSHKeysByIntegrationIDStmt:           q.deleteSSHKeysByIntegrationIDStmt,
 		deleteTagResolutionStmt:                    q.deleteTagResolutionStmt,
@@ -4604,6 +4653,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxMigrationStmt:                     q.updateBoxMigrationStmt,
 		updateBoxNameByIDStmt:                      q.updateBoxNameByIDStmt,
 		updateBoxOwnerStmt:                         q.updateBoxOwnerStmt,
+		updateBoxOwnerIfCurrentStmt:                q.updateBoxOwnerIfCurrentStmt,
 		updateBoxRoutesStmt:                        q.updateBoxRoutesStmt,
 		updateBoxSSHPortStmt:                       q.updateBoxSSHPortStmt,
 		updateBoxStatusStmt:                        q.updateBoxStatusStmt,

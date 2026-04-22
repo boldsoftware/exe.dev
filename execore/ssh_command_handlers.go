@@ -642,6 +642,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 					HasPositionalArgs: true,
 					Handler:           ss.handleAddGiftCommand,
 				},
+				{
+					Name:              "chown",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "Move a VM to a different user account (support only)",
+					Usage:             "sudo-exe chown <vmname> <new-user-email-or-id>",
+					HasPositionalArgs: true,
+					FlagSetFunc:       jsonOnlyFlags("chown"),
+					Handler:           ss.handleChownCommand,
+				},
 			},
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				return cc.Errorf("usage: sudo-exe <subcommand>")
