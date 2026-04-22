@@ -1918,6 +1918,51 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fetch team memberships for all users
+	teamMemberships, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllTeamMemberships)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list team memberships", "error", err)
+		teamMemberships = nil
+	}
+	type userTeam struct {
+		TeamID      string
+		DisplayName string
+		Role        string
+	}
+	teamByUser := make(map[string]userTeam)
+	for _, tm := range teamMemberships {
+		teamByUser[tm.UserID] = userTeam{TeamID: tm.TeamID, DisplayName: tm.DisplayName, Role: tm.Role}
+	}
+
+	// Fetch VM counts per user
+	vmCounts, err := withRxRes0(s, ctx, (*exedb.Queries).CountBoxesByUser)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to count boxes by user", "error", err)
+		vmCounts = nil
+	}
+	vmCountByUser := make(map[string]int64)
+	for _, vc := range vmCounts {
+		vmCountByUser[vc.UserID] = vc.Count
+	}
+
+	// Bulk-fetch plan data for all users (avoids N+1 queries).
+	planRows, err := withRxRes0(s, ctx, (*exedb.Queries).ListAllUserPlanData)
+	if err != nil {
+		s.slog().WarnContext(ctx, "failed to list user plan data", "error", err)
+		planRows = nil
+	}
+	planDataByUser := make(map[string]exedb.GetUserPlanDataRow, len(planRows))
+	for _, pr := range planRows {
+		planDataByUser[pr.UserID] = exedb.GetUserPlanDataRow{
+			PlanID:               pr.PlanID,
+			TeamBillingActive:    pr.TeamBillingActive,
+			HasExplicitOverrides: pr.HasExplicitOverrides,
+			TrialExpiresAt:       pr.TrialExpiresAt,
+			CreatedAt:            pr.CreatedAt,
+			BillingStatus:        pr.BillingStatus,
+		}
+	}
+
 	// Count user types
 	var regularCount, loginWithExeCount int
 	for _, u := range users {
@@ -1941,14 +1986,19 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 			CreatedForLoginWithExe bool    `json:"created_for_login_with_exe"`
 			AccountID              string  `json:"account_id,omitempty"`
 			PlanID                 string  `json:"plan_id,omitempty"`
+			PlanName               string  `json:"plan_name,omitempty"`
 			BillingURL             string  `json:"billing_url,omitempty"`
 			BillingExemption       string  `json:"billing_exemption,omitempty"`
+			TeamID                 string  `json:"team_id,omitempty"`
+			TeamName               string  `json:"team_name,omitempty"`
+			TeamRole               string  `json:"team_role,omitempty"`
 			CreditAvailableUSD     float64 `json:"credit_available_usd"`
 			CreditTotalUsedUSD     float64 `json:"credit_total_used_usd"`
 			CreditLastRefreshAt    string  `json:"credit_last_refresh_at,omitempty"`
 			DiscordID              string  `json:"discord_id,omitempty"`
 			DiscordUsername        string  `json:"discord_username,omitempty"`
 			InviteCount            int64   `json:"invite_count"`
+			VMCount                int64   `json:"vm_count"`
 			Limits                 string  `json:"limits,omitempty"`
 		}
 		var usersJSON []userInfo
@@ -1976,14 +2026,22 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 				DiscordID:              ptrStr(u.DiscordID),
 				DiscordUsername:        ptrStr(u.DiscordUsername),
 				InviteCount:            invitesByUser[u.UserID],
+				VMCount:                vmCountByUser[u.UserID],
 				Limits:                 ptrStr(u.Limits),
 			}
-			// Derive billing exemption and plan_id from account_plans.
-			if acctID != "" {
-				if activePlan, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, acctID); err == nil {
-					ui.PlanID = activePlan.PlanID
-					ui.BillingExemption = plan.DeriveExemptionDisplay(&activePlan.PlanID)
+			// Derive billing exemption, plan_id, and resolved plan name from the
+			// pre-fetched plan data row (accounts for team billing, trial, etc.).
+			if pd, ok := planDataByUser[u.UserID]; ok {
+				if pd.PlanID != nil {
+					ui.PlanID = *pd.PlanID
+					ui.BillingExemption = plan.DeriveExemptionDisplay(pd.PlanID)
 				}
+				ui.PlanName = plan.Name(plan.CategoryFromRow(pd))
+			}
+			if t, ok := teamByUser[u.UserID]; ok {
+				ui.TeamID = t.TeamID
+				ui.TeamName = t.DisplayName
+				ui.TeamRole = t.Role
 			}
 			if credit, ok := creditByUser[u.UserID]; ok {
 				ui.CreditAvailableUSD = credit.AvailableCredit

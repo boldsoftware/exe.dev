@@ -28,6 +28,11 @@ FROM teams t
 JOIN team_members tm ON t.team_id = tm.team_id
 WHERE tm.user_id = ?;
 
+-- name: ListAllTeamMemberships :many
+SELECT tm.user_id, t.team_id, t.display_name, tm.role
+FROM team_members tm
+JOIN teams t ON t.team_id = tm.team_id;
+
 -- name: GetTeamMembers :many
 SELECT tm.role, tm.created_at as joined_at, u.user_id, u.email, u.auth_provider
 FROM team_members tm

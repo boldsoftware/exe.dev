@@ -95,6 +95,9 @@ SELECT COUNT(*) FROM boxes;
 -- name: CountUsersWithBoxes :one
 SELECT COUNT(DISTINCT created_by_user_id) FROM boxes;
 
+-- name: CountBoxesByUser :many
+SELECT created_by_user_id as user_id, COUNT(*) as count FROM boxes GROUP BY created_by_user_id;
+
 -- name: UpdateBoxCreationLog :exec
 UPDATE boxes SET creation_log = ? WHERE name = ?;
 

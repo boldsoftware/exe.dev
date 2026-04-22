@@ -825,6 +825,47 @@ func (q *Queries) IsUserTeamBillingOwner(ctx context.Context, userID string) (bo
 	return is_billing_owner, err
 }
 
+const listAllTeamMemberships = `-- name: ListAllTeamMemberships :many
+SELECT tm.user_id, t.team_id, t.display_name, tm.role
+FROM team_members tm
+JOIN teams t ON t.team_id = tm.team_id
+`
+
+type ListAllTeamMembershipsRow struct {
+	UserID      string `db:"user_id" json:"user_id"`
+	TeamID      string `db:"team_id" json:"team_id"`
+	DisplayName string `db:"display_name" json:"display_name"`
+	Role        string `db:"role" json:"role"`
+}
+
+func (q *Queries) ListAllTeamMemberships(ctx context.Context) ([]ListAllTeamMembershipsRow, error) {
+	rows, err := q.query(ctx, q.listAllTeamMembershipsStmt, listAllTeamMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllTeamMembershipsRow{}
+	for rows.Next() {
+		var i ListAllTeamMembershipsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.TeamID,
+			&i.DisplayName,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllTeams = `-- name: ListAllTeams :many
 SELECT t.team_id, t.display_name, t.created_at,
        (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.team_id) as member_count

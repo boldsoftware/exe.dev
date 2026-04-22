@@ -902,6 +902,104 @@ func (q *Queries) ListAllAccounts(ctx context.Context) ([]Account, error) {
 	return items, nil
 }
 
+const listAllUserPlanData = `-- name: ListAllUserPlanData :many
+SELECT
+    u.user_id,
+    ap.plan_id,
+    CAST(EXISTS (
+        SELECT 1 FROM team_members tm_user
+        JOIN team_members tm_billing ON tm_user.team_id = tm_billing.team_id
+        JOIN accounts a2 ON a2.created_by = tm_billing.user_id
+        JOIN billing_events e ON e.account_id = a2.id
+        WHERE tm_user.user_id = u.user_id
+        AND tm_billing.role = 'billing_owner'
+        AND e.event_type = 'active'
+        AND e.id = (
+            SELECT e2.id FROM billing_events e2
+            WHERE e2.account_id = a2.id
+            ORDER BY e2.event_at DESC, e2.id DESC
+            LIMIT 1
+        )
+    ) AS INTEGER) AS team_billing_active,
+    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
+    ap.trial_expires_at,
+    u.created_at,
+    CAST(COALESCE(
+        CASE
+            WHEN EXISTS (
+                SELECT 1 FROM accounts a
+                JOIN billing_events e ON e.account_id = a.id
+                WHERE a.created_by = u.user_id
+                AND e.event_type = 'active'
+                AND e.id = (
+                    SELECT e2.id FROM billing_events e2
+                    WHERE e2.account_id = a.id
+                    ORDER BY e2.event_at DESC, e2.id DESC
+                    LIMIT 1
+                )
+            ) THEN 'active'
+            WHEN EXISTS (
+                SELECT 1 FROM accounts a
+                JOIN billing_events e ON e.account_id = a.id
+                WHERE a.created_by = u.user_id
+                AND e.event_type = 'canceled'
+                AND e.id = (
+                    SELECT e2.id FROM billing_events e2
+                    WHERE e2.account_id = a.id
+                    ORDER BY e2.event_at DESC, e2.id DESC
+                    LIMIT 1
+                )
+            ) THEN 'canceled'
+        END,
+    '') AS TEXT) AS billing_status
+FROM users u
+LEFT JOIN accounts a ON a.created_by = u.user_id
+LEFT JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL
+`
+
+type ListAllUserPlanDataRow struct {
+	UserID               string     `db:"user_id" json:"user_id"`
+	PlanID               *string    `db:"plan_id" json:"plan_id"`
+	TeamBillingActive    int64      `db:"team_billing_active" json:"team_billing_active"`
+	HasExplicitOverrides int64      `db:"has_explicit_overrides" json:"has_explicit_overrides"`
+	TrialExpiresAt       *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
+	BillingStatus        string     `db:"billing_status" json:"billing_status"`
+}
+
+// ListAllUserPlanData is like GetUserPlanData but returns rows for all users.
+// Used to avoid N+1 queries when computing plans for every user.
+func (q *Queries) ListAllUserPlanData(ctx context.Context) ([]ListAllUserPlanDataRow, error) {
+	rows, err := q.query(ctx, q.listAllUserPlanDataStmt, listAllUserPlanData)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllUserPlanDataRow{}
+	for rows.Next() {
+		var i ListAllUserPlanDataRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.PlanID,
+			&i.TeamBillingActive,
+			&i.HasExplicitOverrides,
+			&i.TrialExpiresAt,
+			&i.CreatedAt,
+			&i.BillingStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlanVersionCounts = `-- name: ListPlanVersionCounts :many
 SELECT plan_id, COUNT(*) as cnt
 FROM account_plans

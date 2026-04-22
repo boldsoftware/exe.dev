@@ -205,6 +205,38 @@ func (q *Queries) CountBoxesByRegionAndStatus(ctx context.Context) ([]CountBoxes
 	return items, nil
 }
 
+const countBoxesByUser = `-- name: CountBoxesByUser :many
+SELECT created_by_user_id as user_id, COUNT(*) as count FROM boxes GROUP BY created_by_user_id
+`
+
+type CountBoxesByUserRow struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Count  int64  `db:"count" json:"count"`
+}
+
+func (q *Queries) CountBoxesByUser(ctx context.Context) ([]CountBoxesByUserRow, error) {
+	rows, err := q.query(ctx, q.countBoxesByUserStmt, countBoxesByUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountBoxesByUserRow{}
+	for rows.Next() {
+		var i CountBoxesByUserRow
+		if err := rows.Scan(&i.UserID, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countBoxesForUser = `-- name: CountBoxesForUser :one
 SELECT COUNT(*) FROM boxes WHERE created_by_user_id = ?
 `

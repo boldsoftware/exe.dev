@@ -197,6 +197,21 @@ func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error
 	return getPlanCategory(inputs), nil
 }
 
+// CategoryFromRow computes a user's plan category from a pre-fetched
+// GetUserPlanDataRow. Useful for bulk computations where callers fetch
+// plan data for many users in a single query.
+func CategoryFromRow(row exedb.GetUserPlanDataRow) Category {
+	inputs := userPlanInputs{
+		BillingStatus:        row.BillingStatus,
+		PlanID:               row.PlanID,
+		TrialExpiresAt:       row.TrialExpiresAt,
+		CreatedAt:            row.CreatedAt,
+		HasExplicitOverrides: row.HasExplicitOverrides != 0,
+		TeamBillingActive:    row.TeamBillingActive != 0,
+	}
+	return getPlanCategory(inputs)
+}
+
 // CategoryFromProductName returns the plan category for a Stripe product name.
 // Returns false if the product name is not recognized.
 func CategoryFromProductName(name string) (Category, bool) {

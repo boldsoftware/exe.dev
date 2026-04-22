@@ -22,6 +22,8 @@
 <th>User ID</th>
 <th>Created At</th>
 <th>Login-only</th>
+<th>Team</th>
+<th>Plan</th>
 <th>Billing</th>
 <th>LLM$ Available</th>
 <th>LLM$ Total Used</th>
@@ -30,6 +32,7 @@
 <th>Locked Out</th>
 <th>Root Support</th>
 <th>Discord</th>
+<th>VMs</th>
 <th>Invites</th>
 <th>Limits</th>
 </tr>
@@ -38,6 +41,8 @@
 <th>User ID</th>
 <th>Created At</th>
 <th>Login-only</th>
+<th>Team</th>
+<th>Plan</th>
 <th>Billing</th>
 <th>Credit ($)</th>
 <th>Total Used ($)</th>
@@ -46,6 +51,7 @@
 <th>Locked Out</th>
 <th>Root Support</th>
 <th>Discord</th>
+<th>VMs</th>
 <th>Invites</th>
 <th>Limits</th>
 </tr>
@@ -79,6 +85,12 @@ $(document).ready(function() {
             { data: 'created_at', defaultContent: '-' },
             { data: 'created_for_login_with_exe', render: function(d) { return d ? '✓' : ''; } },
             { data: null, render: function(d) {
+                if (!d.team_id) return '-';
+                var name = d.team_name || d.team_id;
+                return '<a href="/debug/teams/members?team_id=' + encodeURIComponent(d.team_id) + '">' + name + '</a>' + (d.team_role ? ' (' + d.team_role + ')' : '');
+            }},
+            { data: 'plan_name', defaultContent: '-' },
+            { data: null, render: function(d) {
                 if (d.billing_url) return '<a href="' + d.billing_url + '">' + d.account_id + '</a>';
                 return '-';
             }},
@@ -97,6 +109,7 @@ $(document).ready(function() {
                 if (d.discord_username) return d.discord_username + ' (' + d.discord_id + ')';
                 return d.discord_id;
             }},
+            { data: 'vm_count', defaultContent: '0' },
             { data: 'invite_count' },
             { data: null, render: function(d) {
                 var limits = d.limits || '';

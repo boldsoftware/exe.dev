@@ -114,6 +114,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countBoxesByRegionAndStatusStmt, err = db.PrepareContext(ctx, countBoxesByRegionAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesByRegionAndStatus: %w", err)
 	}
+	if q.countBoxesByUserStmt, err = db.PrepareContext(ctx, countBoxesByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxesByUser: %w", err)
+	}
 	if q.countBoxesEverForUserStmt, err = db.PrepareContext(ctx, countBoxesEverForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxesEverForUser: %w", err)
 	}
@@ -996,6 +999,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllStripeWebhookEventsPaginatedStmt, err = db.PrepareContext(ctx, listAllStripeWebhookEventsPaginated); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllStripeWebhookEventsPaginated: %w", err)
 	}
+	if q.listAllTeamMembershipsStmt, err = db.PrepareContext(ctx, listAllTeamMemberships); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllTeamMemberships: %w", err)
+	}
 	if q.listAllTeamsStmt, err = db.PrepareContext(ctx, listAllTeams); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllTeams: %w", err)
 	}
@@ -1004,6 +1010,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAllUserLLMCreditsStmt, err = db.PrepareContext(ctx, listAllUserLLMCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUserLLMCredits: %w", err)
+	}
+	if q.listAllUserPlanDataStmt, err = db.PrepareContext(ctx, listAllUserPlanData); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllUserPlanData: %w", err)
 	}
 	if q.listAllUsersStmt, err = db.PrepareContext(ctx, listAllUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllUsers: %w", err)
@@ -1512,6 +1521,11 @@ func (q *Queries) Close() error {
 	if q.countBoxesByRegionAndStatusStmt != nil {
 		if cerr := q.countBoxesByRegionAndStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countBoxesByRegionAndStatusStmt: %w", cerr)
+		}
+	}
+	if q.countBoxesByUserStmt != nil {
+		if cerr := q.countBoxesByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxesByUserStmt: %w", cerr)
 		}
 	}
 	if q.countBoxesEverForUserStmt != nil {
@@ -2984,6 +2998,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllStripeWebhookEventsPaginatedStmt: %w", cerr)
 		}
 	}
+	if q.listAllTeamMembershipsStmt != nil {
+		if cerr := q.listAllTeamMembershipsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllTeamMembershipsStmt: %w", cerr)
+		}
+	}
 	if q.listAllTeamsStmt != nil {
 		if cerr := q.listAllTeamsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllTeamsStmt: %w", cerr)
@@ -2997,6 +3016,11 @@ func (q *Queries) Close() error {
 	if q.listAllUserLLMCreditsStmt != nil {
 		if cerr := q.listAllUserLLMCreditsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllUserLLMCreditsStmt: %w", cerr)
+		}
+	}
+	if q.listAllUserPlanDataStmt != nil {
+		if cerr := q.listAllUserPlanDataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllUserPlanDataStmt: %w", cerr)
 		}
 	}
 	if q.listAllUsersStmt != nil {
@@ -3658,6 +3682,7 @@ type Queries struct {
 	countBoxSharesByUserStmt                   *sql.Stmt
 	countBoxesStmt                             *sql.Stmt
 	countBoxesByRegionAndStatusStmt            *sql.Stmt
+	countBoxesByUserStmt                       *sql.Stmt
 	countBoxesEverForUserStmt                  *sql.Stmt
 	countBoxesForUserStmt                      *sql.Stmt
 	countDripSendsSinceStmt                    *sql.Stmt
@@ -3952,9 +3977,11 @@ type Queries struct {
 	listAllInviteCodesWithEmailsStmt           *sql.Stmt
 	listAllStripeWebhookEventsStmt             *sql.Stmt
 	listAllStripeWebhookEventsPaginatedStmt    *sql.Stmt
+	listAllTeamMembershipsStmt                 *sql.Stmt
 	listAllTeamsStmt                           *sql.Stmt
 	listAllTemplatesStmt                       *sql.Stmt
 	listAllUserLLMCreditsStmt                  *sql.Stmt
+	listAllUserPlanDataStmt                    *sql.Stmt
 	listAllUsersStmt                           *sql.Stmt
 	listApprovedTemplatesStmt                  *sql.Stmt
 	listBillingCreditsForAccountStmt           *sql.Stmt
@@ -4109,6 +4136,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxSharesByUserStmt:                   q.countBoxSharesByUserStmt,
 		countBoxesStmt:                             q.countBoxesStmt,
 		countBoxesByRegionAndStatusStmt:            q.countBoxesByRegionAndStatusStmt,
+		countBoxesByUserStmt:                       q.countBoxesByUserStmt,
 		countBoxesEverForUserStmt:                  q.countBoxesEverForUserStmt,
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
 		countDripSendsSinceStmt:                    q.countDripSendsSinceStmt,
@@ -4403,9 +4431,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllInviteCodesWithEmailsStmt:           q.listAllInviteCodesWithEmailsStmt,
 		listAllStripeWebhookEventsStmt:             q.listAllStripeWebhookEventsStmt,
 		listAllStripeWebhookEventsPaginatedStmt:    q.listAllStripeWebhookEventsPaginatedStmt,
+		listAllTeamMembershipsStmt:                 q.listAllTeamMembershipsStmt,
 		listAllTeamsStmt:                           q.listAllTeamsStmt,
 		listAllTemplatesStmt:                       q.listAllTemplatesStmt,
 		listAllUserLLMCreditsStmt:                  q.listAllUserLLMCreditsStmt,
+		listAllUserPlanDataStmt:                    q.listAllUserPlanDataStmt,
 		listAllUsersStmt:                           q.listAllUsersStmt,
 		listApprovedTemplatesStmt:                  q.listApprovedTemplatesStmt,
 		listBillingCreditsForAccountStmt:           q.listBillingCreditsForAccountStmt,
