@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["dspy>=2.6", "python-dotenv"]
+# dependencies = ["dspy==3.2.0", "python-dotenv"]
 # ///
 """Daily newsletter: what happened with our users today?
 
@@ -313,6 +313,7 @@ def generate(args) -> tuple[str, list[str]]:
             newsletter_sig,
             max_iterations=20,
             max_llm_calls=50,
+            max_output_chars=100_000,
             uds_path=mux.socket_path,
             verbose=args.verbose,
             tools=tools,

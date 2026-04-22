@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["dspy>=2.6"]
+# dependencies = ["dspy==3.2.0"]
 # ///
 """RLM-based documentation review for exe.dev.
 
@@ -148,6 +148,7 @@ def main():
         DocReview,
         max_iterations=15,
         max_llm_calls=50,
+        max_output_chars=100_000,
         verbose=args.verbose,
     )
 

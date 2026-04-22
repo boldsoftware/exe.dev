@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["dspy>=2.6", "python-dotenv"]
+# dependencies = ["dspy==3.2.0", "python-dotenv"]
 # ///
 """Ad-hoc query agent with ClickHouse, Discord, Missive, and local worktree sources.
 
@@ -188,6 +188,7 @@ def query(question: str, *, sources: set[str] | None = None, verbose: bool = Fal
         rlm_kwargs = dict(
             max_iterations=20,
             max_llm_calls=50,
+            max_output_chars=100_000,
             verbose=verbose,
         )
         if mux:

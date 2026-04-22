@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["dspy>=2.6", "mlflow>=2.18"]
+# dependencies = ["dspy==3.2.0", "mlflow>=2.18"]
 # ///
 """Daily codebase brief for exe.dev.
 
@@ -221,6 +221,7 @@ def generate_brief(date, commits, history, verbose=False):
         CodebaseBrief,
         max_iterations=15,
         max_llm_calls=50,
+        max_output_chars=100_000,
     )
 
     result = rlm(

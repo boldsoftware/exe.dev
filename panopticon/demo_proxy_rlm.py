@@ -275,6 +275,7 @@ def main():
             "company -> report",
             max_iterations=15,
             max_llm_calls=50,
+            max_output_chars=100_000,
             uds_path=mux.socket_path,
             verbose=True,
         )
