@@ -21,7 +21,7 @@
             <i class="pi pi-chevron-right" style="font-size: 12px;"></i>
           </a>
           <a v-if="box.shelleyURL" :href="box.shelleyURL" class="action-btn" target="_blank" rel="noopener noreferrer" title="Shelley" @click.stop>
-            <i class="pi pi-sparkles" style="font-size: 12px;"></i>
+            <CoolS :name="box.name" :size="14" />
           </a>
         </template>
         <button class="action-btn expand-btn" @click.stop="$emit('toggle')" :title="expanded ? 'Collapse' : 'Expand'">
@@ -151,7 +151,7 @@
           <i class="pi pi-code"></i> Editor
         </button>
         <a v-if="box.shelleyURL" :href="box.shelleyURL" class="action-btn-expanded" target="_blank" rel="noopener noreferrer">
-          <i class="pi pi-sparkles"></i> Shelley
+          <CoolS :name="box.name" :size="14" /> Shelley
         </a>
         <button class="action-btn-expanded" @click="$emit('action', { type: 'share', boxName: box.name })">
           <i class="pi pi-share-alt"></i> Share
@@ -184,6 +184,7 @@ import { ref } from 'vue'
 import type { BoxInfo, VMUsageEntry } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CopyButton from './CopyButton.vue'
+import CoolS from './CoolS.vue'
 import { defineAsyncComponent } from 'vue'
 const CreationLog = defineAsyncComponent(() => import('./CreationLog.vue'))
 
