@@ -17,7 +17,7 @@ func newTestManager(t *testing.T) *Manager {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := NewManager(context.Background(), log, t.TempDir(), t.TempDir())
 	// Tests must not reach out to prodlock.exe.xyz.
-	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+	m.prodLockAcquire = func(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 		return nil, nil
 	}
 	return m
@@ -867,13 +867,13 @@ func TestStart_BlockedByProdLock(t *testing.T) {
 	m := newTestManager(t)
 	locked := &ProdLockError{Stage: "prod", Env: "prod", Locked: true, LockedBy: "alice", Reason: "release freeze"}
 	var calls int
-	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+	m.prodLockAcquire = func(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 		calls++
 		if stage != "prod" {
 			t.Errorf("prodLockAcquire got stage %q, want prod", stage)
 		}
-		if !strings.Contains(reason, "exeletd") {
-			t.Errorf("reason = %q, want to contain process name", reason)
+		if !strings.Contains(pr.Reason, "exeletd") {
+			t.Errorf("reason = %q, want to contain process name", pr.Reason)
 		}
 		return nil, locked
 	}
@@ -899,7 +899,7 @@ func TestStart_BlockedByProdLock(t *testing.T) {
 
 func TestStartRollout_BlockedByProdLock(t *testing.T) {
 	m := newTestManager(t)
-	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+	m.prodLockAcquire = func(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 		return nil, &ProdLockError{Stage: stage, Env: "prod", Err: context.DeadlineExceeded}
 	}
 
@@ -930,10 +930,10 @@ func TestStartRollout_ProdLockAcquireReleaseLifecycle(t *testing.T) {
 	acquireStages := map[string]int{}
 	var released atomic.Int32
 	var acquiredReasons []string
-	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+	m.prodLockAcquire = func(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 		acquireMu.Lock()
 		acquireStages[stage]++
-		acquiredReasons = append(acquiredReasons, reason)
+		acquiredReasons = append(acquiredReasons, pr.Reason)
 		acquireMu.Unlock()
 		return func() { released.Add(1) }, nil
 	}
@@ -1006,7 +1006,7 @@ func TestStart_ProdLockReleasedOnConflict(t *testing.T) {
 	}
 
 	var released atomic.Int32
-	m.prodLockAcquire = func(ctx context.Context, stage, reason string) (func(), error) {
+	m.prodLockAcquire = func(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 		return func() { released.Add(1) }, nil
 	}
 

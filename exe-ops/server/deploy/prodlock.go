@@ -113,10 +113,33 @@ func prodlockQuery(ctx context.Context, env string) (prodLockState, error) {
 	return state, nil
 }
 
-// prodlockAction POSTs a lock or unlock action with the given reason. Returns
-// (true, nil) on success, (false, nil) if the env was already in the requested
-// state (server returns 409), and (false, err) on any other failure.
-func prodlockAction(ctx context.Context, env, action, reason string) (bool, error) {
+// prodLockReq bundles the parameters for a lock/unlock action so reason,
+// human actor, and the noise-suppression flag travel together through the
+// Manager.prodLockAcquire hook.
+type prodLockReq struct {
+	// Reason is the human-readable justification (e.g. "exe-ops: deploying
+	// exed to prod on exed-02").
+	Reason string
+	// Actor is the human on whose behalf exe-ops is acting (e.g. the user
+	// who clicked deploy). It becomes locked_by on the prodlock server when
+	// set. Empty is tolerated (falls back to the tool identity).
+	Actor string
+	// Quiet suppresses the prodlock Slack notification for this action.
+	// exe-ops already posts its own deploy-lifecycle message to Slack, so
+	// for automated per-deploy locks we don't want a redundant pair of
+	// LOCKED/UNLOCKED posts alongside it.
+	Quiet bool
+}
+
+// tokenCtxHeader identifies exe-ops to the prodlock server. The server
+// reads X-ExeDev-Token-Ctx["tool"] and treats on_behalf_of in the body as
+// the human actor recorded in locked_by.
+const tokenCtxHeader = `{"tool":"exe-ops"}`
+
+// prodlockAction POSTs a lock or unlock action. Returns (true, nil) on
+// success, (false, nil) if the env was already in the requested state
+// (server returns 409), and (false, err) on any other failure.
+func prodlockAction(ctx context.Context, env, action string, pr prodLockReq) (bool, error) {
 	if action != "lock" && action != "unlock" {
 		return false, fmt.Errorf("invalid action %q", action)
 	}
@@ -124,7 +147,11 @@ func prodlockAction(ctx context.Context, env, action, reason string) (bool, erro
 	ctx, cancel := context.WithTimeout(ctx, prodLockTimeout)
 	defer cancel()
 
-	body, err := json.Marshal(map[string]string{"reason": reason})
+	body, err := json.Marshal(map[string]any{
+		"reason":       pr.Reason,
+		"on_behalf_of": pr.Actor,
+		"quiet":        pr.Quiet,
+	})
 	if err != nil {
 		return false, err
 	}
@@ -133,6 +160,7 @@ func prodlockAction(ctx context.Context, env, action, reason string) (bool, erro
 		return false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+prodLockToken)
+	req.Header.Set("X-ExeDev-Token-Ctx", tokenCtxHeader)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := (&http.Client{Timeout: prodLockTimeout}).Do(req)
@@ -165,7 +193,7 @@ func prodlockAction(ctx context.Context, env, action, reason string) (bool, erro
 //
 // The release function is safe to call once and uses a fresh context so that
 // a cancelled request context does not prevent cleanup.
-func (m *Manager) defaultProdLockAcquire(ctx context.Context, stage, reason string) (func(), error) {
+func (m *Manager) defaultProdLockAcquire(ctx context.Context, stage string, pr prodLockReq) (func(), error) {
 	env := prodLockStage(stage)
 	if env == "" {
 		return nil, nil
@@ -174,7 +202,7 @@ func (m *Manager) defaultProdLockAcquire(ctx context.Context, stage, reason stri
 		return nil, nil
 	}
 
-	acquired, err := prodlockAction(ctx, env, "lock", reason)
+	acquired, err := prodlockAction(ctx, env, "lock", pr)
 	if err != nil {
 		return nil, &ProdLockError{Stage: stage, Env: env, Err: err}
 	}
@@ -199,33 +227,37 @@ func (m *Manager) defaultProdLockAcquire(ctx context.Context, stage, reason stri
 		}
 	}
 
-	// We took the lock. Return a release that best-effort unlocks.
+	// We took the lock. Return a release that best-effort unlocks. The
+	// unlock carries the same reason/actor/quiet as the lock so the history
+	// pair is symmetric.
 	release := func() {
 		rctx, cancel := context.WithTimeout(context.Background(), prodLockTimeout)
 		defer cancel()
-		if _, err := prodlockAction(rctx, env, "unlock", reason+" complete"); err != nil {
+		if _, err := prodlockAction(rctx, env, "unlock", pr); err != nil {
 			m.log.Warn("prodlock unlock failed", "env", env, "stage", stage, "err", err)
 		} else {
 			m.log.Info("prodlock released", "env", env, "stage", stage)
 		}
 	}
-	m.log.Info("prodlock acquired", "env", env, "stage", stage, "reason", reason)
+	m.log.Info("prodlock acquired", "env", env, "stage", stage, "reason", pr.Reason, "actor", pr.Actor)
 	return release, nil
 }
 
-// prodLockReasonDeploy formats a reason string for a single-host deploy.
-func prodLockReasonDeploy(req Request) string {
-	reason := fmt.Sprintf("exe-ops: deploying %s to %s on %s", req.Process, req.Stage, req.Host)
-	if req.InitiatedBy != "" {
-		reason += " (by " + req.InitiatedBy + ")"
+// prodLockReqForDeploy builds a prodLockReq for a single-host deploy. The
+// human actor (InitiatedBy) is sent via the structured on_behalf_of field
+// rather than embedded in the reason text.
+func prodLockReqForDeploy(req Request) prodLockReq {
+	return prodLockReq{
+		Reason: fmt.Sprintf("exe-ops: deploying %s to %s on %s", req.Process, req.Stage, req.Host),
+		Actor:  req.InitiatedBy,
+		Quiet:  true,
 	}
-	return reason
 }
 
-// prodLockReasonRollout formats a reason string for a rollout, scoped to a
+// prodLockReqForRollout builds a prodLockReq for a rollout, scoped to a
 // single stage (rollouts are nearly always single-stage, but we lock per
 // distinct stage to be safe).
-func prodLockReasonRollout(req RolloutRequest, stage string, nHosts int) string {
+func prodLockReqForRollout(req RolloutRequest, stage string, nHosts int) prodLockReq {
 	process := ""
 	if len(req.Targets) > 0 {
 		process = req.Targets[0].Process
@@ -235,8 +267,9 @@ func prodLockReasonRollout(req RolloutRequest, stage string, nHosts int) string 
 		reason += "s"
 	}
 	reason += ")"
-	if req.InitiatedBy != "" {
-		reason += " (by " + req.InitiatedBy + ")"
+	return prodLockReq{
+		Reason: reason,
+		Actor:  req.InitiatedBy,
+		Quiet:  true,
 	}
-	return reason
 }

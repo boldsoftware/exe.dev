@@ -48,12 +48,12 @@ type Manager struct {
 	// Tests override it to avoid invoking ssh/scp/git.
 	runDeploy func(ctx context.Context, d *deploy)
 
-	// prodLockAcquire takes the prod-lock for the given deploy stage with a
-	// human-readable reason. It returns a release function (may be nil when
-	// no lock was needed) and an error — a *ProdLockError if the env is
-	// already locked or the check could not be completed. Defaults to the
-	// real HTTP acquirer; tests override it to avoid contacting the server.
-	prodLockAcquire func(ctx context.Context, stage, reason string) (release func(), err error)
+	// prodLockAcquire takes the prod-lock for the given deploy stage. It
+	// returns a release function (may be nil when no lock was needed) and
+	// an error — a *ProdLockError if the env is already locked or the check
+	// could not be completed. Defaults to the real HTTP acquirer; tests
+	// override it to avoid contacting the server.
+	prodLockAcquire func(ctx context.Context, stage string, pr prodLockReq) (release func(), err error)
 }
 
 // NewManager creates a deploy manager.
@@ -115,7 +115,7 @@ func (m *Manager) Start(req Request) (Status, error) {
 	}
 	var release func()
 	if prodLockStage(req.Stage) != "" {
-		r, err := m.prodLockAcquire(m.ctx, req.Stage, prodLockReasonDeploy(req))
+		r, err := m.prodLockAcquire(m.ctx, req.Stage, prodLockReqForDeploy(req))
 		if err != nil {
 			return Status{}, err
 		}
@@ -917,7 +917,7 @@ func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
 		lockedStage[t.Stage]++
 	}
 	for stage, count := range lockedStage {
-		release, err := m.prodLockAcquire(m.ctx, stage, prodLockReasonRollout(req, stage, count))
+		release, err := m.prodLockAcquire(m.ctx, stage, prodLockReqForRollout(req, stage, count))
 		if err != nil {
 			releaseAll()
 			return RolloutStatus{}, err
