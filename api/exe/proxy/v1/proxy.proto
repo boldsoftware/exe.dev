@@ -221,8 +221,10 @@ message TopLevelCertRequest {
   repeated uint32 extensions = 8;
 }
 
+// Only one of cert and error will be set.
 message TopLevelCertResponse {
   string cert = 1; // encoded using wildcardcert.EncodeCertificate
+  string error = 2;
 }
 
 message CheckAndRefreshLLMCreditRequest {

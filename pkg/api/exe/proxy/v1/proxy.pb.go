@@ -993,9 +993,11 @@ func (x *TopLevelCertRequest) GetExtensions() []uint32 {
 	return nil
 }
 
+// Only one of cert and error will be set.
 type TopLevelCertResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cert          string                 `protobuf:"bytes,1,opt,name=cert,proto3" json:"cert,omitempty"` // encoded using wildcardcert.EncodeCertificate
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1033,6 +1035,13 @@ func (*TopLevelCertResponse) Descriptor() ([]byte, []int) {
 func (x *TopLevelCertResponse) GetCert() string {
 	if x != nil {
 		return x.Cert
+	}
+	return ""
+}
+
+func (x *TopLevelCertResponse) GetError() string {
+	if x != nil {
+		return x.Error
 	}
 	return ""
 }
@@ -4048,9 +4057,10 @@ const file_exe_proxy_v1_proxy_proto_rawDesc = "" +
 	"\x12supported_versions\x18\a \x03(\rR\x11supportedVersions\x12\x1e\n" +
 	"\n" +
 	"extensions\x18\b \x03(\rR\n" +
-	"extensions\"*\n" +
+	"extensions\"@\n" +
 	"\x14TopLevelCertResponse\x12\x12\n" +
-	"\x04cert\x18\x01 \x01(\tR\x04cert\":\n" +
+	"\x04cert\x18\x01 \x01(\tR\x04cert\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\":\n" +
 	"\x1fCheckAndRefreshLLMCreditRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"]\n" +
 	" CheckAndRefreshLLMCreditResponse\x129\n" +

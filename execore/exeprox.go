@@ -304,7 +304,10 @@ func (es *exeproxServer) TopLevelCert(ctx context.Context, req *proxyapi.TopLeve
 	dur := time.Since(start)
 	if err != nil {
 		es.s.slog().WarnContext(ctx, "getting certificate failed in TopLevelCert", "serverName", req.ServerName, "error", err, "duration", dur)
-		return nil, status.Error(codes.Internal, err.Error())
+		ret := &proxyapi.TopLevelCertResponse{
+			Error: err.Error(),
+		}
+		return ret, nil
 	}
 
 	if cert.Leaf != nil {
