@@ -11,14 +11,7 @@
         <div class="cmd-display">
           <code>{{ shownCommand }}</code>
         </div>
-        <div v-if="needsInput && choices && choices.length > 0" class="cmd-choices">
-          <label v-for="c in choices" :key="c.value" class="radio-label">
-            <input type="radio" :value="c.value" v-model="inputValue" />
-            <span>{{ c.label || c.value }}</span>
-            <span v-if="c.hint" class="choice-hint">{{ c.hint }}</span>
-          </label>
-        </div>
-        <div v-else-if="needsInput" class="cmd-input-wrap">
+        <div v-if="showTextInput" class="cmd-input-wrap">
           <input
             ref="inputRef"
             v-model="inputValue"
@@ -44,6 +37,28 @@
               @mouseenter="suggestIndex = i"
             >#{{ s }}</div>
           </div>
+        </div>
+        <div v-if="showChoices" class="cmd-choices">
+          <label
+            v-for="c in choices"
+            :key="c.value"
+            class="radio-label"
+            :class="{ 'radio-label-disabled': c.disabled }"
+            :title="c.disabledReason || ''"
+          >
+            <input
+              type="radio"
+              :value="c.value"
+              :checked="choiceValue === c.value"
+              :disabled="c.disabled"
+              @change="choiceValue = c.value"
+            />
+            <span class="choice-main">
+              <span class="choice-label">{{ c.label || c.value }}</span>
+              <span v-if="c.hint" class="choice-hint">{{ c.hint }}</span>
+            </span>
+            <span v-if="c.disabled && c.disabledReason" class="choice-disabled-reason">{{ c.disabledReason }}</span>
+          </label>
         </div>
         <div v-if="(result.output || result.error) && !formattedResult" class="cmd-result" :class="{ success: result.success, error: !result.success }">
           {{ result.output || result.error }}
@@ -91,7 +106,8 @@ const props = defineProps<{
   danger?: boolean
   successFormat?: string
   suggestions?: string[]
-  choices?: { value: string; label?: string; hint?: string }[]
+  choices?: { value: string; label?: string; hint?: string; disabled?: boolean; disabledReason?: string }[]
+  defaultChoice?: string
 }>()
 
 const emit = defineEmits<{
@@ -101,6 +117,7 @@ const emit = defineEmits<{
 
 const cmd = useCommand()
 const inputValue = ref('')
+const choiceValue = ref('')
 const inputRef = ref<HTMLInputElement | null>(null)
 const descRef = ref<HTMLElement | null>(null)
 const result = ref({ output: '', error: '', success: false })
@@ -193,18 +210,33 @@ function injectPreCopyButtons() {
   })
 }
 
-const needsInput = computed(() => !!props.commandPrefix && !props.command)
+const hasChoices = computed(() => !!props.choices && props.choices.length > 0)
+const showTextInput = computed(
+  () => !!props.commandPrefix && !props.command && !!props.inputPlaceholder,
+)
+const showChoices = computed(() => !!props.commandPrefix && !props.command && hasChoices.value)
+const needsInput = computed(() => showTextInput.value || showChoices.value)
 
-const displayCommand = computed(() => {
+function buildCommand(placeholders: boolean): string {
   if (props.command) return props.command
-  if (props.commandPrefix && inputValue.value.trim()) {
-    return `${props.commandPrefix} ${shellQuote(inputValue.value.trim())}`
+  if (!props.commandPrefix) return ''
+  const parts = [props.commandPrefix]
+  if (showTextInput.value) {
+    const v = inputValue.value.trim()
+    if (v) parts.push(shellQuote(v))
+    else if (placeholders && props.inputPlaceholder) parts.push(`<${props.inputPlaceholder}>`)
+    else return ''
   }
-  if (props.commandPrefix && props.inputPlaceholder) {
-    return `${props.commandPrefix} <${props.inputPlaceholder}>`
+  if (showChoices.value) {
+    const v = choiceValue.value
+    if (v) parts.push(shellQuote(v))
+    else if (placeholders) parts.push('<role>')
+    else return ''
   }
-  return props.commandPrefix || ''
-})
+  return parts.join(' ')
+}
+
+const displayCommand = computed(() => buildCommand(true))
 
 /** Command text shown in the UI (may hide internal flags like --json). */
 const shownCommand = computed(() => {
@@ -212,13 +244,7 @@ const shownCommand = computed(() => {
   return displayCommand.value
 })
 
-const fullCommand = computed(() => {
-  if (props.command) return props.command
-  if (props.commandPrefix && inputValue.value.trim()) {
-    return `${props.commandPrefix} ${shellQuote(inputValue.value.trim())}`
-  }
-  return ''
-})
+const fullCommand = computed(() => buildCommand(false))
 
 function escapeHtml(text: string): string {
   const div = document.createElement('div')
@@ -285,6 +311,20 @@ function onEscapeKey(e: KeyboardEvent) {
 watch(() => props.visible, (v) => {
   if (v) {
     inputValue.value = props.defaultValue || ''
+    // Pick default choice: explicit defaultChoice > first enabled > empty.
+    if (hasChoices.value) {
+      const cs = props.choices || []
+      let pick = ''
+      if (props.defaultChoice && cs.some(c => c.value === props.defaultChoice && !c.disabled)) {
+        pick = props.defaultChoice
+      } else {
+        const firstEnabled = cs.find(c => !c.disabled)
+        if (firstEnabled) pick = firstEnabled.value
+      }
+      choiceValue.value = pick
+    } else {
+      choiceValue.value = ''
+    }
     cmd.reset()
     result.value = { output: '', error: '', success: false }
     formattedResult.value = ''
@@ -472,8 +512,8 @@ function close() {
 .radio-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: 10px;
+  padding: 8px 10px;
   border: 1px solid var(--surface-border);
   border-radius: 4px;
   cursor: pointer;
@@ -482,7 +522,7 @@ function close() {
   transition: background 0.1s;
 }
 
-.radio-label:hover {
+.radio-label:hover:not(.radio-label-disabled) {
   background: var(--surface-hover);
 }
 
@@ -491,10 +531,32 @@ function close() {
   accent-color: var(--primary-color, #6366f1);
 }
 
+.radio-label-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.choice-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choice-label {
+  font-weight: 500;
+}
+
 .choice-hint {
   color: var(--text-color-muted);
   font-size: 12px;
+}
+
+.choice-disabled-reason {
   margin-left: auto;
+  color: var(--text-color-muted);
+  font-size: 11px;
+  font-style: italic;
 }
 
 .cmd-input {

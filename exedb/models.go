@@ -396,6 +396,7 @@ type PendingTeamInvite struct {
 	AcceptedAt       *time.Time `db:"accepted_at" json:"accepted_at"`
 	AcceptedByUserID *string    `db:"accepted_by_user_id" json:"accepted_by_user_id"`
 	AuthProvider     *string    `db:"auth_provider" json:"auth_provider"`
+	InitialRole      *string    `db:"initial_role" json:"initial_role"`
 }
 
 type PrivateExelet struct {

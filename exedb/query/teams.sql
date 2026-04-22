@@ -146,23 +146,24 @@ ORDER BY t.created_at DESC;
 DELETE FROM pending_team_invites WHERE invited_by_user_id = ?;
 
 -- name: InsertPendingTeamInvite :exec
-INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at, auth_provider)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO pending_team_invites (team_id, email, canonical_email, invited_by_user_id, token, expires_at, auth_provider, initial_role)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(team_id, canonical_email) DO UPDATE SET
     token = excluded.token,
     expires_at = excluded.expires_at,
     invited_by_user_id = excluded.invited_by_user_id,
     auth_provider = excluded.auth_provider,
+    initial_role = excluded.initial_role,
     accepted_at = NULL,
     accepted_by_user_id = NULL;
 
 -- name: GetPendingTeamInviteByToken :one
-SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id, auth_provider
+SELECT id, team_id, email, canonical_email, invited_by_user_id, token, expires_at, created_at, accepted_at, accepted_by_user_id, auth_provider, initial_role
 FROM pending_team_invites
 WHERE token = ? AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP;
 
 -- name: GetPendingTeamInvitesByEmail :many
-SELECT pti.id, pti.team_id, pti.email, pti.canonical_email, pti.invited_by_user_id, pti.token, pti.expires_at, pti.created_at, t.display_name as team_name
+SELECT pti.id, pti.team_id, pti.email, pti.canonical_email, pti.invited_by_user_id, pti.token, pti.expires_at, pti.created_at, pti.initial_role, t.display_name as team_name
 FROM pending_team_invites pti
 JOIN teams t ON pti.team_id = t.team_id
 WHERE pti.canonical_email = ? AND pti.accepted_at IS NULL AND pti.expires_at > CURRENT_TIMESTAMP;

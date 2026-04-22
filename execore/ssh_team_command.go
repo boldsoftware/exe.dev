@@ -55,7 +55,7 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 			{
 				Name:              "add",
 				Description:       "Add a user to the team",
-				Usage:             "team add <email>",
+				Usage:             "team add <email> [<user|admin|billing_owner>]",
 				Handler:           ss.handleTeamAddCommand,
 				FlagSetFunc:       jsonOnlyFlags("team-add"),
 				HasPositionalArgs: true,
@@ -443,10 +443,19 @@ func (ss *SSHServer) handleTeamMembersCommand(ctx context.Context, cc *exemenu.C
 // The response is uniform regardless of whether the user exists (avoids leaking account existence).
 func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) < 1 {
-		return cc.Errorf("usage: team add <email>")
+		return cc.Errorf("usage: team add <email> [<user|admin|billing_owner>]")
 	}
 
 	addr := cc.Args[0]
+	initialRole := ""
+	if len(cc.Args) >= 2 {
+		initialRole = cc.Args[1]
+		switch initialRole {
+		case "user", "admin", "billing_owner":
+		default:
+			return cc.Errorf("role must be one of: user, admin, billing_owner")
+		}
+	}
 
 	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
 	if err != nil {
@@ -461,6 +470,11 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("Only team admins can add members")
 	}
 
+	// Only billing owners can grant billing_owner.
+	if initialRole == "billing_owner" && team.Role != "billing_owner" {
+		return cc.Errorf("Only a billing owner can invite another billing owner")
+	}
+
 	// Check if the user already exists — this affects the invite email wording.
 	ce := canonicalizeEmail(addr)
 	_, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserIDByEmail, &ce)
@@ -472,7 +486,7 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 	// Create a pending invite and send email.
 	// Existing users must explicitly accept via the web UI;
 	// new users auto-join when they sign up through the invite link.
-	if err := ss.server.createPendingTeamInvite(ctx, team.TeamID, team.DisplayName, addr, cc.User.ID, userExists); err != nil {
+	if err := ss.server.createPendingTeamInvite(ctx, team.TeamID, team.DisplayName, addr, cc.User.ID, initialRole, userExists); err != nil {
 		return cc.Errorf("Failed to invite user: %v", err)
 	}
 
@@ -481,14 +495,20 @@ func (ss *SSHServer) handleTeamAddCommand(ctx context.Context, cc *exemenu.Comma
 		"email", addr,
 		"invited_by", cc.User.ID)
 
+	roleNote := ""
+	if initialRole != "" && initialRole != "user" {
+		roleNote = " as " + initialRole
+	}
+
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
-			"invited": addr,
-			"status":  "ok",
+			"invited":      addr,
+			"initial_role": initialRole,
+			"status":       "ok",
 		})
 		return nil
 	}
-	cc.Writeln("Invited %s to the team", addr)
+	cc.Writeln("Invited %s to the team%s", addr, roleNote)
 	return nil
 }
 

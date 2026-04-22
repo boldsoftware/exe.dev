@@ -544,6 +544,7 @@
       :default-value="modal.defaultValue"
       :danger="modal.danger"
       :choices="modal.choices"
+      :default-choice="modal.defaultChoice"
       @close="modal.visible = false"
       @success="reload"
     />
@@ -1007,7 +1008,8 @@ const modal = reactive({
   inputPlaceholder: '',
   defaultValue: '',
   danger: false,
-  choices: [] as { value: string; label?: string; hint?: string }[],
+  choices: [] as { value: string; label?: string; hint?: string; disabled?: boolean; disabledReason?: string }[],
+  defaultChoice: '',
 })
 
 async function reload() {
@@ -1054,7 +1056,8 @@ function openModal(opts: Partial<typeof modal>) {
     inputPlaceholder: '',
     defaultValue: '',
     danger: false,
-    choices: [] as { value: string; label?: string; hint?: string }[],
+    choices: [] as { value: string; label?: string; hint?: string; disabled?: boolean; disabledReason?: string }[],
+    defaultChoice: '',
     ...opts,
   })
 }
@@ -1104,33 +1107,46 @@ function canChangeRole(m: { role: string }): boolean {
   return true
 }
 
-function changeTeamMemberRole(email: string, currentRole: string) {
+function roleChoices(currentRole: string) {
   const ti = data.value?.teamInfo
   const allRoles: { value: string; label: string; hint: string }[] = [
     { value: 'user', label: 'User', hint: 'Access to team-shared VMs' },
     { value: 'admin', label: 'Admin', hint: 'Can invite and manage members' },
     { value: 'billing_owner', label: 'Billing owner', hint: 'Owns billing and team settings' },
   ]
-  const choices = allRoles.filter(r => {
-    if (r.value === currentRole) return false
-    if (r.value === 'billing_owner') return !!ti?.isBillingOwner
-    return true
+  return allRoles.map(r => {
+    const c: { value: string; label: string; hint: string; disabled?: boolean; disabledReason?: string } = { ...r }
+    if (r.value === currentRole) {
+      c.disabled = true
+      c.disabledReason = 'current'
+    } else if (r.value === 'billing_owner' && !ti?.isBillingOwner) {
+      c.disabled = true
+      c.disabledReason = 'billing owners only'
+    }
+    return c
   })
+}
+
+function changeTeamMemberRole(email: string, currentRole: string) {
+  const choices = roleChoices(currentRole)
   openModal({
     title: 'Change Team Member Role',
     commandPrefix: `team role ${shellQuote(email)}`,
-    defaultValue: choices[0]?.value || '',
     choices,
     description: `Change the role for <strong>${email}</strong> (currently <em>${currentRole}</em>).`,
   })
 }
 
 function inviteTeamMember() {
+  // No 'current' role for a new invite — pass empty string so none are disabled
+  // beyond the billing-owner permission check.
   openModal({
     title: 'Invite to Team',
     commandPrefix: 'team add',
     inputPlaceholder: 'user@example.com',
-    description: 'Invite a user to join your team. They\'ll get access to team-shared VMs.',
+    choices: roleChoices(''),
+    defaultChoice: 'user',
+    description: 'Invite a user to join your team. They\'ll get access to team-shared VMs with the selected role.',
   })
 }
 

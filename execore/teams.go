@@ -364,10 +364,12 @@ func (s *Server) deleteTeamMember(ctx context.Context, teamID, userID string) er
 	return nil
 }
 
-// createPendingTeamInvite creates a pending invite and sends an email.
+// createPendingTeamInvite creates (or refreshes) a pending invite and sends an email.
 // If userExists is true, the email directs the user to accept via their profile page;
 // otherwise it directs them to sign up via the invite link.
-func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, invitedEmail, invitedByUserID string, userExists bool) error {
+// initialRole is optional; empty string means the default ("user").
+// Validated values: "", "user", "admin", "billing_owner".
+func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, invitedEmail, invitedByUserID, initialRole string, userExists bool) error {
 	ce := canonicalizeEmail(invitedEmail)
 	token := generateRegistrationToken()
 
@@ -383,6 +385,11 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 		authProvider = ap.AuthProvider
 	}
 
+	var initialRolePtr *string
+	if initialRole != "" && initialRole != "user" {
+		r := initialRole
+		initialRolePtr = &r
+	}
 	err := withTx1(s, ctx, (*exedb.Queries).InsertPendingTeamInvite, exedb.InsertPendingTeamInviteParams{
 		TeamID:          teamID,
 		Email:           invitedEmail,
@@ -391,6 +398,7 @@ func (s *Server) createPendingTeamInvite(ctx context.Context, teamID, teamName, 
 		Token:           token,
 		ExpiresAt:       time.Now().Add(24 * time.Hour),
 		AuthProvider:    authProvider,
+		InitialRole:     initialRolePtr,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create pending team invite: %w", err)
@@ -479,8 +487,16 @@ func (s *Server) resolvePendingTeamInvites(ctx context.Context, userEmail, userI
 			continue
 		}
 
+		role := "user"
+		if invite.InitialRole != nil && *invite.InitialRole != "" {
+			switch *invite.InitialRole {
+			case "user", "admin", "billing_owner":
+				role = *invite.InitialRole
+			}
+		}
+
 		// Try to add user to the team
-		if err := s.addTeamMember(ctx, invite.TeamID, userID, "user"); err != nil {
+		if err := s.addTeamMember(ctx, invite.TeamID, userID, role); err != nil {
 			// User might already be in a team (UNIQUE constraint on user_id)
 			slog.WarnContext(ctx, "failed to add user to team from pending invite",
 				"error", err, "team_id", invite.TeamID, "user_id", userID)
@@ -547,8 +563,16 @@ func (s *Server) handleTeamInviteAccept(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	role := "user"
+	if invite.InitialRole != nil && *invite.InitialRole != "" {
+		switch *invite.InitialRole {
+		case "user", "admin", "billing_owner":
+			role = *invite.InitialRole
+		}
+	}
+
 	// Add user to team
-	if err := s.addTeamMember(ctx, invite.TeamID, userID, "user"); err != nil {
+	if err := s.addTeamMember(ctx, invite.TeamID, userID, role); err != nil {
 		s.slog().ErrorContext(ctx, "failed to add user to team", "error", err, "team_id", invite.TeamID, "user_id", userID)
 		http.Error(w, "Failed to join team", http.StatusInternalServerError)
 		return
