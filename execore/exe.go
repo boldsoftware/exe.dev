@@ -2288,8 +2288,8 @@ type preCreateBoxOptions struct {
 	noShard             bool
 	region              string // region code (e.g., "pdx", "lax")
 	allocatedCPUs       uint64 // number of CPUs allocated to the VM
-	memoryCapacityBytes int64  // provisioned memory in bytes; 0 = unknown (will be backfilled)
-	diskCapacityBytes   int64  // provisioned disk in bytes; 0 = unknown (will be backfilled)
+	memoryCapacityBytes int64  // provisioned memory in bytes
+	diskCapacityBytes   int64  // provisioned disk in bytes
 }
 
 func (s *Server) preCreateBox(ctx context.Context, opts preCreateBoxOptions) (int, error) {

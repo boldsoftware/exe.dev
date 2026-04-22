@@ -639,77 +639,6 @@ func (q *Queries) GetBoxesWithEmptyEmoji(ctx context.Context, limit int64) ([]Ge
 	return items, nil
 }
 
-const getBoxesWithMissingCapacity = `-- name: GetBoxesWithMissingCapacity :many
-SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes
-WHERE id > ?
-  AND (disk_capacity_bytes = 0 OR memory_capacity_bytes = 0)
-  AND container_id IS NOT NULL AND status != 'failed'
-ORDER BY id
-LIMIT ?
-`
-
-type GetBoxesWithMissingCapacityParams struct {
-	ID    int   `db:"id" json:"id"`
-	Limit int64 `db:"limit" json:"limit"`
-}
-
-// Returns boxes with id > ? that are missing disk_capacity_bytes or
-// memory_capacity_bytes (0 is the sentinel for "not filled out yet"),
-// intended for chunked backfill from exelet VMConfig. Pass 0 for after_id
-// on the first call; pass the last id seen for each subsequent call to
-// walk forward past rows that could not be updated.
-func (q *Queries) GetBoxesWithMissingCapacity(ctx context.Context, arg GetBoxesWithMissingCapacityParams) ([]Box, error) {
-	rows, err := q.query(ctx, q.getBoxesWithMissingCapacityStmt, getBoxesWithMissingCapacity, arg.ID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Box{}
-	for rows.Next() {
-		var i Box
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Status,
-			&i.Image,
-			&i.Ctrhost,
-			&i.ContainerID,
-			&i.CreatedByUserID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.LastStartedAt,
-			&i.Routes,
-			&i.SSHServerIdentityKey,
-			&i.SSHAuthorizedKeys,
-			&i.SSHClientPrivateKey,
-			&i.SSHPort,
-			&i.SSHUser,
-			&i.CreationLog,
-			&i.SupportAccessAllowed,
-			&i.Region,
-			&i.EmailReceiveEnabled,
-			&i.EmailMaildirPath,
-			&i.AllocatedCpus,
-			&i.CgroupOverrides,
-			&i.Tags,
-			&i.LockReason,
-			&i.Emoji,
-			&i.DiskCapacityBytes,
-			&i.MemoryCapacityBytes,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getBoxesWithNullAllocatedCPUs = `-- name: GetBoxesWithNullAllocatedCPUs :many
 SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log, support_access_allowed, region, email_receive_enabled, email_maildir_path, allocated_cpus, cgroup_overrides, tags, lock_reason, emoji, disk_capacity_bytes, memory_capacity_bytes FROM boxes
 WHERE allocated_cpus IS NULL AND container_id IS NOT NULL AND status != 'failed'
@@ -1090,24 +1019,6 @@ type UpdateBoxAllocatedCPUsParams struct {
 
 func (q *Queries) UpdateBoxAllocatedCPUs(ctx context.Context, arg UpdateBoxAllocatedCPUsParams) error {
 	_, err := q.exec(ctx, q.updateBoxAllocatedCPUsStmt, updateBoxAllocatedCPUs, arg.AllocatedCpus, arg.ID)
-	return err
-}
-
-const updateBoxCapacityBytes = `-- name: UpdateBoxCapacityBytes :exec
-UPDATE boxes SET disk_capacity_bytes = ?, memory_capacity_bytes = ? WHERE id = ?
-`
-
-type UpdateBoxCapacityBytesParams struct {
-	DiskCapacityBytes   int64 `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
-	MemoryCapacityBytes int64 `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
-	ID                  int   `db:"id" json:"id"`
-}
-
-// Used by the backfill path; sets both columns atomically and does NOT bump
-// updated_at so a bulk backfill doesn't reorder user-facing VM lists (which
-// sort by updated_at DESC).
-func (q *Queries) UpdateBoxCapacityBytes(ctx context.Context, arg UpdateBoxCapacityBytesParams) error {
-	_, err := q.exec(ctx, q.updateBoxCapacityBytesStmt, updateBoxCapacityBytes, arg.DiskCapacityBytes, arg.MemoryCapacityBytes, arg.ID)
 	return err
 }
 
