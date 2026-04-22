@@ -482,7 +482,7 @@ class RLM(Module):
         return Prediction(
             trajectory=[e.model_dump() for e in history],
             final_reasoning="Extract forced final output",
-            **{name: getattr(extract_pred, name) for name in output_field_names},
+            **{name: extract_pred[name] for name in output_field_names},
         )
 
     def _process_final_output(
@@ -686,7 +686,7 @@ class RLM(Module):
         return Prediction(
             trajectory=[e.model_dump() for e in history],
             final_reasoning="Extract forced final output",
-            **{name: getattr(extract_pred, name) for name in output_field_names},
+            **{name: extract_pred[name] for name in output_field_names},
         )
 
     async def _aexecute_iteration(
