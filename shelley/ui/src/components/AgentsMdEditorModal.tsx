@@ -9,12 +9,14 @@ interface AgentsMdEditorModalProps {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type LoadStatus = "loading" | "loaded" | "error";
 
 export default function AgentsMdEditorModal({ isOpen, onClose }: AgentsMdEditorModalProps) {
-  const filePath = window.__SHELLEY_INIT__?.user_agents_md_path || "";
-  const initialContent = window.__SHELLEY_INIT__?.user_agents_md_content ?? "";
+  const initialFilePath = window.__SHELLEY_INIT__?.user_agents_md_path || "";
 
+  const [filePath, setFilePath] = useState(initialFilePath);
   const [content, setContent] = useState<string | null>(null);
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [monacoLoaded, setMonacoLoaded] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
@@ -24,12 +26,33 @@ export default function AgentsMdEditorModal({ isOpen, onClose }: AgentsMdEditorM
   const saveTimeoutRef = useRef<number | null>(null);
   const statusTimeoutRef = useRef<number | null>(null);
 
-  // Set content from init data when modal opens
+  // Fetch fresh content from the server each time the modal opens, so that
+  // reopening after a prior save doesn't show stale page-load content.
+  // If the load fails we deliberately do not populate the editor: typing into
+  // an empty buffer would otherwise trigger an auto-save that clobbers the
+  // real file on disk, which is the exact failure mode we are trying to fix.
   useEffect(() => {
-    if (isOpen) {
-      setContent(initialContent);
-    }
-  }, [isOpen, initialContent]);
+    if (!isOpen) return;
+    let cancelled = false;
+    setLoadStatus("loading");
+    (async () => {
+      try {
+        const response = await fetch("/api/user-agents-md");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = (await response.json()) as { path: string; content: string };
+        if (cancelled) return;
+        if (data.path) setFilePath(data.path);
+        setContent(data.content ?? "");
+        setLoadStatus("loaded");
+      } catch (err) {
+        console.error("Failed to load AGENTS.md:", err);
+        if (!cancelled) setLoadStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   // Load Monaco when modal opens
   useEffect(() => {
@@ -211,17 +234,31 @@ export default function AgentsMdEditorModal({ isOpen, onClose }: AgentsMdEditorM
 
         {/* Editor */}
         <div className="diff-viewer-content">
-          {!monacoLoaded && (
+          {loadStatus === "error" ? (
             <div className="diff-viewer-loading">
-              <div className="spinner"></div>
-              <span>Loading editor...</span>
+              <span>
+                Failed to load {filePath || "AGENTS.md"}. Close and reopen to retry; editing is
+                disabled to avoid clobbering the file on disk.
+              </span>
             </div>
+          ) : (
+            <>
+              {(!monacoLoaded || loadStatus !== "loaded") && (
+                <div className="diff-viewer-loading">
+                  <div className="spinner"></div>
+                  <span>Loading editor...</span>
+                </div>
+              )}
+              <div
+                ref={containerRef}
+                className="diff-viewer-editor"
+                style={{
+                  display:
+                    monacoLoaded && content !== null && loadStatus === "loaded" ? "block" : "none",
+                }}
+              />
+            </>
           )}
-          <div
-            ref={containerRef}
-            className="diff-viewer-editor"
-            style={{ display: monacoLoaded && content !== null ? "block" : "none" }}
-          />
         </div>
       </div>
     </div>

@@ -116,7 +116,6 @@ export interface InitData {
   terminal_url?: string;
   links?: Link[];
   user_agents_md_path?: string;
-  user_agents_md_content?: string;
   notification_channel_types?: import("./services/api").ChannelTypeInfo[];
   cli_agents?: string[]; // Available CLI agents (e.g., "claude-cli", "codex-cli")
 }

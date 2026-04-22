@@ -100,6 +100,31 @@ func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, f)
 }
 
+// handleUserAgentsMd returns the current content of the user's AGENTS.md.
+// The modal uses this instead of the page-load snapshot so that reopening the
+// editor shows freshly-saved content rather than whatever was on disk when the
+// page was first loaded.
+func (s *Server) handleUserAgentsMd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path, err := userAgentsMdPath()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	content := ""
+	if b, err := os.ReadFile(path); err == nil {
+		content = string(b)
+	} else if !os.IsNotExist(err) {
+		http.Error(w, fmt.Sprintf("failed to read file: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"path": path, "content": content})
+}
+
 // handleWriteFile writes content to a file (for diff viewer edit mode)
 func (s *Server) handleWriteFile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -438,19 +463,17 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	homeDir, _ := os.UserHomeDir()
 
 	userAgentsMdPath, _ := userAgentsMdPath()
-	userAgentsMdContent := ""
-	if b, err := os.ReadFile(userAgentsMdPath); err == nil {
-		userAgentsMdContent = string(b)
-	}
 
+	// Note: AGENTS.md content is NOT embedded in init data. It is fetched fresh
+	// via /api/user-agents-md when the editor modal opens so that reopening
+	// after a save shows current disk state, not stale page-load content.
 	initData := map[string]interface{}{
-		"models":                 modelList,
-		"default_model":          defaultModel,
-		"hostname":               hostname,
-		"default_cwd":            defaultCwd,
-		"home_dir":               homeDir,
-		"user_agents_md_path":    userAgentsMdPath,
-		"user_agents_md_content": userAgentsMdContent,
+		"models":              modelList,
+		"default_model":       defaultModel,
+		"hostname":            hostname,
+		"default_cwd":         defaultCwd,
+		"home_dir":            homeDir,
+		"user_agents_md_path": userAgentsMdPath,
 	}
 	if s.terminalURL != "" {
 		initData["terminal_url"] = s.terminalURL
