@@ -92,3 +92,14 @@ func TestSlackFeed_NewUser_WithInviter(t *testing.T) {
 	sf.NewUser(ctx, "user2", "invited@example.com", "web", "inviter@example.com")
 	// Logs: "new user (web): `invited@example.com` (invited by `inviter@example.com`)"
 }
+
+func TestSlackFeed_PlanTierChanged_NoClient(t *testing.T) {
+	sf := &SlackFeed{client: nil, log: tslog.Slogger(t)}
+	ctx := context.Background()
+
+	// Upgrade — should not panic, should log
+	sf.PlanTierChanged(ctx, "user@example.com", "Small", "Medium", "upgrade")
+
+	// Downgrade — should not panic, should log
+	sf.PlanTierChanged(ctx, "user@example.com", "Medium", "Small", "downgrade")
+}

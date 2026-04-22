@@ -880,7 +880,38 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	// 	m.OnPlanDowngrade(ctx, accountID)
 	// }
 
+	// Notify Slack when an individual plan tier changes (e.g. Small → Medium).
+	if m.SlackFeed != nil && err == nil {
+		oldTier, oldErr := plan.GetTierByID(activePlan.PlanID)
+		newTier, newErr := plan.GetTierByID(newPlanID)
+		if oldErr == nil && newErr == nil &&
+			oldTier.Category == plan.CategoryIndividual &&
+			newTier.Category == plan.CategoryIndividual &&
+			oldTier.ID != newTier.ID {
+			direction := "upgrade"
+			if newTier.MonthlyPriceCents < oldTier.MonthlyPriceCents {
+				direction = "downgrade"
+			}
+			email := m.emailForAccount(ctx, accountID)
+			m.SlackFeed.PlanTierChanged(ctx, email, oldTier.Name, newTier.Name, direction)
+		}
+	}
+
 	return nil
+}
+
+// emailForAccount resolves the email address for a billing account ID.
+// Returns the account ID as a fallback if resolution fails.
+func (m *Manager) emailForAccount(ctx context.Context, accountID string) string {
+	userID, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetUserIDByAccountID, accountID)
+	if err != nil {
+		return accountID
+	}
+	email, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetEmailByUserID, userID)
+	if err != nil {
+		return accountID
+	}
+	return email
 }
 
 // BillingPeriod holds the start and end of a billing period.

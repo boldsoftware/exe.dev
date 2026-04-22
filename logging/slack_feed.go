@@ -332,6 +332,31 @@ func (sf *SlackFeed) StripelessTrialToggled(ctx context.Context, enabled bool) {
 	}()
 }
 
+// PlanTierChanged notifies Slack that a user changed their individual plan tier.
+// direction should be "upgrade" or "downgrade".
+func (sf *SlackFeed) PlanTierChanged(ctx context.Context, email, oldTierName, newTierName, direction string) {
+	emoji := "arrow_up"
+	if direction == "downgrade" {
+		emoji = "arrow_down"
+	}
+	message := fmt.Sprintf("individual plan %s: `%s` %s → %s", direction, email, oldTierName, newTierName)
+	if sf.client == nil {
+		sf.log.InfoContext(ctx, "slack feed channel", "message", message)
+		return
+	}
+	go func() {
+		channel, ts, err := sf.client.PostMessageContext(context.WithoutCancel(ctx), sf.env.SlackFeedChannel, slack.MsgOptionText(message, true))
+		if err != nil {
+			sf.log.WarnContext(ctx, "failed to post plan tier change to feed channel", "error", err)
+			return
+		}
+		ref := slack.NewRefToMessage(channel, ts)
+		if err := sf.client.AddReactionContext(context.WithoutCancel(ctx), emoji, ref); err != nil {
+			sf.log.WarnContext(ctx, "failed to add reaction to plan tier change message", "error", err)
+		}
+	}()
+}
+
 // ExeletCapacityWarning posts an urgent page that all exelets
 // are approaching capacity.
 func (sf *SlackFeed) ExeletCapacityWarning(ctx context.Context) {
