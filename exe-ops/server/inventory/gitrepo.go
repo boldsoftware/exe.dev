@@ -19,6 +19,11 @@ type GitRepo struct {
 	dir     string // path to bare repo
 	log     *slog.Logger
 	repoURL string
+
+	// onChange, if set, is called with the new HEAD SHA after a fetch
+	// that advances refs/heads/main. Called from the polling goroutine.
+	onChange func(sha string)
+	lastSHA  string // last known HEAD of main; guarded by mu
 }
 
 // NewGitRepo creates a new GitRepo service.
@@ -28,6 +33,12 @@ func NewGitRepo(log *slog.Logger, dir, repoURL string) *GitRepo {
 		log:     log,
 		repoURL: repoURL,
 	}
+}
+
+// OnChange registers a callback that fires when refs/heads/main advances.
+// Must be called before Run.
+func (g *GitRepo) OnChange(f func(sha string)) {
+	g.onChange = f
 }
 
 // Run clones the repo if needed, then fetches every 60 seconds.
@@ -93,6 +104,20 @@ func (g *GitRepo) fetchLocked(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("git fetch: %w: %s", err, out)
 	}
+
+	// Check if HEAD of main advanced and fire the onChange callback.
+	if g.onChange != nil {
+		sha := g.headSHALocked(ctx)
+		if sha != "" && sha != g.lastSHA {
+			prev := g.lastSHA
+			g.lastSHA = sha
+			if prev != "" {
+				// Don't fire on the initial fetch — only on actual advances.
+				g.log.Info("main advanced", "from", prev[:12], "to", sha[:12])
+				go g.onChange(sha)
+			}
+		}
+	}
 	return nil
 }
 
@@ -102,6 +127,11 @@ func (g *GitRepo) HeadSHA() string {
 	defer g.mu.RUnlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	return g.headSHALocked(ctx)
+}
+
+// headSHALocked resolves refs/heads/main. Caller must hold mu (read or write).
+func (g *GitRepo) headSHALocked(ctx context.Context) string {
 	cmd := exec.CommandContext(ctx, "git", "-C", g.dir, "rev-parse", "refs/heads/main")
 	out, err := cmd.Output()
 	if err != nil {

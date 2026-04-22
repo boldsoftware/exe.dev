@@ -167,7 +167,11 @@ func (d *deploy) beginStep(name string) {
 }
 
 // setStepOutput records informational output on the current running step.
+// Safe to call on a nil receiver (used by prebuild, which has no deploy).
 func (d *deploy) setStepOutput(output string) {
+	if d == nil {
+		return
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for i := range d.steps {

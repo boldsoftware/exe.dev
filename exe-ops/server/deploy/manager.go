@@ -381,6 +381,24 @@ func (m *Manager) finish(d *deploy) {
 	}
 }
 
+// Prebuild opportunistically builds artifacts for the given processes at sha,
+// populating the cache so that subsequent deploys find them already built.
+// Errors are logged but not returned — this is best-effort.
+func (m *Manager) Prebuild(ctx context.Context, sha string, processes []string) {
+	for _, proc := range processes {
+		recipe, ok := Recipes[proc]
+		if !ok {
+			continue
+		}
+		path, summary, err := m.ensureArtifact(ctx, nil, proc, sha, recipe)
+		if err != nil {
+			m.log.Error("prebuild failed", "process", proc, "sha", sha[:12], "error", err)
+			continue
+		}
+		m.log.Info("prebuild complete", "process", proc, "sha", sha[:12], "artifact", path, "summary", summary)
+	}
+}
+
 // ensureArtifact returns the path to a built binary and a human summary,
 // using the cache and serializing concurrent builds for the same (process, sha).
 func (m *Manager) ensureArtifact(ctx context.Context, d *deploy, process, sha string, recipe Recipe) (string, string, error) {

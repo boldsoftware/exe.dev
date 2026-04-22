@@ -97,6 +97,12 @@ func main() {
 			// Refresh inventory after each deploy so the UI sees updated versions.
 			deployer.OnDeploy(inv.Refresh)
 
+			// Opportunistically prebuild exed when main advances, so the
+			// artifact is cached by the time someone clicks Deploy.
+			gitRepo.OnChange(func(sha string) {
+				deployer.Prebuild(ctx, sha, []string{"exed"})
+			})
+
 			handler := server.New(uiFS, log, environment, inv, deployer)
 
 			srv := &http.Server{
