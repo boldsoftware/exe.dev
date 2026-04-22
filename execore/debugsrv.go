@@ -9711,11 +9711,30 @@ func (s *Server) debugSQLTablesPlaceholder(ctx context.Context) string {
 	return "Tables: " + strings.Join(tables, ", ")
 }
 
+// checkDebugSQLAuth verifies the request comes from a Tailscale user
+// authorized to use the SQL query tool. In WebDev mode, it returns "webdev"
+// with no checks. Otherwise, the user's login name must contain "passkey".
+// On failure, it writes an HTTP error and returns ("", false).
+func (s *Server) checkDebugSQLAuth(w http.ResponseWriter, r *http.Request) (who string, ok bool) {
+	if s.env.WebDev {
+		return "webdev", true
+	}
+	who = tailscaleUser(r.Context(), r.RemoteAddr)
+	if who == "" {
+		http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
+		return "", false
+	}
+	if !strings.Contains(who, "passkey") {
+		http.Error(w, fmt.Sprintf("SQL query requires a passkey-authenticated Tailscale user; you are logged in as %q. Re-authenticate to Tailscale with a passkey-backed identity and try again.", who), http.StatusForbidden)
+		return "", false
+	}
+	return who, true
+}
+
 // handleDebugSQLQueryForm renders the SQL query tool page.
 func (s *Server) handleDebugSQLQueryForm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if tailscaleUser(ctx, r.RemoteAddr) == "" && !s.env.WebDev {
-		http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
+	if _, ok := s.checkDebugSQLAuth(w, r); !ok {
 		return
 	}
 	s.renderDebugTemplate(ctx, w, "sql-query.html", debugSQLPage{
@@ -9736,13 +9755,9 @@ func (s *Server) handleDebugSQLQueryExec(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "missing X-Requested-With header", http.StatusForbidden)
 		return
 	}
-	who := tailscaleUser(ctx, r.RemoteAddr)
-	if who == "" {
-		if !s.env.WebDev {
-			http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
-			return
-		}
-		who = "webdev"
+	who, ok := s.checkDebugSQLAuth(w, r)
+	if !ok {
+		return
 	}
 	query := strings.TrimSpace(r.FormValue("query"))
 	if query == "" {
