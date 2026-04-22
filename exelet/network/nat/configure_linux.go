@@ -614,36 +614,57 @@ func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeName, bridgeIP string
 }
 
 // applyCarrierNATBlock blocks guest traffic to carrier-grade NAT space.
-// Forwarded traffic to the whole CGNAT range is dropped, but host-terminating
-// traffic is narrowed to Tailscale's quad100 endpoint so we don't block
-// legitimate host-side bridge/gateway traffic on CGNAT-backed test networks.
+//
+// The primary block for quad100 lives in the raw table's PREROUTING chain.
+// This is evaluated before conntrack, NAT, and the filter table — crucially
+// before Tailscale's ts-forward/ts-input jump rules in the filter table.
+// Without the raw rule, Tailscale's "-o tailscale0 -j ACCEPT" catch-all in
+// ts-forward can accept forwarded VM traffic before our filter DROP is reached.
+//
+// The filter-table rules (FORWARD for the whole CGNAT range, INPUT for quad100)
+// are kept as defence-in-depth.  The INPUT rule is narrowed to quad100 so we
+// don't break legitimate host-side bridge/gateway traffic on CGNAT-backed test
+// networks.
 func (n *NAT) applyCarrierNATBlock(ctx context.Context, device string) error {
-	for _, rule := range []struct {
+	type rule struct {
+		table string // iptables table; empty string means "filter" (default)
 		chain string
 		dest  string
-	}{
-		{"FORWARD", CarrierNATCIDR},
-		{"INPUT", Quad100IP},
-	} {
+	}
+	rules := []rule{
+		// Raw PREROUTING: evaluated first, before Tailscale's filter rules.
+		{"raw", "PREROUTING", Quad100IP},
+		// Filter FORWARD: blocks the broader CGNAT range for forwarded traffic.
+		{"", "FORWARD", CarrierNATCIDR},
+		// Filter INPUT: defence-in-depth for host-terminating traffic.
+		{"", "INPUT", Quad100IP},
+	}
+
+	for _, r := range rules {
 		ruleArgs := []string{
 			"-i",
 			device,
 			"-d",
-			rule.dest,
+			r.dest,
 			"-j",
 			"DROP",
 		}
 
-		checkArgs := append([]string{"-C", rule.chain}, ruleArgs...)
+		var tableArgs []string
+		if r.table != "" {
+			tableArgs = []string{"-t", r.table}
+		}
+
+		checkArgs := append(tableArgs, append([]string{"-C", r.chain}, ruleArgs...)...)
 		if err := exec.CommandContext(ctx, "iptables", checkArgs...).Run(); err == nil {
 			continue
 		}
 
-		n.log.DebugContext(ctx, "adding iptables rule to block carrier NAT access from guests", "chain", rule.chain, "device", device, "dest", rule.dest)
+		n.log.DebugContext(ctx, "adding iptables rule to block carrier NAT access from guests", "table", r.table, "chain", r.chain, "device", device, "dest", r.dest)
 
-		insertArgs := append([]string{"-I", rule.chain}, ruleArgs...)
+		insertArgs := append(tableArgs, append([]string{"-I", r.chain}, ruleArgs...)...)
 		if err := exec.CommandContext(ctx, "iptables", insertArgs...).Run(); err != nil {
-			return fmt.Errorf("failed to add carrier NAT block rule to %s for %s: %w", rule.chain, rule.dest, err)
+			return fmt.Errorf("failed to add carrier NAT block rule to %s/%s for %s: %w", r.table, r.chain, r.dest, err)
 		}
 	}
 
