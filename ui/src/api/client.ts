@@ -490,6 +490,18 @@ export async function fetchDocsEntry(slug: string): Promise<DocsEntryData> {
   return resp.json()
 }
 
+export interface DocsAllData {
+  groups: DocsGroup[]
+  content: string
+  isLoggedIn: boolean
+}
+
+export async function fetchDocsAll(): Promise<DocsAllData> {
+  const resp = await fetch('/api/docs/all')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
 // --- VM Compute Usage API ---
 
 export interface VMComputeUsagePoint {

@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -633,6 +634,66 @@ func TestSubheadingNumbersContiguous(t *testing.T) {
 	for i := 1; i <= maxNormal; i++ {
 		if _, ok := seen[i]; !ok {
 			t.Errorf("subheading number %d is missing (have 1..%d with gap)", i, maxNormal)
+		}
+	}
+}
+
+func TestHandleAPIAll(t *testing.T) {
+	store, err := Load(stage.Local())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, true, true)
+	if handler == nil {
+		t.Fatal("NewHandler returned nil")
+	}
+
+	req := httptest.NewRequest("GET", "/api/docs/all", nil)
+	w := httptest.NewRecorder()
+	handler.HandleAPIAll(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got status %d, want 200", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		t.Errorf("got content type %q, want application/json", contentType)
+	}
+
+	var data struct {
+		Groups []struct {
+			Heading string `json:"heading"`
+			Slug    string `json:"slug"`
+			Docs    []struct {
+				Slug  string `json:"slug"`
+				Title string `json:"title"`
+			} `json:"docs"`
+		} `json:"groups"`
+		Content    string `json:"content"`
+		IsLoggedIn bool   `json:"isLoggedIn"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&data); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+
+	if len(data.Groups) == 0 {
+		t.Fatal("expected non-empty groups")
+	}
+
+	if data.Content == "" {
+		t.Fatal("expected non-empty content")
+	}
+
+	// Verify that all published doc titles appear in the content
+	for _, entry := range store.entries {
+		if !entry.Published || entry.Unlinked {
+			continue
+		}
+		if !strings.Contains(data.Content, template.HTMLEscapeString(entry.Title)) {
+			t.Errorf("expected content to contain title %q", entry.Title)
 		}
 	}
 }

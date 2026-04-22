@@ -1042,6 +1042,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// /api/docs/all returns all docs combined in a single response
+		if path == "/api/docs/all" {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if s.docs != nil {
+				s.docs.HandleAPIAll(w, r)
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"groups":[],"content":"","isLoggedIn":false}`))
+			}
+			return
+		}
+
 		// /api/docs/entry/<slug> returns a single doc entry as JSON
 		if slug, ok := strings.CutPrefix(path, "/api/docs/entry/"); ok && slug != "" {
 			if r.Method != http.MethodGet {

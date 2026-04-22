@@ -58,7 +58,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDocsList, fetchDocsEntry, isAuthenticated, type DocsGroup, type DocsDocRef } from '../api/client'
+import { fetchDocsList, fetchDocsEntry, fetchDocsAll, isAuthenticated, type DocsGroup, type DocsDocRef } from '../api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,36 +107,15 @@ async function loadAllDocs() {
   loading.value = true
   loadError.value = ''
   try {
-    const listData = await fetchDocsList()
-    groups.value = listData.groups
-    isAuthenticated.value = listData.isLoggedIn
-
-    // Fetch all entries and combine content
-    const allEntries = []
-    for (const group of listData.groups) {
-      for (const doc of group.docs) {
-        allEntries.push(doc)
-      }
-    }
-    // Build combined HTML
-    let html = ''
-    let firstGroup = true
-    for (const group of listData.groups) {
-      if (!firstGroup) html += '<hr style="margin: 48px 0;">\n'
-      firstGroup = false
-      html += `<h2 id="${group.slug}">${escapeHtml(group.heading)}</h2>\n`
-      for (const doc of group.docs) {
-        const data = await fetchDocsEntry(doc.slug)
-        html += `<h3 id="${doc.slug}" class="anchor-heading">${escapeHtml(data.entry.title)}<a href="#${doc.slug}" class="anchor-link" aria-label="Link to this section">#</a></h3>\n`
-        html += data.entry.content + '\n'
-      }
-    }
+    const data = await fetchDocsAll()
+    groups.value = data.groups
+    isAuthenticated.value = data.isLoggedIn
     entry.value = {
       slug: 'all',
       path: '/docs/all',
       title: 'exe.dev Documentation',
       description: 'Complete exe.dev documentation in one page',
-      content: html,
+      content: data.content,
       markdown: '',
     }
     prev.value = null

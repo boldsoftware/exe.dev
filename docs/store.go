@@ -1053,9 +1053,8 @@ func (h *Handler) renderAllDocsMD(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
-	isSudoer := h.topbarData(r).IsSudoer
-	// Create combined content with anchors (TOC is in the sidebar)
+// buildAllDocsContent generates the combined HTML content for all visible docs.
+func (h *Handler) buildAllDocsContent(isSudoer bool) string {
 	var contentBuf bytes.Buffer
 	firstGroup := true
 	for _, group := range h.store.Groups() {
@@ -1086,13 +1085,77 @@ func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
 			contentBuf.WriteString("\n")
 		}
 	}
+	return contentBuf.String()
+}
+
+// HandleAPIAll returns the combined all-docs content plus the group list in a single JSON response.
+func (h *Handler) HandleAPIAll(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.store == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"groups":[],"content":"","isLoggedIn":false}`))
+		return
+	}
+
+	isSudoer := h.topbarData(r).IsSudoer
+
+	type apiDoc struct {
+		Slug        string `json:"slug"`
+		Path        string `json:"path"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	type apiGroup struct {
+		Heading string   `json:"heading"`
+		Slug    string   `json:"slug"`
+		Docs    []apiDoc `json:"docs"`
+	}
+	type apiResponse struct {
+		Groups     []apiGroup `json:"groups"`
+		Content    string     `json:"content"`
+		IsLoggedIn bool       `json:"isLoggedIn"`
+	}
+
+	resp := apiResponse{
+		Groups:     make([]apiGroup, 0),
+		Content:    h.buildAllDocsContent(isSudoer),
+		IsLoggedIn: h.topbarData(r).IsLoggedIn,
+	}
+
+	for _, g := range h.store.Groups() {
+		ag := apiGroup{
+			Heading: g.Heading,
+			Slug:    g.Slug,
+			Docs:    make([]apiDoc, 0),
+		}
+		for _, e := range g.Docs {
+			if !h.canShow(e, isSudoer) {
+				continue
+			}
+			ag.Docs = append(ag.Docs, apiDoc{
+				Slug:        e.Slug,
+				Path:        e.Path,
+				Title:       e.Title + h.statusTag(e),
+				Description: e.Description,
+			})
+		}
+		if len(ag.Docs) > 0 {
+			resp.Groups = append(resp.Groups, ag)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) renderAllDocsHTML(w http.ResponseWriter, r *http.Request) {
+	isSudoer := h.topbarData(r).IsSudoer
 
 	allEntry := &Entry{
 		Path:        "/docs/all",
 		Slug:        "all",
 		Title:       "exe.dev Documentation",
 		Description: "Complete exe.dev documentation in one page",
-		Content:     template.HTML(contentBuf.String()),
+		Content:     template.HTML(h.buildAllDocsContent(isSudoer)),
 	}
 
 	buf := new(bytes.Buffer)
