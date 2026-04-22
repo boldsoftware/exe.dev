@@ -412,8 +412,7 @@ func (m *llmGateway) createOpenAIProxy(incomingReq *http.Request, boxInfo *BoxIn
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			r.Out.Header.Del("Authorization")   // Remove our bearer token so we don't leak them to the origin server.
 			r.Out.Header.Del("Accept-Encoding") // Let Go's Transport handle gzip implicitly so it auto-decompresses.
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.OpenAI)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.OpenAI)
@@ -453,8 +452,7 @@ func (m *llmGateway) createFireworksProxy(incomingReq *http.Request, boxInfo *Bo
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1, // Flush immediately for SSE streaming
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			m.log.InfoContext(r.In.Context(), "ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			r.Out.Header.Del("Authorization")   // Remove our bearer token so we don't leak them to the origin server.
 			r.Out.Header.Del("Accept-Encoding") // Let Go's Transport handle gzip implicitly so it auto-decompresses.
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.Fireworks)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Fireworks)
