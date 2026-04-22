@@ -2317,7 +2317,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	if memoryChanged {
 		cc.Writeln("Configuration updated. Memory changes require a full restart via exe.dev:")
 		cc.Writeln("  ssh %s sudo poweroff", ss.server.env.BoxDest(boxName))
-		cc.Writeln("  ssh %s restart %s", ss.server.env.BoxHost, boxName)
+		cc.Writeln("  ssh %s restart %s", ss.server.env.WebHost, boxName)
 	} else {
 		cc.Writeln("Configuration updated. Restart the VM to apply changes:")
 		cc.Writeln("  ssh %s sudo shutdown -r now", ss.server.env.BoxDest(boxName))
