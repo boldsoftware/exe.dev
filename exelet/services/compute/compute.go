@@ -130,6 +130,12 @@ func (s *Service) Register(ctx *services.ServiceContext, server *grpc.Server) er
 	if err != nil {
 		return fmt.Errorf("failed to create VMM: %w", err)
 	}
+	// Wire the cgroup provider so cloud-hypervisor is spawned directly into
+	// its VM scope cgroup at exec time. The provider resolves the VM's group
+	// ID from the persisted instance config and delegates to whichever
+	// service registered itself as ctx.CgroupPreparer (typically the
+	// resource manager, which registers itself later).
+	v.SetCgroupPathFunc(s.cgroupPathForVM)
 	s.vmm = v
 	api.RegisterComputeServiceServer(server, s)
 	s.context = ctx

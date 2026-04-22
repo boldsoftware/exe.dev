@@ -55,6 +55,7 @@ type ResourceManager struct {
 	priorityMu       sync.Mutex
 	priorityOverride map[string]api.VMPriority // manual overrides (cleared when set to auto)
 	cgroupRoot       string
+	initControlsOnce sync.Once
 
 	// Test hooks (nil in production; overridden in tests)
 	collectUsageFn  func(ctx context.Context, id, name, groupID string) (*usageData, error)
@@ -204,6 +205,7 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 	// Register as the memory reclaimer so other services (compute)
 	// can request proactive memory reclamation during live migration.
 	ctx.MemoryReclaimer = m
+	ctx.CgroupPreparer = m
 
 	// Initialize metrics daemon reporter if configured
 	if m.config.MetricsDaemonURL != "" {
@@ -242,7 +244,7 @@ func (m *ResourceManager) Start(ctx context.Context) error {
 	})
 
 	// Initialize cgroup controllers at root and slice level
-	m.initControllers(ctx)
+	m.initControlsOnce.Do(func() { m.initControllers(ctx) })
 
 	pollCtx, cancel := context.WithCancel(ctx)
 	m.cancel = cancel

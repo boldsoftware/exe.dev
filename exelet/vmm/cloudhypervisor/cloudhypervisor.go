@@ -30,12 +30,26 @@ type NetworkManager interface {
 	DeleteInterface(ctx context.Context, id, ip, mac string) error
 }
 
+// CgroupPathFunc returns the cgroup path for placing a VM's cloud-hypervisor
+// process at exec time. Mirrors vmm.CgroupPathFunc; defined here to avoid
+// an import cycle with the parent vmm package.
+type CgroupPathFunc func(ctx context.Context, id string) (string, error)
+
 type VMM struct {
 	dataDir         string
 	networkManager  NetworkManager
 	enableHugepages bool
 	instanceDomain  string
 	log             *slog.Logger
+	cgroupPathFunc  CgroupPathFunc
+}
+
+// SetCgroupPathFunc configures a callback used to place newly spawned
+// cloud-hypervisor processes directly in their target cgroup. This avoids
+// guest-RAM charges being mis-attributed to whatever cgroup the exelet lived
+// in at the time the VMM was spawned.
+func (v *VMM) SetCgroupPathFunc(fn CgroupPathFunc) {
+	v.cgroupPathFunc = fn
 }
 
 // NewVMM returns a new CloudHypervisor based VMM

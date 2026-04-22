@@ -61,6 +61,18 @@ type MemoryReclaimer interface {
 	ReclaimMemory(ctx context.Context, bytes uint64) error
 }
 
+// CgroupPreparer creates and configures a VM's cgroup scope so that the VMM
+// process can be placed in it at exec time via CLONE_INTO_CGROUP. This ensures
+// guest RAM pages are charged to the VM's cgroup rather than whichever cgroup
+// the exelet happens to live in. Returns the absolute cgroup path on success.
+//
+// If the returned path is empty (for example on non-Linux hosts or when
+// cgroup v2 is unavailable), callers should start the VMM without any
+// special cgroup placement.
+type CgroupPreparer interface {
+	PrepareVMCgroup(ctx context.Context, id, groupID string) (string, error)
+}
+
 type ServiceContext struct {
 	StorageManager       storage.StorageManager
 	NetworkManager       network.NetworkManager
@@ -70,6 +82,7 @@ type ServiceContext struct {
 	MetricsRegistry      *prometheus.Registry
 	ReplicationSuspender ReplicationSuspender
 	MemoryReclaimer      MemoryReclaimer
+	CgroupPreparer       CgroupPreparer
 }
 
 // Service is the interface that all services must implement

@@ -245,6 +245,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		Image:     req.Image,
 		State:     api.VMState_CREATING,
 		Node:      s.config.Name,
+		GroupID:   req.GroupID,
 		CreatedAt: created,
 		UpdatedAt: created,
 	}

@@ -21,9 +21,18 @@ type NetworkManager interface {
 	DeleteInterface(ctx context.Context, id, ip, mac string) error
 }
 
+// CgroupPathFunc returns the cgroup directory path the VMM should place a
+// given VM's cloud-hypervisor process into at exec time (via CLONE_INTO_CGROUP).
+// Returning ("", nil) disables CLONE_INTO_CGROUP for that VM.
+type CgroupPathFunc func(ctx context.Context, id string) (string, error)
+
 type VMM interface {
 	// Create implements VM creation
 	Create(ctx context.Context, req *api.VMConfig) error
+	// SetCgroupPathFunc sets a callback that returns the target cgroup path
+	// for each VM's cloud-hypervisor process. Must be called before Create /
+	// Start / RestoreFromSnapshot in order to take effect.
+	SetCgroupPathFunc(fn CgroupPathFunc)
 	// Get returns the VM config
 	Get(ctx context.Context, id string) (*api.VMConfig, error)
 	// Start implements VM start
@@ -74,8 +83,28 @@ func NewVMM(addr string, nm NetworkManager, enableHugepages bool, instanceDomain
 
 	switch strings.ToLower(u.Scheme) {
 	case "cloudhypervisor":
-		return cloudhypervisor.NewVMM(addr, nm, enableHugepages, instanceDomain, log)
+		v, err := cloudhypervisor.NewVMM(addr, nm, enableHugepages, instanceDomain, log)
+		if err != nil {
+			return nil, err
+		}
+		return &chVMMAdapter{VMM: v}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported VMM %q", u.Scheme)
+}
+
+// chVMMAdapter bridges the cloudhypervisor package's CgroupPathFunc type to
+// the one declared in this package. Without the adapter the two distinct
+// named-function types would fail the VMM interface check even though they
+// have identical underlying signatures.
+type chVMMAdapter struct {
+	*cloudhypervisor.VMM
+}
+
+func (a *chVMMAdapter) SetCgroupPathFunc(fn CgroupPathFunc) {
+	if fn == nil {
+		a.VMM.SetCgroupPathFunc(nil)
+		return
+	}
+	a.VMM.SetCgroupPathFunc(cloudhypervisor.CgroupPathFunc(fn))
 }

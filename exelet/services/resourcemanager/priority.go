@@ -206,10 +206,36 @@ func (m *ResourceManager) ensureAccountSlice(ctx context.Context, groupID string
 // groupID is used for per-account cgroup grouping (empty string uses default group).
 // Controllers should already be enabled via initControllers() at startup.
 func (m *ResourceManager) ensureCgroup(ctx context.Context, id, groupID string, pid int) (string, error) {
-	// Ensure account slice exists first
+	cgroupPath, scopeName, err := m.ensureScopeCgroup(ctx, id, groupID)
+	if err != nil {
+		return "", err
+	}
+
+	// Move process to cgroup if not already there. When cloud-hypervisor was
+	// spawned with CLONE_INTO_CGROUP (see vmm CgroupFD plumbing) the pid is
+	// already here and moveProcessToCgroup is a no-op.
+	if err := m.moveProcessToCgroup(cgroupPath, pid); err != nil {
+		return "", fmt.Errorf("move process: %w", err)
+	}
+
+	// Clean up old cgroups for this VM in other locations
+	m.cleanupOldVMCgroups(ctx, id, scopeName, cgroupPath)
+
+	return cgroupPath, nil
+}
+
+// ensureScopeCgroup creates (if necessary) the exelet.slice/<group>.slice/vm-<id>.scope
+// directory and ensures controllers are enabled on the parent slice. It does not
+// place any process into the cgroup. Returns the cgroup path and the scope name.
+func (m *ResourceManager) ensureScopeCgroup(ctx context.Context, id, groupID string) (string, string, error) {
+	// Ensure root/slice controllers are set up. Normally done in Start(), but
+	// PrepareVMCgroup may be called before Start() completes (compute service
+	// can accept RPCs in parallel).
+	m.initControlsOnce.Do(func() { m.initControllers(ctx) })
+
 	accountSlicePath, err := m.ensureAccountSlice(ctx, groupID)
 	if err != nil {
-		return "", fmt.Errorf("ensure account slice: %w", err)
+		return "", "", fmt.Errorf("ensure account slice: %w", err)
 	}
 
 	scopeName := fmt.Sprintf("vm-%s.scope", sanitizeCgroupName(id))
@@ -218,17 +244,35 @@ func (m *ResourceManager) ensureCgroup(ctx context.Context, id, groupID string, 
 	// Create scope if it doesn't exist.
 	// Use MkdirAll to handle concurrent creation (EEXIST is not an error).
 	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
-		return "", fmt.Errorf("create scope: %w", err)
+		return "", "", fmt.Errorf("create scope: %w", err)
 	}
 
-	// Move process to cgroup if not already there
-	if err := m.moveProcessToCgroup(cgroupPath, pid); err != nil {
-		return "", fmt.Errorf("move process: %w", err)
+	return cgroupPath, scopeName, nil
+}
+
+// PrepareVMCgroup creates the VM's cgroup scope (if needed) so the VMM process
+// can be placed in it at exec time via CLONE_INTO_CGROUP. This ensures guest RAM
+// pages are charged to the VM's cgroup from the very first page fault, instead
+// of being charged to whatever cgroup the exelet itself was in at the time the
+// VMM was spawned (see reclaim.go phase 2 comment).
+//
+// Returns the absolute path to the cgroup directory, or ("", nil) on non-Linux
+// platforms or when cgroup v2 is not available. The caller should treat an
+// empty path as "start the VMM without CLONE_INTO_CGROUP".
+func (m *ResourceManager) PrepareVMCgroup(ctx context.Context, id, groupID string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", nil
+	}
+	// Require cgroup v2 (unified) hierarchy. If the root has no
+	// cgroup.controllers file, v2 isn't mounted here.
+	if _, err := os.Stat(filepath.Join(m.cgroupRoot, "cgroup.controllers")); err != nil {
+		return "", nil
 	}
 
-	// Clean up old cgroups for this VM in other locations
-	m.cleanupOldVMCgroups(ctx, id, scopeName, cgroupPath)
-
+	cgroupPath, _, err := m.ensureScopeCgroup(ctx, id, groupID)
+	if err != nil {
+		return "", err
+	}
 	return cgroupPath, nil
 }
 

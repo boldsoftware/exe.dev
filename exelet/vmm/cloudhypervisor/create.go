@@ -93,6 +93,17 @@ func (v *VMM) startCHProcess(ctx context.Context, id string) (alreadyRunning boo
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true, // Create new process group
 	}
+	// Place the CH process directly into its target cgroup at exec time so
+	// that guest RAM page faults are charged to the VM's cgroup from the
+	// first page onward. Without this, pages get charged to whatever cgroup
+	// the exelet itself lives in and stay there forever (cgroup v2 does not
+	// reparent charges when a process is moved). See reclaim.go phase 2
+	// comment for the pre-fix behavior.
+	cgroupCleanup, err := v.applyCgroupPlacement(ctx, id, cmd.SysProcAttr)
+	if err != nil {
+		return false, err
+	}
+	defer cgroupCleanup()
 	v.log.DebugContext(ctx, "running cloudhypervisor api instance")
 	if err := cmd.Start(); err != nil {
 		return false, err

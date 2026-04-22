@@ -126,6 +126,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		Image:     sourceInstance.Image,
 		State:     api.VMState_CREATING,
 		Node:      s.config.Name,
+		GroupID:   req.GroupID,
 		CreatedAt: created,
 		UpdatedAt: created,
 	}
