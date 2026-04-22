@@ -32,17 +32,17 @@ func TestGeneratedBoxNamesAreValid(t *testing.T) {
 func TestReservedPortSuffixes(t *testing.T) {
 	t.Parallel()
 
-	// Names ending with -NNN (hyphen + digits only) should be invalid
-	invalidNames := []string{
+	// Names ending with -NNN (hyphen + digits only) are allowed.
+	allowedNames := []string{
 		"mybox-123",
 		"mybox-1",
 		"mybox-80",
 		"mybox-8080",
 		"foo-bar-443",
 	}
-	for _, name := range invalidNames {
-		if IsValid(name) {
-			t.Errorf("Name with reserved port suffix %q should be invalid", name)
+	for _, name := range allowedNames {
+		if !IsValid(name) {
+			t.Errorf("Name %q should be valid (plain -NNN suffix is allowed)", name)
 		}
 	}
 

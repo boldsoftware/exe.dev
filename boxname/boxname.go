@@ -86,8 +86,8 @@ var (
 )
 
 // reservedSuffixRE holds suffix rejection patterns.
-// Names ending with -NNN, -pNNN, or -portNNN are reserved for possible future port signifier suffixes.
-var reservedSuffixRE = regexp.MustCompile(`-(p|port)?[0-9]+$`)
+// Names ending with -pNNN or -portNNN are reserved for possible future port signifier suffixes.
+var reservedSuffixRE = regexp.MustCompile(`-(p|port)[0-9]+$`)
 
 // reservedFullNameRE holds full name rejection patterns.
 // p80, p8080, port8080, port9000 etc are reserved for possible future port subdomains.
@@ -132,7 +132,7 @@ func Valid(name string) error {
 		}
 	}
 
-	// Reject names ending with -NNN, -pNNN, or -portNNN (reserved for port signifiers)
+	// Reject names ending with -pNNN or -portNNN (reserved for port signifiers)
 	if reservedSuffixRE.MatchString(name) {
 		return errUnavailableName
 	}
