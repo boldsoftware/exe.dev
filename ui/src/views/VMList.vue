@@ -609,7 +609,24 @@ function onEscapeKey(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  loadDashboard()
+  loadDashboard().then(() => {
+    // Handle share_vm + share_email query params from access-request emails.
+    const shareVM = route.query.share_vm as string
+    const shareEmail = route.query.share_email as string
+    if (shareVM) {
+      const q = shellQuote(shareVM)
+      openModal({
+        title: 'Share VM',
+        commandPrefix: `share add ${q}`,
+        inputPlaceholder: 'user@example.com',
+        defaultValue: shareEmail || '',
+        description: 'Sharing allows the given user to access this VM\'s web server. <a href="/docs/sharing" target="_blank" rel="noopener noreferrer">Docs</a>',
+      })
+      // Clean up the URL so the modal doesn't reopen on refresh.
+      const { share_vm: _, share_email: __, ...rest } = route.query
+      router.replace({ query: rest })
+    }
+  })
   document.addEventListener('keydown', onEscapeKey)
 })
 

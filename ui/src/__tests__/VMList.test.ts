@@ -53,7 +53,7 @@ function makeDashboard(overrides: Partial<DashboardData> = {}): DashboardData {
   }
 }
 
-async function mountVMList(dashboardData: DashboardData) {
+async function mountVMList(dashboardData: DashboardData, path = '/') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -61,7 +61,7 @@ async function mountVMList(dashboardData: DashboardData) {
       { path: '/new', component: { template: '' } },
     ],
   })
-  router.push('/')
+  router.push(path)
   await router.isReady()
 
   const wrapper = mount(VMList, {
@@ -70,7 +70,7 @@ async function mountVMList(dashboardData: DashboardData) {
     },
   })
   await flushPromises()
-  return wrapper
+  return { wrapper, router }
 }
 
 vi.mock('../api/client', async (importOriginal) => {
@@ -107,7 +107,7 @@ describe('VMList', () => {
 
   it('renders empty state when no VMs exist', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
-    const wrapper = await mountVMList(makeDashboard())
+    const { wrapper } = await mountVMList(makeDashboard())
     expect(wrapper.text()).toContain('No VMs yet')
     expect(wrapper.text()).toContain('ssh exe.dev')
   })
@@ -121,7 +121,7 @@ describe('VMList', () => {
       ],
     })
     mockFetchDashboard.mockResolvedValue(data)
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     expect(wrapper.text()).toContain('alpha-vm')
     expect(wrapper.text()).toContain('beta-vm')
@@ -140,7 +140,7 @@ describe('VMList', () => {
       ],
     })
     mockFetchDashboard.mockResolvedValue(data)
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     const input = wrapper.find('.search-input')
     await input.setValue('api')
@@ -161,7 +161,7 @@ describe('VMList', () => {
       ],
     })
     mockFetchDashboard.mockResolvedValue(data)
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     const input = wrapper.find('.search-input')
     await input.setValue('#prod')
@@ -177,7 +177,7 @@ describe('VMList', () => {
       boxes: [makeBox({ name: 'my-vm' })],
     })
     mockFetchDashboard.mockResolvedValue(data)
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     const input = wrapper.find('.search-input')
     await input.setValue('nonexistent')
@@ -194,7 +194,7 @@ describe('VMList', () => {
       ],
     })
     mockFetchDashboard.mockResolvedValue(data)
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     expect(wrapper.text()).toContain('Shared with you')
     expect(wrapper.text()).toContain('friend-vm')
@@ -203,7 +203,7 @@ describe('VMList', () => {
 
   it('renders error state on fetch failure', async () => {
     mockFetchDashboard.mockRejectedValue(new Error('Network error'))
-    const wrapper = await mountVMList(makeDashboard())
+    const { wrapper } = await mountVMList(makeDashboard())
 
     expect(wrapper.text()).toContain('Failed to load VMs')
     expect(wrapper.text()).toContain('Network error')
@@ -222,7 +222,7 @@ describe('VMList', () => {
 
     // Default view is group by tag
     localStorage.setItem('exe-vm-view-options', JSON.stringify({ sort: 'name', group: 'tag' }))
-    const wrapper = await mountVMList(data)
+    const { wrapper } = await mountVMList(data)
 
     // Should see group headers
     expect(wrapper.text()).toContain('#dev')
@@ -230,9 +230,29 @@ describe('VMList', () => {
     expect(wrapper.text()).toContain('Untagged')
   })
 
+  it('opens share modal when share_vm and share_email query params are present', async () => {
+    const data = makeDashboard({
+      boxes: [makeBox({ name: 'ruby-sphinx' })],
+    })
+    mockFetchDashboard.mockResolvedValue(data)
+    const { wrapper, router } = await mountVMList(data, '/?share_vm=ruby-sphinx&share_email=guest%40example.com')
+
+    // The CommandModal should be visible with the share command pre-filled.
+    const modal = wrapper.findComponent({ name: 'CommandModal' })
+    expect(modal.exists()).toBe(true)
+    expect(modal.props('visible')).toBe(true)
+    expect(modal.props('title')).toBe('Share VM')
+    expect(modal.props('commandPrefix')).toBe('share add ruby-sphinx')
+    expect(modal.props('defaultValue')).toBe('guest@example.com')
+
+    // The query params should be cleaned from the URL.
+    expect(router.currentRoute.value.query.share_vm).toBeUndefined()
+    expect(router.currentRoute.value.query.share_email).toBeUndefined()
+  })
+
   it('renders breadcrumb navigation', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
-    const wrapper = await mountVMList(makeDashboard())
+    const { wrapper } = await mountVMList(makeDashboard())
     const breadcrumbs = wrapper.find('.breadcrumbs')
     expect(breadcrumbs.exists()).toBe(true)
     expect(breadcrumbs.text()).toContain('Home')
