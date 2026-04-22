@@ -16,7 +16,7 @@ table.info th { width: 200px; }
 </style>
 </head><body>
 <h1>User: {{.Email}}</h1>
-<p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a> | <a href="#" id="expandAll">expand all</a></p>
+<p><a href="/debug">/debug</a> &gt; <a href="/debug/users">users</a> &gt; <a href="/debug/user?userId={{.UserID}}">{{.Email}}</a> | <a href="#" id="expandAll">expand all</a> | <a href="#" id="toggleDefault" title="Toggle default expand/collapse on load">default: collapsed</a></p>
 
 <div class="section">
 <h2>Info ({{if .PlanName}}{{.PlanName}}{{else}}no plan{{end}}, {{.UserID}}, created {{.CreatedAtShort}})</h2>
@@ -25,7 +25,7 @@ table.info th { width: 200px; }
 <tr><th>Email</th><td>{{.Email}}</td></tr>
 <tr><th>User ID</th><td>{{.UserID}}</td></tr>
 <tr><th>Created At</th><td>{{.CreatedAt}}</td></tr>
-{{if .TeamID}}<tr><th>Team</th><td><a href="/debug/teams/{{.TeamID}}">{{.TeamName}}</a> ({{.TeamRole}})</td></tr>{{end}}
+{{if .TeamID}}<tr><th>Team</th><td><a href="/debug/teams/members?team_id={{.TeamID}}">{{.TeamName}}</a> ({{.TeamRole}})</td></tr>{{end}}
 <tr><th>Login-only Account</th><td>{{if .CreatedForLoginWithExe}}Yes{{else}}No{{end}}</td></tr>
 <tr><th>Root Support</th><td>{{if .RootSupport}}Yes{{else}}No{{end}}
 <button class="toggle-btn root-toggle-btn {{if .RootSupport}}enabled{{else}}disabled{{end}}"
@@ -631,8 +631,32 @@ $(document).ready(function() {
         });
     });
 
+    // Default expand/collapse from localStorage
+    var defaultExpanded = localStorage.getItem('debugUserDefaultExpanded') === 'true';
+    if (defaultExpanded) {
+        document.querySelectorAll('.section').forEach(function(s) { s.classList.add('open'); });
+    }
+    var toggleDefault = document.getElementById('toggleDefault');
+    function updateToggleLabel() {
+        toggleDefault.textContent = 'default: ' + (localStorage.getItem('debugUserDefaultExpanded') === 'true' ? 'expanded' : 'collapsed');
+    }
+    updateToggleLabel();
+    toggleDefault.addEventListener('click', function(e) {
+        e.preventDefault();
+        var cur = localStorage.getItem('debugUserDefaultExpanded') === 'true';
+        localStorage.setItem('debugUserDefaultExpanded', cur ? 'false' : 'true');
+        updateToggleLabel();
+    });
+
     // Expand all
-    document.getElementById('expandAll').addEventListener('click', function(e) {
+    var expandAll = document.getElementById('expandAll');
+    function updateExpandAllLabel() {
+        var sections = document.querySelectorAll('.section');
+        var allOpen = sections.length > 0 && Array.from(sections).every(function(s) { return s.classList.contains('open'); });
+        expandAll.textContent = allOpen ? 'collapse all' : 'expand all';
+    }
+    updateExpandAllLabel();
+    expandAll.addEventListener('click', function(e) {
         e.preventDefault();
         var sections = document.querySelectorAll('.section');
         var allOpen = Array.from(sections).every(function(s) { return s.classList.contains('open'); });
@@ -643,7 +667,7 @@ $(document).ready(function() {
                 s.classList.add('open');
             }
         });
-        this.textContent = allOpen ? 'expand all' : 'collapse all';
+        updateExpandAllLabel();
     });
 });
 

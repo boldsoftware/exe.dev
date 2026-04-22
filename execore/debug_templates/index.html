@@ -20,7 +20,7 @@ li { margin: 1px 0; }
 </p>
 
 <div style="margin-bottom: 10px;">
-    <form action="/debug/jump" method="get" class="jump" id="jump-form"><input type="text" name="q" placeholder="I'm feeling lucky" size="28"><button type="submit">Go</button><span id="jump-error" style="color:#c00;margin-left:8px;display:none;"></span></form>
+    <form action="/debug/jump" method="get" class="jump" id="jump-form"><input type="text" name="q" placeholder="I'm feeling lucky" size="28" autofocus><button type="submit">Go</button><span id="jump-error" style="color:#c00;margin-left:8px;display:none;"></span></form>
 </div>
 <script>
 document.getElementById('jump-form').addEventListener('submit', function(e) {
@@ -115,7 +115,6 @@ document.getElementById('jump-form').addEventListener('submit', function(e) {
     <li><a href="/debug/pprof/trace">pprof/trace</a></li>
     <li><a href="/debug/pprof/symbol">pprof/symbol</a></li>
     <li><a href="/debug/pprof/cmdline">pprof/cmdline</a></li>
-    <li><a href="/debug/startup-profile/view">startup-profile/view</a> (speedscope, if started with -profile-startup)</li>
     <li><a href="/debug/vars">vars</a></li>
     <li><a href="/metrics">metrics</a></li>
     <li><a href="/debug/gitsha">gitsha</a></li>
