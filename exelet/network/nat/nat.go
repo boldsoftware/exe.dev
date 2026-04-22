@@ -19,6 +19,7 @@ const (
 	DefaultNameserver        = "1.1.1.1"
 	DefaultNTPServer         = "ntp.ubuntu.com"
 	MetadataIP               = "169.254.169.254"
+	Quad100IP                = "100.100.100.100"
 	DefaultMaxPortsPerBridge = 500
 	DefaultBridgeHashMax     = 4096 // FDB hash table size; default 512 causes "exchange full" at scale
 	CarrierNATCIDR           = "100.64.0.0/10"

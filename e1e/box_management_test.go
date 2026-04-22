@@ -612,6 +612,54 @@ func TestVanillaBox(t *testing.T) {
 		// Success: both connections were blocked
 	})
 
+	t.Run("quad100_blocked", func(t *testing.T) {
+		// Verify that VMs cannot reach the host's Tailscale quad100 endpoint.
+		// This is host infrastructure and must not be exposed to guests.
+		noGolden(t)
+
+		if len(Env.servers.Exelets) == 0 {
+			t.Skip("no exelet available")
+		}
+		exelet := Env.servers.Exelets[0]
+
+		type probe struct {
+			name     string
+			hostCmd  string
+			guestCmd string
+		}
+		probes := []probe{
+			{
+				name:     "http_80",
+				hostCmd:  "timeout 3 curl -fsS --max-time 2 http://100.100.100.100/",
+				guestCmd: "timeout 3 curl -fsS --max-time 2 http://100.100.100.100/",
+			},
+			{
+				name:     "tcp_53",
+				hostCmd:  "timeout 3 nc -z -v -w 1 100.100.100.100 53 </dev/null",
+				guestCmd: "timeout 3 nc -z -v -w 1 100.100.100.100 53 </dev/null",
+			},
+		}
+
+		var selected *probe
+		var hostFailures []string
+		for i := range probes {
+			out, err := exelet.Exec(Env.context(t), probes[i].hostCmd)
+			if err == nil {
+				selected = &probes[i]
+				break
+			}
+			hostFailures = append(hostFailures, fmt.Sprintf("%s: %v (%s)", probes[i].name, err, strings.TrimSpace(string(out))))
+		}
+		if selected == nil {
+			t.Skipf("exelet host does not expose quad100 on the probe set: %s", strings.Join(hostFailures, "; "))
+		}
+
+		out, err := boxSSHShell(t, boxName, keyFile, selected.guestCmd).CombinedOutput()
+		if err == nil {
+			t.Fatalf("expected guest access to quad100 via %s to be blocked, but it succeeded:\n%s", selected.name, out)
+		}
+	})
+
 	t.Run("shard_routing", func(t *testing.T) {
 		// shard_routing tests that `ssh vmname.exe.cloud` routes to the correct box.
 		// This requires local DNS setup that resolves vmname.exe.cloud to shard IPs.
