@@ -626,6 +626,8 @@ func TestParseInvoiceLinePlanName(t *testing.T) {
 		{"1 × Team Plan (at $50.00 / month)", "Team"},
 		{"1 x Enterprise Plan (at $100.00 / year)", "Enterprise"},
 		{"Individual Plan", "Individual"},
+		{"Remaining time on Individual Plan (XLarge) after 22 Apr 2026", "Individual Plan (XLarge)"},
+		{"Unused time on Individual Plan (Small) after 22 Apr 2026", "Individual Plan (Small)"},
 		{"Something else entirely", "Something else entirely"},
 		{"", ""},
 	}
@@ -634,6 +636,45 @@ func TestParseInvoiceLinePlanName(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("parseInvoiceLinePlanName(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestInvoiceLineInfo(t *testing.T) {
+	tests := []struct {
+		name     string
+		lines    []*stripe.InvoiceLineItem
+		wantPlan string
+	}{
+		{
+			name:     "single line item",
+			lines:    []*stripe.InvoiceLineItem{{Description: "1 × Individual Plan (at $20.00 / month)", Amount: 2000}},
+			wantPlan: "Individual",
+		},
+		{
+			name: "proration picks highest amount and appends suffix",
+			lines: []*stripe.InvoiceLineItem{
+				{Description: "Unused time on Individual Plan (Small) after 22 Apr 2026", Amount: -1913},
+				{Description: "Remaining time on Individual Plan (XLarge) after 22 Apr 2026", Amount: 15306},
+			},
+			wantPlan: "Individual Plan (XLarge) - Prorated",
+		},
+		{
+			name:     "no lines",
+			lines:    nil,
+			wantPlan: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var lines *stripe.InvoiceLineItemList
+			if tt.lines != nil {
+				lines = &stripe.InvoiceLineItemList{Data: tt.lines}
+			}
+			planName, _, _ := invoiceLineInfo(lines, 0, 0)
+			if planName != tt.wantPlan {
+				t.Errorf("planName = %q, want %q", planName, tt.wantPlan)
+			}
+		})
 	}
 }
 

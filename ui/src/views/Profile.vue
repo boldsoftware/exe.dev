@@ -95,6 +95,7 @@
                 </div>
                 <div class="billing-plan-action">
                   <a v-if="canManageBilling && (data.credits.selfServeBilling || data.trial || data.basicUser)" href="/billing/update?source=profile" :class="['btn', data.credits.selfServeBilling ? 'btn-secondary' : 'btn-upgrade']">{{ data.credits.selfServeBilling ? 'Manage plan' : 'Upgrade' }}</a>
+                  <a href="/pricing" target="_blank" rel="noopener noreferrer" class="billing-pricing-link">View Pricing &#x2197;</a>
                 </div>
               </div>
 
@@ -107,25 +108,21 @@
                 <span class="billing-plan-include-item">{{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></span>
               </div>
 
-              <div class="billing-plan-pricing-link">
-                <a href="/pricing" class="learn-more-link">View all plans and pricing</a>
-              </div>
+
 
               <div v-if="data.teamInfo && !data.teamInfo.isBillingOwner && data.teamInfo.billingAdmins && data.teamInfo.billingAdmins.length > 0" class="billing-managed-by">
                 Your plan is managed by your team billing admins: {{ data.teamInfo.billingAdmins.join(', ') }}
               </div>
 
-              <!-- Upsell (commented out until stripe tier prices are configured)
               <div v-if="data.planCapacity && data.planCapacity.nextTier" class="billing-upsell">
                 <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
-                <a href="/billing/update?source=profile" class="billing-upsell-link">Upgrade</a>
+                <a href="/billing/update?source=upgrade" class="billing-upsell-link">Upgrade</a>
               </div>
-              -->
             </div>
 
             <!-- Payment Section -->
             <div v-if="data.credits.selfServeBilling && data.credits.paymentMethod" class="billing-divider-section">
-              <div class="billing-section-header">Payment</div>
+              <div class="billing-section-header">Payment Method</div>
               <div class="payment-method-callout">
                 <div class="pm-left">
                   <img :src="paymentIconUrl(data.credits.paymentMethod)" :alt="paymentBrandName(data.credits.paymentMethod)" class="pm-icon-img" />
@@ -152,11 +149,11 @@
                     <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
                   </div>
                   <div class="invoice-right">
-                    <span class="invoice-amount">${{ inv.amount }}</span>
+                    <span :class="['invoice-amount', { 'invoice-amount-zero': inv.amount === '0.00' }]">{{ inv.amount === '0.00' ? 'Credit applied' : '$' + inv.amount }}</span>
                   </div>
                   <div class="invoice-status-col">
                     <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
-                      <span :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
+                      <span :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }} &#x2197;</span>
                     </a>
                     <span v-else :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
                   </div>
@@ -1466,6 +1463,19 @@ async function toggleNewsletter(event: Event) {
 .billing-plan-action {
   flex-shrink: 0;
   padding-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.billing-pricing-link {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.billing-pricing-link:hover {
+  color: var(--text-color);
+  text-decoration: underline;
 }
 .btn-upgrade {
   background: transparent !important;
@@ -1490,12 +1500,6 @@ async function toggleNewsletter(event: Event) {
 }
 .billing-plan-include-sep {
   color: var(--text-color-muted);
-}
-
-/* Pricing link */
-.billing-plan-pricing-link {
-  margin-top: 12px;
-  font-size: 13px;
 }
 
 /* Managed by billing admins */
@@ -1778,6 +1782,11 @@ async function toggleNewsletter(event: Event) {
   font-size: 14px;
   font-weight: 600;
 }
+.invoice-amount-zero {
+  font-weight: 400;
+  color: var(--text-color-secondary);
+  font-size: 13px;
+}
 .invoice-status-col {
   flex-shrink: 0;
   min-width: 70px;
@@ -1786,8 +1795,9 @@ async function toggleNewsletter(event: Event) {
 .invoice-link {
   text-decoration: none;
 }
-.invoice-link:hover .invoice-badge {
+.invoice-link .invoice-badge {
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .invoice-badge {
   font-size: 12px;

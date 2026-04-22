@@ -669,6 +669,41 @@ func (m *Manager) VerifyCheckout(ctx context.Context, sessionID string) (billing
 	}
 }
 
+// OpenPortalToUpdateSubscription creates a billing portal session that deep-links
+// to the subscription update flow for the customer's active subscription.
+// Returns the generic portal if no active subscription is found.
+func (m *Manager) OpenPortalToUpdateSubscription(ctx context.Context, billingID, returnURL string) (string, error) {
+	c := m.client()
+	subID, err := m.activeSubscriptionID(ctx, c, billingID)
+	if err != nil || subID == "" {
+		return m.openPortal(ctx, billingID, returnURL)
+	}
+
+	flowType := string(stripe.BillingPortalSessionFlowTypeSubscriptionUpdate)
+	params := &stripe.BillingPortalSessionCreateParams{
+		Customer:  &billingID,
+		ReturnURL: &returnURL,
+		FlowData: &stripe.BillingPortalSessionCreateFlowDataParams{
+			Type: &flowType,
+			SubscriptionUpdate: &stripe.BillingPortalSessionCreateFlowDataSubscriptionUpdateParams{
+				Subscription: &subID,
+			},
+			AfterCompletion: &stripe.BillingPortalSessionCreateFlowDataAfterCompletionParams{
+				Type:     stripe.String(string(stripe.BillingPortalSessionFlowAfterCompletionTypeRedirect)),
+				Redirect: &stripe.BillingPortalSessionCreateFlowDataAfterCompletionRedirectParams{ReturnURL: &returnURL},
+			},
+		},
+	}
+	sess, err := c.V1BillingPortalSessions.Create(ctx, params)
+	if err != nil {
+		// Fall back to generic portal if flow_data fails (e.g. portal config doesn't allow updates).
+		m.slog().WarnContext(ctx, "failed to create subscription update portal, falling back to generic",
+			"error", err, "billing_id", billingID)
+		return m.openPortal(ctx, billingID, returnURL)
+	}
+	return sess.URL, nil
+}
+
 // openPortal creates a billing portal session using PortalParams.
 // This is a convenience wrapper around PortalSession that validates the return URL.
 func (m *Manager) openPortal(ctx context.Context, billingID, returnURL string) (portalURL string, _ error) {
@@ -986,24 +1021,7 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 			desc = "Subscription — " + t.Format("Jan 2006")
 		}
 
-		// Extract plan name and service period from first line item.
-		// Line item description is like "1 × Individual Plan (at $20.00 / month)".
-		// Line item Period has the actual service dates (invoice-level period is just the anchor).
-		var planName string
-		periodStart := time.Unix(inv.PeriodStart, 0).UTC()
-		periodEnd := time.Unix(inv.PeriodEnd, 0).UTC()
-		if inv.Lines != nil {
-			for _, li := range inv.Lines.Data {
-				if li.Description != "" {
-					planName = parseInvoiceLinePlanName(li.Description)
-				}
-				if li.Period != nil {
-					periodStart = time.Unix(li.Period.Start, 0).UTC()
-					periodEnd = time.Unix(li.Period.End, 0).UTC()
-				}
-				break
-			}
-		}
+		planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
 		result = append(result, InvoiceInfo{
 			Description:      desc,
@@ -1040,21 +1058,7 @@ func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*Invo
 		return nil, nil //nolint:nilerr
 	}
 
-	var planName string
-	periodStart := time.Unix(inv.PeriodStart, 0).UTC()
-	periodEnd := time.Unix(inv.PeriodEnd, 0).UTC()
-	if inv.Lines != nil {
-		for _, li := range inv.Lines.Data {
-			if li.Description != "" {
-				planName = parseInvoiceLinePlanName(li.Description)
-			}
-			if li.Period != nil {
-				periodStart = time.Unix(li.Period.Start, 0).UTC()
-				periodEnd = time.Unix(li.Period.End, 0).UTC()
-			}
-			break
-		}
-	}
+	planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
 	return &InvoiceInfo{
 		Description: "Upcoming",
@@ -1068,9 +1072,63 @@ func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*Invo
 	}, nil
 }
 
+// invoiceLineInfo picks the best line item from an invoice for display.
+// For proration invoices with multiple lines (e.g. a credit for the old plan
+// and a charge for the new plan), it picks the line with the highest amount
+// so we show the new plan rather than the credit.
+func invoiceLineInfo(lines *stripe.InvoiceLineItemList, fallbackStart, fallbackEnd int64) (planName string, periodStart, periodEnd time.Time) {
+	periodStart = time.Unix(fallbackStart, 0).UTC()
+	periodEnd = time.Unix(fallbackEnd, 0).UTC()
+	if lines == nil || len(lines.Data) == 0 {
+		return "", periodStart, periodEnd
+	}
+
+	// Find the line item with the highest amount (the charge, not the credit).
+	best := lines.Data[0]
+	for _, li := range lines.Data[1:] {
+		if li.Amount > best.Amount {
+			best = li
+		}
+	}
+
+	if best.Description != "" {
+		planName = parseInvoiceLinePlanName(best.Description)
+	}
+	if best.Period != nil {
+		periodStart = time.Unix(best.Period.Start, 0).UTC()
+		periodEnd = time.Unix(best.Period.End, 0).UTC()
+	}
+
+	// Detect proration: multiple lines with at least one negative amount.
+	if planName != "" && len(lines.Data) > 1 {
+		for _, li := range lines.Data {
+			if li.Amount < 0 {
+				planName += " - Prorated"
+				break
+			}
+		}
+	}
+
+	return planName, periodStart, periodEnd
+}
+
 // parseInvoiceLinePlanName extracts a clean plan name from a Stripe line item description.
-// Input like "1 × Individual Plan (at $20.00 / month)" returns "Individual".
+// Handles regular lines like "1 × Individual Plan (at $20.00 / month)" → "Individual"
+// and proration lines like "Remaining time on Individual Plan (XLarge) after 22 Apr 2026"
+// → "Individual Plan (XLarge)".
 func parseInvoiceLinePlanName(desc string) string {
+	// Proration descriptions: "Remaining time on X after DATE" or "Unused time on X after DATE"
+	for _, prefix := range []string{"Remaining time on ", "Unused time on "} {
+		if strings.HasPrefix(desc, prefix) {
+			desc = strings.TrimPrefix(desc, prefix)
+			if i := strings.Index(desc, " after "); i >= 0 {
+				desc = desc[:i]
+			}
+			return desc
+		}
+	}
+
+	// Regular descriptions: "1 × Individual Plan (at $20.00 / month)"
 	// Strip leading quantity: "1 × " or "1 x "
 	if i := strings.Index(desc, "×"); i >= 0 {
 		desc = strings.TrimSpace(desc[i+len("×"):])

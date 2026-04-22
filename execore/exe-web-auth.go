@@ -385,6 +385,18 @@ func (s *Server) handleBillingUpdate(w http.ResponseWriter, r *http.Request) {
 
 	// Use billing package to determine correct redirect URL
 	// This automatically returns portal URL for active subscribers, checkout URL otherwise
+	// Deep-link to Stripe's subscription update flow for explicit upgrade requests.
+	if hasActiveBilling && source == "upgrade" {
+		redirectURL, err := s.billing.OpenPortalToUpdateSubscription(r.Context(), accountID, returnURL)
+		if err != nil {
+			s.slog().ErrorContext(r.Context(), "failed to open subscription update portal", "error", err)
+			http.Error(w, "failed to manage subscription", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+		return
+	}
+
 	subParams := &billing.SubscribeParams{
 		Email:            user.Email,
 		SuccessURL:       successURL,
