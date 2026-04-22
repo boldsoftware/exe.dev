@@ -54,11 +54,17 @@ const (
 )
 
 const (
-	DefaultPlan         = "individual"
-	productIndividualID = "prod_individual"
-	productIndividual   = "Individual"
-	productTeamID       = "prod_team"
-	productTeam         = "Team"
+	DefaultPlan               = "individual"
+	productIndividualID       = "prod_individual"
+	productIndividual         = "Individual"
+	productIndividualMediumID = "prod_individual_medium"
+	productIndividualMedium   = "Individual Plan (Medium)"
+	productIndividualLargeID  = "prod_individual_large"
+	productIndividualLarge    = "Individual Plan (Large)"
+	productIndividualXlargeID = "prod_individual_xlarge"
+	productIndividualXlarge   = "Individual Plan (XLarge)"
+	productTeamID             = "prod_team"
+	productTeam               = "Team"
 
 	// TestAPIKey is the Stripe test API key. It is safe to check into source code
 	// and easy to revoke should someone want to spam our test account.
@@ -66,84 +72,120 @@ const (
 )
 
 type managedPrice struct {
-	lookupKey   string
-	currency    stripe.Currency
-	unitAmount  int64
-	interval    stripe.PriceRecurringInterval
-	productID   string
-	productName string
-	metered     bool
-	usageType   string
+	lookupKey          string
+	currency           stripe.Currency
+	unitAmount         int64
+	interval           stripe.PriceRecurringInterval
+	productID          string
+	productName        string
+	productDescription string
+	metered            bool
+	usageType          string
 }
 
 var managedPrices = []managedPrice{
 	{
-		lookupKey:   DefaultPlan,
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  2000,
-		interval:    stripe.PriceRecurringIntervalMonth,
-		productID:   productIndividualID,
-		productName: productIndividual,
+		lookupKey:          DefaultPlan,
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         2000,
+		interval:           stripe.PriceRecurringIntervalMonth,
+		productID:          productIndividualID,
+		productName:        productIndividual,
+		productDescription: "2 vCPUs, 8 GB memory",
 	},
 	{
-		lookupKey:   "individual:annual:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  20000,
-		interval:    stripe.PriceRecurringIntervalYear,
-		productID:   productIndividualID,
-		productName: productIndividual,
+		lookupKey:          "individual:annual:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         20000,
+		interval:           stripe.PriceRecurringIntervalYear,
+		productID:          productIndividualID,
+		productName:        productIndividual,
+		productDescription: "2 vCPUs, 8 GB memory",
 	},
 	{
-		lookupKey:   "individual:usage-disk:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  8, // $0.08 in cents
-		productID:   productIndividualID,
-		productName: productIndividual,
-		metered:     true,
-		usageType:   "metered",
+		lookupKey:          "individual:medium:monthly:20160102",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         4000,
+		interval:           stripe.PriceRecurringIntervalMonth,
+		productID:          productIndividualMediumID,
+		productName:        productIndividualMedium,
+		productDescription: "4 vCPUs, 16 GB memory",
 	},
 	{
-		lookupKey:   "individual:usage-bandwidth:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  7, // $0.07 in cents
-		productID:   productIndividualID,
-		productName: productIndividual,
-		metered:     true,
-		usageType:   "metered",
+		lookupKey:          "individual:large:monthly:20160102",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         8000,
+		interval:           stripe.PriceRecurringIntervalMonth,
+		productID:          productIndividualLargeID,
+		productName:        productIndividualLarge,
+		productDescription: "8 vCPUs, 32 GB memory",
 	},
 	{
-		lookupKey:   "team:monthly:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  2500,
-		interval:    stripe.PriceRecurringIntervalMonth,
-		productID:   productTeamID,
-		productName: productTeam,
+		lookupKey:          "individual:xlarge:monthly:20160102",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         16000,
+		interval:           stripe.PriceRecurringIntervalMonth,
+		productID:          productIndividualXlargeID,
+		productName:        productIndividualXlarge,
+		productDescription: "16 vCPUs, 64 GB memory",
 	},
 	{
-		lookupKey:   "team:annual:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  25000,
-		interval:    stripe.PriceRecurringIntervalYear,
-		productID:   productTeamID,
-		productName: productTeam,
+		lookupKey:          "individual:usage-disk:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         8, // $0.08 in cents
+		productID:          productIndividualID,
+		productName:        productIndividual,
+		productDescription: "2 vCPUs, 8 GB memory",
+		metered:            true,
+		usageType:          "metered",
 	},
 	{
-		lookupKey:   "team:usage-disk:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  8,
-		productID:   productTeamID,
-		productName: productTeam,
-		metered:     true,
-		usageType:   "metered",
+		lookupKey:          "individual:usage-bandwidth:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         7, // $0.07 in cents
+		productID:          productIndividualID,
+		productName:        productIndividual,
+		productDescription: "2 vCPUs, 8 GB memory",
+		metered:            true,
+		usageType:          "metered",
 	},
 	{
-		lookupKey:   "team:usage-bandwidth:20260106",
-		currency:    stripe.CurrencyUSD,
-		unitAmount:  7,
-		productID:   productTeamID,
-		productName: productTeam,
-		metered:     true,
-		usageType:   "metered",
+		lookupKey:          "team:monthly:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         2500,
+		interval:           stripe.PriceRecurringIntervalMonth,
+		productID:          productTeamID,
+		productName:        productTeam,
+		productDescription: "Team plan",
+	},
+	{
+		lookupKey:          "team:annual:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         25000,
+		interval:           stripe.PriceRecurringIntervalYear,
+		productID:          productTeamID,
+		productName:        productTeam,
+		productDescription: "Team plan",
+	},
+	{
+		lookupKey:          "team:usage-disk:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         8,
+		productID:          productTeamID,
+		productName:        productTeam,
+		productDescription: "Team plan",
+		metered:            true,
+		usageType:          "metered",
+	},
+	{
+		lookupKey:          "team:usage-bandwidth:20260106",
+		currency:           stripe.CurrencyUSD,
+		unitAmount:         7,
+		productID:          productTeamID,
+		productName:        productTeam,
+		productDescription: "Team plan",
+		metered:            true,
+		usageType:          "metered",
 	},
 }
 
@@ -254,7 +296,7 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 		if p.metered {
 			continue // TODO: metered prices require Stripe Meters as of API version 2025-03-31.basil
 		}
-		if err := m.ensureProduct(ctx, c, p.productID, p.productName); err != nil {
+		if err := m.ensureProduct(ctx, c, p.productID, p.productName, p.productDescription); err != nil {
 			return err
 		}
 
@@ -280,6 +322,7 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 
 		params := &stripe.PriceCreateParams{
 			LookupKey:  new(p.lookupKey),
+			Nickname:   new(p.lookupKey),
 			Currency:   new(string(p.currency)),
 			UnitAmount: new(p.unitAmount),
 			Product:    new(p.productID),
@@ -316,7 +359,7 @@ func (m *Manager) InstallPrices(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) ensureProduct(ctx context.Context, c *stripe.Client, id, name string) error {
+func (m *Manager) ensureProduct(ctx context.Context, c *stripe.Client, id, name, description string) error {
 	product, err := c.V1Products.Retrieve(ctx, id, nil)
 	if err == nil {
 		var requestID string
@@ -333,10 +376,14 @@ func (m *Manager) ensureProduct(ctx context.Context, c *stripe.Client, id, name 
 		return fmt.Errorf("retrieve product %q: %w", id, err)
 	}
 
-	created, err := c.V1Products.Create(ctx, &stripe.ProductCreateParams{
+	params := &stripe.ProductCreateParams{
 		ID:   new(id),
 		Name: new(name),
-	})
+	}
+	if description != "" {
+		params.Description = new(description)
+	}
+	created, err := c.V1Products.Create(ctx, params)
 	if isExists(err) {
 		m.slog().InfoContext(ctx, "billing product already installed",
 			"product_id", id,
@@ -750,20 +797,20 @@ func (m *Manager) SyncSubscriptions(ctx context.Context, since time.Time) (time.
 //
 // Versioned plan IDs use the format "{plan}:{interval}:{YYYYMMDD}".
 func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType string, eventAt time.Time, trialEnd *time.Time, sub *stripe.Subscription) error {
-	basePlan := plan.CategoryBasic
-	if eventType == "active" {
-		basePlan = planCategoryFromSubscription(sub)
+	var newPlanID string
+	if eventType != "active" {
+		newPlanID = plan.ID(plan.CategoryBasic)
+	} else {
+		// Resolve the tier from the subscription's price lookup key.
+		newPlanID = plan.TierIDFromStripePriceKey(subscriptionLookupKey(sub))
 	}
-	newPlanID := plan.ID(basePlan)
 
-	// Skip if the active plan's base matches — avoids duplicate rows from poller replays.
+	// Skip if the plan hasn't changed — avoids duplicate rows from poller replays.
 	activePlan, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).GetActiveAccountPlan, accountID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("check current plan: %w", err)
 	}
-	// Compare base plans so that both bare ("individual") and versioned
-	// ("individual:monthly:20260325") are treated as equivalent.
-	if err == nil && plan.Base(activePlan.PlanID) == basePlan {
+	if err == nil && activePlan.PlanID == newPlanID {
 		return nil
 	}
 	// Skip stale events: if the current plan was set by a newer event,
@@ -800,30 +847,6 @@ func (m *Manager) syncAccountPlan(ctx context.Context, accountID, eventType stri
 	// }
 
 	return nil
-}
-
-// planCategoryFromSubscription determines the plan category from a Stripe
-// subscription's line items. It looks at the product name on the first
-// subscription-model item (skipping metered/usage items) to resolve the
-// category. Falls back to Individual if the subscription has no recognizable
-// product.
-func planCategoryFromSubscription(sub *stripe.Subscription) plan.Category {
-	if sub == nil || sub.Items == nil {
-		return plan.CategoryIndividual
-	}
-	for _, item := range sub.Items.Data {
-		if item.Price == nil || item.Price.Product == nil {
-			continue
-		}
-		// Skip metered/usage prices — we want the base subscription price.
-		if item.Price.Recurring != nil && item.Price.Recurring.UsageType == "metered" {
-			continue
-		}
-		if cat, ok := plan.CategoryFromProductName(item.Price.Product.Name); ok {
-			return cat
-		}
-	}
-	return plan.CategoryIndividual
 }
 
 // BillingPeriod holds the start and end of a billing period.
@@ -875,6 +898,18 @@ func (m *Manager) SubscriptionEvents(ctx context.Context, billingID string) ([]S
 		})
 	}
 	return events, nil
+}
+
+func subscriptionLookupKey(sub *stripe.Subscription) string {
+	if sub == nil || sub.Items == nil || len(sub.Items.Data) == 0 {
+		return ""
+	}
+	for _, item := range sub.Items.Data {
+		if item.Price != nil && item.Price.LookupKey != "" && item.Price.Recurring != nil && item.Price.Recurring.UsageType != stripe.PriceRecurringUsageTypeMetered {
+			return item.Price.LookupKey
+		}
+	}
+	return ""
 }
 
 func subscriptionEventType(eventType string, status stripe.SubscriptionStatus) (string, bool) {

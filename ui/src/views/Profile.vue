@@ -82,7 +82,7 @@
               <div class="billing-plan-row">
                 <div class="billing-plan-info">
                   <div class="billing-plan-name-row">
-                    <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan</h3>
+                    <h3 class="plan-name">{{ data.credits.planName || 'Individual' }} Plan<span v-if="data.planCapacity && data.planCapacity.tierName"> ({{ data.planCapacity.tierName }})</span></h3>
                     <!-- TODO: uncomment when billing status states are implemented
                     <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
                     -->

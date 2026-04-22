@@ -542,7 +542,7 @@ func TestListGiftsEmpty(t *testing.T) {
 	}
 }
 
-func TestPlanCategoryFromSubscription(t *testing.T) {
+func TestSubscriptionLookupKey(t *testing.T) {
 	tests := []struct {
 		name string
 		sub  *stripe.Subscription
@@ -551,20 +551,21 @@ func TestPlanCategoryFromSubscription(t *testing.T) {
 		{
 			name: "nil subscription",
 			sub:  nil,
-			want: "individual",
+			want: "",
 		},
 		{
 			name: "no items",
 			sub:  &stripe.Subscription{},
-			want: "individual",
+			want: "",
 		},
 		{
-			name: "individual product",
+			name: "returns lookup key from non-metered price",
 			sub: &stripe.Subscription{
 				Items: &stripe.SubscriptionItemList{
 					Data: []*stripe.SubscriptionItem{{
 						Price: &stripe.Price{
-							Product: &stripe.Product{Name: "Individual"},
+							LookupKey: "individual",
+							Recurring: &stripe.PriceRecurring{Interval: stripe.PriceRecurringIntervalMonth},
 						},
 					}},
 				},
@@ -572,71 +573,46 @@ func TestPlanCategoryFromSubscription(t *testing.T) {
 			want: "individual",
 		},
 		{
-			name: "VIP product",
-			sub: &stripe.Subscription{
-				Items: &stripe.SubscriptionItemList{
-					Data: []*stripe.SubscriptionItem{{
-						Price: &stripe.Price{
-							Product: &stripe.Product{Name: "VIP"},
-						},
-					}},
-				},
-			},
-			want: "vip",
-		},
-		{
-			name: "team product",
-			sub: &stripe.Subscription{
-				Items: &stripe.SubscriptionItemList{
-					Data: []*stripe.SubscriptionItem{{
-						Price: &stripe.Price{
-							Product: &stripe.Product{Name: "Team"},
-						},
-					}},
-				},
-			},
-			want: "team",
-		},
-		{
-			name: "skips metered items to find base product",
+			name: "skips metered items",
 			sub: &stripe.Subscription{
 				Items: &stripe.SubscriptionItemList{
 					Data: []*stripe.SubscriptionItem{
 						{
 							Price: &stripe.Price{
-								Product:   &stripe.Product{Name: "Individual"},
-								Recurring: &stripe.PriceRecurring{UsageType: "metered"},
+								LookupKey: "individual:usage-disk:20260106",
+								Recurring: &stripe.PriceRecurring{UsageType: stripe.PriceRecurringUsageTypeMetered},
 							},
 						},
 						{
 							Price: &stripe.Price{
-								Product: &stripe.Product{Name: "VIP"},
+								LookupKey: "individual:medium:monthly:20160102",
+								Recurring: &stripe.PriceRecurring{Interval: stripe.PriceRecurringIntervalMonth},
 							},
 						},
 					},
 				},
 			},
-			want: "vip",
+			want: "individual:medium:monthly:20160102",
 		},
 		{
-			name: "unknown product falls back to individual",
+			name: "no lookup key returns empty",
 			sub: &stripe.Subscription{
 				Items: &stripe.SubscriptionItemList{
 					Data: []*stripe.SubscriptionItem{{
 						Price: &stripe.Price{
-							Product: &stripe.Product{Name: "SomethingElse"},
+							Recurring: &stripe.PriceRecurring{Interval: stripe.PriceRecurringIntervalMonth},
 						},
 					}},
 				},
 			},
-			want: "individual",
+			want: "",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := planCategoryFromSubscription(tt.sub)
-			if string(got) != tt.want {
-				t.Errorf("planCategoryFromSubscription() = %q, want %q", got, tt.want)
+			got := subscriptionLookupKey(tt.sub)
+			if got != tt.want {
+				t.Errorf("subscriptionLookupKey() = %q, want %q", got, tt.want)
 			}
 		})
 	}

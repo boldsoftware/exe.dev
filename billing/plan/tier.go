@@ -432,9 +432,9 @@ func tierGrants(tier Tier, ent Entitlement) bool {
 	return ents[ent]
 }
 
-// tierIDFromStripePriceKey returns the tier ID for a given Stripe price lookup key.
+// TierIDFromStripePriceKey returns the tier ID for a given Stripe price lookup key.
 // Falls back to the individual Small tier for unknown keys.
-func tierIDFromStripePriceKey(key string) string {
+func TierIDFromStripePriceKey(key string) string {
 	for id, tier := range tiers {
 		for _, price := range tier.StripePrices {
 			if price.LookupKey == key {

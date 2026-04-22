@@ -59,7 +59,7 @@ type Env struct {
 
 	FakeEmail              bool   // whether to log emails instead of sending them
 	SkipBilling            bool   // whether to skip billing/Stripe checkout for new signups (for tests)
-	BootstrapStripeCatalog bool   // whether to create Stripe products/prices on boot if missing (local/test only)
+	BootstrapStripeCatalog bool   // whether to create Stripe products/prices on boot if missing (all stages except prod)
 	StripeAPIURL           string // override Stripe API base URL (e.g. local httprr proxy); empty means Stripe defaults
 	ReplDev                bool   // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
 	WebDev                 bool   // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
@@ -334,7 +334,7 @@ func Staging() Env {
 
 		FakeEmail:              false,
 		SkipBilling:            false,
-		BootstrapStripeCatalog: false,
+		BootstrapStripeCatalog: true,
 		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,

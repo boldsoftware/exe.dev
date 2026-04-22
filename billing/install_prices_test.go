@@ -41,7 +41,7 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 
 	switch {
-	case r.Method == http.MethodGet && (r.URL.Path == "/v1/products/prod_individual" || r.URL.Path == "/v1/products/prod_team"):
+	case r.Method == http.MethodGet && len(r.URL.Path) > len("/v1/products/") && r.URL.Path[:len("/v1/products/")] == "/v1/products/":
 		productID := r.URL.Path[len("/v1/products/"):]
 		c.mu.Lock()
 		_, ok := c.products[productID]
@@ -52,11 +52,7 @@ func (c *fakeStripeCatalog) handle(w http.ResponseWriter, r *http.Request) {
 			io.WriteString(w, `{"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such product"}}`)
 			return
 		}
-		name := "Individual"
-		if productID == "prod_team" {
-			name = "Team"
-		}
-		io.WriteString(w, `{"id":"`+productID+`","object":"product","name":"`+name+`"}`)
+		io.WriteString(w, `{"id":"`+productID+`","object":"product","name":"`+productID+`"}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/products":
 		id := r.Form.Get("id")
 		name := r.Form.Get("name")
@@ -134,11 +130,11 @@ func TestInstallPricesCreatesManagedCatalog(t *testing.T) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 
-	if catalog.productCreates != 2 {
-		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
+	if catalog.productCreates != 5 {
+		t.Fatalf("product creates = %d, want 5", catalog.productCreates)
 	}
-	if catalog.priceCreates != 4 {
-		t.Fatalf("price creates = %d, want 4", catalog.priceCreates)
+	if catalog.priceCreates != 7 {
+		t.Fatalf("price creates = %d, want 7", catalog.priceCreates)
 	}
 	if catalog.lastProductCreateID != "prod_team" {
 		t.Fatalf("last product id = %q, want %q", catalog.lastProductCreateID, "prod_team")
@@ -177,10 +173,10 @@ func TestInstallPricesIsIdempotent(t *testing.T) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 
-	if catalog.productCreates != 2 {
-		t.Fatalf("product creates = %d, want 2", catalog.productCreates)
+	if catalog.productCreates != 5 {
+		t.Fatalf("product creates = %d, want 5", catalog.productCreates)
 	}
-	if catalog.priceCreates != 4 {
-		t.Fatalf("price creates = %d, want 4", catalog.priceCreates)
+	if catalog.priceCreates != 7 {
+		t.Fatalf("price creates = %d, want 7", catalog.priceCreates)
 	}
 }

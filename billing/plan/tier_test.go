@@ -355,9 +355,9 @@ func TestTierIDFromStripePriceKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			got := tierIDFromStripePriceKey(tt.key)
+			got := TierIDFromStripePriceKey(tt.key)
 			if got != tt.wantID {
-				t.Errorf("tierIDFromStripePriceKey(%q) = %q, want %q", tt.key, got, tt.wantID)
+				t.Errorf("TierIDFromStripePriceKey(%q) = %q, want %q", tt.key, got, tt.wantID)
 			}
 		})
 	}
