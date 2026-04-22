@@ -392,11 +392,17 @@
           <div v-for="m in data.teamInfo.members" :key="m.email" class="member-row">
             <span>{{ m.email }}</span>
             <span class="text-muted">{{ m.role }}</span>
-            <button
-              v-if="data.teamInfo.isAdmin && m.email !== data.user.email"
-              class="btn btn-danger"
-              @click="removeTeamMember(m.email)"
-            >Remove</button>
+            <span v-if="data.teamInfo.isAdmin && m.email !== data.user.email" class="member-actions">
+              <button
+                v-if="canChangeRole(m)"
+                class="btn btn-secondary"
+                @click="changeTeamMemberRole(m.email, m.role)"
+              >Change Role</button>
+              <button
+                class="btn btn-danger"
+                @click="removeTeamMember(m.email)"
+              >Remove</button>
+            </span>
           </div>
         </div>
         <div v-if="data.teamInfo.isAdmin" class="team-admin-actions">
@@ -1084,6 +1090,28 @@ function removeTeamMember(email: string) {
     command: `team remove ${shellQuote(email)}`,
     description: 'Remove this member from your team. They will lose access to all team-shared VMs.',
     danger: true,
+  })
+}
+
+// Only billing owners can promote/demote other billing owners.
+function canChangeRole(m: { role: string }): boolean {
+  const ti = data.value?.teamInfo
+  if (!ti?.isAdmin) return false
+  if (m.role === 'billing_owner') return !!ti.isBillingOwner
+  return true
+}
+
+function changeTeamMemberRole(email: string, currentRole: string) {
+  const ti = data.value?.teamInfo
+  const roles = ti?.isBillingOwner
+    ? ['user', 'admin', 'billing_owner']
+    : ['user', 'admin']
+  const options = roles.filter(r => r !== currentRole)
+  openModal({
+    title: 'Change Team Member Role',
+    commandPrefix: `team role ${shellQuote(email)}`,
+    inputPlaceholder: options.join(' | '),
+    description: `Change the role for <strong>${email}</strong> (currently <em>${currentRole}</em>). Type one of: ${options.join(', ')}.`,
   })
 }
 

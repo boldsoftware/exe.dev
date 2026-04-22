@@ -393,3 +393,92 @@ func TestAllocateIPShardFailsForNonTeamUser(t *testing.T) {
 		t.Fatal("expected error for non-team user exceeding shard count, got nil")
 	}
 }
+
+// TestTeamMemberRoleChangeUpdatesParentID verifies that changing a member's
+// role to/from billing_owner correctly manages their account.parent_id.
+func TestTeamMemberRoleChangeUpdatesParentID(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	ctx := context.Background()
+
+	ownerID := createTestUser(t, server, "owner@role-change-test.example")
+	memberID := createTestUser(t, server, "member@role-change-test.example")
+
+	teamID := "tm_role_change_test"
+	if err := withTx1(server, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
+		TeamID: teamID, DisplayName: "Role Change Test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.addTeamMember(ctx, teamID, ownerID, "billing_owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.addTeamMember(ctx, teamID, memberID, "user"); err != nil {
+		t.Fatal(err)
+	}
+
+	ownerAcct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	memberAcct, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memberAcct.ParentID == nil || *memberAcct.ParentID != ownerAcct.ID {
+		t.Fatalf("member should start with parent_id=owner, got %v", memberAcct.ParentID)
+	}
+
+	// Promote member to admin: still under owner's parent, parent_id stays.
+	if err := withTx1(server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+		Role: "admin", TeamID: teamID, UserID: memberID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the role-change handler's side-effect of promoting to billing_owner:
+	// clear parent_id.
+	if err := withTx1(server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+		Role: "billing_owner", TeamID: teamID, UserID: memberID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := withTx1(server, ctx, (*exedb.Queries).ClearAccountParentID, memberID); err != nil {
+		t.Fatal(err)
+	}
+	memberAcct, err = withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if memberAcct.ParentID != nil {
+		t.Fatalf("after promotion to billing_owner, parent_id should be nil, got %v", *memberAcct.ParentID)
+	}
+
+	// Demote ex-owner to admin; re-sync parent_id to point to remaining billing owner.
+	if err := withTx1(server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+		Role: "admin", TeamID: teamID, UserID: ownerID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	billingAcctID, err := withRxRes1(server, ctx, (*exedb.Queries).GetTeamBillingOwnerAccountID, ownerID)
+	if err != nil {
+		t.Fatalf("getting new billing owner account id: %v", err)
+	}
+	if err := withTx1(server, ctx, (*exedb.Queries).SetAccountParentID, exedb.SetAccountParentIDParams{
+		CreatedBy: ownerID, ParentID: &billingAcctID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ownerAcct2, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberAcct2, err := withRxRes1(server, ctx, (*exedb.Queries).GetAccountByUserID, memberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ownerAcct2.ParentID == nil || *ownerAcct2.ParentID != memberAcct2.ID {
+		t.Fatalf("ex-owner parent_id should point to new billing owner; got %v want %q", ownerAcct2.ParentID, memberAcct2.ID)
+	}
+}

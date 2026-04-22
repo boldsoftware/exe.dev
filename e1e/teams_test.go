@@ -970,3 +970,135 @@ func TestTeamRemoveMemberWithVMs(t *testing.T) {
 		repl.Disconnect()
 	})
 }
+
+// TestTeamRoleChange verifies that team admins/billing owners can change
+// the roles of other team members via `team role`.
+func TestTeamRoleChange(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-role-change.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-role-change.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "team_role_e2e", "RoleTest", ownerEmail)
+	addTeamMember(t, "team_role_e2e", memberEmail)
+
+	// Member (role=user) cannot change roles.
+	t.Run("MemberCannotChangeRole", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("team role " + ownerEmail + " user")
+		repl.Want("command not available")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Promote member to admin.
+	t.Run("PromoteToAdmin", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + memberEmail + " admin")
+		repl.Want("Changed " + memberEmail + " to admin")
+		repl.WantPrompt()
+
+		repl.SendLine("team members")
+		repl.Want(memberEmail)
+		repl.Want("(admin)")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Admin (the now-promoted member) can demote themselves is not tested —
+	// instead verify admin CAN call team role on another user, but CANNOT
+	// promote to billing_owner.
+	t.Run("AdminCannotPromoteToBillingOwner", func(t *testing.T) {
+		repl := sshToExeDev(t, memberKeyFile)
+		repl.SendLine("team role " + ownerEmail + " admin")
+		// Attempting to change billing_owner's role requires billing owner.
+		repl.Want("Only a billing owner")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Demote back to user.
+	t.Run("DemoteToUser", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + memberEmail + " user")
+		repl.Want("Changed " + memberEmail + " to user")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Cannot change last billing owner's role.
+	t.Run("CannotDemoteLastBillingOwner", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + ownerEmail + " user")
+		repl.Want("last billing owner")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Invalid role.
+	t.Run("InvalidRole", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + memberEmail + " superuser")
+		repl.Want("role must be one of")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Non-existent user.
+	t.Run("UserNotInTeam", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role notfound@example.com user")
+		repl.Want("not in this team")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// User exists but belongs to a *different* team: cannot change their role.
+	t.Run("CannotChangeRoleOfUserInAnotherTeam", func(t *testing.T) {
+		other1PTY, _, other1KeyFile, other1Email := registerForExeDevWithEmail(t, "owner@test-role-change-other.example")
+		other2PTY, _, _, other2Email := registerForExeDevWithEmail(t, "member@test-role-change-other.example")
+		other1PTY.Disconnect()
+		other2PTY.Disconnect()
+		enableRootSupport(t, other1Email)
+		createTeam(t, other1KeyFile, "team_role_other", "OtherTeam", other1Email)
+		addTeamMember(t, "team_role_other", other2Email)
+
+		// ownerKeyFile is the billing owner of team_role_e2e and tries to change
+		// the role of a user who exists and is in a different team.
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + other2Email + " admin")
+		repl.Want("not in this team")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		// Confirm the other-team member's role remained 'user'.
+		repl = sshToExeDev(t, other1KeyFile)
+		repl.SendLine("team members")
+		repl.Want(other2Email)
+		repl.Reject("(admin)")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+
+	// Promote member to billing_owner, then demote ex-owner to admin.
+	t.Run("PromoteSecondBillingOwnerThenDemoteOriginal", func(t *testing.T) {
+		repl := sshToExeDev(t, ownerKeyFile)
+		repl.SendLine("team role " + memberEmail + " billing_owner")
+		repl.Want("Changed " + memberEmail + " to billing_owner")
+		repl.WantPrompt()
+		repl.Disconnect()
+
+		// Now there are two billing owners; the original can be demoted.
+		repl = sshToExeDev(t, memberKeyFile)
+		repl.SendLine("team role " + ownerEmail + " admin")
+		repl.Want("Changed " + ownerEmail + " to admin")
+		repl.WantPrompt()
+		repl.Disconnect()
+	})
+}

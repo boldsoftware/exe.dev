@@ -1,0 +1,112 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: owner@test-role-change-other.example
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: owner@test-role-change-other.example
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: owner@test-role-change-other.example
+Region: lax (Los Angeles, USA)
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: member@test-role-change-other.example
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: member@test-role-change-other.example
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: member@test-role-change-other.example
+Region: lax (Los Angeles, USA)
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶ exit
+Goodbye!
+exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+team role member@test-role-change-other.example admin
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team role member@test-role-change-other.example admin
+User "member@test-role-change-other.example" is not in this team
+PROMPT ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+team members
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team members
+Team members:
+  owner@test-role-change-other.example (billing owner)
+  member@test-role-change-other.example
+PROMPT ▶ exit
+Goodbye!

@@ -71,6 +71,15 @@ func (ss *SSHServer) teamCommand() *exemenu.Command {
 				Available:         ss.isTeamAdmin,
 			},
 			{
+				Name:              "role",
+				Description:       "Change a team member's role",
+				Usage:             "team role <email> <user|admin|billing_owner>",
+				Handler:           ss.handleTeamRoleCommand,
+				FlagSetFunc:       jsonOnlyFlags("team-role"),
+				HasPositionalArgs: true,
+				Available:         ss.isTeamAdmin,
+			},
+			{
 				Name:              "transfer",
 				Description:       "Transfer a VM to another team member",
 				Usage:             "team transfer <vm_name> <target_email>",
@@ -559,6 +568,118 @@ func (ss *SSHServer) handleTeamRemoveCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	cc.Writeln("Removed %s from the team", email)
+	return nil
+}
+
+// handleTeamRoleCommand changes a team member's role.
+// Usage: team role <email> <user|admin|billing_owner>
+// Only team admins can run this. Only billing owners can change another user to/from billing_owner.
+func (ss *SSHServer) handleTeamRoleCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) < 2 {
+		return cc.Errorf("usage: team role <email> <user|admin|billing_owner>")
+	}
+
+	email := cc.Args[0]
+	targetRole := cc.Args[1]
+
+	switch targetRole {
+	case "user", "admin", "billing_owner":
+	default:
+		return cc.Errorf("role must be one of: user, admin, billing_owner")
+	}
+
+	team, err := ss.server.GetTeamForUser(ctx, cc.User.ID)
+	if err != nil {
+		return err
+	}
+	if team == nil {
+		return cc.Errorf("You are not part of a team")
+	}
+	if team.Role == "user" {
+		return cc.Errorf("Only team admins can change member roles")
+	}
+
+	ce := canonicalizeEmail(email)
+	member, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMemberByEmail, exedb.GetTeamMemberByEmailParams{
+		TeamID:         team.TeamID,
+		CanonicalEmail: &ce,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("User %q is not in this team", email)
+	}
+	if err != nil {
+		return err
+	}
+
+	if member.Role == targetRole {
+		return cc.Errorf("%s is already %s", email, targetRole)
+	}
+
+	// Granting or removing billing_owner requires billing_owner privileges.
+	if (targetRole == "billing_owner" || member.Role == "billing_owner") && team.Role != "billing_owner" {
+		return cc.Errorf("Only a billing owner can grant or revoke the billing_owner role")
+	}
+
+	// Prevent demoting the last billing_owner.
+	if member.Role == "billing_owner" && targetRole != "billing_owner" {
+		members, _ := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamMembers, team.TeamID)
+		billingOwnerCount := 0
+		for _, m := range members {
+			if m.Role == "billing_owner" {
+				billingOwnerCount++
+			}
+		}
+		if billingOwnerCount <= 1 {
+			return cc.Errorf("Cannot change the role of the last billing owner")
+		}
+	}
+
+	if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateTeamMemberRole, exedb.UpdateTeamMemberRoleParams{
+		Role:   targetRole,
+		TeamID: team.TeamID,
+		UserID: member.UserID,
+	}); err != nil {
+		return cc.Errorf("Failed to change role: %v", err)
+	}
+
+	// When promoting to billing_owner, the promoted user's account parent_id
+	// should no longer point to the prior billing owner's account. When demoting
+	// (already billing_owner -> something else), keep parent_id pointing to
+	// whichever user remains as billing owner. addTeamMember sets these on
+	// insert; here we re-sync by clearing and re-setting.
+	if targetRole == "billing_owner" {
+		_ = withTx1(ss.server, ctx, (*exedb.Queries).ClearAccountParentID, member.UserID)
+	} else if member.Role == "billing_owner" {
+		if billingOwnerAcctID, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetTeamBillingOwnerAccountID, member.UserID); err == nil {
+			_ = withTx1(ss.server, ctx, (*exedb.Queries).SetAccountParentID, exedb.SetAccountParentIDParams{
+				CreatedBy: member.UserID,
+				ParentID:  &billingOwnerAcctID,
+			})
+		}
+	}
+
+	CommandLogAddAttr(ctx, slog.String("team_id", team.TeamID))
+	CommandLogAddAttr(ctx, slog.String("target_user_id", member.UserID))
+	CommandLogAddAttr(ctx, slog.String("target_email", email))
+	CommandLogAddAttr(ctx, slog.String("old_role", member.Role))
+	CommandLogAddAttr(ctx, slog.String("new_role", targetRole))
+
+	slog.InfoContext(ctx, "team member role changed",
+		"team_id", team.TeamID,
+		"target_user_id", member.UserID,
+		"old_role", member.Role,
+		"new_role", targetRole,
+		"by", cc.User.ID)
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"email":  email,
+			"role":   targetRole,
+			"status": "ok",
+		})
+		return nil
+	}
+	cc.Writeln("Changed %s to %s", email, targetRole)
 	return nil
 }
 

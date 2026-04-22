@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team role notfound@example.com user
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team role notfound@example.com user
+User "notfound@example.com" is not in this team
+PROMPT ▶ exit
+Goodbye!

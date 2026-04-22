@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team role owner@test-role-change.example admin
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team role owner@test-role-change.example admin
+Only a billing owner can grant or revoke the billing_owner role
+PROMPT ▶ exit
+Goodbye!

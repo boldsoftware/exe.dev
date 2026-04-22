@@ -1,0 +1,19 @@
+
+
+●
+● ssh localhost
+●
+
+team role member@test-role-change.example admin
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team role member@test-role-change.example admin
+Changed member@test-role-change.example to admin
+PROMPT ▶ team members
+Team members:
+  owner@test-role-change.example (billing owner)
+  member@test-role-change.example (admin)
+PROMPT ▶ exit
+Goodbye!

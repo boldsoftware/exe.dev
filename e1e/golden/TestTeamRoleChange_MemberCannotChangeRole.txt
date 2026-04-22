@@ -1,0 +1,15 @@
+
+
+●
+● ssh localhost
+●
+
+team role owner@test-role-change.example user
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ team role owner@test-role-change.example user
+exe.dev repl: command not available: "team role owner@test-role-change.example user"
+PROMPT ▶ exit
+Goodbye!
