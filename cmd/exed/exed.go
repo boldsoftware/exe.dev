@@ -49,7 +49,7 @@ func run() error {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	exeproxAddress := flag.String("exeprox-address", "", "Address of some exeprox process, as host[:port]")
-	exeproxRedirect := flag.Bool("exeprox-redirect", false, "Redirect proxy requests to exeprox")
+	exeproxRedirect := flag.Bool("exeprox-redirect", true, "Redirect proxy requests to exeprox")
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
