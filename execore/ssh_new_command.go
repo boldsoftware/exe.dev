@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"exe.dev/billing/plan"
 	"exe.dev/boxname"
@@ -55,6 +56,17 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	exeletOverride := cc.FlagSet.Lookup("exelet").Value.String()
 
 	// Parse --setup-script flag
+	emojiFlag := strings.TrimSpace(cc.FlagSet.Lookup("emoji").Value.String())
+	if len(emojiFlag) > maxEmojiBytes {
+		return cc.Errorf("--emoji too long (max %d bytes)", maxEmojiBytes)
+	}
+	if strings.ContainsAny(emojiFlag, "\n\r\t") {
+		return cc.Errorf("--emoji must not contain whitespace control characters")
+	}
+	if emojiFlag != "" && !utf8.ValidString(emojiFlag) {
+		return cc.Errorf("--emoji is not valid UTF-8")
+	}
+
 	setupScript := cc.FlagSet.Lookup("setup-script").Value.String()
 	if setupScript == "/dev/stdin" {
 		if !cc.IsSSHExec() {
@@ -334,6 +346,12 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	CommandLogAddAttr(ctx, slog.Int("vm_id", boxID))
 	CommandLogAddAttr(ctx, slog.String("exelet_host", exeletAddr))
 	CommandLogAddAttr(ctx, slog.String("image", imageToStore))
+
+	// Resolve an emoji for this VM in parallel with VM creation.
+	// We consult the flag first, then ask Haiku for a fitting emoji (avoiding
+	// emojis already used by this user), and fall back to a word-based mapping
+	// or a random SFW emoji if Haiku isn't available in time.
+	emojiChan := ss.startEmojiResolution(ctx, cc.User.ID, boxName, emojiFlag)
 
 	// Start timing BEFORE creating instance
 	startTime := time.Now()
@@ -696,6 +714,11 @@ done:
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		return err
 	}
+
+	// Apply the emoji we resolved. By the time VM creation finishes, Haiku
+	// has almost always returned; if not we fall back to a word-based or
+	// hardcoded random emoji. Run in background so we never delay user output.
+	go ss.applyResolvedEmoji(context.WithoutCancel(ctx), boxID, boxName, emojiChan)
 
 	// Set up automatic routing based on exposed ports
 	proxyPort := 80

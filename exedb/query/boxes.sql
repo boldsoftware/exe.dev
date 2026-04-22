@@ -114,6 +114,9 @@ UPDATE boxes SET emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 -- name: GetBoxesWithEmptyEmoji :many
 SELECT id, name FROM boxes WHERE emoji = '' ORDER BY id LIMIT ?;
 
+-- name: GetEmojisUsedByUser :many
+SELECT DISTINCT emoji FROM boxes WHERE created_by_user_id = ? AND emoji != '';
+
 -- name: UpdateBoxNameByID :exec
 UPDATE boxes SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 

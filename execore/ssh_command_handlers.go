@@ -223,6 +223,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("disk", "", "disk size (e.g., 20, 20GB, 50G)")
 	fs.Uint("cpu", 0, "[hidden] number of CPUs (default 2)")
 	fs.String("setup-script", "", "setup script to run on first boot (max 10KiB); supports \\n for newlines; use /dev/stdin to pipe from stdin")
+	fs.String("emoji", "", "[hidden] emoji to associate with the VM (auto-generated if empty)")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")

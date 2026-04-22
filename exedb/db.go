@@ -519,6 +519,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
 	}
+	if q.getEmojisUsedByUserStmt, err = db.PrepareContext(ctx, getEmojisUsedByUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmojisUsedByUser: %w", err)
+	}
 	if q.getExe1TokenStmt, err = db.PrepareContext(ctx, getExe1Token); err != nil {
 		return nil, fmt.Errorf("error preparing query GetExe1Token: %w", err)
 	}
@@ -2240,6 +2243,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
+	if q.getEmojisUsedByUserStmt != nil {
+		if cerr := q.getEmojisUsedByUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmojisUsedByUserStmt: %w", cerr)
+		}
+	}
 	if q.getExe1TokenStmt != nil {
 		if cerr := q.getExe1TokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getExe1TokenStmt: %w", cerr)
@@ -3929,6 +3937,7 @@ type Queries struct {
 	getEmailByUserIDStmt                       *sql.Stmt
 	getEmailVerificationByEmailStmt            *sql.Stmt
 	getEmailVerificationByTokenStmt            *sql.Stmt
+	getEmojisUsedByUserStmt                    *sql.Stmt
 	getExe1TokenStmt                           *sql.Stmt
 	getExe1TokenByExe0Stmt                     *sql.Stmt
 	getGitHubInstallationStmt                  *sql.Stmt
@@ -4397,6 +4406,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailByUserIDStmt:                       q.getEmailByUserIDStmt,
 		getEmailVerificationByEmailStmt:            q.getEmailVerificationByEmailStmt,
 		getEmailVerificationByTokenStmt:            q.getEmailVerificationByTokenStmt,
+		getEmojisUsedByUserStmt:                    q.getEmojisUsedByUserStmt,
 		getExe1TokenStmt:                           q.getExe1TokenStmt,
 		getExe1TokenByExe0Stmt:                     q.getExe1TokenByExe0Stmt,
 		getGitHubInstallationStmt:                  q.getGitHubInstallationStmt,

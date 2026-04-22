@@ -53,7 +53,7 @@ func (ss *SSHServer) handleBackfillEmoji(ctx context.Context, cc *exemenu.Comman
 	httpc := &http.Client{Timeout: 30 * time.Second}
 	var updated, failed int
 	for _, b := range boxes {
-		emoji, err := pickEmojiForName(ctx, httpc, apiKey, b.Name)
+		emoji, err := pickEmojiForName(ctx, httpc, apiKey, b.Name, nil)
 		if err != nil {
 			cc.Writeln("  %s: %v", b.Name, err)
 			failed++
@@ -76,8 +76,10 @@ func (ss *SSHServer) handleBackfillEmoji(ctx context.Context, cc *exemenu.Comman
 }
 
 // pickEmojiForName asks Claude Haiku for a single safe-for-work, non-political
-// emoji to associate with the given VM name.
-func pickEmojiForName(ctx context.Context, httpc *http.Client, apiKey, name string) (string, error) {
+// emoji to associate with the given VM name. If avoid is non-empty, the model
+// is instructed not to return any of those emojis (so a user's VMs end up with
+// distinct emojis).
+func pickEmojiForName(ctx context.Context, httpc *http.Client, apiKey, name string, avoid []string) (string, error) {
 	const model = "claude-haiku-4-5-20251001"
 
 	systemPrompt := "You pick a single emoji to represent a cloud VM based on its name. " +
@@ -85,6 +87,9 @@ func pickEmojiForName(ctx context.Context, httpc *http.Client, apiKey, name stri
 		"The emoji must be safe for work and non-political. " +
 		"Do not explain, do not quote, do not add punctuation or whitespace."
 	userPrompt := fmt.Sprintf("VM name: %s\n\nReply with a single emoji.", name)
+	if len(avoid) > 0 {
+		userPrompt += "\n\nDo not use any of these emojis (already used for other VMs): " + strings.Join(avoid, " ")
+	}
 
 	reqBody, err := json.Marshal(map[string]any{
 		"model":      model,
