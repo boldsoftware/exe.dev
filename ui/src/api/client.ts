@@ -184,7 +184,8 @@ export interface CreditInfo {
   ledgerBalanceUSD: number
   purchases: { amount: string; date: string; receiptURL: string }[]
   gifts: { amount: string; reason: string; date: string }[]
-  invoices: { description: string; planName: string; periodStart: string; periodEnd: string; date: string; amount: string; status: string; hostedInvoiceURL: string; invoicePDF: string }[]
+  invoices: { description: string; planName: string; periodStart: string; periodEnd: string; date: string; amount: string; subtotal: string; creditApplied: string; creditGenerated: string; status: string; hostedInvoiceURL: string; invoicePDF: string }[]
+  creditBalanceUSD: number
   paymentMethod: PaymentMethodInfo | null
   paymentMethodManagedByTeam: boolean
 }

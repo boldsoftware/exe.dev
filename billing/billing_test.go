@@ -697,26 +697,44 @@ func TestUpcomingInvoice(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		handler         func(w http.ResponseWriter, r *http.Request)
-		wantNil         bool
-		wantPlanName    string
-		wantDescription string
-		wantAmount      int64
-		wantStatus      string
+		name              string
+		handler           func(w http.ResponseWriter, r *http.Request)
+		wantNil           bool
+		wantPlanName      string
+		wantDescription   string
+		wantAmount        int64
+		wantSubtotal      int64
+		wantCreditApplied int64
+		wantStatus        string
 	}{
 		{
 			name: "valid upcoming invoice with line items",
 			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprintf(w, `{"object":"invoice","amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
+				fmt.Fprintf(w, `{"object":"invoice","subtotal":2000,"amount_due":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}`,
 					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
 					periodStart.Unix(), periodEnd.Unix())
 			}),
 			wantPlanName:    "Individual",
 			wantDescription: "Upcoming",
 			wantAmount:      2000,
+			wantSubtotal:    2000,
 			wantStatus:      "upcoming",
+		},
+		{
+			name: "upcoming invoice with credit applied",
+			handler: activeSubResponse(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"object":"invoice","subtotal":4000,"amount_due":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (Medium) (at $40.00 / month)","period":{"start":%d,"end":%d}}]}}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix())
+			}),
+			wantPlanName:      "Individual Plan (Medium)",
+			wantDescription:   "Upcoming",
+			wantAmount:        0,
+			wantSubtotal:      4000,
+			wantCreditApplied: 4000,
+			wantStatus:        "upcoming",
 		},
 		{
 			name: "no subscription returns nil",
@@ -814,6 +832,12 @@ func TestUpcomingInvoice(t *testing.T) {
 			if inv.AmountPaid != tt.wantAmount {
 				t.Errorf("AmountPaid = %d, want %d", inv.AmountPaid, tt.wantAmount)
 			}
+			if inv.Subtotal != tt.wantSubtotal {
+				t.Errorf("Subtotal = %d, want %d", inv.Subtotal, tt.wantSubtotal)
+			}
+			if inv.CreditApplied != tt.wantCreditApplied {
+				t.Errorf("CreditApplied = %d, want %d", inv.CreditApplied, tt.wantCreditApplied)
+			}
 			if inv.Status != tt.wantStatus {
 				t.Errorf("Status = %q, want %q", inv.Status, tt.wantStatus)
 			}
@@ -887,6 +911,112 @@ func TestListInvoices(t *testing.T) {
 		}
 	})
 
+	t.Run("credit applied shows subtotal and credit amount", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Subtotal $40, but only $0 paid because credit covered it all.
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","subtotal":4000,"amount_paid":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (Medium) (at $40.00 / month)","period":{"start":%d,"end":%d}}]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(), periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 1 {
+			t.Fatalf("got %d invoices, want 1", len(invoices))
+		}
+		if invoices[0].Subtotal != 4000 {
+			t.Errorf("Subtotal = %d, want 4000", invoices[0].Subtotal)
+		}
+		if invoices[0].AmountPaid != 0 {
+			t.Errorf("AmountPaid = %d, want 0", invoices[0].AmountPaid)
+		}
+		if invoices[0].CreditApplied != 4000 {
+			t.Errorf("CreditApplied = %d, want 4000", invoices[0].CreditApplied)
+		}
+	})
+
+	t.Run("partial credit applied", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Subtotal $40, $25 paid, $15 covered by credit.
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","subtotal":4000,"amount_paid":2500,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (Medium) (at $40.00 / month)","period":{"start":%d,"end":%d}}]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(), periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 1 {
+			t.Fatalf("got %d invoices, want 1", len(invoices))
+		}
+		if invoices[0].CreditApplied != 1500 {
+			t.Errorf("CreditApplied = %d, want 1500", invoices[0].CreditApplied)
+		}
+	})
+
+	t.Run("downgrade proration generates credit", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Negative subtotal = downgrade credit. AmountPaid is 0.
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","subtotal":-3958,"amount_paid":0,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"Unused time on Individual Plan (Large) after 21 Apr 2026","amount":-5977,"period":{"start":%d,"end":%d}},{"description":"Remaining time on Individual Plan (Medium) after 21 Apr 2026","amount":2019,"period":{"start":%d,"end":%d}}]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix(),
+					periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 1 {
+			t.Fatalf("got %d invoices, want 1", len(invoices))
+		}
+		if invoices[0].CreditGenerated != 3958 {
+			t.Errorf("CreditGenerated = %d, want 3958", invoices[0].CreditGenerated)
+		}
+		if invoices[0].CreditApplied != 0 {
+			t.Errorf("CreditApplied = %d, want 0", invoices[0].CreditApplied)
+		}
+		if invoices[0].AmountPaid != 0 {
+			t.Errorf("AmountPaid = %d, want 0", invoices[0].AmountPaid)
+		}
+	})
+
+	t.Run("no credit applied", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Subtotal = amountPaid, no credit.
+				fmt.Fprintf(w, `{"object":"list","data":[{"object":"invoice","status":"paid","subtotal":2000,"amount_paid":2000,"currency":"usd","created":%d,"period_start":%d,"period_end":%d,"lines":{"object":"list","data":[{"description":"1 \u00d7 Individual Plan (at $20.00 / month)","period":{"start":%d,"end":%d}}]}}],"has_more":false}`,
+					now.Unix(), periodStart.Unix(), periodEnd.Unix(), periodStart.Unix(), periodEnd.Unix())
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		invoices, err := m.ListInvoices(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("ListInvoices: %v", err)
+		}
+		if len(invoices) != 1 {
+			t.Fatalf("got %d invoices, want 1", len(invoices))
+		}
+		if invoices[0].CreditApplied != 0 {
+			t.Errorf("CreditApplied = %d, want 0", invoices[0].CreditApplied)
+		}
+	})
+
 	t.Run("missing description generates fallback", func(t *testing.T) {
 		m := &Manager{
 			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
@@ -907,6 +1037,62 @@ func TestListInvoices(t *testing.T) {
 		wantDesc := "Subscription \u2014 " + periodEnd.Format("Jan 2006")
 		if invoices[0].Description != wantDesc {
 			t.Errorf("Description = %q, want %q", invoices[0].Description, wantDesc)
+		}
+	})
+}
+
+func TestCustomerCreditBalance(t *testing.T) {
+	t.Run("negative balance returns credit", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test123","object":"customer","balance":-5000}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		balance, err := m.CustomerCreditBalance(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("CustomerCreditBalance: %v", err)
+		}
+		if balance != 5000 {
+			t.Errorf("balance = %d, want 5000", balance)
+		}
+	})
+
+	t.Run("zero balance returns zero", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test123","object":"customer","balance":0}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		balance, err := m.CustomerCreditBalance(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("CustomerCreditBalance: %v", err)
+		}
+		if balance != 0 {
+			t.Errorf("balance = %d, want 0", balance)
+		}
+	})
+
+	t.Run("positive balance returns zero", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test123","object":"customer","balance":3000}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		balance, err := m.CustomerCreditBalance(t.Context(), "cus_test123")
+		if err != nil {
+			t.Fatalf("CustomerCreditBalance: %v", err)
+		}
+		if balance != 0 {
+			t.Errorf("balance = %d, want 0", balance)
 		}
 	})
 }

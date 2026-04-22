@@ -128,6 +128,17 @@
               </div>
             </div>
 
+            <!-- Credit Balance Section -->
+            <div v-if="data.credits.creditBalanceUSD > 0" class="billing-divider-section">
+              <div class="credit-balance-line">
+                <div>
+                  <span class="credit-balance-label">Credit Balance</span>
+                  <span class="credit-balance-sub">Will be applied on your next invoice</span>
+                </div>
+                <span class="credit-balance-amount">${{ data.credits.creditBalanceUSD.toFixed(2) }}</span>
+              </div>
+            </div>
+
             <!-- Invoices Section -->
             <div v-if="canManageBilling && data.credits.invoices && data.credits.invoices.length > 0" class="billing-divider-section">
               <div class="billing-section-header-row">
@@ -141,7 +152,17 @@
                     <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
                   </div>
                   <div class="invoice-right">
-                    <span :class="['invoice-amount', { 'invoice-amount-zero': inv.amount === '0.00' }]">{{ inv.amount === '0.00' ? 'Credit applied' : '$' + inv.amount }}</span>
+                    <template v-if="inv.status !== 'upcoming' && parseFloat(inv.creditGenerated) > 0">
+                      <span class="invoice-amount invoice-amount-zero">${{ inv.amount }}</span>
+                      <span class="invoice-credit-generated">+${{ inv.creditGenerated }} credit</span>
+                    </template>
+                    <template v-else-if="inv.status !== 'upcoming' && parseFloat(inv.creditApplied) > 0">
+                      <span class="invoice-amount">${{ inv.amount }}</span>
+                      <span class="invoice-credit">−${{ inv.creditApplied }} credit applied</span>
+                    </template>
+                    <template v-else>
+                      <span class="invoice-amount">${{ inv.status === 'upcoming' ? inv.subtotal : inv.amount }}</span>
+                    </template>
                   </div>
                   <div class="invoice-status-col">
                     <a v-if="inv.hostedInvoiceURL" :href="inv.hostedInvoiceURL" target="_blank" rel="noopener noreferrer" class="invoice-link">
@@ -150,6 +171,7 @@
                     <span v-else :class="['invoice-badge', 'invoice-badge-' + inv.status]">{{ inv.status === 'paid' ? 'Paid' : inv.status === 'upcoming' ? 'Upcoming' : inv.status === 'open' ? 'Open' : inv.status }}</span>
                   </div>
                 </li>
+
               </ul>
             </div>
 
@@ -1771,6 +1793,41 @@ async function toggleNewsletter(event: Event) {
   font-weight: 400;
   color: var(--text-color-secondary);
   font-size: 13px;
+}
+.invoice-credit {
+  display: block;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-credit-generated {
+  display: block;
+  font-size: 12px;
+  color: var(--green-600, #16a34a);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.credit-balance-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0 12px;
+}
+.credit-balance-label {
+  font-weight: 600;
+  font-size: 14px;
+  display: block;
+}
+.credit-balance-sub {
+  font-size: 13px;
+  color: var(--text-color-secondary);
+  display: block;
+}
+.credit-balance-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-600, #16a34a);
 }
 .invoice-status-col {
   flex-shrink: 0;

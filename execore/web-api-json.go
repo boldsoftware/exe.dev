@@ -268,6 +268,7 @@ type jsonCreditInfo struct {
 	Purchases                  []jsonPurchaseRow  `json:"purchases"`
 	Gifts                      []jsonGiftRow      `json:"gifts"`
 	Invoices                   []jsonInvoiceRow   `json:"invoices"`
+	CreditBalanceUSD           float64            `json:"creditBalanceUSD"`
 	PaymentMethod              *jsonPaymentMethod `json:"paymentMethod"`
 	PaymentMethodManagedByTeam bool               `json:"paymentMethodManagedByTeam,omitempty"`
 }
@@ -290,8 +291,11 @@ type jsonInvoiceRow struct {
 	PeriodStart      string `json:"periodStart"`
 	PeriodEnd        string `json:"periodEnd"`
 	Date             string `json:"date"`
-	Amount           string `json:"amount"` // formatted e.g. "20.00"
-	Status           string `json:"status"` // "paid", "open", etc.
+	Amount           string `json:"amount"`          // formatted e.g. "20.00" — what was actually paid/due
+	Subtotal         string `json:"subtotal"`        // formatted — invoice total before credits
+	CreditApplied    string `json:"creditApplied"`   // formatted — how much existing credit was used
+	CreditGenerated  string `json:"creditGenerated"` // formatted — how much new credit was generated (downgrade)
+	Status           string `json:"status"`          // "paid", "open", etc.
 	HostedInvoiceURL string `json:"hostedInvoiceURL"`
 	InvoicePDF       string `json:"invoicePDF"`
 }
@@ -970,6 +974,9 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				PeriodEnd:        inv.PeriodEnd.Format("Jan 2, 2006"),
 				Date:             inv.Date.Format("02 Jan 2006"),
 				Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
+				Subtotal:         fmt.Sprintf("%.2f", float64(inv.Subtotal)/100),
+				CreditApplied:    fmt.Sprintf("%.2f", float64(inv.CreditApplied)/100),
+				CreditGenerated:  fmt.Sprintf("%.2f", float64(inv.CreditGenerated)/100),
 				Status:           inv.Status,
 				HostedInvoiceURL: inv.HostedInvoiceURL,
 				InvoicePDF:       inv.InvoicePDF,
@@ -985,6 +992,11 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			}
 		}
 		profile.Credits.Invoices = nonNil(jsonInvoices)
+
+		// Customer credit balance (available for future invoices).
+		if balance, err := s.billing.CustomerCreditBalance(r.Context(), account.ID); err == nil && balance > 0 {
+			profile.Credits.CreditBalanceUSD = float64(balance) / 100
+		}
 	}
 
 	// Available regions.

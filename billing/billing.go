@@ -988,6 +988,9 @@ type InvoiceInfo struct {
 	PeriodEnd        time.Time // billing period end
 	Date             time.Time
 	AmountPaid       int64  // cents
+	Subtotal         int64  // cents — invoice total before credits
+	CreditApplied    int64  // cents — how much existing credit was used to pay (positive)
+	CreditGenerated  int64  // cents — how much new credit was generated (e.g. downgrade proration)
 	Currency         string // e.g. "usd"
 	Status           string // "paid", "open", "draft", "void", "uncollectible"
 	HostedInvoiceURL string
@@ -1023,6 +1026,17 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 
 		planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
+		// Credit applied = subtotal - amountPaid (when credit covers part/all of invoice).
+		// Credit generated = negative subtotal (downgrade prorations credit the customer).
+		creditApplied := int64(0)
+		creditGenerated := int64(0)
+		if inv.Subtotal > inv.AmountPaid {
+			creditApplied = inv.Subtotal - inv.AmountPaid
+		}
+		if inv.Subtotal < 0 {
+			creditGenerated = -inv.Subtotal
+		}
+
 		result = append(result, InvoiceInfo{
 			Description:      desc,
 			PlanName:         planName,
@@ -1030,6 +1044,9 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 			PeriodEnd:        periodEnd,
 			Date:             time.Unix(inv.Created, 0).UTC(),
 			AmountPaid:       inv.AmountPaid,
+			Subtotal:         inv.Subtotal,
+			CreditApplied:    creditApplied,
+			CreditGenerated:  creditGenerated,
 			Currency:         string(inv.Currency),
 			Status:           string(inv.Status),
 			HostedInvoiceURL: inv.HostedInvoiceURL,
@@ -1060,16 +1077,44 @@ func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*Invo
 
 	planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
+	creditApplied := int64(0)
+	creditGenerated := int64(0)
+	if inv.Subtotal > inv.AmountDue {
+		creditApplied = inv.Subtotal - inv.AmountDue
+	}
+	if inv.Subtotal < 0 {
+		creditGenerated = -inv.Subtotal
+	}
+
 	return &InvoiceInfo{
-		Description: "Upcoming",
-		PlanName:    planName,
-		PeriodStart: periodStart,
-		PeriodEnd:   periodEnd,
-		Date:        time.Unix(inv.Created, 0).UTC(),
-		AmountPaid:  inv.AmountDue,
-		Currency:    string(inv.Currency),
-		Status:      "upcoming",
+		Description:     "Upcoming",
+		PlanName:        planName,
+		PeriodStart:     periodStart,
+		PeriodEnd:       periodEnd,
+		Date:            time.Unix(inv.Created, 0).UTC(),
+		AmountPaid:      inv.AmountDue,
+		Subtotal:        inv.Subtotal,
+		CreditApplied:   creditApplied,
+		CreditGenerated: creditGenerated,
+		Currency:        string(inv.Currency),
+		Status:          "upcoming",
 	}, nil
+}
+
+// CustomerCreditBalance returns the customer's credit balance in cents.
+// A positive return value means the customer has credit available.
+// Stripe stores credit as a negative balance, so we negate it.
+func (m *Manager) CustomerCreditBalance(ctx context.Context, customerID string) (int64, error) {
+	c := m.client()
+	customer, err := c.V1Customers.Retrieve(ctx, customerID, nil)
+	if err != nil {
+		return 0, fmt.Errorf("retrieve customer credit balance: %w", err)
+	}
+	// Stripe: negative balance = customer has credit.
+	if customer.Balance < 0 {
+		return -customer.Balance, nil
+	}
+	return 0, nil
 }
 
 // invoiceLineInfo picks the best line item from an invoice for display.
