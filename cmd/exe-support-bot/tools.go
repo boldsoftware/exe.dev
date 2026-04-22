@@ -176,6 +176,15 @@ func toolClickHouseQuery(ctx context.Context, query string) (string, error) {
 	if forbiddenRE.MatchString(query) {
 		return "", errors.New("forbidden keyword: read-only tool")
 	}
+	// Defense-in-depth: parse-check before hitting the server.
+	if err := checkClickhouseStructural(query); err != nil {
+		return "", fmt.Errorf("clickhouse_query: %w", err)
+	}
+	// And a cheap LLM sanity pass. Fail closed on any error so a
+	// gateway hiccup can't be used to smuggle a query through.
+	if err := checkClickhouseWithHaiku(ctx, query); err != nil {
+		return "", fmt.Errorf("clickhouse_query: %w", err)
+	}
 	// Ask for TabSeparatedWithNames if the agent didn't specify FORMAT.
 	hasFormat := regexp.MustCompile(`(?i)\bFORMAT\s+\w+\s*;?\s*$`).MatchString(query)
 	body := query

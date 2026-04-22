@@ -17,6 +17,13 @@ Agentic helper for the Missive support inbox.
    - `clickhouse_query` — read-only query against prod logs via the
      exe.dev `clickhouse` integration. Default URL
      `https://clickhouse.int.exe.xyz/`, override with `EXE_CLICKHOUSE_URL`.
+     Every query goes through two safety gates before it is sent:
+     a deterministic parse check (must be SELECT/WITH/SHOW/DESCRIBE/
+     EXPLAIN/EXISTS, single statement, no OUTFILE/INFILE/SETTINGS,
+     no denied table functions like `url`/`s3`/`file`/`remote`/…),
+     and a cheap Haiku sanity pass. The server-side user is also
+     grant-limited to `SELECT ON default.*` with every external-access
+     table function denied.
    - `exe_docs` — fetch a page of `https://exe.dev/docs.md` (or any
      `/docs/...md` listed in the index), cached on disk for up to 24h.
    - `publish_result` — final output. Stored in the `results` table and
