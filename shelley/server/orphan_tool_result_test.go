@@ -35,6 +35,7 @@ import (
 //   - assistant end-turn
 //   - user with tool_result X (actual) <- ORPHAN - references X but previous msg has no tool_use!
 func TestOrphanToolResultAfterCancellation(t *testing.T) {
+	t.Parallel()
 	server, database, predictableService := newTestServer(t)
 
 	// Create conversation
@@ -212,6 +213,7 @@ func TestOrphanToolResultAfterCancellation(t *testing.T) {
 // TestOrphanToolResultFiltering tests that orphan tool_results are filtered out
 // even when they appear in the middle of the conversation
 func TestOrphanToolResultFiltering(t *testing.T) {
+	t.Parallel()
 	server, database, predictableService := newTestServer(t)
 
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})

@@ -68,6 +68,7 @@ func newTestServer(t *testing.T) (*Server, *db.DB, *loop.PredictableService) {
 
 // TestCancelWithPredictableModel tests cancellation with the predictable model
 func TestCancelWithPredictableModel(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
@@ -273,6 +274,7 @@ func TestCancelWithPredictableModel(t *testing.T) {
 
 // TestCancelWithNoActiveConversation tests cancelling when there's no active conversation
 func TestCancelWithNoActiveConversation(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create a conversation but don't start it
@@ -304,6 +306,7 @@ func TestCancelWithNoActiveConversation(t *testing.T) {
 
 // TestCancelDuringTextGeneration tests cancelling during text generation (no tool call)
 func TestCancelDuringTextGeneration(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	conversation, err := database.CreateConversation(context.Background(), nil, true, nil, nil, db.ConversationOptions{})

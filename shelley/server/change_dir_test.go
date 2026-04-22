@@ -22,6 +22,7 @@ import (
 // TestChangeDirAffectsBash tests that change_dir updates the working directory
 // and subsequent bash commands run in that directory.
 func TestChangeDirAffectsBash(t *testing.T) {
+	t.Parallel()
 	// Create a temp directory structure
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "subdir")
@@ -168,6 +169,7 @@ func truncate(s string, maxLen int) string {
 // TestChangeDirBroadcastsCwdUpdate tests that change_dir broadcasts the updated cwd
 // to SSE subscribers so the UI gets the change immediately.
 func TestChangeDirBroadcastsCwdUpdate(t *testing.T) {
+	t.Parallel()
 	// Create a temp directory structure
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "subdir")

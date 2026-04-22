@@ -10,6 +10,7 @@ import (
 // TestContextWindowSizePreservedOnNavigation tests that context window size
 // is correctly returned when loading different conversations
 func TestContextWindowSizePreservedOnNavigation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create first conversation and get a response

@@ -49,12 +49,13 @@ export default async function globalSetup() {
     'serve',
     '--port', '0',
     '--port-file', portFile,
+    '--socket', 'none',
   ], {
     cwd: shelleyDir,
     stdio: 'inherit',
     env: {
       ...process.env,
-      PREDICTABLE_DELAY_MS: process.env.PREDICTABLE_DELAY_MS || '400',
+      PREDICTABLE_DELAY_MS: process.env.PREDICTABLE_DELAY_MS || '200',
     },
   });
 

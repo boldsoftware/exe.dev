@@ -11,6 +11,7 @@ import (
 // TestContextWindowSizeCalculation tests that the context window size is correctly
 // calculated including cached tokens.
 func TestContextWindowSizeCalculation(t *testing.T) {
+	t.Parallel()
 	// Test the calculateContextWindowSize function directly
 	t.Run("includes_all_token_types", func(t *testing.T) {
 		// Create usage data with all token types
@@ -161,6 +162,7 @@ func TestContextWindowSizeCalculation(t *testing.T) {
 // TestContextWindowGrowsWithConversation tests that the context window size grows
 // as the conversation progresses, using the test harness and predictable service.
 func TestContextWindowGrowsWithConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Start a new conversation

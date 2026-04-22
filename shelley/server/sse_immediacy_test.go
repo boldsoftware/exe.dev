@@ -68,6 +68,7 @@ func (f *flusherRecorder) getString() string {
 // TestSSEUserMessageAppearsImmediately tests that when a user sends a message,
 // the message appears in the SSE stream immediately, before the LLM responds.
 func TestSSEUserMessageAppearsImmediately(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
@@ -203,6 +204,7 @@ func containsUserMessage(sseBody, messageText string) bool {
 // TestSSEUserMessageWithRealHTTPServer tests with a real HTTP server to properly
 // test HTTP context cancellation behavior
 func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
+	t.Parallel()
 	srv, database, _ := newTestServer(t)
 
 	// Create conversation
@@ -307,6 +309,7 @@ func TestSSEUserMessageWithRealHTTPServer(t *testing.T) {
 // TestSSEUserMessageWithExistingConnection is a simpler version that tests
 // message recording and notification without the SSE complexity
 func TestSSEUserMessageWithExistingConnection(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation and get a manager (simulating an established SSE connection)

@@ -14,6 +14,7 @@ import (
 )
 
 func TestExecTerminal_SimpleCommand(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -80,6 +81,7 @@ func TestExecTerminal_SimpleCommand(t *testing.T) {
 }
 
 func TestExecTerminal_FailingCommand(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -125,6 +127,7 @@ func TestExecTerminal_FailingCommand(t *testing.T) {
 }
 
 func TestExecTerminal_MissingCmd(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -149,6 +152,7 @@ func TestExecTerminal_MissingCmd(t *testing.T) {
 }
 
 func TestExecTerminal_WorkingDirectory(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -195,6 +199,7 @@ func TestExecTerminal_WorkingDirectory(t *testing.T) {
 }
 
 func TestExecTerminal_Input(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -262,6 +267,7 @@ func TestExecTerminal_Input(t *testing.T) {
 }
 
 func TestExecTerminal_LoginShell(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()
@@ -325,6 +331,7 @@ func TestExecTerminal_LoginShell(t *testing.T) {
 }
 
 func TestExecTerminal_ControlCharacters(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	mux := http.NewServeMux()

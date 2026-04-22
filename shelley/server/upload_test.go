@@ -16,6 +16,7 @@ import (
 )
 
 func TestUploadEndpoint(t *testing.T) {
+	t.Parallel()
 	server, _, _ := newTestServer(t)
 
 	// Create a multipart form with a file
@@ -80,6 +81,7 @@ func TestUploadEndpoint(t *testing.T) {
 }
 
 func TestUploadEndpointMethodNotAllowed(t *testing.T) {
+	t.Parallel()
 	server, _, _ := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/api/upload", nil)
@@ -93,6 +95,7 @@ func TestUploadEndpointMethodNotAllowed(t *testing.T) {
 }
 
 func TestUploadEndpointNoFile(t *testing.T) {
+	t.Parallel()
 	server, _, _ := newTestServer(t)
 
 	// Create an empty multipart form
@@ -112,6 +115,7 @@ func TestUploadEndpointNoFile(t *testing.T) {
 }
 
 func TestUploadedFileCanBeReadViaReadEndpoint(t *testing.T) {
+	t.Parallel()
 	server, _, _ := newTestServer(t)
 
 	// First, upload a file
@@ -178,6 +182,7 @@ func TestUploadedFileCanBeReadViaReadEndpoint(t *testing.T) {
 }
 
 func TestUploadPreservesFileExtension(t *testing.T) {
+	t.Parallel()
 	server, _, _ := newTestServer(t)
 
 	testCases := []struct {

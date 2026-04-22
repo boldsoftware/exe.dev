@@ -558,6 +558,7 @@ func (m *claudeLLMManager) RefreshCustomModels() error {
 
 // TestClaudeCancelDuringToolCall tests cancellation during tool execution with Claude
 func TestClaudeCancelDuringToolCall(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -593,6 +594,7 @@ func TestClaudeCancelDuringToolCall(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCall tests cancellation during LLM API call with Claude
 func TestClaudeCancelDuringLLMCall(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -623,6 +625,7 @@ func TestClaudeCancelDuringLLMCall(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCallThenResume tests cancellation during LLM API call and then resuming
 func TestClaudeCancelDuringLLMCallThenResume(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -660,6 +663,7 @@ func TestClaudeCancelDuringLLMCallThenResume(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCallMultipleTimes tests multiple cancellations during LLM calls
 func TestClaudeCancelDuringLLMCallMultipleTimes(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -701,6 +705,7 @@ func TestClaudeCancelDuringLLMCallMultipleTimes(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCallAndVerifyMessageStructure verifies message structure after LLM cancellation
 func TestClaudeCancelDuringLLMCallAndVerifyMessageStructure(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -758,6 +763,7 @@ func TestClaudeCancelDuringLLMCallAndVerifyMessageStructure(t *testing.T) {
 
 // TestClaudeResumeAfterCancellation tests that a conversation can be resumed after cancellation
 func TestClaudeResumeAfterCancellation(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -803,6 +809,7 @@ func TestClaudeResumeAfterCancellation(t *testing.T) {
 // TestClaudeTokensMonotonicallyIncreasing tests that token count increases when resuming
 // With prompt caching, total tokens = input + cache_creation + cache_read
 func TestClaudeTokensMonotonicallyIncreasing(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -859,6 +866,7 @@ func TestClaudeTokensMonotonicallyIncreasing(t *testing.T) {
 
 // TestClaudeResumeAfterCancellationPreservesContext tests context preservation after cancellation
 func TestClaudeResumeAfterCancellationPreservesContext(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -903,6 +911,7 @@ func TestClaudeResumeAfterCancellationPreservesContext(t *testing.T) {
 
 // TestClaudeMultipleCancellations tests multiple cancellations in a row
 func TestClaudeMultipleCancellations(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -933,6 +942,7 @@ func TestClaudeMultipleCancellations(t *testing.T) {
 
 // TestClaudeCancelImmediately tests cancelling immediately after sending a message
 func TestClaudeCancelImmediately(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -959,6 +969,7 @@ func TestClaudeCancelImmediately(t *testing.T) {
 
 // TestClaudeCancelWithPendingToolResult tests that missing tool results are handled properly
 func TestClaudeCancelWithPendingToolResult(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -987,6 +998,7 @@ func TestClaudeCancelWithPendingToolResult(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCallRapidFire tests rapid cancellations during LLM calls
 func TestClaudeCancelDuringLLMCallRapidFire(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 
@@ -1014,6 +1026,7 @@ func TestClaudeCancelDuringLLMCallRapidFire(t *testing.T) {
 
 // TestClaudeCancelDuringLLMCallWithToolUseResponse tests cancel when Claude is about to use a tool
 func TestClaudeCancelDuringLLMCallWithToolUseResponse(t *testing.T) {
+	t.Parallel()
 	h := NewClaudeTestHarness(t)
 	defer h.Close()
 

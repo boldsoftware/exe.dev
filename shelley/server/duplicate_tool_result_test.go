@@ -26,6 +26,7 @@ import (
 // This leads to the Anthropic API error:
 // "each tool_use must have a single result. Found multiple `tool_result` blocks with id: ..."
 func TestCancelAfterToolCompletesCreatesDuplicateToolResult(t *testing.T) {
+	t.Parallel()
 	server, database, predictableService := newTestServer(t)
 
 	// Create conversation

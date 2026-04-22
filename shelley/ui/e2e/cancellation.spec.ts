@@ -7,7 +7,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Conversation Cancellation', () => {
   test('should cancel long-running command and show cancelled state after reload', async ({ page }) => {
     // Start the server and navigate to it
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     // Wait for the message input
@@ -62,7 +62,8 @@ test.describe('Conversation Cancellation', () => {
 
     // Verify we can continue the conversation after cancellation
     await input.fill('echo: test after cancel');
-    await input.press('Enter');
+    // Ctrl+Enter submits regardless of mobile Enter-for-newline behavior.
+    await input.press('ControlOrMeta+Enter');
 
     // Should get a response (the echo response may come so fast the thinking indicator is never visible)
     await expect(page.locator('text=test after cancel').first()).toBeVisible({ timeout: 10000 });
@@ -72,7 +73,7 @@ test.describe('Conversation Cancellation', () => {
   });
 
   test('should cancel without tool execution (text generation)', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const input = page.getByTestId('message-input');
@@ -105,7 +106,7 @@ test.describe('Conversation Cancellation', () => {
   });
 
   test('should show correct state without reload', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const input = page.getByTestId('message-input');

@@ -14,6 +14,7 @@ import (
 )
 
 func TestHandleVersion(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Test successful GET request
@@ -40,6 +41,7 @@ func TestHandleVersion(t *testing.T) {
 }
 
 func TestHandleArchivedConversations(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a test conversation and archive it
@@ -97,6 +99,7 @@ func TestHandleArchivedConversations(t *testing.T) {
 }
 
 func TestHandleArchiveConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a test conversation
@@ -149,6 +152,7 @@ func TestHandleArchiveConversation(t *testing.T) {
 }
 
 func TestHandleUnarchiveConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a test conversation and archive it
@@ -206,6 +210,7 @@ func TestHandleUnarchiveConversation(t *testing.T) {
 }
 
 func TestHandleDeleteConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a test conversation
@@ -264,6 +269,7 @@ func TestHandleDeleteConversation(t *testing.T) {
 }
 
 func TestHandleRenameConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a test conversation
@@ -350,6 +356,7 @@ func TestHandleRenameConversation(t *testing.T) {
 }
 
 func TestHandleWriteFile(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Test successful POST request

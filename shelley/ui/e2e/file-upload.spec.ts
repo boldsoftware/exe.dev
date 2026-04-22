@@ -34,7 +34,7 @@ test.describe('File Upload via Paste and Drag', () => {
   });
 
   test('shows drop overlay when dragging file over input container', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const inputContainer = page.locator('.message-input-container');
@@ -142,7 +142,7 @@ test.describe('File Upload via Paste and Drag', () => {
   });
 
   test('message input accepts text input normally', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const messageInput = page.getByTestId('message-input');
@@ -152,7 +152,7 @@ test.describe('File Upload via Paste and Drag', () => {
   });
 
   test('simulated file drop shows loading placeholder then file path', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const messageInput = page.getByTestId('message-input');
@@ -197,7 +197,7 @@ test.describe('File Upload via Paste and Drag', () => {
   });
 
   test('focus is retained in input after pasting image', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
 
     const messageInput = page.getByTestId('message-input');

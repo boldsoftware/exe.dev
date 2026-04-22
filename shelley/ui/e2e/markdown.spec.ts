@@ -1,15 +1,16 @@
 import { test, expect } from "@playwright/test";
+import { createConversationViaAPI } from "./helpers";
 
 test.describe("Markdown rendering and sanitization", () => {
   test("renders markdown formatting in agent messages", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill("markdown: **bold** and *italic* and `code`");
     await page.getByTestId("send-button").click();
 
     // Wait for agent response
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     // Markdown should be rendered as HTML elements
@@ -19,7 +20,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips script tags from agent messages", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -27,7 +28,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     // The text should be there, but no script element
@@ -41,7 +42,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips img tags (remote image tracking)", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -49,7 +50,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     expect(await agent.locator("img").count()).toBe(0);
@@ -59,7 +60,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips iframe tags", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -67,33 +68,31 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     expect(await agent.locator("iframe").count()).toBe(0);
     await expect(agent).toContainText("safe");
   });
 
-  test("strips event handler attributes", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
-
-    await page.getByTestId("message-input").fill(
+  test("strips event handler attributes", async ({ page, request }) => {
+    // Use API helper to avoid SSE subscribe-vs-publish race (see helpers.ts).
+    const slug = await createConversationViaAPI(
+      request,
       'markdown: <div onclick="alert(1)">click me</div>',
     );
-    await page.getByTestId("send-button").click();
-
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.goto(`/c/${slug}`);
+    await page.waitForLoadState("domcontentloaded");
 
     const agent = page.locator(".message-agent").last();
-    await expect(agent).toContainText("click me");
+    await expect(agent).toContainText("click me", { timeout: 30000 });
     const html = await agent.innerHTML();
     expect(html).not.toContain("onclick");
     expect(html).not.toContain("alert");
   });
 
   test("sanitizes javascript: href in links", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -101,7 +100,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     await expect(agent).toContainText("steal cookies");
@@ -110,7 +109,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("markdown links open in new tab with noopener", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -118,7 +117,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const link = page.locator(".message-agent").last().locator("a").first();
     await expect(link).toHaveAttribute("href", "https://example.com");
@@ -127,7 +126,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("user messages never render markdown", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     // Send a message with markdown syntax - user messages should show raw text
@@ -145,7 +144,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips SVG with embedded script", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -153,7 +152,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     const html = await agent.innerHTML();
@@ -163,7 +162,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips non-checkbox input elements (phishing prevention)", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -171,7 +170,7 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
     // Text and password inputs should be stripped
@@ -181,7 +180,7 @@ test.describe("Markdown rendering and sanitization", () => {
   });
 
   test("strips form and input[type=submit] (phishing prevention)", async ({ page }) => {
-    await page.goto("/");
+    await page.goto('/new');
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
     await page.getByTestId("message-input").fill(
@@ -189,10 +188,13 @@ test.describe("Markdown rendering and sanitization", () => {
     );
     await page.getByTestId("send-button").click();
 
-    await page.waitForSelector(".message-agent", { timeout: 10000 });
+    await page.waitForSelector(".message-agent", { timeout: 30000 });
 
     const agent = page.locator(".message-agent").last();
-    const html = await agent.innerHTML();
+    // Inspect just the rendered markdown content; the surrounding action bar
+    // legitimately contains <button> (copy/usage) and must be excluded.
+    const content = agent.locator('[data-testid="message-content"]');
+    const html = await content.innerHTML();
     expect(html).not.toContain("<form");
     expect(html).not.toContain("<button");
     expect(html).not.toContain("evil.com");

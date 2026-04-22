@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // Helper: navigate to root, start a fresh conversation
 async function newConversation(page: import('@playwright/test').Page) {
-  await page.goto('/');
+  await page.goto('/new');
   await page.waitForLoadState('domcontentloaded');
   const messageInput = page.getByTestId('message-input');
   await expect(messageInput).toBeVisible({ timeout: 30000 });

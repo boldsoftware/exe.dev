@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createConversationViaAPI } from './helpers';
 
 test.describe('Shelley Conversation Tests', () => {
   test('can send Hello and get greeting response', async ({ page }) => {
@@ -158,29 +159,18 @@ test.describe('Shelley Conversation Tests', () => {
     await expect(page.locator('text=bash').first()).toBeVisible();
   });
   
-  test('gives default response for undefined messages', async ({ page }) => {
-    await page.goto('/');
+  test('gives default response for undefined messages', async ({ page, request }) => {
+    // Create the conversation via API so we avoid a race between the initial
+    // SSE Subscribe and the agent message being published.
+    const slug = await createConversationViaAPI(request, 'this is an undefined message');
+    await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
-    
-    const messageInput = page.getByTestId('message-input');
-    const sendButton = page.getByTestId('send-button');
-    
-    // Send an undefined message and expect default response
-    await messageInput.fill('this is an undefined message');
-    await sendButton.click();
-    
-    // The predictable model responds to undefined inputs with "edit predictable.go to add a response for that one..."
-    await page.waitForFunction(
-      () => {
-        const text = 'edit predictable.go to add a response for that one...';
-        return document.body.textContent?.includes(text) ?? false;
-      },
-      undefined,
-      { timeout: 30000 }
-    );
-    
+
     // Verify the undefined message and default response are visible
-    await expect(page.locator('text=this is an undefined message')).toBeVisible();
+    await expect(
+      page.locator('text=edit predictable.go to add a response for that one...').first(),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('text=this is an undefined message').first()).toBeVisible();
   });
   
   test('conversation persists and displays correctly', async ({ page }) => {

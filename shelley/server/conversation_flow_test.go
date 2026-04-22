@@ -17,6 +17,7 @@ import (
 // TestMessageQueuedDuringThinking tests that messages sent while the LLM is
 // processing (thinking/tool execution) are properly queued and eventually processed.
 func TestMessageQueuedDuringThinking(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
@@ -142,6 +143,7 @@ func TestMessageQueuedDuringThinking(t *testing.T) {
 // TestContextPreservedAfterCancel tests that conversation context is properly
 // preserved after cancellation and the conversation can be resumed correctly.
 func TestContextPreservedAfterCancel(t *testing.T) {
+	t.Parallel()
 	server, database, predictableService := newTestServer(t)
 
 	// Create conversation

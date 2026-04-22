@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Shelley Smoke Tests', () => {
   test('page loads successfully', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     // Just verify the page loads with a title
@@ -11,7 +11,7 @@ test.describe('Shelley Smoke Tests', () => {
   });
 
   test('can find message input with proper aria label', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     // Find the textarea using improved selectors
@@ -23,7 +23,7 @@ test.describe('Shelley Smoke Tests', () => {
   });
 
   test('can find send button with proper aria label', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     // Find the send button using improved selectors
@@ -35,7 +35,7 @@ test.describe('Shelley Smoke Tests', () => {
   });
   
   test('message input is initially empty and focused', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     const messageInput = page.getByTestId('message-input');
@@ -49,7 +49,7 @@ test.describe('Shelley Smoke Tests', () => {
   });
   
   test('send button is disabled when input is empty', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     const sendButton = page.getByTestId('send-button');
@@ -59,7 +59,7 @@ test.describe('Shelley Smoke Tests', () => {
   });
   
   test('send button becomes enabled when text is entered', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/new');
     await page.waitForLoadState('domcontentloaded');
     
     const messageInput = page.getByTestId('message-input');

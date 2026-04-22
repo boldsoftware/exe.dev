@@ -14,6 +14,7 @@ import (
 
 // TestGetGitRoot tests the getGitRoot function
 func TestGetGitRoot(t *testing.T) {
+	t.Parallel()
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 
@@ -80,6 +81,7 @@ func TestGetGitRoot(t *testing.T) {
 
 // TestParseDiffStat tests the parseDiffStat function
 func TestParseDiffStat(t *testing.T) {
+	t.Parallel()
 	// Test empty output
 	additions, deletions, filesCount := parseDiffStat("")
 	if additions != 0 || deletions != 0 || filesCount != 0 {
@@ -208,6 +210,7 @@ func setupTestGitRepo(t *testing.T) string {
 
 // TestHandleGitDiffs tests the handleGitDiffs function
 func TestHandleGitDiffs(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Test with non-git directory
@@ -285,6 +288,7 @@ func TestHandleGitDiffs(t *testing.T) {
 
 // TestHandleGitDiffFiles tests the handleGitDiffFiles function
 func TestHandleGitDiffFiles(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Setup a test git repository
@@ -357,6 +361,7 @@ func TestHandleGitDiffFiles(t *testing.T) {
 
 // TestHandleGitFileDiff tests the handleGitFileDiff function
 func TestHandleGitFileDiff(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Setup a test git repository
@@ -437,6 +442,7 @@ func TestHandleGitFileDiff(t *testing.T) {
 // TestCumulativeDiff verifies that selecting a commit shows cumulative changes
 // from that commit's parent through the current working tree state.
 func TestCumulativeDiff(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a repo with multiple commits and working changes
@@ -572,6 +578,7 @@ func setupRootCommitRepo(t *testing.T) string {
 }
 
 func TestRootCommitDiffs(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 	gitDir := setupRootCommitRepo(t)
 

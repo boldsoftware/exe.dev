@@ -11,6 +11,7 @@ import (
 // TestSystemPromptIncludesCwdGuidanceFiles verifies that AGENTS.md from the working directory
 // is included in the generated system prompt.
 func TestSystemPromptIncludesCwdGuidanceFiles(t *testing.T) {
+	t.Parallel()
 	// Create a temp directory to serve as our "context directory"
 	tmpDir, err := os.MkdirTemp("", "shelley_test")
 	if err != nil {
@@ -47,6 +48,7 @@ func TestSystemPromptIncludesCwdGuidanceFiles(t *testing.T) {
 // TestSystemPromptEmptyCwdFallsBackToCurrentDir verifies that an empty workingDir
 // causes GenerateSystemPrompt to use the current directory.
 func TestSystemPromptEmptyCwdFallsBackToCurrentDir(t *testing.T) {
+	t.Parallel()
 	// Get current directory for comparison
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -69,6 +71,7 @@ func TestSystemPromptEmptyCwdFallsBackToCurrentDir(t *testing.T) {
 // correctly detects a git repo in the specified working directory, not the
 // process's cwd. Regression test for https://github.com/boldsoftware/shelley/issues/71
 func TestSystemPromptDetectsGitInWorkingDir(t *testing.T) {
+	t.Parallel()
 	// Create a temp dir with a git repo
 	tmpDir, err := os.MkdirTemp("", "shelley_git_test")
 	if err != nil {
@@ -128,9 +131,7 @@ func TestSystemPromptIncludesSkillsFromAnyWorkingDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+	t.Setenv("HOME", tmpHome)
 
 	// Generate system prompt from a directory completely unrelated to home
 	unrelatedDir := t.TempDir()
@@ -148,6 +149,7 @@ func TestSystemPromptIncludesSkillsFromAnyWorkingDir(t *testing.T) {
 }
 
 func TestSystemPromptIncludesUserEmail(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 
 	// Without email, no email line in prompt

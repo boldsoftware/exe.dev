@@ -15,6 +15,7 @@ import (
 // TestConversationStreamReceivesListUpdateForNewConversation tests that when subscribed
 // to one conversation's stream, we receive updates about new conversations.
 func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create a conversation to subscribe to
@@ -107,6 +108,7 @@ func TestConversationStreamReceivesListUpdateForNewConversation(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForRename tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is renamed.
 func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations
@@ -192,6 +194,7 @@ func TestConversationStreamReceivesListUpdateForRename(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForDelete tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is deleted.
 func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations
@@ -276,6 +279,7 @@ func TestConversationStreamReceivesListUpdateForDelete(t *testing.T) {
 // TestConversationStreamReceivesListUpdateForArchive tests that when subscribed
 // to one conversation's stream, we receive updates when another conversation is archived.
 func TestConversationStreamReceivesListUpdateForArchive(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create two conversations

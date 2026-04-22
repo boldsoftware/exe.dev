@@ -16,6 +16,7 @@ import (
 )
 
 func TestStripImageDataFromLLMData(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		input        *llm.Message
@@ -134,6 +135,7 @@ func TestStripImageDataFromLLMData(t *testing.T) {
 }
 
 func TestStripImageDataInsertsURL(t *testing.T) {
+	t.Parallel()
 	// The stripped content should have a URL in the ImageURL field.
 	msg := llm.Message{
 		Role: llm.MessageRoleUser,
@@ -168,6 +170,7 @@ func TestStripImageDataInsertsURL(t *testing.T) {
 }
 
 func TestStripImageDataToolResult(t *testing.T) {
+	t.Parallel()
 	// Image inside a tool result should get the right URL.
 	msg := llm.Message{
 		Role: llm.MessageRoleUser,
@@ -205,6 +208,7 @@ func TestStripImageDataToolResult(t *testing.T) {
 }
 
 func TestHandleMessageImage(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create a conversation

@@ -10,6 +10,7 @@ import (
 )
 
 func TestHydrateGeneratesSystemPromptWithSubagentTool(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 	ctx := context.Background()
 

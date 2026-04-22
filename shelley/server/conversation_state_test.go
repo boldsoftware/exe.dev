@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,10 +18,13 @@ import (
 	"shelley.exe.dev/loop"
 )
 
-// responseRecorderWithClose wraps httptest.ResponseRecorder to support CloseNotify
+// responseRecorderWithClose wraps httptest.ResponseRecorder to support
+// CloseNotify and concurrent reads of the response body while the handler
+// is still writing (via Snapshot).
 type responseRecorderWithClose struct {
 	*httptest.ResponseRecorder
 	closeNotify chan bool
+	mu          sync.Mutex
 }
 
 func newResponseRecorderWithClose() *responseRecorderWithClose {
@@ -41,10 +45,48 @@ func (r *responseRecorderWithClose) Close() {
 	}
 }
 
+// Write serializes writes so Snapshot can safely read the body while the
+// handler is still running.
+func (r *responseRecorderWithClose) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Write(p)
+}
+
+// Snapshot returns a copy of the current body, safe to call concurrently
+// with Write.
+func (r *responseRecorderWithClose) Snapshot() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ResponseRecorder.Body.String()
+}
+
+// waitForSSEData polls the recorder's body until it contains an SSE frame
+// (or an error response), returning the body snapshot. Used to avoid flaky
+// fixed sleeps on slow CI.
+func waitForSSEData(t *testing.T, r *responseRecorderWithClose, timeout time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		body := r.Snapshot()
+		if strings.HasPrefix(body, "data: ") && strings.Contains(body, "\n\n") {
+			return body
+		}
+		// Error responses from http.Error have no "data:" prefix; return those
+		// so the caller can surface a useful failure message.
+		if body != "" && !strings.HasPrefix(body, "data: ") {
+			return body
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return r.Snapshot()
+}
+
 // TestConversationStateAfterServerRestart verifies that when a conversation is
 // loaded after a server restart (new manager created), the agent is correctly
 // reported as not working since the loop isn't running.
 func TestConversationStateAfterServerRestart(t *testing.T) {
+	t.Parallel()
 	database, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -96,7 +138,7 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 	server.RegisterRoutes(mux)
 
 	// Make a streaming request with a context that cancels after we read the first message
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	req := httptest.NewRequest("GET", "/api/conversation/"+conv.ConversationID+"/stream", nil).WithContext(ctx)
@@ -111,16 +153,16 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 		mux.ServeHTTP(w, req)
 	}()
 
-	// Wait for some data or timeout
-	time.Sleep(500 * time.Millisecond)
+	// Wait until the handler has written the first SSE frame, or the context
+	// cancels. Polling avoids flakes on slow CI where a fixed 500ms sleep was
+	// insufficient for Hydrate + system prompt generation.
+	body := waitForSSEData(t, w, 10*time.Second)
 	w.Close()
 	cancel()
 
 	// Wait for handler to finish
 	<-done
 
-	// Parse the first SSE message
-	body := w.Body.String()
 	if !strings.HasPrefix(body, "data: ") {
 		t.Fatalf("Expected SSE data, got: %s", body)
 	}
@@ -153,6 +195,7 @@ func TestConversationStateAfterServerRestart(t *testing.T) {
 // resumed after a server restart, the model is correctly loaded from the database
 // and reported in the ConversationState.
 func TestModelRestorationAfterServerRestart(t *testing.T) {
+	t.Parallel()
 	database, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -205,7 +248,7 @@ func TestModelRestorationAfterServerRestart(t *testing.T) {
 	server.RegisterRoutes(mux)
 
 	// Make a streaming request
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	req := httptest.NewRequest("GET", "/api/conversation/"+conv.ConversationID+"/stream", nil).WithContext(ctx)
@@ -219,13 +262,11 @@ func TestModelRestorationAfterServerRestart(t *testing.T) {
 		mux.ServeHTTP(w, req)
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	body := waitForSSEData(t, w, 10*time.Second)
 	w.Close()
 	cancel()
 	<-done
 
-	// Parse the first SSE message
-	body := w.Body.String()
 	if !strings.HasPrefix(body, "data: ") {
 		t.Fatalf("Expected SSE data, got: %s", body)
 	}

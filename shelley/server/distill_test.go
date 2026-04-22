@@ -15,6 +15,7 @@ import (
 )
 
 func TestDistillConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a conversation with some messages
@@ -133,6 +134,7 @@ func TestDistillConversation(t *testing.T) {
 }
 
 func TestDistillConversationMissingSource(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	reqBody := DistillConversationRequest{
@@ -152,6 +154,7 @@ func TestDistillConversationMissingSource(t *testing.T) {
 }
 
 func TestDistillConversationEmptySource(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	reqBody := DistillConversationRequest{
@@ -170,6 +173,7 @@ func TestDistillConversationEmptySource(t *testing.T) {
 }
 
 func TestBuildDistillTranscript(t *testing.T) {
+	t.Parallel()
 	// Nil messages: only slug header.
 	transcript := buildDistillTranscript("test-convo", nil)
 	if !strings.Contains(transcript, "test-convo") {
@@ -273,6 +277,7 @@ func TestBuildDistillTranscript(t *testing.T) {
 }
 
 func TestTruncateUTF8(t *testing.T) {
+	t.Parallel()
 	// No truncation needed
 	result := truncateUTF8("hello", 10)
 	if result != "hello" {
@@ -314,6 +319,7 @@ func TestTruncateUTF8(t *testing.T) {
 // the distilled user message is actually included in the LLM request
 // when the user sends a follow-up message in the distilled conversation.
 func TestDistillContentSentToLLM(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation with some messages
@@ -465,6 +471,7 @@ func truncateForLog(s string, maxLen int) string {
 // is opened BEFORE distillation completes (causing Hydrate to run early),
 // the distilled user message is still included in the LLM request.
 func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation with some messages
@@ -609,6 +616,7 @@ func TestDistillContentSentToLLM_WithEarlySSE(t *testing.T) {
 // where the spinner would spin forever because Publish skipped subscribers that
 // already had the message's sequence ID.
 func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation with some messages
@@ -697,6 +705,7 @@ func TestDistillStatusUpdateReachesSSESubscriber(t *testing.T) {
 }
 
 func TestDistillReplaceConversation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation with some messages
@@ -815,6 +824,7 @@ func TestDistillReplaceConversation(t *testing.T) {
 }
 
 func TestDistillReplaceConversationMissingSource(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	reqBody := DistillReplaceRequest{
@@ -834,6 +844,7 @@ func TestDistillReplaceConversationMissingSource(t *testing.T) {
 }
 
 func TestDistillReplaceConversationNoSlug(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation and wait for the response to complete.
@@ -920,6 +931,7 @@ done:
 }
 
 func TestDistillReplaceMultiPass(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation with messages
@@ -1039,6 +1051,7 @@ func TestDistillReplaceMultiPass(t *testing.T) {
 }
 
 func TestDistillReplaceQueuedMessagesDuringDistillation(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a source conversation

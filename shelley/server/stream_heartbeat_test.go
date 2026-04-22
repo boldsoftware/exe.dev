@@ -17,6 +17,7 @@ import (
 // TestStreamResumeWithLastSequenceID verifies that using last_sequence_id
 // parameter only sends messages newer than the given sequence ID.
 func TestStreamResumeWithLastSequenceID(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	ctx := context.Background()

@@ -11,6 +11,7 @@ import (
 )
 
 func TestGetConversationBySlug(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a conversation with a slug
@@ -61,6 +62,7 @@ func TestGetConversationBySlug(t *testing.T) {
 }
 
 func TestIsConversationSlugPath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path   string
 		expect bool

@@ -18,6 +18,7 @@ import (
 // correctly handles responses from Anthropic models with ThinkingLevel enabled.
 // When thinking is enabled, the first content block is a thinking block, not text.
 func TestCustomModelWithThinking(t *testing.T) {
+	t.Parallel()
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping integration test")
@@ -81,6 +82,7 @@ func TestCustomModelWithThinking(t *testing.T) {
 // TestCustomModelTestEndpoint tests the HTTP endpoint for testing custom models.
 // This simulates what happens when a user adds a custom Anthropic model in the UI.
 func TestCustomModelTestEndpoint(t *testing.T) {
+	t.Parallel()
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		t.Skip("ANTHROPIC_API_KEY not set, skipping integration test")

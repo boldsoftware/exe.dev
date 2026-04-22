@@ -18,6 +18,7 @@ import (
 // TestWorkingDirectoryConfiguration tests that the working directory (cwd) setting
 // is properly passed through from HTTP requests to tool execution.
 func TestWorkingDirectoryConfiguration(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	t.Run("cwd_tmp", func(t *testing.T) {
@@ -44,6 +45,7 @@ func TestWorkingDirectoryConfiguration(t *testing.T) {
 
 // TestListDirectory tests the list-directory API endpoint used by the directory picker.
 func TestListDirectory(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	t.Run("list_tmp", func(t *testing.T) {
@@ -538,6 +540,7 @@ func TestListDirectory(t *testing.T) {
 
 // TestConversationCwdReturnedInList tests that CWD is returned in the conversations list.
 func TestConversationCwdReturnedInList(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a conversation with a specific CWD
@@ -588,6 +591,7 @@ func TestConversationCwdReturnedInList(t *testing.T) {
 // directory (not the server's working directory). This tests the fix for
 // https://github.com/boldsoftware/shelley/issues/30
 func TestSystemPromptUsesCwdFromConversation(t *testing.T) {
+	t.Parallel()
 	// Create a temp directory with an AGENTS.md file
 	tmpDir, err := os.MkdirTemp("", "shelley_cwd_test")
 	if err != nil {
@@ -658,6 +662,7 @@ func TestSystemPromptUsesCwdFromConversation(t *testing.T) {
 }
 
 func TestGitInfoForCwd(t *testing.T) {
+	t.Parallel()
 	// Create a git repo
 	tmpDir := t.TempDir()
 	runGit := func(dir string, args ...string) {
@@ -713,6 +718,7 @@ func TestGitInfoForCwd(t *testing.T) {
 }
 
 func TestGitCreateWorktree(t *testing.T) {
+	t.Parallel()
 	h := NewTestHarness(t)
 
 	// Create a git repo

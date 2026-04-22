@@ -10,6 +10,7 @@ import (
 )
 
 func TestBuildConversationSummary(t *testing.T) {
+	t.Parallel()
 	// Create a server to get a SubagentRunner
 	runner := &SubagentRunner{server: nil} // server not needed for buildConversationSummary
 
@@ -56,6 +57,7 @@ func TestBuildConversationSummary(t *testing.T) {
 }
 
 func TestBuildConversationSummary_ToolUse(t *testing.T) {
+	t.Parallel()
 	runner := &SubagentRunner{server: nil}
 
 	// Create a message with tool use
@@ -91,6 +93,7 @@ func TestBuildConversationSummary_ToolUse(t *testing.T) {
 }
 
 func TestBuildConversationSummary_Truncation(t *testing.T) {
+	t.Parallel()
 	runner := &SubagentRunner{server: nil}
 
 	// Create a message with very long content
@@ -123,6 +126,7 @@ func TestBuildConversationSummary_Truncation(t *testing.T) {
 }
 
 func TestBuildConversationSummary_ToolResult(t *testing.T) {
+	t.Parallel()
 	runner := &SubagentRunner{server: nil}
 
 	// Create a message with tool result
@@ -158,6 +162,7 @@ func TestBuildConversationSummary_ToolResult(t *testing.T) {
 }
 
 func TestBuildConversationSummary_ToolError(t *testing.T) {
+	t.Parallel()
 	runner := &SubagentRunner{server: nil}
 
 	// Create a message with tool error
@@ -193,6 +198,7 @@ func TestBuildConversationSummary_ToolError(t *testing.T) {
 }
 
 func TestBuildConversationSummary_SkipsSystemMessages(t *testing.T) {
+	t.Parallel()
 	runner := &SubagentRunner{server: nil}
 
 	systemMsg := llm.Message{

@@ -106,7 +106,13 @@ test.describe('ANSI escape sequence rendering', () => {
     await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
 
-    const bashTool = page.locator('.bash-tool[data-testid="tool-call-completed"]');
+    // Scope to the specific bash tool for this test's echo command to avoid
+    // strict-mode violations if the shared test server ends up showing more
+    // than one bash invocation.
+    const bashTool = page
+      .locator('.bash-tool[data-testid="tool-call-completed"]')
+      .filter({ hasText: 'just plain text with no escapes' })
+      .first();
     await expect(bashTool).toBeVisible({ timeout: 15000 });
 
     // Expand

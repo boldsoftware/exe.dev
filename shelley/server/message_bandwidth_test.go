@@ -16,6 +16,7 @@ import (
 // TestMessageSentOnlyOnce verifies that each message is sent to SSE subscribers
 // only once, not with every update.
 func TestMessageSentOnlyOnce(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation
@@ -143,6 +144,7 @@ done:
 // TestContextWindowSizeInSSE verifies that context_window_size is correctly
 // included only when agent messages with usage data are sent.
 func TestContextWindowSizeInSSE(t *testing.T) {
+	t.Parallel()
 	server, database, _ := newTestServer(t)
 
 	// Create conversation

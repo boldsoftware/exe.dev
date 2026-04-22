@@ -5,7 +5,7 @@ import { test, expect } from "@playwright/test";
 // auto-links URLs. With markdown disabled, linkifyText adds .text-link spans.
 
 test("URLs in agent responses are linked (markdown mode)", async ({ page }) => {
-  await page.goto("/");
+  await page.goto('/new');
   await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
   await page.getByTestId("message-input").fill(
@@ -27,7 +27,7 @@ test("URLs in agent responses are linked (markdown mode)", async ({ page }) => {
 });
 
 test("URLs are linkified in user messages too", async ({ page }) => {
-  await page.goto("/");
+  await page.goto('/new');
   await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
 
   await page.getByTestId("message-input").fill("echo: Visit https://example.com");
