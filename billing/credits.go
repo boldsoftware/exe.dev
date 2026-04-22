@@ -84,7 +84,17 @@ func (m *Manager) GiftCredits(ctx context.Context, billingID string, p *GiftCred
 	}
 
 	amount := tender.Mint(int64(p.AmountUSD*100), 0)
-	giftID := fmt.Sprintf("%s:%s:%d", p.GiftPrefix, billingID, time.Now().UnixNano())
+
+	// Signup gifts use "signup:<billingID>" with no timestamp suffix,
+	// ensuring at most one signup bonus per account via the unique index
+	// on gift_id. Other gift types append nanoseconds so the same
+	// prefix+account can receive multiple gifts.
+	var giftID string
+	if p.GiftPrefix == GiftPrefixSignup {
+		giftID = fmt.Sprintf("%s:%s", p.GiftPrefix, billingID)
+	} else {
+		giftID = fmt.Sprintf("%s:%s:%d", p.GiftPrefix, billingID, time.Now().UnixNano())
+	}
 
 	note := p.Note
 	if note == "" {

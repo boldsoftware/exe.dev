@@ -500,12 +500,19 @@ func TestGiftCreditsSignupPrefix(t *testing.T) {
 	accountID := "exe_signup_gift"
 	createTestAccount(t, m.DB, accountID, "user_signup_gift")
 
-	if err := m.GiftCredits(ctx, accountID, &GiftCreditsParams{
+	p := &GiftCreditsParams{
 		AmountUSD:  100.0,
 		GiftPrefix: GiftPrefixSignup,
 		Note:       "Signup bonus",
-	}); err != nil {
+	}
+	if err := m.GiftCredits(ctx, accountID, p); err != nil {
 		t.Fatalf("GiftCredits: %v", err)
+	}
+
+	// Second call with the same prefix+account is silently ignored
+	// because signup gift_id has no timestamp suffix.
+	if err := m.GiftCredits(ctx, accountID, p); err != nil {
+		t.Fatalf("GiftCredits second call: %v", err)
 	}
 
 	gifts, err := m.ListGifts(ctx, accountID)
@@ -513,13 +520,23 @@ func TestGiftCreditsSignupPrefix(t *testing.T) {
 		t.Fatalf("ListGifts: %v", err)
 	}
 	if len(gifts) != 1 {
-		t.Fatalf("len(gifts) = %d, want 1", len(gifts))
+		t.Fatalf("len(gifts) = %d, want 1 (signup gift should be idempotent)", len(gifts))
 	}
-	if !strings.HasPrefix(gifts[0].GiftID, GiftPrefixSignup+":") {
-		t.Fatalf("gifts[0].GiftID = %q, want prefix %q", gifts[0].GiftID, GiftPrefixSignup+":")
+	wantID := GiftPrefixSignup + ":" + accountID
+	if gifts[0].GiftID != wantID {
+		t.Fatalf("gifts[0].GiftID = %q, want %q", gifts[0].GiftID, wantID)
 	}
 	if gifts[0].Note != "Signup bonus" {
 		t.Fatalf("gifts[0].Note = %q, want %q", gifts[0].Note, "Signup bonus")
+	}
+
+	// Balance should reflect only one gift, not two.
+	balance, err := m.CreditBalance(ctx, accountID)
+	if err != nil {
+		t.Fatalf("CreditBalance: %v", err)
+	}
+	if want := tender.Mint(10000, 0); balance != want {
+		t.Fatalf("balance = %v, want %v (one $100 gift)", balance, want)
 	}
 }
 
