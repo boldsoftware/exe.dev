@@ -45,6 +45,10 @@ func (m *Manager) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	return errNotSupported
 }
 
+func (m *Manager) ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error {
+	return errNotSupported
+}
+
 func (m *Manager) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
 	return nil, errNotSupported
 }

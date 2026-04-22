@@ -41,6 +41,10 @@ func (m *mockNetworkManager) ApplyBandwidthLimit(ctx context.Context, id string)
 	return nil
 }
 
+func (m *mockNetworkManager) ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error {
+	return nil
+}
+
 func (m *mockNetworkManager) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
 	cp := make([]*api.Instance, len(instances))
 	copy(cp, instances)

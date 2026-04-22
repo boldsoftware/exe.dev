@@ -36,6 +36,8 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 		if err := n.removeConnLimit(ctx, ip); err != nil {
 			n.log.WarnContext(ctx, "failed to remove connection limit", "ip", ip, "error", err)
 		}
+		// Remove the per-TAP source-IP filter rule.
+		n.removeSourceIPFilter(ctx, tapName, ip)
 	}
 
 	// Release the IP lease, but only when we know which MAC owns it.

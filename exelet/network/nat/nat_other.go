@@ -54,6 +54,10 @@ func (n *NAT) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	return errNotSupported
 }
 
+func (n *NAT) ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error {
+	return errNotSupported
+}
+
 func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([]string, error) {
 	return nil, errNotSupported
 }

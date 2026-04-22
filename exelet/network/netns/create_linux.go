@@ -340,6 +340,13 @@ func (m *Manager) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) 
 	return nil
 }
 
+// ApplySourceIPFilter is a no-op for the netns manager: each VM lives in
+// its own network namespace and has a unique ext IP on the shared bridge,
+// so there is no cross-VM source-IP impersonation surface to protect.
+func (m *Manager) ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error {
+	return nil
+}
+
 // ApplyBandwidthLimit applies bandwidth limiting to a VM's outbound veth.
 func (m *Manager) ApplyBandwidthLimit(ctx context.Context, id string) error {
 	if m.disableBandwidth {

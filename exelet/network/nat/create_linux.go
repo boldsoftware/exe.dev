@@ -35,11 +35,14 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 	}
 
 	// Track cleanup actions for rollback on error
-	var cleanupTap, cleanupIP, cleanupConnLimit bool
+	var cleanupTap, cleanupIP, cleanupConnLimit, cleanupSrcFilter bool
 	var ipStr string
 	var macAddr string
 
 	cleanup := func() {
+		if cleanupSrcFilter && ipStr != "" {
+			n.removeSourceIPFilter(ctx, tapName, ipStr)
+		}
 		if cleanupConnLimit && ipStr != "" {
 			_ = n.removeConnLimit(ctx, ipStr)
 		}
@@ -82,6 +85,16 @@ func (n *NAT) CreateInterface(ctx context.Context, id string) (*api.NetworkInter
 		return nil, fmt.Errorf("failed to apply connection limit: %w", err)
 	}
 	cleanupConnLimit = true
+
+	// Bind source IP to this TAP. Without this, a VM can spoof another
+	// VM's 10.42/16 address and impersonate it to the metadata service,
+	// LLM gateway, and integration proxy, which all trust the request's
+	// source IP as the VM's identity (see exelet/metadata/metadata.go).
+	if err := n.applySourceIPFilter(ctx, tapName, ipStr); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("failed to apply source-IP filter: %w", err)
+	}
+	cleanupSrcFilter = true
 
 	// Apply bandwidth limit to the TAP device
 	if err := n.applyBandwidthLimit(ctx, tapName); err != nil {
@@ -131,6 +144,18 @@ func (n *NAT) ApplyConnectionLimit(ctx context.Context, inst *api.Instance) erro
 		return err
 	}
 	return n.applyConnLimit(ctx, ip)
+}
+
+// ApplySourceIPFilter installs (idempotently) the per-TAP source-IP filter
+// rule for an existing VM. Used on startup to apply the rule to VMs that
+// were created before the rule was introduced, and to re-assert it if it
+// is ever missing (e.g. after iptables-restore on the host).
+func (n *NAT) ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error {
+	ip, err := instanceIP(inst)
+	if err != nil {
+		return err
+	}
+	return n.applySourceIPFilter(ctx, getTapID(inst.ID), ip)
 }
 
 // instanceIP extracts the bare IP (without CIDR mask) from an instance's

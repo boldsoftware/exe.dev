@@ -340,6 +340,9 @@ func (s *Service) applyStartupNetworkLimits(ctx context.Context, instances []*ap
 		if err := s.context.NetworkManager.ApplyBandwidthLimit(ctx, inst.ID); err != nil {
 			s.log.WarnContext(ctx, "failed to apply bandwidth limit", "instance", inst.ID, "error", err)
 		}
+		if err := s.context.NetworkManager.ApplySourceIPFilter(ctx, inst); err != nil {
+			s.log.WarnContext(ctx, "failed to apply source-IP filter", "instance", inst.ID, "error", err)
+		}
 	}
 
 	s.log.InfoContext(ctx, "background network limits applied", "count", len(instances))

@@ -47,6 +47,14 @@ type NetworkManager interface {
 	ApplyConnectionLimit(ctx context.Context, inst *api.Instance) error
 	// ApplyBandwidthLimit applies bandwidth limiting to an existing TAP device
 	ApplyBandwidthLimit(ctx context.Context, id string) error
+	// ApplySourceIPFilter installs a per-interface rule that drops packets
+	// whose source IP does not match the VM's assigned IP, preventing
+	// source-IP impersonation on host-side services (metadata, gateway,
+	// integration proxy) that identify VMs by source IP. Idempotent.
+	// For the netns manager this is a no-op: each VM lives in its own
+	// network namespace with a unique ext IP, so cross-VM impersonation
+	// via source-IP spoofing is structurally impossible there.
+	ApplySourceIPFilter(ctx context.Context, inst *api.Instance) error
 	// ReconcileLeases releases orphaned network resources that don't belong
 	// to any of the given instances. Each implementation extracts the
 	// identifiers it needs: NAT uses IPs from network configs; netns uses

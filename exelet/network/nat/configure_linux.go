@@ -881,6 +881,54 @@ func (n *NAT) applyConnLimit(ctx context.Context, ip string) error {
 	return nil
 }
 
+// sourceIPFilterArgs returns the iptables rule-spec that drops any IPv4
+// packet entering the host through the given TAP device whose source IP
+// does not match the IP assigned to the VM. Placed in the raw PREROUTING
+// chain so the decision happens before conntrack, NAT, and routing — this
+// is what prevents VMs from impersonating each other's source IP to
+// host-side services (metadata, gateway, integration proxy, etc.).
+//
+// physdev matches on the underlying bridge port (the TAP), which is the
+// only piece of identity the kernel knows is bound to a specific VM.
+func sourceIPFilterArgs(tapName, ip string) []string {
+	return []string{
+		"-m", "physdev", "--physdev-in", tapName,
+		"!", "-s", ip,
+		"-j", "DROP",
+	}
+}
+
+// applySourceIPFilter installs the per-TAP source-IP drop rule. Idempotent.
+func (n *NAT) applySourceIPFilter(ctx context.Context, tapName, ip string) error {
+	rule := sourceIPFilterArgs(tapName, ip)
+
+	checkArgs := append([]string{"-t", "raw", "-C", "PREROUTING"}, rule...)
+	if err := exec.CommandContext(ctx, "iptables", checkArgs...).Run(); err == nil {
+		return nil // already present
+	}
+
+	n.log.DebugContext(ctx, "adding source-IP filter rule", "tap", tapName, "ip", ip)
+
+	insertArgs := append([]string{"-t", "raw", "-I", "PREROUTING", "1"}, rule...)
+	if err := exec.CommandContext(ctx, "iptables", insertArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add source-IP filter rule for tap %s ip %s: %w", tapName, ip, err)
+	}
+	return nil
+}
+
+// removeSourceIPFilter removes the per-TAP source-IP drop rule. Best-effort.
+func (n *NAT) removeSourceIPFilter(ctx context.Context, tapName, ip string) {
+	if tapName == "" || ip == "" {
+		return
+	}
+	rule := sourceIPFilterArgs(tapName, ip)
+	delArgs := append([]string{"-t", "raw", "-D", "PREROUTING"}, rule...)
+	if err := exec.CommandContext(ctx, "iptables", delArgs...).Run(); err != nil {
+		n.log.DebugContext(ctx, "failed to remove source-IP filter rule (may not exist)",
+			"tap", tapName, "ip", ip, "error", err)
+	}
+}
+
 // removeConnLimit removes the connection limit iptables rule for a VM IP.
 func (n *NAT) removeConnLimit(ctx context.Context, ip string) error {
 	n.log.DebugContext(ctx, "removing iptables connection limit rule", "ip", ip, "limit", n.connLimit)
