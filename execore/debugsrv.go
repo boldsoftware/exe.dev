@@ -5550,10 +5550,9 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type billingAccountInfo struct {
-		AccountID    string
-		PlanID       string
-		LatestStatus string
-		BillingURL   string
+		AccountID  string
+		PlanID     string
+		BillingURL string
 	}
 
 	var userAccounts []exedb.Account
@@ -5568,35 +5567,14 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 
 	var billingAccounts []billingAccountInfo
 	for _, a := range userAccounts {
-		status, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestBillingStatus, a.ID)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			status = "pending"
-		case err != nil:
-			s.slog().WarnContext(
-				ctx,
-				"failed to get latest billing status for account",
-				"error",
-				err,
-				"account_id",
-				a.ID,
-				"user_id",
-				userID,
-			)
-			status = "pending"
-		}
-		if status != "active" && status != "canceled" {
-			status = "pending"
-		}
 		var planID string
 		if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, a.ID); err == nil {
 			planID = ap.PlanID
 		}
 		billingAccounts = append(billingAccounts, billingAccountInfo{
-			AccountID:    a.ID,
-			PlanID:       planID,
-			LatestStatus: status,
-			BillingURL:   "/debug/billing?userId=" + url.QueryEscape(userID),
+			AccountID:  a.ID,
+			PlanID:     planID,
+			BillingURL: "/debug/billing?userId=" + url.QueryEscape(userID),
 		})
 	}
 
@@ -5983,9 +5961,9 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("User has %d running VM(s) — stop or delete them first", runningCount))
 		}
 		for _, ba := range billingAccounts {
-			if ba.LatestStatus == "active" {
+			if ba.PlanID != "" && !plan.Grants(ba.PlanID, plan.AccountDelete) {
 				data.DeleteBlockReasons = append(data.DeleteBlockReasons,
-					fmt.Sprintf("Billing account %s has an active subscription — cancel it first", ba.AccountID))
+					fmt.Sprintf("Billing account %s has plan %s which does not allow deletion", ba.AccountID, ba.PlanID))
 			}
 		}
 		if teamRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID); err == nil {
@@ -6058,7 +6036,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	type accountInfo struct {
 		AccountID          string
 		AccountStatus      string
-		LatestStatus       string
 		BillingURL         string
 		StripeDashboardURL string
 		CreditBalance      string
@@ -6124,17 +6101,6 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				}
 				info.PlanHistory = append(info.PlanHistory, row)
 			}
-		}
-
-		// Latest billing status.
-		status, err := withRxRes1(s, ctx, (*exedb.Queries).GetLatestBillingStatus, a.ID)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			info.LatestStatus = "pending"
-		case err != nil:
-			info.LatestStatus = "error"
-		default:
-			info.LatestStatus = status
 		}
 
 		// Child accounts (team members whose parent_id points to this account).

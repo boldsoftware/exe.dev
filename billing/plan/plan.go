@@ -401,15 +401,18 @@ var plans = map[Category]Plan{
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
 			BillingSelfServe: true,
+			AccountDelete:    true,
 		},
 	},
 	CategoryRestricted: {
-		ID:           "restricted",
-		Available:    true,
-		Category:     CategoryRestricted,
-		Name:         "Restricted",
-		DefaultTier:  "restricted:default:monthly:20260601",
-		Entitlements: map[Entitlement]bool{},
+		ID:          "restricted",
+		Available:   true,
+		Category:    CategoryRestricted,
+		Name:        "Restricted",
+		DefaultTier: "restricted:default:monthly:20260601",
+		Entitlements: map[Entitlement]bool{
+			AccountDelete: true,
+		},
 	},
 }
 

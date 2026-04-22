@@ -18,15 +18,18 @@ func TestAllPlansHaveLLMUse(t *testing.T) {
 	}
 }
 
-// TestRestrictedPlanGrantsNothing verifies the Restricted plan has an empty entitlements map.
-func TestRestrictedPlanGrantsNothing(t *testing.T) {
+// TestRestrictedPlanEntitlements verifies the Restricted plan grants only account:delete.
+func TestRestrictedPlanEntitlements(t *testing.T) {
 	p, ok := plans[CategoryRestricted]
 	if !ok {
 		t.Fatal("CategoryRestricted not found in plans")
 	}
+	if !p.Entitlements[AccountDelete] {
+		t.Error("CategoryRestricted should grant account:delete")
+	}
 	for ent, granted := range p.Entitlements {
-		if granted {
-			t.Errorf("CategoryRestricted grants %q, want nothing", ent.ID)
+		if granted && ent != AccountDelete {
+			t.Errorf("CategoryRestricted grants %q, want only account:delete", ent.ID)
 		}
 	}
 }
@@ -56,6 +59,7 @@ func TestAllEntitlements(t *testing.T) {
 		"vm:run":            true,
 		"disk:resize":       true,
 		"billing:selfserve": true,
+		"account:delete":    true,
 	}
 	got := make(map[string]bool)
 	for _, e := range all {
@@ -125,6 +129,33 @@ func TestBillingSelfServeEntitlementByPlan(t *testing.T) {
 		got := Grants(p.ID, BillingSelfServe)
 		if got != want {
 			t.Errorf("plan %q: Grants(BillingSelfServe) = %v, want %v", cat, got, want)
+		}
+	}
+}
+
+// TestAccountDeleteEntitlementByPlan verifies only Basic and Restricted grant account:delete.
+func TestAccountDeleteEntitlementByPlan(t *testing.T) {
+	wantDelete := map[Category]bool{
+		CategoryVIP:           false,
+		CategoryEnterprise:    false,
+		CategoryTeam:          false,
+		CategoryIndividual:    false,
+		CategoryFriend:        false,
+		CategoryGrandfathered: false,
+		CategoryTrial:         false,
+		CategoryBasic:         true,
+		CategoryRestricted:    true,
+	}
+
+	for cat, want := range wantDelete {
+		p, ok := plans[cat]
+		if !ok {
+			t.Errorf("plan %q not found in plans map", cat)
+			continue
+		}
+		got := Grants(p.ID, AccountDelete)
+		if got != want {
+			t.Errorf("plan %q: Grants(AccountDelete) = %v, want %v", cat, got, want)
 		}
 	}
 }

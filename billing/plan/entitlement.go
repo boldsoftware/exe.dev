@@ -35,6 +35,9 @@ var (
 	// Billing operations.
 	BillingSelfServe = Entitlement{"billing:selfserve", "Self-Service Billing Management"}
 
+	// Account operations.
+	AccountDelete = Entitlement{"account:delete", "Account Deletable"}
+
 	// All is a wildcard that grants every entitlement.
 	All = Entitlement{"*", "All Entitlements"}
 )
@@ -51,6 +54,7 @@ func AllEntitlements() []Entitlement {
 		VMRun,
 		DiskResize,
 		BillingSelfServe,
+		AccountDelete,
 	}
 }
 
