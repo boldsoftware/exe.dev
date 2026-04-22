@@ -58,7 +58,21 @@ type agentResult struct {
 	Err     error
 }
 
-const reportHeading = "# SECURITY REPORT"
+const (
+	reportHeading       = "# SECURITY REPORT"
+	codexModel          = "gpt-5.4"
+	llmGateway          = "http://169.254.169.254/gateway/llm"
+	codexGatewayBaseURL = llmGateway + "/openai/v1"
+	codexConfigTOML     = `model = "` + codexModel + `"
+model_provider = "exe-openai"
+model_reasoning_effort = "xhigh"
+
+[model_providers.exe-openai]
+name = "exe.dev LLM Gateway"
+base_url = "` + codexGatewayBaseURL + `"
+requires_openai_auth = false
+`
+)
 
 func main() {
 	log.SetFlags(0)
@@ -81,12 +95,11 @@ func main() {
 		log.Fatalf("create box: %v", err)
 	}
 
-	// TODO(https://github.com/boldsoftware/exe.dev/issues/32): remove once DNS propagation is fixed.
-	log.Printf("waiting 1 minute for DNS propagation...")
-	time.Sleep(time.Minute)
-
 	if err := uploadSourceArchive(ctx, cfg, box); err != nil {
 		log.Fatalf("upload source archive: %v", err)
+	}
+	if err := installCodexConfig(ctx, cfg, box); err != nil {
+		log.Fatalf("install codex config: %v", err)
 	}
 
 	// Run agents in serial.
@@ -173,6 +186,22 @@ func uploadSourceArchive(ctx context.Context, cfg *config, box *boxInfo) error {
 	return nil
 }
 
+func installCodexConfig(ctx context.Context, cfg *config, box *boxInfo) error {
+	sshArgs := cfg.replSSH.buildCommonArgs()
+	sshArgs = append(sshArgs,
+		"-p", fmt.Sprint(box.SSHPort),
+		box.SSHDest,
+		"bash", "-lc",
+		"umask 077 && mkdir -p ~/.codex && cat > ~/.codex/config.toml",
+	)
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
+	cmd.Stdin = strings.NewReader(codexConfigTOML)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ssh install config: %w\n%s", err, out)
+	}
+	return nil
+}
+
 func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentResult {
 	result := agentResult{Agent: ag}
 
@@ -204,23 +233,18 @@ func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentRes
 	return result
 }
 
-const llmGateway = "http://169.254.169.254/gateway/llm"
-
 func agentScript(ag agent) string {
 	switch ag {
 	case agentCodex:
 		return fmt.Sprintf(`set -euo pipefail
-export OPENAI_API_KEY=implicit
-export CODEX_API_KEY=implicit
-export OPENAI_BASE_URL=%s/openai/v1
 export PATH="/home/exedev/.local/bin:$PATH"
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
-codex exec --model gpt-5.1-codex-max --config model_reasoning_effort=xhigh --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message "$TMP" <<'EOF'
+codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message "$TMP" <<'EOF'
 %s
 EOF
 cat "$TMP"
-`, llmGateway, prompt)
+`, prompt)
 	case agentClaude:
 		return fmt.Sprintf(`set -euo pipefail
 export ANTHROPIC_API_KEY=implicit
