@@ -110,19 +110,46 @@
                 </span>
                 <span v-else class="metric-na">-</span>
               </td>
-              <td class="col-metric">
+              <td class="col-pressure">
+                <a v-if="sparklines[h.instance]?.cpu_pressure?.length"
+                   :href="grafanaURL(h.instance, 'cpu_pressure')" target="_blank" rel="noopener"
+                   class="sparkline-link" title="View in Grafana">
+                  <svg class="sparkline" viewBox="0 0 80 20" preserveAspectRatio="none">
+                    <path :d="sparklinePath(sparklines[h.instance]?.cpu_pressure)"
+                          :stroke="sparklineColor(sparklines[h.instance]?.cpu_pressure)"
+                          fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                  </svg>
+                </a>
                 <span v-if="h.cpu_pressure != null" class="metric-value" :class="pressureClass(h.cpu_pressure)">
                   {{ h.cpu_pressure.toFixed(2) }}%
                 </span>
                 <span v-else class="metric-na">-</span>
               </td>
-              <td class="col-metric">
+              <td class="col-pressure">
+                <a v-if="sparklines[h.instance]?.memory_pressure?.length"
+                   :href="grafanaURL(h.instance, 'memory_pressure')" target="_blank" rel="noopener"
+                   class="sparkline-link" title="View in Grafana">
+                  <svg class="sparkline" viewBox="0 0 80 20" preserveAspectRatio="none">
+                    <path :d="sparklinePath(sparklines[h.instance]?.memory_pressure)"
+                          :stroke="sparklineColor(sparklines[h.instance]?.memory_pressure)"
+                          fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                  </svg>
+                </a>
                 <span v-if="h.memory_pressure != null" class="metric-value" :class="pressureClass(h.memory_pressure)">
                   {{ h.memory_pressure.toFixed(2) }}%
                 </span>
                 <span v-else class="metric-na">-</span>
               </td>
-              <td class="col-metric">
+              <td class="col-pressure">
+                <a v-if="sparklines[h.instance]?.io_pressure?.length"
+                   :href="grafanaURL(h.instance, 'io_pressure')" target="_blank" rel="noopener"
+                   class="sparkline-link" title="View in Grafana">
+                  <svg class="sparkline" viewBox="0 0 80 20" preserveAspectRatio="none">
+                    <path :d="sparklinePath(sparklines[h.instance]?.io_pressure)"
+                          :stroke="sparklineColor(sparklines[h.instance]?.io_pressure)"
+                          fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                  </svg>
+                </a>
                 <span v-if="h.io_pressure != null" class="metric-value" :class="pressureClass(h.io_pressure)">
                   {{ h.io_pressure.toFixed(2) }}%
                 </span>
@@ -137,10 +164,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
-import { fetchHosts, type HostMetrics } from '../api/client'
+import { ref, computed, onMounted, onUnmounted, reactive, nextTick, watch } from 'vue'
+import { fetchHosts, fetchHostSparklines, type HostMetrics, type HostSparklineData } from '../api/client'
 
 const hosts = ref<HostMetrics[]>([])
+const sparklines = ref<Record<string, HostSparklineData>>({})
 const loading = ref(true)
 const error = ref('')
 const search = ref('')
@@ -151,17 +179,28 @@ const sortCol = ref<string>('hostname')
 const sortDir = ref<'asc' | 'desc'>('asc')
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
+let sparklineTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
-  await loadHosts()
+  await Promise.all([loadHosts(), loadSparklines()])
   refreshTimer = setInterval(loadHosts, 30_000)
+  sparklineTimer = setInterval(loadSparklines, 60_000)
   document.addEventListener('click', closeDropdowns)
 })
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  if (sparklineTimer) clearInterval(sparklineTimer)
   document.removeEventListener('click', closeDropdowns)
 })
+
+async function loadSparklines() {
+  try {
+    sparklines.value = await fetchHostSparklines()
+  } catch (_) {
+    // Non-critical — sparklines just won't render.
+  }
+}
 
 async function loadHosts() {
   try {
@@ -231,6 +270,71 @@ function cpuClass(v: number): string {
   if (v >= 80) return 'metric-critical'
   if (v >= 50) return 'metric-warning'
   return 'metric-ok'
+}
+
+const GRAFANA_BASE = 'https://grafana.crocodile-vector.ts.net'
+const GRAFANA_DS_UID = 'PBFA97CFB590B2093'
+
+const pressureMetrics: Record<string, string> = {
+  cpu_pressure: 'node_pressure_cpu_waiting_seconds_total',
+  memory_pressure: 'node_pressure_memory_waiting_seconds_total',
+  io_pressure: 'node_pressure_io_waiting_seconds_total',
+}
+
+function grafanaURL(instance: string, metricKey: string): string {
+  const metric = pressureMetrics[metricKey]
+  if (!metric) return '#'
+  const expr = `rate(${metric}{instance="${instance}"}[$__rate_interval])`
+  const panes = {
+    sp: {
+      datasource: GRAFANA_DS_UID,
+      queries: [{
+        refId: 'A',
+        expr,
+        range: true,
+        instant: true,
+        datasource: { type: 'prometheus', uid: GRAFANA_DS_UID },
+        editorMode: 'builder',
+        legendFormat: '__auto',
+        useBackend: false,
+        disableTextWrap: false,
+        fullMetaSearch: false,
+        includeNullMetadata: false,
+      }],
+      range: { from: 'now-1h', to: 'now' },
+    },
+  }
+  return `${GRAFANA_BASE}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify(panes))}&orgId=1`
+}
+
+function sparklinePath(points: [number, number][] | undefined): string {
+  if (!points || points.length < 2) return ''
+  const tMin = points[0][0]
+  const tMax = points[points.length - 1][0]
+  const tRange = tMax - tMin || 1
+  let vMax = 0
+  for (const p of points) {
+    if (p[1] > vMax) vMax = p[1]
+  }
+  if (vMax === 0) vMax = 1
+
+  const w = 80
+  const h = 20
+  const parts: string[] = []
+  for (let i = 0; i < points.length; i++) {
+    const x = ((points[i][0] - tMin) / tRange) * w
+    const y = h - (points[i][1] / vMax) * h
+    parts.push(`${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
+  }
+  return parts.join(' ')
+}
+
+function sparklineColor(points: [number, number][] | undefined): string {
+  if (!points || points.length === 0) return 'var(--text-color-muted)'
+  const last = points[points.length - 1][1]
+  if (last >= 10) return 'var(--red-400)'
+  if (last >= 2) return 'var(--yellow-400)'
+  return 'var(--text-color-secondary)'
 }
 
 function pressureClass(v: number): string {
@@ -564,9 +668,43 @@ function pressureClass(v: number): string {
   color: var(--text-color-muted);
 }
 
+/* Pressure cells with sparklines */
+.col-pressure {
+  text-align: right;
+  width: 160px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.sparkline-link {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.sparkline-link:hover {
+  opacity: 1;
+}
+
+.sparkline {
+  width: 60px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 @media (max-width: 991px) {
   .col-metric {
     width: 80px;
+  }
+  .col-pressure {
+    width: 120px;
+  }
+  .sparkline {
+    width: 40px;
   }
 }
 </style>

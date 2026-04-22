@@ -190,7 +190,87 @@ func extractRegion(hostname string) string {
 			return parts[1]
 		}
 	}
+	// exe-ctr-NN hosts are in PDX.
+	if strings.HasPrefix(hostname, "exe-ctr-") {
+		return "pdx"
+	}
 	return ""
+}
+
+// HandleHostSparklines handles GET /api/v1/hosts/sparklines — returns 1h of
+// pressure time-series data for all hosts.
+func (h *Handlers) HandleHostSparklines(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	type queryResult struct {
+		name string
+		data map[string][][2]float64 // instance -> [[unix_ts, value], ...]
+		err  error
+	}
+
+	queries := []struct {
+		name  string
+		query string
+	}{
+		{"cpu_pressure", `rate(node_pressure_cpu_waiting_seconds_total{job="node"}[5m]) * 100`},
+		{"memory_pressure", `rate(node_pressure_memory_waiting_seconds_total{job="node"}[5m]) * 100`},
+		{"io_pressure", `rate(node_pressure_io_waiting_seconds_total{job="node"}[5m]) * 100`},
+	}
+
+	results := make([]queryResult, len(queries))
+	var wg sync.WaitGroup
+	for i, q := range queries {
+		wg.Add(1)
+		go func(i int, name, query string) {
+			defer wg.Done()
+			data, err := promQueryRange(ctx, h.log, query, time.Hour, time.Minute)
+			results[i] = queryResult{name: name, data: data, err: err}
+		}(i, q.name, q.query)
+	}
+	wg.Wait()
+
+	for _, r := range results {
+		if r.err != nil {
+			h.log.Error("prometheus range query failed", "query", r.name, "error", r.err)
+		}
+	}
+
+	// Build response: map[instance] -> {cpu_pressure: [...], ...}
+	type sparklineData struct {
+		CPUPressure    [][2]float64 `json:"cpu_pressure,omitempty"`
+		MemoryPressure [][2]float64 `json:"memory_pressure,omitempty"`
+		IOPressure     [][2]float64 `json:"io_pressure,omitempty"`
+	}
+
+	out := make(map[string]*sparklineData)
+	for i, r := range results {
+		if r.err != nil {
+			continue
+		}
+		for inst, points := range r.data {
+			sd, ok := out[inst]
+			if !ok {
+				sd = &sparklineData{}
+				out[inst] = sd
+			}
+			switch i {
+			case 0:
+				sd.CPUPressure = points
+			case 1:
+				sd.MemoryPressure = points
+			case 2:
+				sd.IOPressure = points
+			}
+		}
+	}
+
+	writeJSON(w, out)
 }
 
 // promValue holds a single instant query result.
@@ -258,6 +338,81 @@ func promQuery(ctx context.Context, _ *slog.Logger, query string) (map[string]pr
 			labels: r.Metric,
 			value:  val,
 		}
+	}
+	return out, nil
+}
+
+// promQueryRange runs a range query against Prometheus and returns results keyed by instance.
+func promQueryRange(ctx context.Context, _ *slog.Logger, query string, window, step time.Duration) (map[string][][2]float64, error) {
+	now := time.Now()
+	params := url.Values{
+		"query": {query},
+		"start": {fmt.Sprintf("%d", now.Add(-window).Unix())},
+		"end":   {fmt.Sprintf("%d", now.Unix())},
+		"step":  {fmt.Sprintf("%d", int(step.Seconds()))},
+	}
+	u := prometheusBaseURL + "/api/v1/query_range?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("prometheus returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string    `json:"metric"`
+				Values [][2]json.RawMessage `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if result.Status != "success" {
+		return nil, fmt.Errorf("prometheus query status: %s", result.Status)
+	}
+
+	out := make(map[string][][2]float64, len(result.Data.Result))
+	for _, r := range result.Data.Result {
+		inst := r.Metric["instance"]
+		if inst == "" {
+			continue
+		}
+		points := make([][2]float64, 0, len(r.Values))
+		for _, v := range r.Values {
+			var ts float64
+			if err := json.Unmarshal(v[0], &ts); err != nil {
+				continue
+			}
+			var valStr string
+			if err := json.Unmarshal(v[1], &valStr); err != nil {
+				continue
+			}
+			var val float64
+			if _, err := fmt.Sscanf(valStr, "%f", &val); err != nil {
+				continue
+			}
+			points = append(points, [2]float64{ts, val})
+		}
+		out[inst] = points
 	}
 	return out, nil
 }

@@ -133,6 +133,20 @@ export async function fetchHosts(): Promise<HostMetrics[]> {
   return resp.json()
 }
 
+// Sparkline data: map from instance to pressure time-series.
+// Each series is an array of [unix_timestamp, value] pairs.
+export interface HostSparklineData {
+  cpu_pressure?: [number, number][]
+  memory_pressure?: [number, number][]
+  io_pressure?: [number, number][]
+}
+
+export async function fetchHostSparklines(): Promise<Record<string, HostSparklineData>> {
+  const resp = await fetch('/api/v1/hosts/sparklines')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
 export async function startDeploy(req: DeployRequest): Promise<DeployStatus> {
   const resp = await fetch('/api/v1/deploys', {
     method: 'POST',
