@@ -105,8 +105,76 @@ func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	return ret, err
 }
 
+// leakedUpstreamHeaders names response headers that reveal upstream provider
+// account identity, rate-limit/tier data, or upstream cookies. They must be
+// stripped before returning the response to the tenant VM.
+//
+// Matching is case-insensitive (net/http normalizes header names).
+var leakedUpstreamHeaders = []string{
+	// Anthropic — account identity and rate limits.
+	"Anthropic-Organization-Id",
+	"Anthropic-Ratelimit-Input-Tokens-Limit",
+	"Anthropic-Ratelimit-Input-Tokens-Remaining",
+	"Anthropic-Ratelimit-Input-Tokens-Reset",
+	"Anthropic-Ratelimit-Output-Tokens-Limit",
+	"Anthropic-Ratelimit-Output-Tokens-Remaining",
+	"Anthropic-Ratelimit-Output-Tokens-Reset",
+	"Anthropic-Ratelimit-Requests-Limit",
+	"Anthropic-Ratelimit-Requests-Remaining",
+	"Anthropic-Ratelimit-Requests-Reset",
+	"Anthropic-Ratelimit-Tokens-Limit",
+	"Anthropic-Ratelimit-Tokens-Remaining",
+	"Anthropic-Ratelimit-Tokens-Reset",
+	"Cf-Ray",
+	"Cf-Cache-Status",
+	"Server",
+	"Via",
+	// OpenAI — account identity, project, rate limits, request id.
+	"Openai-Organization",
+	"Openai-Project",
+	"Openai-Processing-Ms",
+	"Openai-Version",
+	"X-Ratelimit-Limit-Requests",
+	"X-Ratelimit-Limit-Tokens",
+	"X-Ratelimit-Remaining-Requests",
+	"X-Ratelimit-Remaining-Tokens",
+	"X-Ratelimit-Reset-Requests",
+	"X-Ratelimit-Reset-Tokens",
+	// Fireworks — request id, rate limits, envoy internals, and assorted
+	// account-observable metrics.
+	"X-Envoy-Upstream-Service-Time",
+	"X-Ratelimit-Limit-Requests",
+	"X-Ratelimit-Limit-Tokens-Generated",
+	"X-Ratelimit-Limit-Tokens-Prompt",
+	"X-Ratelimit-Over-Limit",
+	"X-Ratelimit-Remaining-Requests",
+	"X-Ratelimit-Remaining-Tokens-Generated",
+	"X-Ratelimit-Remaining-Tokens-Prompt",
+	"Fireworks-Cached-Prompt-Tokens",
+	"Fireworks-Prompt-Tokens",
+	"Fireworks-Sampling-Options",
+	"Fireworks-Server-Processing-Time",
+	"Fireworks-Server-Received-Timestamp",
+	"Fireworks-Server-Time-To-First-Token",
+	"Fireworks-Speculation-Prompt-Matched-Tokens",
+	// Upstream cookies (e.g. Cloudflare __cf_bm) must never be forwarded.
+	"Set-Cookie",
+}
+
+// stripUpstreamHeaders removes provider-identifying and other sensitive
+// upstream headers from the response before it is returned to the VM.
+func stripUpstreamHeaders(h http.Header) {
+	for _, name := range leakedUpstreamHeaders {
+		h.Del(name)
+	}
+}
+
 func (a *accountingTransport) modifyResponse(resp *http.Response) error {
-	if resp == nil || resp.StatusCode != http.StatusOK {
+	if resp == nil {
+		return nil
+	}
+	stripUpstreamHeaders(resp.Header)
+	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
 
