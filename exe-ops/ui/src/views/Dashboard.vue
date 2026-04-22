@@ -64,6 +64,15 @@
         <code class="head-sha">{{ inventory.head_sha.slice(0, 7) }}</code>
         <span class="head-subject">{{ inventory.head_subject }}</span>
         <span class="head-date">{{ formatRelative(inventory.head_date) }}</span>
+        <router-link
+          v-if="exedBehindCount > 0"
+          :to="{ path: '/deploy', query: { action: 'deploy-exed' } }"
+          class="deploy-exed-btn"
+        >
+          <i class="pi pi-upload"></i>
+          Deploy exed
+          <span class="deploy-exed-badge">{{ exedBehindCount }} behind</span>
+        </router-link>
       </div>
 
       <!-- Recent Deploys -->
@@ -147,6 +156,9 @@ const behindCount = computed(() =>
   inventory.value?.processes.filter(p => p.commits_behind > 0).length ?? 0
 )
 const recentDeployCount = computed(() => deploys.value.length)
+const exedBehindCount = computed(() =>
+  inventory.value?.processes.filter(p => p.process === 'exed' && p.commits_behind > 0).length ?? 0
+)
 
 const stageRoleSummary = computed(() => {
   if (!inventory.value) return []
@@ -309,6 +321,33 @@ function formatRelative(dateStr: string): string {
   color: var(--text-color-muted);
   font-size: 0.75rem;
   flex-shrink: 0;
+}
+
+.deploy-exed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary-color);
+  border-radius: 5px;
+  text-decoration: none;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background 0.15s;
+}
+
+.deploy-exed-btn:hover {
+  background: var(--primary-600, #4338ca);
+}
+
+.deploy-exed-badge {
+  font-size: 0.65rem;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
 }
 
 /* Sections */

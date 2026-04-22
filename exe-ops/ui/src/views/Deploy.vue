@@ -647,7 +647,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDeployInventory,
   fetchDeployCommits,
@@ -1040,6 +1040,7 @@ const search = ref('')
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
 const route = useRoute()
+const router = useRouter()
 const validTabs = new Set(['fleet', 'versions', 'history'])
 const initialTab = validTabs.has(route.query.tab as string) ? (route.query.tab as 'fleet' | 'versions' | 'history') : 'fleet'
 const activeTab = ref<'fleet' | 'versions' | 'history'>(initialTab)
@@ -1559,6 +1560,23 @@ onMounted(async () => {
   await Promise.all([load(), loadDeploys()])
   pollTimer = setInterval(load, 30000)
   startDeployPolling()
+
+  // Auto-trigger exed deploy when navigated from dashboard
+  if (route.query.action === 'deploy-exed') {
+    // Clear the query param so a page refresh doesn't re-trigger
+    router.replace({ path: '/deploy', query: {} })
+    const exedTargets = procs.value.filter(p =>
+      p.process === 'exed' && canDeploy(p) && p.version !== headSHA.value
+    )
+    if (exedTargets.length === 0) return
+    if (exedTargets.length === 1) {
+      confirmDeploy(exedTargets[0])
+    } else {
+      // Select them and open bulk confirm
+      for (const p of exedTargets) selectedProcs.add(procKey(p))
+      confirmBulkDeploy()
+    }
+  }
 })
 
 onUnmounted(() => {
