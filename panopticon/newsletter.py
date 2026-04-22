@@ -103,7 +103,7 @@ def _require_env(name: str) -> str:
 # Slack
 # ---------------------------------------------------------------------------
 
-def post_to_slack(header: str, items: list[str]) -> None:
+def post_to_slack(header: str, histogram: str | None, items: list[str]) -> None:
     # Import from the scripts/slack package that daily_brief.py also uses.
     slack_dir = os.path.join(os.path.dirname(__file__), "..", "scripts", "slack")
     if slack_dir not in sys.path:
@@ -119,22 +119,26 @@ def post_to_slack(header: str, items: list[str]) -> None:
     slack_url = os.environ.get("EXE_SLACK_URL", "").strip()
     slack = SlackClient(token=token, base_url=slack_url)
     channel_id = slack.find_channel_id(SLACK_CHANNEL)
-    slack.post_message(
-        channel_id,
-        f"{header}\n{provenance}\n{warning}",
-        mrkdwn=True,
-        unfurl_links=False,
-        unfurl_media=False,
-    )
-    for item in items:
+
+    messages: list[str] = [f"{header}\n{warning}\n{provenance}"]
+    if histogram:
+        messages.append(histogram)
+    messages.extend(items)
+
+    for msg in messages:
         slack.post_message(
             channel_id,
-            item,
+            msg,
             mrkdwn=True,
             unfurl_links=False,
             unfurl_media=False,
         )
-    log.info("Posted header + %d items to #%s", len(items), SLACK_CHANNEL)
+    log.info(
+        "Posted header + %s%d items to #%s",
+        "histogram + " if histogram else "",
+        len(items),
+        SLACK_CHANNEL,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,10 +171,11 @@ SOURCE_DESCS = {"github": GITHUB_DESC, "discord": DISCORD_DESC, "missive": MISSI
 VALID_SOURCES = set(SOURCE_DESCS)
 
 
-def generate(args) -> tuple[str, list[str]]:
-    """Run the RLM pipeline and return (header, items).
+def generate(args) -> tuple[str, str | None, list[str]]:
+    """Run the RLM pipeline and return (header, histogram, items).
 
     The header is built in Python from the run context (date and sources);
+    the histogram (if Missive is enabled) is posted as its own message;
     items are produced by the agent, one self-contained news item per entry.
     """
     # --- parse and validate --sources ---
@@ -323,13 +328,13 @@ def generate(args) -> tuple[str, list[str]]:
         result = rlm(**call_kwargs)
         items = list(result["items"])
         header = "Daily user-pulse"
+        histogram: str | None = None
         if missive_client is not None:
             try:
                 histogram = open_conversation_age_histogram(missive_client)
-                header = f"{header}\n{histogram}"
             except Exception as e:
                 log.warning("failed to build Missive age histogram: %s", e)
-        return header, items
+        return header, histogram, items
 
 
 # ---------------------------------------------------------------------------
@@ -426,8 +431,8 @@ def main_loop(args):
         if in_window and last_brief_date != now.date():
             log.info("generating newsletter for %s", now.date())
             try:
-                header, items = generate(args)
-                post_to_slack(header, items)
+                header, histogram, items = generate(args)
+                post_to_slack(header, histogram, items)
                 last_brief_date = now.date()
                 log.info("posted newsletter for %s", last_brief_date)
             except Exception:
@@ -480,17 +485,20 @@ def main():
             log.info("interrupted")
     else:
         # Single-shot: dry-run (default) or --once --post
-        header, items = generate(args)
+        header, histogram, items = generate(args)
 
         print("\n" + "=" * 70)
         print(header)
+        if histogram:
+            print("-" * 70)
+            print(histogram)
         for item in items:
             print("-" * 70)
             print(item)
         print("=" * 70 + "\n")
 
         if args.post:
-            post_to_slack(header, items)
+            post_to_slack(header, histogram, items)
 
 
 if __name__ == "__main__":

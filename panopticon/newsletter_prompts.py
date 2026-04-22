@@ -42,11 +42,11 @@ Respect privacy:
 In order to pro-actively surface users who are waiting for help,
 if Discord is a source, call discord.unresolved_help_threads()
 to check for unanswered questions in help/support channels and forums
-from the last 5 days. Add each unresolved thread as its own item,
-leading with 🔴. Include who asked, when, a brief summary, and a link.
+from the last 5 days. Add each unresolved thread as its own item.
+Include who asked, when, a brief summary, and a link.
 
 Format items in Slack mrkdwn. Include links to source issues, threads,
-or discussions.
+or discussions. Do not add gratuitous emoji; plain prose only.
 
 The datetime module is available in the sandbox for timestamp arithmetic.\
 """
