@@ -216,7 +216,7 @@ func scan(dataDir, ipamDir string) (*Report, error) {
 	r.SafetyBound.ValidIPs = len(validIPs)
 	r.SafetyBound.WouldRelease = len(r.OrphanLeases)
 	switch {
-	case r.LeasesTotal > 0 && len(validIPs) == 0:
+	case r.LeasesTotal > 10 && len(validIPs) == 0:
 		r.SafetyBound.WouldTrip = true
 		r.SafetyBound.Reason = "no valid instance IPs but leases exist"
 	case r.LeasesTotal > 10 && r.SafetyBound.WouldRelease > r.LeasesTotal/2:

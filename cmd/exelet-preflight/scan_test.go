@@ -142,8 +142,7 @@ func TestScanOrphanLease(t *testing.T) {
 	if len(r.OrphanLeases) != 1 || r.OrphanLeases[0].IP != "10.42.0.99" {
 		t.Errorf("expected one orphan at 10.42.0.99, got %+v", r.OrphanLeases)
 	}
-	// 2 leases, 1 orphan → safety bound does NOT trip (needs >10 leases to activate
-	// the 50% rule, and validIPs > 0 so the zero-valid-IPs rule also doesn't trip).
+	// 2 leases, 1 orphan → safety bound does NOT trip: both rules require >10 leases.
 	if r.SafetyBound.WouldTrip {
 		t.Errorf("safety bound should not trip with 2 leases: %+v", r.SafetyBound)
 	}
@@ -154,19 +153,23 @@ func TestScanOrphanLease(t *testing.T) {
 
 func TestScanSafetyBoundTripsOnZeroValidIPs(t *testing.T) {
 	f := newFixture(t)
-	// No instances at all, but leases exist — the exact scenario from the
-	// 2026-04-14 incident reduced to its essence.
-	f.writeLeases(t,
-		ipam.Lease{IP: "10.42.0.3", MACAddress: "aa:bb:cc:00:00:03"},
-		ipam.Lease{IP: "10.42.0.4", MACAddress: "aa:bb:cc:00:00:04"},
-	)
+	// No instances at all, but many leases exist. The bound requires
+	// >10 leases so a lone orphan after all VMs are gone still reconciles.
+	var leases []ipam.Lease
+	for i := 10; i < 21; i++ {
+		leases = append(leases, ipam.Lease{
+			IP:         "10.42.0." + strconv.Itoa(i),
+			MACAddress: "aa:bb:cc:00:00:" + strconv.Itoa(i),
+		})
+	}
+	f.writeLeases(t, leases...)
 
 	r, err := scan(f.dataDir, f.ipamDir)
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
 	if !r.SafetyBound.WouldTrip {
-		t.Errorf("safety bound should trip with 0 valid IPs and 2 leases: %+v", r.SafetyBound)
+		t.Errorf("safety bound should trip with 0 valid IPs and >10 leases: %+v", r.SafetyBound)
 	}
 	if r.ExitCode() != 1 {
 		t.Errorf("expected exit 1 (safety bound trip, informational), got %d", r.ExitCode())

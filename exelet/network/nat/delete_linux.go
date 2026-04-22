@@ -86,7 +86,7 @@ func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([
 	// read failure) combined with this function's destructive behavior
 	// can mass-release live leases whose IPs then get reassigned,
 	// producing duplicate-IP conflicts.
-	if len(leases) > 0 && len(validIPs) == 0 {
+	if len(leases) > 10 && len(validIPs) == 0 {
 		n.log.ErrorContext(ctx,
 			"aborting IPAM reconciliation: no valid instance IPs but leases exist — instance list is likely incomplete",
 			"leases", len(leases),
