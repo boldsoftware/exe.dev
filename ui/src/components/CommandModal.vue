@@ -11,7 +11,14 @@
         <div class="cmd-display">
           <code>{{ shownCommand }}</code>
         </div>
-        <div v-if="needsInput" class="cmd-input-wrap">
+        <div v-if="needsInput && choices && choices.length > 0" class="cmd-choices">
+          <label v-for="c in choices" :key="c.value" class="radio-label">
+            <input type="radio" :value="c.value" v-model="inputValue" />
+            <span>{{ c.label || c.value }}</span>
+            <span v-if="c.hint" class="choice-hint">{{ c.hint }}</span>
+          </label>
+        </div>
+        <div v-else-if="needsInput" class="cmd-input-wrap">
           <input
             ref="inputRef"
             v-model="inputValue"
@@ -84,6 +91,7 @@ const props = defineProps<{
   danger?: boolean
   successFormat?: string
   suggestions?: string[]
+  choices?: { value: string; label?: string; hint?: string }[]
 }>()
 
 const emit = defineEmits<{
@@ -452,6 +460,41 @@ function close() {
 .cmd-input-wrap {
   position: relative;
   margin-top: 8px;
+}
+
+.cmd-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  background: var(--surface-card);
+  transition: background 0.1s;
+}
+
+.radio-label:hover {
+  background: var(--surface-hover);
+}
+
+.radio-label input[type="radio"] {
+  margin: 0;
+  accent-color: var(--primary-color, #6366f1);
+}
+
+.choice-hint {
+  color: var(--text-color-muted);
+  font-size: 12px;
+  margin-left: auto;
 }
 
 .cmd-input {

@@ -38,6 +38,7 @@ var allowedCommands = map[string]bool{
 	"team members":             true,
 	"team add":                 true,
 	"team remove":              true,
+	"team role":                true,
 	"team transfer":            true,
 	"integrations add":         true,
 	"integrations remove":      true,

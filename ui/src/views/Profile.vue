@@ -543,6 +543,7 @@
       :input-placeholder="modal.inputPlaceholder"
       :default-value="modal.defaultValue"
       :danger="modal.danger"
+      :choices="modal.choices"
       @close="modal.visible = false"
       @success="reload"
     />
@@ -1006,6 +1007,7 @@ const modal = reactive({
   inputPlaceholder: '',
   defaultValue: '',
   danger: false,
+  choices: [] as { value: string; label?: string; hint?: string }[],
 })
 
 async function reload() {
@@ -1052,6 +1054,7 @@ function openModal(opts: Partial<typeof modal>) {
     inputPlaceholder: '',
     defaultValue: '',
     danger: false,
+    choices: [] as { value: string; label?: string; hint?: string }[],
     ...opts,
   })
 }
@@ -1103,15 +1106,22 @@ function canChangeRole(m: { role: string }): boolean {
 
 function changeTeamMemberRole(email: string, currentRole: string) {
   const ti = data.value?.teamInfo
-  const roles = ti?.isBillingOwner
-    ? ['user', 'admin', 'billing_owner']
-    : ['user', 'admin']
-  const options = roles.filter(r => r !== currentRole)
+  const allRoles: { value: string; label: string; hint: string }[] = [
+    { value: 'user', label: 'User', hint: 'Access to team-shared VMs' },
+    { value: 'admin', label: 'Admin', hint: 'Can invite and manage members' },
+    { value: 'billing_owner', label: 'Billing owner', hint: 'Owns billing and team settings' },
+  ]
+  const choices = allRoles.filter(r => {
+    if (r.value === currentRole) return false
+    if (r.value === 'billing_owner') return !!ti?.isBillingOwner
+    return true
+  })
   openModal({
     title: 'Change Team Member Role',
     commandPrefix: `team role ${shellQuote(email)}`,
-    inputPlaceholder: options.join(' | '),
-    description: `Change the role for <strong>${email}</strong> (currently <em>${currentRole}</em>). Type one of: ${options.join(', ')}.`,
+    defaultValue: choices[0]?.value || '',
+    choices,
+    description: `Change the role for <strong>${email}</strong> (currently <em>${currentRole}</em>).`,
   })
 }
 
