@@ -540,6 +540,16 @@ func TestNextExpiredTrialUser(t *testing.T) {
 	// Case 4: non-trial plan + running box -> should NOT appear.
 	setup(t, "usr_basic_run", "acct_basic_run", "basic:monthly:20260106", nil, "running")
 
+	// Case 5: expired trial but account has parent_id (team member whose
+	// effective plan resolves through the billing owner's account) -> should
+	// NOT appear. plan.ForUser would otherwise skip these, churning the
+	// enforcer loop.
+	olderExpired := new(time.Now().Add(-3 * time.Hour))
+	setup(t, "usr_team_member", "acct_team_member", "trial:monthly:20260106", olderExpired, "running")
+	if _, err := db.ExecContext(ctx, `UPDATE accounts SET parent_id = ? WHERE id = ?`, "acct_exp_run", "acct_team_member"); err != nil {
+		t.Fatalf("set parent_id: %v", err)
+	}
+
 	// First call returns the oldest expired user.
 	userID, err := queries.NextExpiredTrialUser(ctx)
 	if err != nil {

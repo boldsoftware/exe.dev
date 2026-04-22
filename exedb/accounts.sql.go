@@ -44,6 +44,7 @@ WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at IS NOT NULL
   AND ap.changed_by = 'system:stripeless_trial'
   AND ap.plan_id LIKE 'trial:%'
+  AND a.parent_id IS NULL
 ORDER BY ap.trial_expires_at ASC
 `
 
@@ -59,8 +60,12 @@ type ActiveTrialUsersRow struct {
 // ActiveTrialUsers returns all users with an active stripeless signup trial
 // (changed_by = 'system:stripeless_trial'), their expiry time, email, and the
 // count of running boxes they own. Stripe-managed and invite trials are
-// excluded because the trial expiry enforcer does not act on them. Used by
-// the debug dashboard.
+// excluded because the trial expiry enforcer does not act on them. Accounts
+// with a parent_id (team members whose effective plan is resolved through
+// the billing owner's account) are also excluded -- their own-account trial
+// row is inert and the enforcer skips it, so surfacing it on the debug
+// dashboard would mislead operators about enforcement behavior. Used by the
+// debug dashboard.
 func (q *Queries) ActiveTrialUsers(ctx context.Context) ([]ActiveTrialUsersRow, error) {
 	rows, err := q.query(ctx, q.activeTrialUsersStmt, activeTrialUsers)
 	if err != nil {
@@ -1043,6 +1048,7 @@ WHERE ap.ended_at IS NULL
   AND ap.trial_expires_at <= datetime('now')
   AND ap.changed_by = 'system:stripeless_trial'
   AND ap.plan_id LIKE 'trial:%'
+  AND a.parent_id IS NULL
 ORDER BY ap.trial_expires_at ASC
 LIMIT 1
 `
@@ -1050,9 +1056,12 @@ LIMIT 1
 // NextExpiredTrialUser returns the user ID with the oldest expired
 // stripeless-signup trial (changed_by = 'system:stripeless_trial').
 // Other trial kinds (Stripe, invite) are intentionally excluded: this
-// enforcer only handles self-serve stripeless trials. Candidates only --
-// the caller must verify entitlement via plan.ForUser before
-// transitioning anything. Returns sql.ErrNoRows if there are none.
+// enforcer only handles self-serve stripeless trials. Accounts that have
+// a parent_id (team members whose effective plan is resolved via the
+// billing owner's account) are also excluded -- their own-account trial
+// is inert, so enforcing it is a no-op that plan.ForUser would skip.
+// Candidates only -- the caller must verify entitlement via plan.ForUser
+// before transitioning anything. Returns sql.ErrNoRows if there are none.
 func (q *Queries) NextExpiredTrialUser(ctx context.Context) (string, error) {
 	row := q.queryRow(ctx, q.nextExpiredTrialUserStmt, nextExpiredTrialUser)
 	var user_id string
@@ -1061,13 +1070,15 @@ func (q *Queries) NextExpiredTrialUser(ctx context.Context) (string, error) {
 }
 
 const nextTrialExpiry = `-- name: NextTrialExpiry :one
-SELECT trial_expires_at
-FROM account_plans
-WHERE ended_at IS NULL
-  AND trial_expires_at > datetime('now')
-  AND changed_by = 'system:stripeless_trial'
-  AND plan_id LIKE 'trial:%'
-ORDER BY trial_expires_at ASC
+SELECT ap.trial_expires_at
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at > datetime('now')
+  AND ap.changed_by = 'system:stripeless_trial'
+  AND ap.plan_id LIKE 'trial:%'
+  AND a.parent_id IS NULL
+ORDER BY ap.trial_expires_at ASC
 LIMIT 1
 `
 
@@ -1075,6 +1086,8 @@ LIMIT 1
 // stripeless-signup trial (changed_by = 'system:stripeless_trial') that
 // has not yet expired. Other trial kinds (Stripe-managed, invite) are
 // excluded: this enforcer only handles self-serve stripeless trials.
+// Accounts with a parent_id (team members) are excluded so the enforcer
+// does not wake up early for trials it would only skip.
 // Returns sql.ErrNoRows if there are none.
 func (q *Queries) NextTrialExpiry(ctx context.Context) (*time.Time, error) {
 	row := q.queryRow(ctx, q.nextTrialExpiryStmt, nextTrialExpiry)
