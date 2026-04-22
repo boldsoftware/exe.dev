@@ -90,6 +90,7 @@
                     <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
                   </div>
                   <div v-if="data.planCapacity && data.planCapacity.poolSize" class="billing-plan-desc">{{ data.planCapacity.poolSize }}</div>
+                  <div v-if="data.planCapacity" class="billing-plan-desc billing-plan-limits">{{ data.planCapacity.maxVMs }} VMs &middot; {{ data.planCapacity.defaultDiskGB }} GB disk<sup>+</sup> &middot; {{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></div>
                   <div v-if="data.planCapacity && data.planCapacity.monthlyPriceCents" class="billing-plan-price">${{ data.planCapacity.monthlyPriceCents / 100 }}<span class="billing-plan-interval">/month</span></div>
                   <div v-if="data.billingPeriodEnd" class="billing-plan-renewal">Your subscription will auto renew on {{ formatRenewalDate(data.billingPeriodEnd) }}.</div>
                 </div>
@@ -97,15 +98,6 @@
                   <a v-if="canManageBilling && (data.credits.selfServeBilling || data.trial || data.basicUser)" href="/billing/update?source=profile" :class="['btn', data.credits.selfServeBilling ? 'btn-secondary' : 'btn-upgrade']">{{ data.credits.selfServeBilling ? 'Manage plan' : 'Upgrade' }}</a>
                   <a href="/pricing" target="_blank" rel="noopener noreferrer" class="billing-pricing-link">View Pricing &#x2197;</a>
                 </div>
-              </div>
-
-              <!-- Plan includes -->
-              <div v-if="data.planCapacity" class="billing-plan-includes">
-                <span class="billing-plan-include-item">{{ data.planCapacity.maxVMs }} VMs</span>
-                <span class="billing-plan-include-sep">&middot;</span>
-                <span class="billing-plan-include-item">{{ data.planCapacity.defaultDiskGB }} GB disk<sup>+</sup></span>
-                <span class="billing-plan-include-sep">&middot;</span>
-                <span class="billing-plan-include-item">{{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></span>
               </div>
 
 
@@ -1486,21 +1478,14 @@ async function toggleNewsletter(event: Event) {
   background: var(--warning-bg) !important;
 }
 
-/* Plan includes */
-.billing-plan-includes {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Plan limits (VMs, disk, transfer) */
+.billing-plan-limits {
   font-size: 13px;
-  color: var(--text-color-secondary);
-  margin-top: 12px;
 }
-.billing-plan-includes sup {
+.billing-plan-limits sup {
   font-size: 9px;
 }
-.billing-plan-include-sep {
-  color: var(--text-color-muted);
-}
+
 
 /* Managed by billing admins */
 .billing-managed-by {
