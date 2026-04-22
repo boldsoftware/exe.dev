@@ -70,6 +70,13 @@ proxy, or use Cloudflare Snippets (or Workers) to re-write
 the request to point to `vmname.exe.xyz`. Snippets are a paid
 feature.
 
+## Wildcard domains
+
+exe.dev is unable to generate TLS certificates for wildcard domains.
+You must add an explicit CNAME entry for each custom name you want to support.
+If you need an arbitrary list of custom names that point to a single
+exe.dev VM, please [contact support](./getting-help).
+
 ## Check Your DNS
 
 <div id="dns-checker"></div>

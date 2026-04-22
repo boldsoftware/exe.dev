@@ -178,35 +178,37 @@ func parentDomain(host string) string {
 	return after
 }
 
-// CheckWildcardCNAME looks up the CNAME for host and, if found,
-// checks whether it's likely the result of a wildcard CNAME record.
-// This is intended for cert-issuance paths only, not every request.
-func (dr *DomainResolver) CheckWildcardCNAME(ctx context.Context, host string) {
+// IsWildcardCNAME reports whether host is a CNAME that is
+// likely the result of a wildcard CNAME record.
+// This is used to avoid generating a cert in that case,
+// as we will wind up asking for a different cert for every
+// possible name, which Let's Encrypt does not like.
+func (dr *DomainResolver) IsWildcardCNAME(ctx context.Context, host string) bool {
 	cname, err := dr.lookupCNAME(ctx, host)
 	if err != nil {
-		return
+		return false
 	}
 	cname = domz.Canonicalize(cname)
 	if cname == host {
-		return
+		return false
 	}
-	dr.checkWildcardCNAME(ctx, host, cname)
+	return dr.isWildcardCNAME(ctx, host, cname)
 }
 
-// checkWildcardCNAME detects probable wildcard CNAME records.
+// isWildcardCNAME reports probable wildcard CNAME records.
 // Given host X.Y.Z with CNAME target T, it checks whether the parent
 // domain Y.Z also has a CNAME pointing to T. If so, X.Y.Z is likely
 // the result of a wildcard CNAME (e.g. *.Y.Z -> T) which could allow
 // unbounded certificate issuance.
-func (dr *DomainResolver) checkWildcardCNAME(ctx context.Context, host, cname string) {
+func (dr *DomainResolver) isWildcardCNAME(ctx context.Context, host, cname string) bool {
 	parent := parentDomain(host)
 	if parent == "" {
-		return
+		return false
 	}
 	parentCNAME, err := dr.lookupCNAME(ctx, parent)
 	if err != nil {
 		// Parent has no CNAME or lookup failed — not a wildcard.
-		return
+		return false
 	}
 	parentCNAME = domz.Canonicalize(parentCNAME)
 	if parentCNAME == cname {
@@ -215,7 +217,9 @@ func (dr *DomainResolver) checkWildcardCNAME(ctx context.Context, host, cname st
 			"parent", parent,
 			"cname", cname,
 		)
+		return true
 	}
+	return false
 }
 
 // boxNameFromCname returns the box name to use for a CNAME.
@@ -282,7 +286,10 @@ func (dr *DomainResolver) ValidateHostForTLSCert(ctx context.Context, host strin
 		return "", nil
 	}
 
-	dr.CheckWildcardCNAME(ctx, host)
+	if dr.IsWildcardCNAME(ctx, host) {
+		return "", fmt.Errorf("not generating cert for wildcard cname %s", host)
+	}
+
 	boxName, err = dr.ResolveCustomDomainBoxName(ctx, host)
 	if err != nil {
 		return "", err

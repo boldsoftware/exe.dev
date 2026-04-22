@@ -11,6 +11,7 @@ import (
 
 	"exe.dev/publicips"
 	"exe.dev/stage"
+	"exe.dev/tslog"
 )
 
 func TestParentDomain(t *testing.T) {
@@ -33,7 +34,7 @@ func TestParentDomain(t *testing.T) {
 	}
 }
 
-func TestCheckWildcardCNAME(t *testing.T) {
+func TestIsWildcardCNAME(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -41,8 +42,8 @@ func TestCheckWildcardCNAME(t *testing.T) {
 		host  string
 		cname string
 		// CNAME responses: host -> target
-		cnames     map[string]string
-		wantLogged bool
+		cnames map[string]string
+		result bool
 	}{
 		{
 			name:  "wildcard detected",
@@ -51,7 +52,7 @@ func TestCheckWildcardCNAME(t *testing.T) {
 			cnames: map[string]string{
 				"attacker.com": "mybox.exe.xyz",
 			},
-			wantLogged: true,
+			result: true,
 		},
 		{
 			name:  "parent has different CNAME",
@@ -60,21 +61,21 @@ func TestCheckWildcardCNAME(t *testing.T) {
 			cnames: map[string]string{
 				"legit.com": "otherbox.exe.xyz",
 			},
-			wantLogged: false,
+			result: false,
 		},
 		{
-			name:       "parent has no CNAME",
-			host:       "sub.legit.com",
-			cname:      "mybox.exe.xyz",
-			cnames:     map[string]string{},
-			wantLogged: false,
+			name:   "parent has no CNAME",
+			host:   "sub.legit.com",
+			cname:  "mybox.exe.xyz",
+			cnames: map[string]string{},
+			result: false,
 		},
 		{
-			name:       "two-label host has no parent to check",
-			host:       "legit.com",
-			cname:      "mybox.exe.xyz",
-			cnames:     map[string]string{},
-			wantLogged: false,
+			name:   "two-label host has no parent to check",
+			host:   "legit.com",
+			cname:  "mybox.exe.xyz",
+			cnames: map[string]string{},
+			result: false,
 		},
 		{
 			name:  "deep wildcard detected",
@@ -83,18 +84,15 @@ func TestCheckWildcardCNAME(t *testing.T) {
 			cnames: map[string]string{
 				"b.attacker.com": "mybox.exe.xyz",
 			},
-			wantLogged: true,
+			result: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			var buf bytes.Buffer
-			lg := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
 			dr := &DomainResolver{
-				Lg:  lg,
+				Lg:  tslog.Slogger(t),
 				Env: ptrTo(stage.Prod()),
 				LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
 					if target, ok := tt.cnames[host]; ok {
@@ -104,29 +102,19 @@ func TestCheckWildcardCNAME(t *testing.T) {
 				},
 			}
 
-			dr.checkWildcardCNAME(context.Background(), tt.host, tt.cname)
-
-			logged := buf.String()
-			hasWarning := strings.Contains(logged, "probable wildcard CNAME detected")
-			if hasWarning != tt.wantLogged {
-				if tt.wantLogged {
-					t.Errorf("expected wildcard CNAME warning, got log output: %q", logged)
-				} else {
-					t.Errorf("unexpected wildcard CNAME warning in log output: %q", logged)
-				}
+			got := dr.isWildcardCNAME(context.Background(), tt.host, tt.cname)
+			if got != tt.result {
+				t.Errorf("isWildcardName(%q, %q) = %t, want %t", tt.host, tt.cname, got, tt.result)
 			}
 		})
 	}
 }
 
-func TestCheckWildcardCNAMEFromHost(t *testing.T) {
+func TestIsWildcardCNAMEFromHost(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	lg := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
 	dr := &DomainResolver{
-		Lg:  lg,
+		Lg:  tslog.Slogger(t),
 		Env: ptrTo(stage.Prod()),
 		LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
 			switch host {
@@ -141,14 +129,11 @@ func TestCheckWildcardCNAMEFromHost(t *testing.T) {
 		},
 	}
 
-	dr.CheckWildcardCNAME(context.Background(), "random.attacker.com")
+	const host = "random.attacker.com"
+	got := dr.IsWildcardCNAME(context.Background(), host)
 
-	logged := buf.String()
-	if !strings.Contains(logged, "probable wildcard CNAME detected") {
-		t.Errorf("expected wildcard CNAME warning in log, got: %q", logged)
-	}
-	if !strings.Contains(logged, "attacker.com") {
-		t.Errorf("expected parent domain in log, got: %q", logged)
+	if !got {
+		t.Errorf("IsWildcardCNAME(%q) = %t, want %t", host, got, true)
 	}
 }
 
