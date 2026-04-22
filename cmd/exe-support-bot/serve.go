@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +66,7 @@ func runServe(ctx context.Context, dbPath string, args []string) error {
 
 	hs := &http.Server{
 		Addr:              *addr,
-		Handler:           mux,
+		Handler:           authMiddleware(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -325,4 +326,56 @@ func relTime(ts int64) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
+}
+
+// --- Access control ---------------------------------------------------------
+//
+// Authentication is handled upstream by the exe.dev HTTPS proxy, which sets
+// X-ExeDev-Email (see https://exe.dev/docs/login-with-exe.md). We just
+// allow-list who can reach the UI / API.
+//
+// To grant someone access, add their exact email or a "*@domain" wildcard.
+
+var allowedEmails = []string{
+	"*@bold.dev",
+	"philip.zeyliger@gmail.com",
+	// Add more entries here.
+}
+
+func emailAllowed(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	for _, pat := range allowedEmails {
+		pat = strings.ToLower(pat)
+		if strings.HasPrefix(pat, "*@") {
+			if strings.HasSuffix(email, pat[1:]) {
+				return true
+			}
+		} else if email == pat {
+			return true
+		}
+	}
+	return false
+}
+
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		email := r.Header.Get("X-ExeDev-Email")
+		if email == "" {
+			// Not authenticated by the exe.dev proxy; send through login.
+			http.Redirect(w, r, "/__exe.dev/login?redirect="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+			return
+		}
+		if !emailAllowed(email) {
+			http.Error(w, "Access denied for "+email+". Ask an admin to add you to the allow list.", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
