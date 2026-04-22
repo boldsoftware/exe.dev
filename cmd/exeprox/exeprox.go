@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -62,6 +63,9 @@ func run() error {
 		DeploymentEnv:  *stageName,
 	})
 	slog.Info("Starting exeprox server")
+
+	slackFeed := logging.NewSlackFeed(slog.Default(), env)
+	slackFeed.ServiceStarted(context.Background(), "exeprox")
 
 	var (
 		enableProfiling bool
