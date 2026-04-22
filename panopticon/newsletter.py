@@ -321,7 +321,7 @@ def generate(args) -> tuple[str, list[str]]:
 
         log.info("Running RLM agent...")
         result = rlm(**call_kwargs)
-        items = list(result.items)
+        items = list(result["items"])
         header = "Daily user-pulse"
         if missive_client is not None:
             try:

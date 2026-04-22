@@ -232,7 +232,7 @@ def generate_brief(date, commits, history, verbose=False):
         verbose=verbose,
     )
 
-    items = list(result.items)
+    items = list(result["items"])
     header = "exe.dev codebase brief"
 
     brief_path = os.path.join(os.getcwd(), f"brief_{date.strftime('%Y_%m_%d')}.md")
