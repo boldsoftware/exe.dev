@@ -22,6 +22,7 @@ Create a new VM
 - `--name`: VM name (auto-generated if not specified)
 - `--no-email`: do not send email notification
 - `--prompt`: initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin
+- `--setup-script`: setup script to run on first boot (max 10KiB); supports \n for newlines; use /dev/stdin to pipe from stdin
 
 ## Examples
 
