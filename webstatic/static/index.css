@@ -146,6 +146,21 @@ nav {
   flex: 1;
 }
 
+.hero-headline {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.hero-headline > .hero-spacer {
+  flex: 1;
+  min-height: 0;
+}
+
+.hero-headline > .hero-spacer:first-child {
+  flex: 0.5;
+}
+
 .hero-spacer:first-child {
   flex: 0.5;
 }
