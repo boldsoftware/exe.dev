@@ -31,8 +31,8 @@
           />
           <span class="hostname-suffix">.exe.xyz</span>
         </div>
-        <div v-if="hostnameHint" class="form-hint" :class="{ error: !hostnameOk }">
-          {{ hostnameHint }}
+        <div class="form-hint" :class="{ error: hostnameHint && !hostnameOk }">
+          {{ hostnameHint || '\u00a0' }}
         </div>
       </div>
 
@@ -467,21 +467,35 @@ onMounted(async () => {
 .hostname-group {
   display: flex;
   align-items: center;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  transition: border-color 0.15s;
 }
 
-.hostname-input {
-  border-radius: 6px 0 0 6px;
-  border-right: none;
+.hostname-group:focus-within {
+  border-color: var(--primary-color);
+}
+
+.form-input.hostname-input {
+  border: none;
+  border-radius: 0;
+  background: transparent;
   flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.form-input.hostname-input:focus {
+  border: none;
 }
 
 .hostname-suffix {
-  padding: 8px 12px;
-  background: var(--surface-ground);
-  border: 1px solid var(--surface-border);
-  border-radius: 0 6px 6px 0;
+  padding: 0 12px 0 0;
   font-size: 13px;
   color: var(--text-color-muted);
+  user-select: none;
+  white-space: nowrap;
 }
 
 .form-input {
@@ -509,6 +523,8 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-color-muted);
   margin-top: 4px;
+  min-height: 1.3em;
+  line-height: 1.3;
 }
 
 .form-hint.error {
@@ -816,13 +832,12 @@ onMounted(async () => {
     border-radius: 8px;
   }
 
-  .hostname-input {
-    border-radius: 8px 0 0 8px;
+  .hostname-group {
+    border-radius: 8px;
   }
 
   .hostname-suffix {
-    padding: 12px 14px;
-    border-radius: 0 8px 8px 0;
+    padding: 12px 14px 12px 4px;
   }
 
   .prompt-input {
