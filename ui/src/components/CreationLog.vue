@@ -18,6 +18,11 @@ const props = defineProps<{
   streaming: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'done'): void
+  (e: 'fail', message: string): void
+}>()
+
 const termEl = ref<HTMLElement | null>(null)
 let terminal: Terminal | null = null
 let abortController: AbortController | null = null
@@ -65,6 +70,7 @@ async function streamCreation() {
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
+    let curEvent = ''
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
@@ -72,14 +78,30 @@ async function streamCreation() {
       const lines = buf.split('\n')
       buf = lines.pop() || ''
       for (const line of lines) {
+        if (line.startsWith('event:')) {
+          curEvent = line.slice(6).trim()
+          continue
+        }
         if (line.startsWith('data:')) {
-          const b64 = line.slice(5).trim()
-          if (b64) {
+          const data = line.slice(5).trim()
+          if (curEvent === 'done') {
+            emit('done')
+            curEvent = ''
+            continue
+          }
+          if (curEvent === 'fail') {
+            emit('fail', data)
+            curEvent = ''
+            continue
+          }
+          if (data) {
             try {
-              const text = atob(b64)
+              const text = atob(data)
               terminal.write(text)
             } catch { /* skip bad base64 */ }
           }
+        } else if (line === '') {
+          curEvent = ''
         }
       }
     }

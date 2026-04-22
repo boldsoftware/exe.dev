@@ -125,20 +125,6 @@
         </div>
       </div>
 
-      <!-- Creation log -->
-      <CreationLog
-        v-if="box.status === 'creating'"
-        :hostname="box.name"
-        :streaming="true"
-      />
-      <div v-else-if="box.hasCreationLog && showCreationLog" class="creation-log-wrap">
-        <CreationLog :hostname="box.name" :streaming="false" />
-      </div>
-      <div v-else-if="box.hasCreationLog && !showCreationLog" class="detail-item">
-        <span class="detail-label">Creation Log:</span>
-        <button class="detail-btn" @click="showCreationLog = true">View</button>
-      </div>
-
       <!-- Action buttons -->
       <div class="detail-actions">
         <a :href="box.proxyURL" class="action-btn-expanded" target="_blank" rel="noopener noreferrer">
@@ -180,16 +166,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import type { BoxInfo, VMUsageEntry } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CopyButton from './CopyButton.vue'
 import CoolS from './CoolS.vue'
-import { defineAsyncComponent } from 'vue'
-const CreationLog = defineAsyncComponent(() => import('./CreationLog.vue'))
-
-const showCreationLog = ref(false)
-
 const props = defineProps<{
   box: BoxInfo
   expanded: boolean

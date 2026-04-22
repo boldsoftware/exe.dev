@@ -401,7 +401,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 	}
 
 	// If there are active creation streams, wait for the boxes to appear in the DB.
-	// After creating a VM, the user is redirected to /?filter=<hostname>, but the box
+	// After creating a VM, the user is redirected to /vm/<hostname>, but the box
 	// may not have been inserted into the DB yet. Poll until all actively-being-created
 	// boxes appear so the dashboard shows them with status="creating".
 	creatingHostnames := s.getActiveCreationHostnames(userID)

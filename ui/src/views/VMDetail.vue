@@ -116,7 +116,7 @@
       </div>
 
       <!-- Creation Log -->
-      <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" />
+      <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" @done="load" @fail="load" />
       <div v-else-if="box.hasCreationLog && showCreationLog" class="creation-log-wrap">
         <CreationLog :hostname="box.name" :streaming="false" />
       </div>

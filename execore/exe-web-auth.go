@@ -224,9 +224,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				return
 			}
 
-			// Start box creation in background and redirect to dashboard
+			// Start box creation in background and redirect to the VM detail page
 			s.startBoxCreation(r.Context(), hostname, prompt, image, verifiedUserID)
-			http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
+			http.Redirect(w, r, "/vm/"+url.PathEscape(hostname), http.StatusSeeOther)
 			return
 		}
 	}
@@ -578,10 +578,10 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If VM name was provided, start VM creation and redirect to dashboard
+	// If VM name was provided, start VM creation and redirect to the VM detail page
 	if vmName != "" {
 		s.startBoxCreation(r.Context(), vmName, vmPrompt, vmImage, userID)
-		http.Redirect(w, r, "/?filter="+url.QueryEscape(vmName), http.StatusSeeOther)
+		http.Redirect(w, r, "/vm/"+url.PathEscape(vmName), http.StatusSeeOther)
 		return
 	}
 

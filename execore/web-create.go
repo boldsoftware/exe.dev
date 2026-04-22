@@ -443,7 +443,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 
 		// Start box creation in background
 		s.startBoxCreation(r.Context(), hostname, prompt, image, userID)
-		http.Redirect(w, r, "/?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
+		http.Redirect(w, r, "/vm/"+url.PathEscape(hostname), http.StatusSeeOther)
 		return
 	}
 
