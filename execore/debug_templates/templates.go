@@ -99,6 +99,9 @@ func Parse(env stage.Env) (*template.Template, error) {
 				cost := max(gb-includedGB, 0) * price
 				return fmt.Sprintf("$%.2f", cost)
 			},
+			"divCents": func(cents int) string {
+				return fmt.Sprintf("%d", cents/100)
+			},
 		}
 		debugTemplate, debugTemplateErr = template.New("").Funcs(funcs).ParseFS(Files, "*.html")
 	})

@@ -2,199 +2,181 @@
 <html><head><title>Plans</title>
 {{template "base-head"}}
 <style>
-/* Accordion container */
 .plans-accordion {
     margin: 16px 0;
     border: 1px solid #ccc;
     border-radius: 4px;
     overflow: hidden;
 }
-
-/* Each plan as a <details> block */
 .plan-details {
     border-bottom: 1px solid #ccc;
 }
 .plan-details:last-child {
     border-bottom: none;
 }
-
-/* Summary row: plan name + badges */
 .plan-summary {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 8px;
+    padding: 8px 12px;
     cursor: pointer;
     background: #f5f5f5;
     list-style: none;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
     user-select: none;
 }
 .plan-summary::-webkit-details-marker { display: none; }
 .plan-summary::before {
     content: '▶';
-    font-size: 10px;
+    font-size: 9px;
     color: #888;
-    min-width: 12px;
+    min-width: 10px;
     transition: transform 0.15s;
 }
 details[open] > .plan-summary::before {
     transform: rotate(90deg);
 }
 .plan-summary .plan-id {
-    font-family: monospace;
+    font-weight: normal;
     font-size: 11px;
     color: #666;
     margin-left: auto;
 }
-
-/* Expanded plan body */
-.plan-body {
-    padding: 14px;
-    background: #fff;
-}
-
-/* Entitlements + default tier layout */
-.plan-body-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-}
-@media (max-width: 640px) {
-    .plan-body-grid { grid-template-columns: 1fr; }
-}
-
-.section-title {
-    font-size: 11px;
-    text-transform: uppercase;
-    color: #888;
-    letter-spacing: 0.5px;
-    margin: 0 0 8px 0;
-    font-weight: 600;
-}
-
-/* Entitlements list */
-.entitlements-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-.entitlements-list li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 2px 0;
-    font-size: 12px;
-    font-family: monospace;
-}
-.ent-granted { color: #333; }
-.ent-denied  { color: #ccc; }
-.ent-icon    { color: #28a745; font-weight: bold; width: 16px; text-align: center; }
-.wildcard-notice {
-    background: #fff3cd;
-    border: 1px solid #ffc107;
-    padding: 4px 8px;
-    border-radius: 3px;
-    font-size: 11px;
-    margin-bottom: 8px;
-}
-
-/* Plan-level fields */
-.plan-fields {
-    font-size: 12px;
-}
-.plan-fields table {
-    border-collapse: collapse;
-    width: 100%;
-}
-.plan-fields th {
-    text-align: left;
-    font-weight: normal;
-    color: #555;
-    padding: 2px 0;
-}
-.plan-fields td {
-    text-align: right;
-    padding: 2px 0;
-    font-family: monospace;
-}
-.zero { color: #ccc; }
-
-/* Tiers section */
-.tiers-section {
-    border-top: 1px solid #eee;
-    padding-top: 12px;
-}
-.tiers-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 8px;
-}
-
-/* Individual tier card */
-.tier-card {
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    overflow: hidden;
-    font-size: 12px;
-}
-.tier-card-name {
-    font-weight: bold;
-    font-size: 13px;
-    margin: 0 0 6px 0;
-}
-.tier-card-body {
-    padding: 8px 10px;
-}
-.tier-section-title {
-    font-size: 10px;
-    text-transform: uppercase;
-    color: #888;
-    letter-spacing: 0.5px;
-    margin: 6px 0 4px 0;
-}
-.tier-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.tier-table th {
-    text-align: left;
-    font-weight: normal;
-    color: #555;
-    padding: 2px 0;
-    font-size: 11px;
-}
-.tier-table td {
-    text-align: right;
-    padding: 2px 0;
-    font-size: 11px;
-    font-family: monospace;
-}
-.override-note {
-    background: #fef9e7;
-    border-left: 3px solid #f39c12;
-    padding: 4px 8px;
-    font-size: 11px;
-    margin-top: 4px;
-    border-radius: 0 3px 3px 0;
-}
-
-/* Status badges */
 .badge {
     display: inline-block;
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 3px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: bold;
     text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 .badge-paid        { background: #28a745; color: white; }
 .badge-free        { background: #6c757d; color: white; }
 .badge-available   { background: #007bff; color: white; }
 .badge-unavailable { background: #dc3545; color: white; }
+
+.plan-body {
+    padding: 12px;
+    background: #fff;
+}
+.plan-body h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #888;
+    letter-spacing: 0.5px;
+    margin: 14px 0 6px 0;
+    font-weight: 600;
+}
+.plan-body h3:first-child {
+    margin-top: 0;
+}
+.plan-body table {
+    width: 100%;
+    border: 1px solid #ddd;
+    font-size: 12px;
+}
+.plan-body table th {
+    background: #fafafa;
+    font-weight: normal;
+    color: #555;
+    white-space: nowrap;
+    width: 160px;
+}
+.plan-body table td {
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+}
+.plan-body table td.zero {
+    color: #ccc;
+}
+
+/* Entitlements: compact inline list */
+.ent-table td.ent-granted {
+    color: #333;
+}
+.ent-table td.ent-denied {
+    color: #ccc;
+}
+.ent-table td.ent-icon {
+    width: 20px;
+    text-align: center;
+    color: #28a745;
+    font-weight: bold;
+}
+.wildcard-notice {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.override-notice {
+    background: #fef9e7;
+    border-left: 3px solid #f39c12;
+    padding: 3px 8px;
+    font-size: 11px;
+    margin-bottom: 6px;
+    border-radius: 0 3px 3px 0;
+}
+
+/* Two-column grid for plan fields + entitlements */
+.plan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+@media (max-width: 640px) {
+    .plan-grid { grid-template-columns: 1fr; }
+}
+
+/* Tier cards within a plan */
+.tier-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+    margin-top: 6px;
+}
+.tier-card {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+    overflow: hidden;
+}
+.tier-card-header {
+    background: #f5f5f5;
+    padding: 6px 10px;
+    font-weight: 600;
+    font-size: 12px;
+    border-bottom: 1px solid #ddd;
+}
+.tier-card table {
+    width: 100%;
+    border: none;
+    font-size: 11px;
+    margin: 0;
+}
+.tier-card table th,
+.tier-card table td {
+    border: none;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 3px 8px;
+}
+.tier-card table tr:last-child th,
+.tier-card table tr:last-child td {
+    border-bottom: none;
+}
+.tier-card table th {
+    background: transparent;
+    font-weight: normal;
+    color: #555;
+    width: 120px;
+}
+.tier-card table td {
+    text-align: right;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+}
 </style>
 </head><body>
 <h1>Plans</h1>
@@ -215,96 +197,64 @@ details[open] > .plan-summary::before {
   </summary>
   <div class="plan-body">
 
-    <div class="plan-body-grid">
-      {{/* Plan-level fields */}}
+    <div class="plan-grid">
       <div>
-        <p class="section-title">Plan fields</p>
-        <div class="plan-fields">
-          <table>
-            <tr>
-              <th>Category</th>
-              <td>{{.Category}}</td>
-            </tr>
-            <tr>
-              <th>Trial Days</th>
-              <td{{if not .TrialDays}} class="zero"{{end}}>{{if .TrialDays}}{{.TrialDays}}{{else}}—{{end}}</td>
-            </tr>
-            <tr>
-              <th>Signup Bonus</th>
-              <td{{if not .SignupBonusCreditUSD}} class="zero"{{end}}>{{if .SignupBonusCreditUSD}}${{.SignupBonusCreditUSD}}{{else}}—{{end}}</td>
-            </tr>
-            <tr>
-              <th>Monthly LLM Credit</th>
-              <td{{if not .MonthlyLLMCreditUSD}} class="zero"{{end}}>{{if .MonthlyLLMCreditUSD}}${{.MonthlyLLMCreditUSD}}{{else}}—{{end}}</td>
-            </tr>
-            <tr>
-              <th>Default Tier</th>
-              <td style="font-size:10px">{{.DefaultTier}}</td>
-            </tr>
-          </table>
-        </div>
+        <h3>Plan Fields</h3>
+        <table>
+          <tr><th>Category</th><td>{{.Category}}</td></tr>
+          <tr><th>Trial Days</th><td{{if not .TrialDays}} class="zero"{{end}}>{{if .TrialDays}}{{.TrialDays}}{{else}}—{{end}}</td></tr>
+          <tr><th>Signup Bonus</th><td{{if not .SignupBonusCreditUSD}} class="zero"{{end}}>{{if .SignupBonusCreditUSD}}${{.SignupBonusCreditUSD}}{{else}}—{{end}}</td></tr>
+          <tr><th>Monthly LLM Credit</th><td{{if not .MonthlyLLMCreditUSD}} class="zero"{{end}}>{{if .MonthlyLLMCreditUSD}}${{.MonthlyLLMCreditUSD}}{{else}}—{{end}}</td></tr>
+          <tr><th>Default Tier</th><td>{{.DefaultTier}}</td></tr>
+        </table>
       </div>
 
-      {{/* Plan-level entitlements */}}
       <div>
-        <p class="section-title">Entitlements (plan-level)</p>
+        <h3>Entitlements</h3>
         {{if index .Entitlements $wildcard}}
         <div class="wildcard-notice">✦ Grants ALL entitlements (wildcard)</div>
         {{end}}
-        <ul class="entitlements-list">
+        <table class="ent-table">
         {{range $allEntitlements}}
           {{$ent := .}}
           {{if or (index $plan.Entitlements $ent) (index $plan.Entitlements $wildcard)}}
-          <li class="ent-granted"><span>{{$ent.ID}}</span><span class="ent-icon">✓</span></li>
+          <tr><td class="ent-icon">✓</td><td class="ent-granted">{{$ent.ID}}</td></tr>
           {{else}}
-          <li class="ent-denied"><span>{{$ent.ID}}</span><span class="ent-icon"></span></li>
+          <tr><td class="ent-icon"></td><td class="ent-denied">{{$ent.ID}}</td></tr>
           {{end}}
         {{end}}
-        </ul>
+        </table>
       </div>
     </div>
 
-    {{/* Tiers for this plan */}}
     {{$tiers := index $tiersByCategory $plan.Category}}
     {{if $tiers}}
-    <div class="tiers-section">
-      <p class="section-title">Tiers ({{len $tiers}})</p>
-      <div class="tiers-grid">
-      {{range $tiers}}
-      <div class="tier-card">
-        <div class="tier-card-body">
-          <p class="tier-card-name">{{.Name}}</p>
-
-          {{if .Entitlements}}
-          <div class="override-note">⚠ Entitlement override active</div>
-          {{end}}
-
-          <p class="tier-section-title">Pool Size</p>
-          <table class="tier-table">
-            <tr><th>vCPUs</th><td{{if not .Quotas.MaxCPUs}} class="zero"{{end}}>{{if .Quotas.MaxCPUs}}{{.Quotas.MaxCPUs}}{{else}}—{{end}}</td></tr>
-            <tr><th>Memory</th><td>{{formatBytes .Quotas.MaxMemory}}</td></tr>
-          </table>
-
-          <p class="tier-section-title">Quotas</p>
-          <table class="tier-table">
-            <tr><th>ID</th><td style="font-size:10px">{{.ID}}</td></tr>
-            <tr><th>Max User VMs</th><td{{if not .Quotas.MaxUserVMs}} class="zero"{{end}}>{{if .Quotas.MaxUserVMs}}{{.Quotas.MaxUserVMs}}{{else}}—{{end}}</td></tr>
-            <tr><th>Max Disk</th><td>{{formatBytes .Quotas.MaxDisk}}</td></tr>
-          </table>
-
-          {{if .StripePrices}}
-          <p class="tier-section-title">Stripe Prices</p>
-          <table class="tier-table">
-          {{range $key, $price := .StripePrices}}
-            <tr><th>{{$key}}</th><td style="font-size:10px">{{$price.LookupKey}}</td></tr>
-          {{end}}
-          </table>
-          {{end}}
-
-        </div>
+    <h3>Tiers ({{len $tiers}})</h3>
+    <div class="tier-cards">
+    {{range $tiers}}
+    <div class="tier-card">
+      <div class="tier-card-header">
+        {{.Name}}
+        {{if .MonthlyPriceCents}}<span style="float:right; font-weight:normal; color:#555">${{divCents .MonthlyPriceCents}}/mo</span>{{end}}
       </div>
+      {{if .Entitlements}}
+      <div class="override-notice">⚠ Entitlement override active</div>
       {{end}}
-      </div>
+      <table>
+        <tr><th>ID</th><td style="font-size:10px">{{.ID}}</td></tr>
+        <tr><th>vCPUs</th><td{{if not .Quotas.MaxCPUs}} class="zero"{{end}}>{{if .Quotas.MaxCPUs}}{{.Quotas.MaxCPUs}}{{else}}—{{end}}</td></tr>
+        <tr><th>Memory</th><td{{if not .Quotas.MaxMemory}} class="zero"{{end}}>{{if .Quotas.MaxMemory}}{{formatBytes .Quotas.MaxMemory}}{{else}}—{{end}}</td></tr>
+        <tr><th>Max User VMs</th><td{{if not .Quotas.MaxUserVMs}} class="zero"{{end}}>{{if .Quotas.MaxUserVMs}}{{.Quotas.MaxUserVMs}}{{else}}—{{end}}</td></tr>
+        <tr><th>Default Disk</th><td>{{formatBytes .Quotas.DefaultDisk}}</td></tr>
+        <tr><th>Max Disk</th><td{{if not .Quotas.MaxDisk}} class="zero"{{end}}>{{if .Quotas.MaxDisk}}{{formatBytes .Quotas.MaxDisk}}{{else}}—{{end}}</td></tr>
+        {{if .StripePrices}}
+        {{range $key, $price := .StripePrices}}
+        <tr><th>Stripe: {{$key}}</th><td style="font-size:10px">{{$price.LookupKey}}</td></tr>
+        {{end}}
+        {{end}}
+      </table>
+    </div>
+    {{end}}
     </div>
     {{end}}
 
