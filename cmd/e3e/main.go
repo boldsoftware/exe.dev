@@ -60,7 +60,7 @@ type agentResult struct {
 
 const (
 	reportHeading       = "# SECURITY REPORT"
-	codexModel          = "gpt-5.4"
+	codexModel          = "gpt-5.5"
 	llmGateway          = "http://169.254.169.254/gateway/llm"
 	codexGatewayBaseURL = llmGateway + "/openai/v1"
 	codexConfigTOML     = `model = "` + codexModel + `"
