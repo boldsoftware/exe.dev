@@ -12,6 +12,7 @@ import (
 
 	"exe.dev/e1e/testinfra"
 	resourceapi "exe.dev/pkg/api/exe/resource/v1"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestTwoHosts(t *testing.T) {
@@ -746,4 +747,102 @@ func TestDirectMigrationReconnect(t *testing.T) {
 
 	assertBoxEventuallyOnHost(t, boxName, targetAddr)
 	assertBoxSSHWorks(t, boxName, keyFile)
+}
+
+// TestDirectMigrationOperatorSSHCold verifies that the AF_VSOCK operator-SSH
+// server (exposed by exe-init, reached via cloud-hypervisor's hybrid-vsock
+// unix socket) survives a cold migration.
+//
+// The vsock socket path is per-instance on each host, so the receiver has to
+// rewrite the `vsock.socket` entry in the snapshot config before restoring
+// the VM. If that rewrite is missing or wrong, CH on the target fails to
+// bind, and operator-SSH becomes unreachable on the new host (but the
+// user's SSH works because that goes over TCP on the VM's normal NIC).
+// This test catches that regression end-to-end.
+func TestDirectMigrationOperatorSSHCold(t *testing.T) {
+	testDirectMigrationOperatorSSH(t, false)
+}
+
+// TestDirectMigrationOperatorSSHLive is the live-migration variant.
+func TestDirectMigrationOperatorSSHLive(t *testing.T) {
+	testDirectMigrationOperatorSSH(t, true)
+}
+
+func testDirectMigrationOperatorSSH(t *testing.T, live bool) {
+	boxName, keyFile, sourceAddr, targetAddr := setupMigrationBox(t)
+
+	assertOperatorSSHWorks(t, boxName, exeletByAddr(t, sourceAddr))
+
+	migrateBox(t, boxName, targetAddr, live)
+	assertBoxEventuallyOnHost(t, boxName, targetAddr)
+	assertBoxSSHWorks(t, boxName, keyFile)
+
+	assertOperatorSSHWorks(t, boxName, exeletByAddr(t, targetAddr))
+
+	// One more hop back for the live case, to make sure a migrate-back also
+	// re-wires the vsock socket path correctly.
+	if live {
+		migrateBox(t, boxName, sourceAddr, true)
+		assertBoxEventuallyOnHost(t, boxName, sourceAddr)
+		assertBoxSSHWorks(t, boxName, keyFile)
+		assertOperatorSSHWorks(t, boxName, exeletByAddr(t, sourceAddr))
+	}
+}
+
+// exeletByAddr returns the ExeletInstance whose Address matches.
+func exeletByAddr(t *testing.T, addr string) *testinfra.ExeletInstance {
+	t.Helper()
+	for _, el := range exelets {
+		if el.Address == addr {
+			return el
+		}
+	}
+	t.Fatalf("no exelet found for address %q", addr)
+	return nil
+}
+
+// assertOperatorSSHWorks connects to the in-guest operator-SSH server on the
+// given exelet and runs `whoami`, expecting `root`. Reuses the box's
+// already-provisioned ssh client key (which is present in the guest's
+// authorized_keys).
+func assertOperatorSSHWorks(t *testing.T, boxName string, exelet *testinfra.ExeletInstance) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	instanceID, err := testinfra.InstanceIDByName(ctx, exelet.Client(), boxName)
+	if err != nil {
+		t.Fatalf("InstanceIDByName: %v", err)
+	}
+	if instanceID == "" {
+		t.Fatalf("no instance for box %q on exelet %q", boxName, exelet.Address)
+	}
+
+	keyBytes, err := serverEnv.Exed.BoxClientSSHKey(ctx, boxName)
+	if err != nil {
+		t.Fatalf("BoxClientSSHKey: %v", err)
+	}
+	signer, err := ssh.ParsePrivateKey(keyBytes)
+	if err != nil {
+		t.Fatalf("parse client key: %v", err)
+	}
+
+	client, err := testinfra.OperatorSSHClient(ctx, exelet, instanceID, signer, 60*time.Second)
+	if err != nil {
+		t.Fatalf("operator-ssh connect to exelet %s: %v", exelet.Address, err)
+	}
+	defer client.Close()
+
+	sess, err := client.NewSession()
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer sess.Close()
+	out, err := sess.CombinedOutput("whoami")
+	if err != nil {
+		t.Fatalf("operator-ssh whoami on %s: %v (out=%q)", exelet.Address, err, out)
+	}
+	if strings.TrimSpace(string(out)) != "root" {
+		t.Fatalf("operator-ssh whoami on %s = %q, want root", exelet.Address, strings.TrimSpace(string(out)))
+	}
 }

@@ -29,6 +29,14 @@ func main() {
 	}
 	app.Usage = version.Name + " (init)"
 	app.Action = runAction
+	app.Commands = []*cli.Command{
+		{
+			Name:   "op-ssh",
+			Usage:  "run the operator SSH server on AF_VSOCK (internal)",
+			Action: runOperatorSSHAction,
+			Hidden: true,
+		},
+	}
 	app.Flags = []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "debug",

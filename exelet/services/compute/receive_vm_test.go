@@ -435,7 +435,7 @@ func TestEditSnapshotConfigUpdatesTapName(t *testing.T) {
 			Nameservers: []string{"1.1.1.1"},
 			NTPServer:   "ntp.ubuntu.com",
 		}
-		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, target); err != nil {
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", "/run/op.sock", srcVMConfig, target); err != nil {
 			t.Fatal(err)
 		}
 		if got := readTap(t, dir); got != "tap-vm000001" {
@@ -452,7 +452,7 @@ func TestEditSnapshotConfigUpdatesTapName(t *testing.T) {
 			Nameservers: []string{"1.1.1.1"},
 			NTPServer:   "ntp.ubuntu.com",
 		}
-		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, target); err != nil {
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", "/run/op.sock", srcVMConfig, target); err != nil {
 			t.Fatal(err)
 		}
 		if got := readTap(t, dir); got != "tap-a1b2c3" {
@@ -460,9 +460,49 @@ func TestEditSnapshotConfigUpdatesTapName(t *testing.T) {
 		}
 	})
 
+	t.Run("vsock socket path rewritten", func(t *testing.T) {
+		dir := mkSnapshotConfig(t, "tap-orig", cmdline)
+		// Inject a vsock config as cloud-hypervisor would persist it.
+		configPath := filepath.Join(dir, "config.json")
+		raw, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg map[string]any
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		cfg["vsock"] = map[string]any{"cid": 3, "socket": "/src/exelet/opssh.sock"}
+		out, err := json.Marshal(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(configPath, out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", "/run/new-op.sock", srcVMConfig, nil); err != nil {
+			t.Fatal(err)
+		}
+		result, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(result, &got); err != nil {
+			t.Fatal(err)
+		}
+		vs, ok := got["vsock"].(map[string]any)
+		if !ok {
+			t.Fatalf("vsock missing: %v", got)
+		}
+		if vs["socket"] != "/run/new-op.sock" {
+			t.Errorf("vsock socket = %v, want /run/new-op.sock", vs["socket"])
+		}
+	})
+
 	t.Run("nil target skips tap update", func(t *testing.T) {
 		dir := mkSnapshotConfig(t, "tap-orig", cmdline)
-		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", srcVMConfig, nil); err != nil {
+		if err := editSnapshotConfig(dir, "/new/disk", "/new/kernel", "/run/op.sock", srcVMConfig, nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := readTap(t, dir); got != "tap-orig" {
