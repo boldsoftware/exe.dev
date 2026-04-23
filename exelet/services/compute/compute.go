@@ -11,15 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/grpc"
-	"tailscale.com/util/singleflight"
-
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/sshproxy"
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
+
+	"github.com/go4org/hashtriemap"
+	"google.golang.org/grpc"
+	"tailscale.com/util/singleflight"
 )
 
 const (
@@ -38,9 +39,9 @@ type Service struct {
 	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 	stopLogRotation     func()
-	migratingInstances  sync.Map                 // map[instanceID]struct{} - instances currently being migrated
-	instanceOpMu        sync.Mutex               // protects instanceOpLocks
-	instanceOpLocks     map[string]*instanceLock // per-instance operation lock
+	migratingInstances  hashtriemap.HashTrieMap[string, struct{}] // instances currently being migrated
+	instanceOpMu        sync.Mutex                                // protects instanceOpLocks
+	instanceOpLocks     map[string]*instanceLock                  // per-instance operation lock
 	reconcileGroup      singleflight.Group[string, struct{}]
 	// reconcileCtx is stored in the struct (rather than passed per-call) because
 	// background reconcile goroutines outlive the gRPC request that triggers them.

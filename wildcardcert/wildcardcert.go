@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"exe.dev/domz"
+
+	"github.com/go4org/hashtriemap"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
@@ -106,7 +108,7 @@ type Manager struct {
 	certRequests prometheus.Counter
 	sf           singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
 
-	renewalsInFlight sync.Map // background renewals currently running per domain
+	renewalsInFlight hashtriemap.HashTrieMap[string, struct{}] // background renewals currently running per domain
 
 	mu       sync.Mutex                  // protects certificates
 	memCerts map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads

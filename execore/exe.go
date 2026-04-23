@@ -74,11 +74,12 @@ import (
 	templatespkg "exe.dev/templates"
 	"exe.dev/tracing"
 	"exe.dev/wildcardcert"
-	emailverifier "github.com/AfterShip/email-verifier"
-	sloghttp "github.com/samber/slog-http"
 
+	emailverifier "github.com/AfterShip/email-verifier"
+	"github.com/go4org/hashtriemap"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
+	sloghttp "github.com/samber/slog-http"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/time/rate"
@@ -277,7 +278,7 @@ type Server struct {
 
 	// sshKeyAtimes deduplicates UpdateSSHKeyLastUsed writes
 	// to at most once per public key per UTC day.
-	sshKeyAtimes sync.Map // publicKey → "2006-01-02"
+	sshKeyAtimes hashtriemap.HashTrieMap[string, string] // publicKey → "2006-01-02"
 
 	// Database
 	db *sqlite.DB
@@ -4142,7 +4143,7 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 
 	// Update last_used_at, at most once per key per UTC day.
 	today := time.Now().UTC().Format("2006-01-02")
-	if prev, ok := s.sshKeyAtimes.Load(publicKeyStr); !ok || prev.(string) != today {
+	if prev, ok := s.sshKeyAtimes.Load(publicKeyStr); !ok || prev != today {
 		go func() {
 			if err := withTx1(s, context.WithoutCancel(ctx), (*exedb.Queries).UpdateSSHKeyLastUsed, publicKeyStr); err != nil {
 				slog.ErrorContext(ctx, "update ssh key last used", "err", err)

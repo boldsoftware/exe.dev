@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
+
+	"github.com/go4org/hashtriemap"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -60,7 +61,8 @@ type ResourceManager struct {
 	applyPriorityFn func(ctx context.Context, id, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error
 
 	// Memory reclaim
-	reclaimInflight    sync.Map      // tracks in-flight memory.reclaim writes by path
+	reclaimInflight hashtriemap.HashTrieMap[string, struct{}] // tracks in-flight memory.reclaim writes by path
+
 	readMemAvailableFn func() uint64 // overridden in tests; nil uses /proc/meminfo
 
 	// Polling

@@ -19,11 +19,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"exe.dev/e1e/testinfra"
+	"github.com/go4org/hashtriemap"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -879,13 +879,13 @@ func addBillingForEmail(t *testing.T, email string) {
 }
 
 var (
-	didRunTest sync.Map // map[string]bool
-	skipGolden sync.Map // map[string]bool
+	didRunTest hashtriemap.HashTrieMap[string, bool]
+	skipGolden hashtriemap.HashTrieMap[string, bool]
 )
 
 func e1eTestsOnlyRunOnce(t *testing.T) {
-	prev, _ := didRunTest.Swap(t.Name(), true)
-	if didRun, ok := prev.(bool); ok && didRun {
+	didRun, _ := didRunTest.Swap(t.Name(), true)
+	if didRun {
 		t.Fatal("e1e tests don't work with -count > 1. use a bash loop. if this makes you sad, talk to josh.")
 	}
 }

@@ -163,7 +163,7 @@ Data is streamed in chunks of `4*1024*1024 - 1024` bytes (just under 4MB to leav
 
 ### Migration Lock
 
-The `migratingInstances` sync.Map prevents:
+The `migratingInstances` hashMap prevents:
 - Concurrent lifecycle operations (Start, Stop, Delete, Update) on a VM being migrated
 - Concurrent migrations of the same instance (e.g., orchestrator retry + original still in-flight)
 

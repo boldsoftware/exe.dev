@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/go4org/hashtriemap"
 )
 
 const (
@@ -25,7 +27,7 @@ type ZFS struct {
 	dataDir  string
 	dsName   string
 	hostname string
-	locks    sync.Map // map[string]*sync.Mutex - per-volume locks
+	locks    hashtriemap.HashTrieMap[string, *sync.Mutex] // per-volume locks
 	log      *slog.Logger
 }
 
@@ -74,7 +76,7 @@ func (s *ZFS) Type() string {
 // getLock returns the lock for a volume ID, creating one if needed
 func (s *ZFS) getLock(id string) *sync.Mutex {
 	lock, _ := s.locks.LoadOrStore(id, &sync.Mutex{})
-	return lock.(*sync.Mutex)
+	return lock
 }
 
 // lockVolume locks a single volume and returns an unlock function
