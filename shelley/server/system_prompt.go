@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,7 +112,8 @@ func GenerateSystemPrompt(workingDir string, opts ...SystemPromptOption) (string
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 
-	return collapseBlankLines(buf.String()), nil
+	prompt := collapseBlankLines(buf.String())
+	return runHook(hookSystemPrompt, prompt)
 }
 
 // collapseBlankLines reduces runs of 3+ newlines to 2 (one blank line)
@@ -121,6 +124,56 @@ func collapseBlankLines(s string) string {
 	s = strings.TrimSpace(s)
 	s = reBlankRun.ReplaceAllString(s, "\n\n")
 	return s + "\n"
+}
+
+const hookSystemPrompt = "system-prompt"
+
+// runHook checks for an executable hook at ~/.config/shelley/hooks/<name> and,
+// if found, runs it with the prompt on stdin. The hook's stdout replaces the
+// prompt. If the hook doesn't exist, the prompt is returned unchanged. If the
+// hook exists but fails, an error is returned.
+func runHook(name, prompt string) (string, error) {
+	if filepath.Base(name) != name {
+		return "", fmt.Errorf("invalid hook name: %q", name)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("hook %s: cannot determine home directory: %w", name, err)
+	}
+	hookPath := filepath.Join(home, ".config", "shelley", "hooks", name)
+
+	info, err := os.Stat(hookPath)
+	if os.IsNotExist(err) {
+		return prompt, nil // no hook
+	}
+	if err != nil {
+		return "", fmt.Errorf("hook %s: %w", name, err)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		return prompt, nil // not executable
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, hookPath)
+	cmd.Stdin = strings.NewReader(prompt)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("hook %s failed: %w (stderr: %s)", hookPath, err, stderr.String())
+	}
+
+	result := stdout.String()
+	if result == "" {
+		return "", fmt.Errorf("hook %s returned empty output", hookPath)
+	}
+
+	slog.Info("hook applied", "name", name, "hook", hookPath, "originalLen", len(prompt), "newLen", len(result))
+	return result, nil
 }
 
 func collectSystemData(workingDir string) (*SystemPromptData, error) {
@@ -437,7 +490,8 @@ func GenerateSubagentSystemPrompt(workingDir, parentConversationID string) (stri
 		return "", fmt.Errorf("failed to execute subagent template: %w", err)
 	}
 
-	return collapseBlankLines(buf.String()), nil
+	prompt := collapseBlankLines(buf.String())
+	return runHook(hookSystemPrompt, prompt)
 }
 
 // renderOperationalContext renders the operational context template for the given working directory
@@ -514,7 +568,8 @@ func GenerateOrchestratorSystemPrompt(workingDir, contextDir, conversationID str
 		return "", err
 	}
 
-	return collapseBlankLines(buf.String() + "\n\n" + operationalCtx), nil
+	prompt := collapseBlankLines(buf.String() + "\n\n" + operationalCtx)
+	return runHook(hookSystemPrompt, prompt)
 }
 
 // GenerateOrchestratorSubagentSystemPrompt generates the system prompt for
@@ -539,5 +594,6 @@ func GenerateOrchestratorSubagentSystemPrompt(workingDir, parentConversationID s
 		return "", fmt.Errorf("failed to execute orchestrator subagent template: %w", err)
 	}
 
-	return collapseBlankLines(buf.String()), nil
+	prompt := collapseBlankLines(buf.String())
+	return runHook(hookSystemPrompt, prompt)
 }

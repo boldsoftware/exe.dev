@@ -251,3 +251,144 @@ func TestSystemPromptDeduplicatesSymlinkedGuidanceFiles(t *testing.T) {
 		t.Errorf("expected SYMLINK_DEDUP_MARKER to appear exactly 1 time, got %d", count)
 	}
 }
+
+func TestRunHookNoHook(t *testing.T) {
+	// With no hook file, runHook returns the prompt unchanged.
+	t.Setenv("HOME", t.TempDir())
+	result, err := runHook("system-prompt", "original prompt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "original prompt" {
+		t.Errorf("expected original prompt, got %q", result)
+	}
+}
+
+func TestRunHookModifiesPrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	hookDir := filepath.Join(home, ".config", "shelley", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hook that prepends "HOOKED: " to the first line
+	hookPath := filepath.Join(hookDir, "system-prompt")
+	script := "#!/bin/sh\nread input\necho \"HOOKED: $input\"\n"
+	if err := os.WriteFile(hookPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runHook("system-prompt", "hello world")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "HOOKED: hello world\n" {
+		t.Errorf("expected hooked output, got %q", result)
+	}
+}
+
+func TestRunHookNonExecutable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	hookDir := filepath.Join(home, ".config", "shelley", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hook file but make it non-executable
+	hookPath := filepath.Join(hookDir, "system-prompt")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\necho modified"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runHook("system-prompt", "original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "original" {
+		t.Errorf("non-executable hook should be ignored, got %q", result)
+	}
+}
+
+func TestRunHookFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	hookDir := filepath.Join(home, ".config", "shelley", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hook that exits non-zero
+	hookPath := filepath.Join(hookDir, "system-prompt")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runHook("system-prompt", "original")
+	if err == nil {
+		t.Fatal("expected error from failing hook")
+	}
+	if !strings.Contains(err.Error(), "failed") {
+		t.Errorf("error should mention failure, got: %v", err)
+	}
+}
+
+func TestRunHookEmptyOutput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	hookDir := filepath.Join(home, ".config", "shelley", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hook that outputs nothing
+	hookPath := filepath.Join(hookDir, "system-prompt")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runHook("system-prompt", "original")
+	if err == nil {
+		t.Fatal("expected error from empty-output hook")
+	}
+	if !strings.Contains(err.Error(), "empty output") {
+		t.Errorf("error should mention empty output, got: %v", err)
+	}
+}
+
+func TestRunHookInvalidName(t *testing.T) {
+	_, err := runHook("../evil", "prompt")
+	if err == nil {
+		t.Fatal("expected error for path-traversal hook name")
+	}
+}
+
+func TestRunHookReceivesFullPrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	hookDir := filepath.Join(home, ".config", "shelley", "hooks")
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a hook that passes stdin through to stdout (cat)
+	hookPath := filepath.Join(hookDir, "system-prompt")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/sh\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	multiline := "line1\nline2\nline3\n"
+	result, err := runHook("system-prompt", multiline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != multiline {
+		t.Errorf("cat hook should pass through input unchanged\ngot:  %q\nwant: %q", result, multiline)
+	}
+}
