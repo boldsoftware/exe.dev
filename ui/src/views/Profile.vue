@@ -106,10 +106,12 @@
                 Your plan is managed by your team billing admins: {{ data.teamInfo.billingAdmins.join(', ') }}
               </div>
 
+              <!-- Temporarily hidden pending metrics updates
               <div v-if="data.planCapacity && data.planCapacity.nextTier" class="billing-upsell">
                 <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
                 <a href="/billing/update?source=upgrade" class="billing-upsell-link">Upgrade</a>
               </div>
+              -->
             </div>
 
             <!-- Payment Section -->

@@ -154,8 +154,9 @@
         </div>
       </div>
 
-      <!-- Usage History Charts -->
+      <!-- Usage History Charts - temporarily hidden pending metrics updates
       <UsageChart :vm-name="box.name" :vm-status="box.status" />
+      -->
 
       <div class="section-divider"></div>
 
