@@ -17,6 +17,7 @@ import (
 	"exe.dev/billing"
 	"exe.dev/billing/plan"
 	"exe.dev/billing/tender"
+	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/region"
@@ -320,6 +321,7 @@ type jsonProfileData struct {
 	PlanCapacity       *jsonPlanCapacity   `json:"planCapacity,omitempty"`
 	BasicUser          bool                `json:"basicUser"`
 	ShowIntegrations   bool                `json:"showIntegrations"`
+	CanEmailSupport    bool                `json:"canEmailSupport"`
 	InviteCount        int64               `json:"inviteCount"`
 	CanRequestInvites  bool                `json:"canRequestInvites"`
 	AvailableRegions   []jsonRegionOption  `json:"availableRegions"`
@@ -881,6 +883,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		PlanCapacity:       planCapacity,
 		BasicUser:          basicUser,
 		ShowIntegrations:   showIntegrations,
+		CanEmailSupport:    s.UserHasExeSudo(r.Context(), userID),
 		InviteCount:        inviteCount,
 		CanRequestInvites:  canRequestInvites,
 		Credits: jsonCreditInfo{
@@ -1290,4 +1293,117 @@ func (s *Server) handleReceiptsDownload(w http.ResponseWriter, r *http.Request, 
 		_, _ = io.Copy(fw, resp.Body)
 		resp.Body.Close()
 	}
+}
+
+// supportEmailMaxRequestSize caps the whole multipart request (including attachments).
+const supportEmailMaxRequestSize = 25 * 1024 * 1024 // 25 MiB
+
+// supportEmailMaxSubjectLen limits subject length to prevent abuse.
+const supportEmailMaxSubjectLen = 200
+
+// supportEmailMaxBodyLen limits body length to prevent abuse.
+const supportEmailMaxBodyLen = 50 * 1024
+
+// supportEmailMaxAttachments caps the number of attachments per request.
+const supportEmailMaxAttachments = 10
+
+// handleAPIProfileSupport handles POST /api/profile/support: users contact support by email.
+// Gated to root-support ('exe sudo') users for now.
+func (s *Server) handleAPIProfileSupport(w http.ResponseWriter, r *http.Request, userID string) {
+	ctx := r.Context()
+
+	// Gate: sudoers only for now.
+	if !s.UserHasExeSudo(ctx, userID) {
+		http.Error(w, "support email is not available for your account", http.StatusForbidden)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, supportEmailMaxRequestSize)
+	if err := r.ParseMultipartForm(supportEmailMaxRequestSize); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	subject := strings.TrimSpace(r.FormValue("subject"))
+	body := r.FormValue("body")
+	if subject == "" {
+		http.Error(w, "missing subject", http.StatusBadRequest)
+		return
+	}
+	if strings.ContainsAny(subject, "\r\n") {
+		http.Error(w, "subject contains invalid characters", http.StatusBadRequest)
+		return
+	}
+	if len(subject) > supportEmailMaxSubjectLen {
+		http.Error(w, fmt.Sprintf("subject exceeds %d characters", supportEmailMaxSubjectLen), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body) == "" {
+		http.Error(w, "missing body", http.StatusBadRequest)
+		return
+	}
+	if len(body) > supportEmailMaxBodyLen {
+		http.Error(w, fmt.Sprintf("body exceeds %d bytes", supportEmailMaxBodyLen), http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, "user lookup failed", http.StatusInternalServerError)
+		return
+	}
+
+	var attachments []email.Attachment
+	if r.MultipartForm != nil {
+		files := r.MultipartForm.File["attachments"]
+		if len(files) > supportEmailMaxAttachments {
+			http.Error(w, fmt.Sprintf("too many attachments (max %d)", supportEmailMaxAttachments), http.StatusBadRequest)
+			return
+		}
+		for _, fh := range files {
+			f, err := fh.Open()
+			if err != nil {
+				http.Error(w, "failed to read attachment", http.StatusBadRequest)
+				return
+			}
+			data, err := io.ReadAll(f)
+			f.Close()
+			if err != nil {
+				http.Error(w, "failed to read attachment", http.StatusBadRequest)
+				return
+			}
+			ct := fh.Header.Get("Content-Type")
+			attachments = append(attachments, email.Attachment{
+				Filename:    fh.Filename,
+				ContentType: ct,
+				Data:        data,
+			})
+		}
+	}
+
+	fullBody := fmt.Sprintf("From: %s (user_id=%s)\n\n%s\n", user.Email, userID, body)
+
+	if err := s.sendEmail(ctx, sendEmailParams{
+		emailType:   email.TypeAccessRequest,
+		to:          "support@" + s.env.WebHost,
+		subject:     subject,
+		body:        fullBody,
+		replyTo:     user.Email,
+		attachments: attachments,
+		attrs: []slog.Attr{
+			slog.String("support_from", user.Email),
+			slog.String("support_user_id", userID),
+		},
+	}); err != nil {
+		s.slog().ErrorContext(ctx, "failed to send support email", "error", err, "user_id", userID)
+		http.Error(w, "failed to send email", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSONOK(w, map[string]string{"status": "sent"})
 }

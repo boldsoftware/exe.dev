@@ -98,6 +98,7 @@ function makeProfile(overrides: Partial<ProfileData> = {}): ProfileData {
     credits: { planName: 'Pro', balance: 0, currency: 'usd' } as any,
     basicUser: false,
     showIntegrations: false,
+    canEmailSupport: false,
     inviteCount: 0,
     canRequestInvites: false,
     boxes: [{ name: 'my-vm', status: 'running' }],

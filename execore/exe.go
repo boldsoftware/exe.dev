@@ -1766,12 +1766,13 @@ func isBogusEmailDomain(email string) bool {
 //
 //exe:completeinit
 type sendEmailParams struct {
-	emailType email.Type
-	to        string
-	subject   string
-	body      string
-	fromName  string
-	replyTo   string
+	emailType   email.Type
+	to          string
+	subject     string
+	body        string
+	fromName    string
+	replyTo     string
+	attachments []email.Attachment
 	// attrs are forwarded to the email provider's "email sent" log line.
 	attrs []slog.Attr
 }
@@ -1804,7 +1805,7 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 			displayName = p.fromName
 		}
 		from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
-		err := s.sendFakeEmail(ctx, from, p.to, p.subject, p.body, replyTo)
+		err := s.sendFakeEmail(ctx, from, p.to, p.subject, p.body, replyTo, p.attachments)
 		if err != nil {
 			s.slog().WarnContext(ctx, "failed to send fake email", "to", p.to, "subject", p.subject, "error", err)
 		}
@@ -1829,13 +1830,14 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 	}
 	from := (&mail.Address{Name: displayName, Address: "support@" + s.env.WebHost}).String()
 	err := sender.Send(ctx, email.Message{
-		Type:    p.emailType,
-		From:    from,
-		To:      p.to,
-		Subject: p.subject,
-		Body:    p.body,
-		ReplyTo: replyTo,
-		Attrs:   p.attrs,
+		Type:        p.emailType,
+		From:        from,
+		To:          p.to,
+		Subject:     p.subject,
+		Body:        p.body,
+		ReplyTo:     replyTo,
+		Attachments: p.attachments,
+		Attrs:       p.attrs,
 	})
 	if err != nil {
 		s.slog().WarnContext(ctx, "failed to send email", "to", p.to, "subject", p.subject, "type", p.emailType, "error", err)
@@ -1858,13 +1860,24 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 }
 
 // sendFakeEmail sends an email to the fake HTTP email server
-func (s *Server) sendFakeEmail(ctx context.Context, from, to, subject, body, replyTo string) error {
-	emailData := map[string]string{
+func (s *Server) sendFakeEmail(ctx context.Context, from, to, subject, body, replyTo string, attachments []email.Attachment) error {
+	emailData := map[string]any{
 		"from":     from,
 		"to":       to,
 		"subject":  subject,
 		"body":     body,
 		"reply_to": replyTo,
+	}
+	if len(attachments) > 0 {
+		atts := make([]map[string]any, 0, len(attachments))
+		for _, a := range attachments {
+			atts = append(atts, map[string]any{
+				"filename":     a.Filename,
+				"content_type": a.ContentType,
+				"size":         len(a.Data),
+			})
+		}
+		emailData["attachments"] = atts
 	}
 
 	jsonData, err := json.Marshal(emailData)

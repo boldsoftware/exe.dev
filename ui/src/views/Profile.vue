@@ -623,6 +623,41 @@
       </section>
 
       <!-- Shared VMs -->
+      <!-- Support -->
+      <section v-if="data.canEmailSupport" class="card">
+        <h2 class="card-title">Support</h2>
+        <p class="section-help">
+          Email the exe.dev support team. We'll reply to <strong>{{ data.user.email }}</strong>.
+          Attachments up to a combined {{ supportMaxMB }}&nbsp;MB are supported.
+        </p>
+        <div class="form-row">
+          <label>Subject</label>
+          <input v-model="support.subject" class="form-input" placeholder="Short summary" :disabled="support.sending" />
+        </div>
+        <div class="form-row">
+          <label>Message</label>
+          <textarea v-model="support.body" class="form-input" rows="6" placeholder="Describe what you need help with…" :disabled="support.sending"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Attachments</label>
+          <input ref="supportFileInput" type="file" multiple @change="onSupportFilesChange" :disabled="support.sending" />
+          <div v-if="support.files.length > 0" class="support-files">
+            <div v-for="(f, i) in support.files" :key="i" class="support-file">
+              <span>{{ f.name }} <span class="text-muted">({{ formatBytes(f.size) }})</span></span>
+              <button class="btn btn-secondary btn-xs" @click="removeSupportFile(i)" :disabled="support.sending">Remove</button>
+            </div>
+            <div class="text-muted" style="font-size: 12px;">Total: {{ formatBytes(supportTotalBytes) }}</div>
+          </div>
+        </div>
+        <div v-if="support.error" class="error-text">{{ support.error }}</div>
+        <div v-if="support.success" class="support-success">Message sent. We'll get back to you at {{ data.user.email }}.</div>
+        <div style="margin-top: 12px;">
+          <button class="btn btn-primary" :disabled="!canSendSupport" @click="sendSupportEmail">
+            {{ support.sending ? 'Sending…' : 'Send to support' }}
+          </button>
+        </div>
+      </section>
+
       <section v-if="data.sharedBoxes.length > 0" class="card">
         <h2 class="card-title">Sites Shared With You</h2>
         <table class="mini-table">
@@ -806,6 +841,72 @@ const selectedRegion = ref('')
 const teamName = ref('')
 const teamError = ref('')
 const creatingTeam = ref(false)
+
+// Support form
+const supportMaxMB = 25
+const supportMaxBytes = supportMaxMB * 1024 * 1024
+const supportFileInput = ref<HTMLInputElement | null>(null)
+const support = reactive({
+  subject: '',
+  body: '',
+  files: [] as File[],
+  sending: false,
+  error: '',
+  success: false,
+})
+const supportTotalBytes = computed(() => support.files.reduce((a, f) => a + f.size, 0))
+const canSendSupport = computed(() => !support.sending && support.subject.trim().length > 0 && support.body.trim().length > 0 && supportTotalBytes.value <= supportMaxBytes)
+
+function formatBytes(n: number): string {
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+  return (n / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function onSupportFilesChange(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  support.error = ''
+  support.success = false
+  support.files = input.files ? Array.from(input.files) : []
+  if (supportTotalBytes.value > supportMaxBytes) {
+    support.error = `Attachments exceed ${supportMaxMB} MB total.`
+  }
+}
+
+function removeSupportFile(i: number) {
+  support.files.splice(i, 1)
+  if (supportFileInput.value) supportFileInput.value.value = ''
+}
+
+async function sendSupportEmail() {
+  support.error = ''
+  support.success = false
+  if (supportTotalBytes.value > supportMaxBytes) {
+    support.error = `Attachments exceed ${supportMaxMB} MB total.`
+    return
+  }
+  support.sending = true
+  try {
+    const fd = new FormData()
+    fd.append('subject', support.subject.trim())
+    fd.append('body', support.body)
+    for (const f of support.files) fd.append('attachments', f, f.name)
+    const resp = await fetch('/api/profile/support', { method: 'POST', body: fd })
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(txt || `HTTP ${resp.status}`)
+    }
+    support.success = true
+    support.subject = ''
+    support.body = ''
+    support.files = []
+    if (supportFileInput.value) supportFileInput.value.value = ''
+  } catch (e: any) {
+    support.error = e?.message || 'Failed to send message'
+  } finally {
+    support.sending = false
+  }
+}
 
 // Billing state
 const selectedAmount = ref(25)
@@ -3221,5 +3322,28 @@ select.form-input {
 .breadcrumb-current {
   color: var(--text-color);
   font-weight: 500;
+}
+
+/* Support section */
+.support-files {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.support-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+.support-success {
+  color: var(--green-600, #15803d);
+  font-size: 13px;
+  margin-top: 8px;
+}
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 11px;
 }
 </style>

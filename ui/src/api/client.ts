@@ -258,6 +258,7 @@ export interface ProfileData {
   planCapacity?: PlanCapacity
   basicUser: boolean
   showIntegrations: boolean
+  canEmailSupport: boolean
   inviteCount: number
   canRequestInvites: boolean
   boxes: { name: string; status: string }[]

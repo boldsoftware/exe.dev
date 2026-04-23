@@ -4,6 +4,7 @@ package email
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -82,25 +83,36 @@ func RegisterMetrics(registry *prometheus.Registry, postmarkCollector *PostmarkS
 //
 //exe:completeinit
 type SendRequest struct {
-	Type     Type
-	To       string
-	Subject  string
-	Body     string
-	UserID   string // included in the "email sent" log line when non-empty
-	FromName string // when non-empty, overrides the display name in the From header
-	ReplyTo  string // when non-empty, sets the Reply-To header
+	Type        Type
+	To          string
+	Subject     string
+	Body        string
+	UserID      string // included in the "email sent" log line when non-empty
+	FromName    string // when non-empty, overrides the display name in the From header
+	ReplyTo     string // when non-empty, sets the Reply-To header
+	Attachments []Attachment
+}
+
+// Attachment is a file to include with an email message.
+//
+//exe:completeinit
+type Attachment struct {
+	Filename    string
+	ContentType string // MIME type; if empty, recipient infers from extension
+	Data        []byte
 }
 
 // Message holds the parameters for sending an email.
 //
 //exe:completeinit
 type Message struct {
-	Type    Type
-	From    string // "Name <email@example.com>"
-	To      string
-	Subject string
-	Body    string
-	ReplyTo string // when non-empty, sets the Reply-To header
+	Type        Type
+	From        string // "Name <email@example.com>"
+	To          string
+	Subject     string
+	Body        string
+	ReplyTo     string // when non-empty, sets the Reply-To header
+	Attachments []Attachment
 	// Attrs are included in the "email sent" log line.
 	Attrs []slog.Attr
 }
@@ -181,6 +193,17 @@ func (s *PostmarkSender) Send(ctx context.Context, msg Message) error {
 		ReplyTo:       msg.ReplyTo,
 		MessageStream: postmarkMessageStreams[msg.Type],
 	}
+	for _, a := range msg.Attachments {
+		ct := a.ContentType
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		email.Attachments = append(email.Attachments, postmark.Attachment{
+			Name:        a.Filename,
+			Content:     base64.StdEncoding.EncodeToString(a.Data),
+			ContentType: ct,
+		})
+	}
 	_, err := s.client.SendEmail(context.WithoutCancel(ctx), email)
 	if err == nil {
 		emailsSentTotal.WithLabelValues("postmark", string(msg.Type)).Inc()
@@ -212,6 +235,9 @@ func (s *MailgunSender) Send(ctx context.Context, msg Message) error {
 	m := s.mg.NewMessage(msg.From, msg.Subject, msg.Body, msg.To)
 	if msg.ReplyTo != "" {
 		m.SetReplyTo(msg.ReplyTo)
+	}
+	for _, a := range msg.Attachments {
+		m.AddBufferAttachment(a.Filename, a.Data)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
