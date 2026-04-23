@@ -8,7 +8,7 @@ Type=simple
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
-EnvironmentFile=/etc/default/exepipe
+EnvironmentFile=-/etc/default/exepipe
 
 # Use the latest timestamp version
 ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exepipe.* | head -n1)" -controller -addr @exepipe -stage prod'
