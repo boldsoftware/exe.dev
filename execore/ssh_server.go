@@ -1769,16 +1769,71 @@ func longestCommonPrefix(strs []string) string {
 	return prefix
 }
 
-// showCompletions displays multiple completion options
+// showCompletions displays multiple completion options in a column layout.
 func (ss *SSHServer) showCompletions(terminal *term.Terminal, completions []string) {
-	fmt.Fprintf(terminal, "\n")
-	for i, completion := range completions {
-		fmt.Fprintf(terminal, "%s", completion)
-		if i < len(completions)-1 {
-			fmt.Fprintf(terminal, "  ")
+	width := terminal.TermWidth()
+	if width <= 0 {
+		width = 80
+	}
+	fmt.Fprint(terminal, formatCompletions(completions, width))
+}
+
+// formatCompletions renders completions as a newline-prefixed, newline-terminated
+// multi-column block sized to the given terminal width.
+//
+// It returns a single string so the caller can write it in one Write call;
+// writing piecemeal confuses term.Terminal, which rewrites the prompt+line
+// on every Write, causing the prompt to interleave with completion items.
+func formatCompletions(completions []string, width int) string {
+	if len(completions) == 0 {
+		return ""
+	}
+	if width < 1 {
+		width = 80
+	}
+	maxLen := 0
+	for _, c := range completions {
+		if n := visualLen(c); n > maxLen {
+			maxLen = n
 		}
 	}
-	fmt.Fprintf(terminal, "\n")
+	colW := maxLen + 2
+	cols := width / colW
+	if cols < 1 {
+		cols = 1
+	}
+	rows := (len(completions) + cols - 1) / cols
+	var b strings.Builder
+	b.WriteByte('\n')
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			i := c*rows + r
+			if i >= len(completions) {
+				continue
+			}
+			item := completions[i]
+			b.WriteString(item)
+			next := (c+1)*rows + r
+			if next < len(completions) && c < cols-1 {
+				for p := visualLen(item); p < colW; p++ {
+					b.WriteByte(' ')
+				}
+			}
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// visualLen returns a best-effort visual column width of s, counting each
+// rune as one cell. Close enough for our completion lists (ASCII command/box
+// names and :shortcode: tokens).
+func visualLen(s string) int {
+	n := 0
+	for range s {
+		n++
+	}
+	return n
 }
 
 // normalizeBoxName extracts the box name from user input.

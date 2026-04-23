@@ -960,6 +960,13 @@ func (t *Terminal) clearAndRepaintLinePlusNPrevious(numPrevLines int) {
 	t.moveCursorToPos(t.pos)
 }
 
+// TermWidth returns the terminal's current width in columns.
+func (t *Terminal) TermWidth() int {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.termWidth
+}
+
 func (t *Terminal) SetSize(width, height int) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
