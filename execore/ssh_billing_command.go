@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"exe.dev/billing/plan"
 	"exe.dev/exedb"
@@ -23,6 +24,14 @@ func (ss *SSHServer) billingCommand() *exemenu.Command {
 				Usage:       "billing plan",
 				Handler:     ss.handleBillingPlanCommand,
 				FlagSetFunc: jsonOnlyFlags("billing-plan"),
+				Available:   ss.canSeeBilling,
+			},
+			{
+				Name:        "update",
+				Description: "Open Stripe billing portal to manage your subscription",
+				Usage:       "billing update",
+				Handler:     ss.handleBillingUpdateCommand,
+				FlagSetFunc: jsonOnlyFlags("billing-update"),
 				Available:   ss.canSeeBilling,
 			},
 		},
@@ -57,7 +66,7 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 			return nil
 		}
 		cc.Writeln("No active plan.")
-		cc.Writeln("Sign up at \033[1m%s/user\033[0m", ss.server.env.WebHost)
+		cc.Writeln("Sign up at \033[1m%s/user\033[0m", ss.server.webBaseURLNoRequest())
 		return nil
 	}
 
@@ -132,7 +141,44 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 	}
 
 	cc.Writeln("")
-	cc.Writeln("  Manage your plan at \033[1m%s/user\033[0m", ss.server.env.WebHost)
+	cc.Writeln("  Manage your plan at \033[1m%s/user\033[0m", ss.server.webBaseURLNoRequest())
+	cc.Writeln("")
+	return nil
+}
+
+// handleBillingUpdateCommand generates a magic link that authenticates the user
+// and redirects to the Stripe billing portal.
+func (ss *SSHServer) handleBillingUpdateCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	token := generateRegistrationToken()
+	redirectURL := "/billing/update?source=exemenu"
+
+	err := withTx1(ss.server, ctx, (*exedb.Queries).InsertEmailVerification, exedb.InsertEmailVerificationParams{
+		Token:        token,
+		Email:        cc.User.Email,
+		UserID:       cc.User.ID,
+		ExpiresAt:    time.Now().Add(15 * time.Minute),
+		InviteCodeID: nil,
+		IsNewUser:    false,
+		RedirectUrl:  &redirectURL,
+	})
+	if err != nil {
+		return err
+	}
+
+	baseURL := ss.server.webBaseURLNoRequest()
+	magicURL := fmt.Sprintf("%s/auth/verify?token=%s", baseURL, token)
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]string{"url": magicURL})
+		return nil
+	}
+
+	cc.Writeln("")
+	cc.Writeln("  Open this link to manage your subscription:")
+	cc.Writeln("")
+	cc.Writeln("  \033[1;36m%s\033[0m", magicURL)
+	cc.Writeln("")
+	cc.Writeln("  \033[2mExpires in 15 minutes.\033[0m")
 	cc.Writeln("")
 	return nil
 }

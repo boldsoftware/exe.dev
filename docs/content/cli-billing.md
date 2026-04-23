@@ -29,3 +29,15 @@ billing plan
 **Options:**
 - `--json`: output in JSON format
 
+### billing update
+
+Open Stripe billing portal to manage your subscription
+
+**Usage:**
+```
+billing update
+```
+
+**Options:**
+- `--json`: output in JSON format
+

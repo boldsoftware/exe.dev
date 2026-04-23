@@ -2,6 +2,7 @@ package e1e
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"testing"
@@ -193,4 +194,124 @@ func TestBillingPlanTrialUser(t *testing.T) {
 	if result["paid"] != false {
 		t.Errorf("expected paid=false, got %v", result["paid"])
 	}
+}
+
+// TestBillingUpdate tests that `billing update` generates a magic link
+// that authenticates and redirects to /billing/update.
+func TestBillingUpdate(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "billing-update@test-billing.example")
+	pty.Disconnect()
+
+	// Test human-readable output
+	repl := sshToExeDev(t, keyFile)
+	repl.SendLine("billing update")
+	repl.Want("manage your subscription")
+	repl.Want("/auth/verify?token=")
+	repl.Want("Expires in 15 minutes")
+	repl.WantPrompt()
+	repl.Disconnect()
+
+	// Test JSON output
+	result := runParseExeDevJSON[map[string]string](t, keyFile, "billing", "update", "--json")
+	rawURL, ok := result["url"]
+	if !ok || rawURL == "" {
+		t.Fatalf("expected url in billing update JSON output, got %v", result)
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("failed to parse url %q: %v", rawURL, err)
+	}
+	if parsed.Path != "/auth/verify" {
+		t.Errorf("expected path /auth/verify, got %q", parsed.Path)
+	}
+	if parsed.Query().Get("token") == "" {
+		t.Fatalf("expected token query parameter in url %q", rawURL)
+	}
+
+	// Verify the magic link works: sets auth cookie and redirects to /billing/update
+	client := noRedirectClient(nil)
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		t.Fatalf("failed to fetch url %q: %v", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected redirect from magic link, got %d\n%s", resp.StatusCode, body)
+	}
+
+	// Verify auth cookie is set
+	foundAuthCookie := false
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "exe-auth" {
+			foundAuthCookie = true
+			break
+		}
+	}
+	if !foundAuthCookie {
+		t.Errorf("expected exe-auth cookie from magic link response")
+	}
+
+	// Verify redirect goes to /billing/update
+	location := resp.Header.Get("Location")
+	if location == "" {
+		t.Fatalf("expected Location header in redirect response")
+	}
+	redirectURL, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("failed to parse redirect Location %q: %v", location, err)
+	}
+	if redirectURL.Path != "/billing/update" {
+		t.Errorf("expected redirect to /billing/update, got %q", redirectURL.Path)
+	}
+}
+
+// TestBillingUpdateTeamMemberHidden tests that regular team members
+// cannot use `billing update`.
+func TestBillingUpdateTeamMemberHidden(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-billing-update-hidden.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-billing-update-hidden.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "billing_upd_hidden", "BillingUpdHiddenTeam", ownerEmail)
+	addTeamMember(t, "billing_upd_hidden", memberEmail)
+
+	repl := sshToExeDev(t, memberKeyFile)
+	repl.SendLine("billing update")
+	repl.Want("command not available")
+	repl.WantPrompt()
+	repl.Disconnect()
+}
+
+// TestBillingBareCommandShowsUpdate tests that bare `billing` lists
+// the update subcommand.
+func TestBillingBareCommandShowsUpdate(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "billing-bare-upd@test-billing.example")
+	pty.Disconnect()
+
+	repl := sshToExeDev(t, keyFile)
+	repl.SendLine("billing")
+	repl.Want("Subcommands")
+	repl.Want("plan")
+	repl.Want("update")
+	repl.WantPrompt()
+	repl.Disconnect()
 }
