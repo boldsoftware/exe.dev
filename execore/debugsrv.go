@@ -5877,6 +5877,8 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			// Parse cgroup overrides to extract CPU and memory values.
 			cgroupSettings := desiredstate.ParseOverrides(ptrStr(user.CgroupOverrides))
 			var cgroupCPU, cgroupMem string
+			var cgroupCPUCores float64 // numeric, 0 means unset
+			var cgroupMemBytes uint64  // numeric, 0 means unset
 			for _, cs := range cgroupSettings {
 				switch cs.Path {
 				case "cpu.max":
@@ -5884,18 +5886,19 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 					if len(parts) == 2 {
 						if quota, err := strconv.ParseFloat(parts[0], 64); err == nil {
 							if period, err := strconv.ParseFloat(parts[1], 64); err == nil && period > 0 {
-								cores := quota / period
-								if cores == float64(int(cores)) {
-									cgroupCPU = fmt.Sprintf("%.0f", cores)
+								cgroupCPUCores = quota / period
+								if cgroupCPUCores == float64(int(cgroupCPUCores)) {
+									cgroupCPU = fmt.Sprintf("%.0f", cgroupCPUCores)
 								} else {
-									cgroupCPU = fmt.Sprintf("%.1f", cores)
+									cgroupCPU = fmt.Sprintf("%.1f", cgroupCPUCores)
 								}
 							}
 						}
 					}
 				case "memory.max":
-					if bytes, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
-						cgroupMem = formatBytes(bytes)
+					if b, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
+						cgroupMemBytes = b
+						cgroupMem = formatBytes(b)
 					}
 				}
 			}
@@ -5936,6 +5939,9 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxMem = limits.MaxMemory
 			}
 			effMaxMem := GetMaxMemory(s.env, limits)
+			if cgroupMemBytes > 0 && cgroupMemBytes < effMaxMem {
+				effMaxMem = cgroupMemBytes
+			}
 			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), formatBytes(planMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
 			// Max CPUs
 			planMaxCPUs := planTier.Quotas.MaxCPUs
@@ -5944,6 +5950,9 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				userMaxCPUs = limits.MaxCPUs
 			}
 			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			if cgroupCPUCores > 0 && uint64(cgroupCPUCores) < effMaxCPUs {
+				effMaxCPUs = uint64(cgroupCPUCores)
+			}
 			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
 		}
 	}
@@ -6520,6 +6529,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			// Parse cgroup overrides to extract CPU and memory values.
 			cgroupSettings := desiredstate.ParseOverrides(ptrStr(user.CgroupOverrides))
 			var cgroupCPU, cgroupMem string
+			var cgroupCPUCores float64 // numeric, 0 means unset
+			var cgroupMemBytes uint64  // numeric, 0 means unset
 			for _, cs := range cgroupSettings {
 				switch cs.Path {
 				case "cpu.max":
@@ -6528,18 +6539,19 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 					if len(parts) == 2 {
 						if quota, err := strconv.ParseFloat(parts[0], 64); err == nil {
 							if period, err := strconv.ParseFloat(parts[1], 64); err == nil && period > 0 {
-								cores := quota / period
-								if cores == float64(int(cores)) {
-									cgroupCPU = fmt.Sprintf("%.0f", cores)
+								cgroupCPUCores = quota / period
+								if cgroupCPUCores == float64(int(cgroupCPUCores)) {
+									cgroupCPU = fmt.Sprintf("%.0f", cgroupCPUCores)
 								} else {
-									cgroupCPU = fmt.Sprintf("%.1f", cores)
+									cgroupCPU = fmt.Sprintf("%.1f", cgroupCPUCores)
 								}
 							}
 						}
 					}
 				case "memory.max":
-					if bytes, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
-						cgroupMem = formatBytes(bytes)
+					if b, err := strconv.ParseUint(strings.TrimSpace(cs.Value), 10, 64); err == nil {
+						cgroupMemBytes = b
+						cgroupMem = formatBytes(b)
 					}
 				}
 			}
@@ -6580,6 +6592,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxMem = limits.MaxMemory
 			}
 			effMaxMem := GetMaxMemory(s.env, limits)
+			if cgroupMemBytes > 0 && cgroupMemBytes < effMaxMem {
+				effMaxMem = cgroupMemBytes
+			}
 			data.Quotas = append(data.Quotas, quotaRow{"Max Memory", formatBytes(planMaxMem), formatBytes(s.env.DefaultMemory), formatBytes(userMaxMem), cgroupOrDash(cgroupMem), formatBytes(effMaxMem)})
 			// Max CPUs
 			planMaxCPUs := planTier.Quotas.MaxCPUs
@@ -6588,6 +6603,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 				userMaxCPUs = limits.MaxCPUs
 			}
 			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			if cgroupCPUCores > 0 && uint64(cgroupCPUCores) < effMaxCPUs {
+				effMaxCPUs = uint64(cgroupCPUCores)
+			}
 			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", planMaxCPUs), fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
 		}
 	}
