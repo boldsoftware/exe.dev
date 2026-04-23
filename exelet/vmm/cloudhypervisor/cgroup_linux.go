@@ -45,6 +45,10 @@ func (v *VMM) applyCgroupPlacement(ctx context.Context, id string, sys *syscall.
 			v.log.DebugContext(ctx, "close cgroup fd", "id", id, "error", cerr)
 		}
 	}
-	v.log.DebugContext(ctx, "placing cloud-hypervisor into cgroup at exec", "id", id, "path", path)
+	// Emitted at Info so tests (and operators) can observe the placement
+	// without enabling debug logs globally. The structured fields id/path
+	// are relied on by e1e/cgroup_memory_placement_test.go to assert that
+	// CLONE_INTO_CGROUP actually happened for a given VM.
+	v.log.InfoContext(ctx, "placing cloud-hypervisor into cgroup at exec", "id", id, "path", path)
 	return cleanup, nil
 }

@@ -1,38 +1,45 @@
 package e1e
 
 import (
-	"context"
-	"fmt"
-	"io"
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"exe.dev/exelet/client"
-	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-// TestVMMemoryChargedToVMScope verifies that cloud-hypervisor is placed
-// directly into the VM's cgroup scope via CLONE_INTO_CGROUP at exec time,
-// rather than being started in the exelet's cgroup and moved later. Without
-// this placement, guest RAM page faults are charged to whichever cgroup
-// cloud-hypervisor is in when it first touches pages — typically the exelet's
-// cgroup — and stay there forever (cgroup v2 does not reparent charges when
-// a process is moved).
+// TestCgroupMemoryPlacement verifies that cloud-hypervisor is placed directly
+// into the VM's cgroup scope via CLONE_INTO_CGROUP at exec time. Without this
+// placement, guest RAM page faults are charged to whichever cgroup CH was in
+// when it first touched pages — typically the exelet's cgroup — and stay
+// there forever (cgroup v2 does not reparent charges when a process is moved).
 //
-// The test checks the canonical observable: /proc/<pid>/cgroup of the running
-// CH process must name the VM's own scope. This is independent of the
-// hugepages/non-hugepages distinction (hugetlb charges are routed separately
-// from memory.current and may not be enabled in the scope's subtree_control on
-// every host).
+// The assertion is on a structured log event the VMM emits from
+// applyCgroupPlacement immediately after opening the target cgroup fd and
+// setting SysProcAttr.UseCgroupFD. That event only fires on the success path:
+// if the CgroupPathFunc is nil, the provider returns "", or the open fails,
+// the VMM returns before emitting it. So finding a record with id=<our VM>
+// and path=.../vm-<id>.scope is direct proof the placement happened.
 //
-// As a secondary check, if the scope's `cgroup.procs` contains the CH pid,
-// then the placement also matches what the resource manager would produce —
-// but via the clone-time path, not via a post-start move.
-func TestVMMemoryChargedToVMScope(t *testing.T) {
+// Scope-file / memory.current alternatives don't work here: e1e runs with
+// --enable-hugepages, so guest RAM bypasses memory.current; and cgroup.procs
+// eventually contains the pid in both the working and broken cases (the RM
+// moves the pid later).
+func TestCgroupMemoryPlacement(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("requires Linux")
+	}
+
+	logDir := os.Getenv("E1E_LOG_DIR")
+	if logDir == "" {
+		t.Skip("requires E1E_LOG_DIR to scrape exelet logs")
+	}
+	logPath := filepath.Join(logDir, "exelet.log")
+	if _, err := os.Stat(logPath); err != nil {
+		t.Skipf("exelet log %s not present: %v", logPath, err)
 	}
 
 	t.Parallel()
@@ -50,69 +57,25 @@ func TestVMMemoryChargedToVMScope(t *testing.T) {
 	exelet := Env.servers.Exelets[0]
 	exeletClient := exelet.Client()
 
-	if out, err := exelet.Exec(ctx, "test -f /sys/fs/cgroup/cgroup.controllers && stat -fc %T /sys/fs/cgroup"); err != nil || !strings.Contains(string(out), "cgroup2fs") {
-		t.Skip("requires cgroup v2 on the exelet host")
-	}
-
 	instanceID := instanceIDByName(t, ctx, exeletClient, boxName)
-
-	// Poll for the CH process's cgroup to contain the VM scope name. Up to
-	// 3 minutes because box creation and cloud-hypervisor launch take time.
 	expectedSuffix := "/vm-" + instanceID + ".scope"
+
 	deadline := time.Now().Add(3 * time.Minute)
-	var (
-		lastOutput string
-		lastErr    error
-	)
+	var lastMatches []string
 	for time.Now().Before(deadline) {
 		if err := ctx.Err(); err != nil {
-			t.Fatalf("context cancelled while polling cgroup: %v", err)
+			t.Fatalf("context cancelled while scraping logs: %v", err)
 		}
-		// Read cgroup.procs on the VM scope. When CLONE_INTO_CGROUP works,
-		// the CH pid appears here directly at exec time. When it's broken,
-		// CH lands in the exelet's cgroup first and the resource manager
-		// moves it later — either way, the pid eventually shows up in procs.
-		// What distinguishes the two cases is /proc/<pid>/cgroup: with the
-		// fix, it matches the VM scope from the very first line of
-		// cgroup.procs we observe; without the fix, there's always a gap
-		// where the pid exists but is not yet in the scope.
-		//
-		// To keep the test simple and race-free: find the scope, read its
-		// cgroup.procs, pick a pid, read /proc/<pid>/cgroup, and require the
-		// strings match. Use `find ... -exec` to avoid shell subshells that
-		// the Exec sudo wrapper mangles.
-		cmd := fmt.Sprintf(
-			`find /sys/fs/cgroup/exelet.slice -type f -name cgroup.procs -path '*vm-%s.scope/cgroup.procs' -exec head -1 {} \;`,
-			instanceID,
-		)
-		out, err := exelet.Exec(ctx, cmd)
-		lastErr = err
-		pidStr := strings.TrimSpace(string(out))
-		if err != nil || pidStr == "" {
-			lastOutput = fmt.Sprintf("scope cgroup.procs empty or missing; err=%v", err)
-			select {
-			case <-ctx.Done():
-				t.Fatalf("context cancelled: %v", ctx.Err())
-			case <-time.After(500 * time.Millisecond):
+		matched, path, err := findPlacementEvent(logPath, instanceID)
+		if err != nil {
+			t.Fatalf("read exelet log %s: %v", logPath, err)
+		}
+		if matched {
+			if !strings.HasSuffix(path, expectedSuffix) {
+				t.Fatalf("cgroup placement event found for instance %s but path %q does not end with %q — VM was placed in the wrong cgroup",
+					instanceID, path, expectedSuffix)
 			}
-			continue
-		}
-
-		// Read the pid's cgroup. Must contain the VM scope name.
-		cgOut, cgErr := exelet.Exec(ctx, "cat /proc/"+pidStr+"/cgroup")
-		if cgErr != nil {
-			lastOutput = fmt.Sprintf("reading /proc/%s/cgroup failed: %v", pidStr, cgErr)
-			select {
-			case <-ctx.Done():
-				t.Fatalf("context cancelled: %v", ctx.Err())
-			case <-time.After(500 * time.Millisecond):
-			}
-			continue
-		}
-		cgLine := strings.TrimSpace(string(cgOut))
-		lastOutput = fmt.Sprintf("pid=%s cgroup=%s", pidStr, cgLine)
-		if strings.Contains(cgLine, expectedSuffix) {
-			t.Logf("cloud-hypervisor process is in VM scope (fix confirmed): %s", lastOutput)
+			t.Logf("CLONE_INTO_CGROUP placement confirmed: id=%s path=%s", instanceID, path)
 			return
 		}
 		select {
@@ -122,30 +85,38 @@ func TestVMMemoryChargedToVMScope(t *testing.T) {
 		}
 	}
 
-	t.Fatalf("cloud-hypervisor process never landed in VM scope %q after 3 min — "+
-		"likely means CLONE_INTO_CGROUP placement regressed, so guest RAM is being "+
-		"charged to the exelet's cgroup instead of the VM's.\nLast ssh err: %v\nLast output:\n%s",
-		expectedSuffix, lastErr, lastOutput)
+	t.Fatalf("no CLONE_INTO_CGROUP placement event for instance %s in %s after 3 min — "+
+		"likely means the VMM fell back to spawning in the exelet's cgroup, so guest RAM "+
+		"is being charged to the exelet instead of the VM's scope.\nLast matching records: %v",
+		instanceID, logPath, lastMatches)
 }
 
-func instanceByName(t *testing.T, ctx context.Context, client *client.Client, name string) *api.Instance {
-	t.Helper()
-	stream, err := client.ListInstances(ctx, &api.ListInstancesRequest{})
+// findPlacementEvent scans exelet.log for a JSON record whose msg is the
+// cgroup-placement event and whose id matches instanceID. Returns the path
+// field from that record so the caller can verify it names the VM scope.
+func findPlacementEvent(logPath, instanceID string) (bool, string, error) {
+	f, err := os.Open(logPath)
 	if err != nil {
-		t.Fatalf("failed to list instances: %v", err)
+		return false, "", err
 	}
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			break
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 2*1024*1024)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if !strings.Contains(string(line), "placing cloud-hypervisor into cgroup at exec") {
+			continue
 		}
-		if err != nil {
-			t.Fatalf("failed to receive instance list: %v", err)
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			continue
 		}
-		if resp.Instance != nil && resp.Instance.GetName() == name {
-			return resp.Instance
+		if id, _ := rec["id"].(string); id != instanceID {
+			continue
 		}
+		path, _ := rec["path"].(string)
+		return true, path, nil
 	}
-	t.Fatalf("instance %q not found", name)
-	return nil
+	return false, "", sc.Err()
 }
