@@ -90,7 +90,6 @@ function DiffViewer({
   const saveTimeoutRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
   const scheduleSaveRef = useRef<(() => void) | null>(null);
-  const contentChangeDisposableRef = useRef<Monaco.IDisposable | null>(null);
   const [showCommentDialog, setShowCommentDialog] = useState<{
     line: number;
     side: "left" | "right";
@@ -101,12 +100,24 @@ function DiffViewer({
   const [commentText, setCommentText] = useState("");
   const [mode, setMode] = useState<ViewMode>("comment");
   const [commitMessages, setCommitMessages] = useState<GitCommitMessage[]>([]);
+  // Mirror of commitMessages for reading inside the model-swap effect
+  // without forcing it to re-run (and blow away unsaved edits) when the
+  // list refreshes but the selected file didn't change.
+  const commitMessagesRef = useRef(commitMessages);
+  useEffect(() => {
+    commitMessagesRef.current = commitMessages;
+  }, [commitMessages]);
   const [amendStatus, setAmendStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const amendTimeoutRef = useRef<number | null>(null);
   const [showKeyboardHint, setShowKeyboardHint] = useState(false);
   const hasShownKeyboardHint = useRef(false);
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  // Mirror of isMobile for handlers attached once at editor-creation time
+  // (those handlers must honor the *current* viewport, not the viewport at
+  // creation time, because we intentionally don't recreate the editor on
+  // resize - see comment on the creation effect below).
+  const isMobileRef = useRef(isMobile);
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Monaco.editor.IStandaloneDiffEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
@@ -198,11 +209,8 @@ function DiffViewer({
         clearTimeout(amendTimeoutRef.current);
         amendTimeoutRef.current = null;
       }
-      // Dispose editor when closing
-      if (editorRef.current) {
-        editorRef.current.dispose();
-        editorRef.current = null;
-      }
+      // The diff editor is disposed by the cleanup of the creation effect
+      // below (keyed on isOpen), so we don't dispose it here.
     }
   }, [isOpen, cwd, initialCommit]);
 
@@ -221,105 +229,62 @@ function DiffViewer({
     }
   }, [selectedDiff, selectedFile, cwd]);
 
-  // Create/update Monaco editor when fileDiff changes
+  // Track current file context for handlers that outlive model swaps.
+  // These refs avoid the need to recreate the diff editor (and leak monaco
+  // keybinding contributions) every time the user switches files.
+  const currentFileIsHeadCommitRef = useRef(false);
+  const cwdRef = useRef(cwd);
   useEffect(() => {
-    if (!monacoLoaded || !fileDiff || !editorContainerRef.current || !monacoRef.current) {
+    cwdRef.current = cwd;
+  }, [cwd]);
+
+  // Create the Monaco diff editor ONCE per monacoLoaded change.
+  // Recreating on file switch OR on viewport-breakpoint flip leaks monaco's
+  // global keybinding contributions (disposed editors stay referenced by
+  // monaco.editor internals), which causes one keypress to fire N cursor
+  // commands where N is the number of cumulative editors created. That
+  // manifests as backspace deleting multiple characters and arrow keys
+  // jumping. So: model swaps + option updates happen in separate effects.
+  useEffect(() => {
+    if (!isOpen || !monacoLoaded || !editorContainerRef.current || !monacoRef.current) {
       return;
     }
 
     const monaco = monacoRef.current;
 
-    // Dispose previous editor
-    if (editorRef.current) {
-      editorRef.current.dispose();
-      editorRef.current = null;
-    }
-
-    // Determine if this is a commit message file and whether it's the HEAD commit
-    const isCommitMsg = isCommitMessageFile(fileDiff.path);
-    const commitHash = isCommitMsg ? commitHashFromPath(fileDiff.path) : null;
-    const isHeadCommit =
-      isCommitMsg && commitMessages.some((m) => m.hash === commitHash && m.isHead);
-
-    // Get language from file extension (use plaintext for commit messages)
-    let language = "plaintext";
-    if (!isCommitMsg) {
-      const ext = "." + (fileDiff.path.split(".").pop()?.toLowerCase() || "");
-      const languages = monaco.languages.getLanguages();
-      for (const lang of languages) {
-        if (lang.extensions?.includes(ext)) {
-          language = lang.id;
-          break;
-        }
-      }
-    }
-
-    // Create models with unique URIs (include timestamp to avoid conflicts)
-    const timestamp = Date.now();
-    const originalUri = monaco.Uri.file(`original-${timestamp}-${fileDiff.path}`);
-    const modifiedUri = monaco.Uri.file(`modified-${timestamp}-${fileDiff.path}`);
-
-    const originalModel = monaco.editor.createModel(fileDiff.oldContent, language, originalUri);
-    const modifiedModel = monaco.editor.createModel(fileDiff.newContent, language, modifiedUri);
-
-    // Create diff editor with mobile-friendly options
+    // Initial readOnly just needs to be safe-by-default; the model-swap
+    // effect (which runs right after this one) sets the correct value based
+    // on file type (commit message vs regular file) and current mode.
+    const initMobile = isMobileRef.current;
     const diffEditor = monaco.editor.createDiffEditor(editorContainerRef.current, {
       theme: isDarkModeActive() ? "vs-dark" : "vs",
-      readOnly: isCommitMsg ? !isHeadCommit : modeRef.current === "comment",
+      readOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      renderSideBySide: !isMobile,
+      renderSideBySide: !initMobile,
       enableSplitViewResizing: true,
       renderIndicators: true,
       renderMarginRevertIcon: false,
-      lineNumbers: isMobile ? "off" : "on",
+      lineNumbers: initMobile ? "off" : "on",
       minimap: { enabled: false },
       scrollBeyondLastLine: true, // Enable scroll past end for mobile floating buttons
       wordWrap: "on",
-      glyphMargin: !isMobile, // Enable glyph margin for comment indicator on hover
-      lineDecorationsWidth: isMobile ? 0 : 10,
-      lineNumbersMinChars: isMobile ? 0 : 3,
+      glyphMargin: !initMobile, // Enable glyph margin for comment indicator on hover
+      lineDecorationsWidth: initMobile ? 0 : 10,
+      lineNumbersMinChars: initMobile ? 0 : 3,
       quickSuggestions: false,
       suggestOnTriggerCharacters: false,
       lightbulb: { enabled: false },
       codeLens: false,
       contextmenu: false,
       links: false,
-      folding: !isMobile,
-      padding: isMobile ? { bottom: 80 } : undefined, // Extra padding for floating buttons on mobile
-    });
-
-    diffEditor.setModel({
-      original: originalModel,
-      modified: modifiedModel,
+      folding: !initMobile,
+      padding: initMobile ? { bottom: 80 } : undefined, // Extra padding for floating buttons on mobile
     });
 
     editorRef.current = diffEditor;
-
-    // Auto-scroll to first diff when Monaco finishes computing it (once per file)
-    let hasScrolledToFirstChange = false;
-    const scrollToFirstChange = () => {
-      if (hasScrolledToFirstChange) return;
-      const changes = diffEditor.getLineChanges();
-      if (changes && changes.length > 0) {
-        hasScrolledToFirstChange = true;
-        const firstChange = changes[0];
-        const targetLine = firstChange.modifiedStartLineNumber || 1;
-        const editor = diffEditor.getModifiedEditor();
-        editor.revealLineInCenter(targetLine);
-        editor.setPosition({ lineNumber: targetLine, column: 1 });
-        setCurrentChangeIndex(0);
-      }
-    };
-
-    // Try immediately in case diff is already computed, then listen for update
-    scrollToFirstChange();
-    const diffUpdateDisposable = diffEditor.onDidUpdateDiff(scrollToFirstChange);
-
-    // Add click handler for commenting - clicking on a line in comment mode opens dialog
     const modifiedEditor = diffEditor.getModifiedEditor();
 
-    // Handler function for opening comment dialog
     const openCommentDialog = (lineNumber: number) => {
       const model = modifiedEditor.getModel();
       const selection = modifiedEditor.getSelection();
@@ -345,76 +310,71 @@ function DiffViewer({
     };
 
     // Desktop: open comment dialog on mousedown (immediate response).
-    // Mobile uses onMouseUp below to distinguish taps from scrolls.
-    if (!isMobile) {
-      modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
-        const isLineClick =
-          e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
-          e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
+    // The editor is not recreated on viewport resize, so we gate on
+    // isMobileRef at call time rather than installing only on desktop.
+    modifiedEditor.onMouseDown((e: Monaco.editor.IEditorMouseEvent) => {
+      if (isMobileRef.current) return;
+      const isLineClick =
+        e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
+        e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
 
-        if (isLineClick && modeRef.current === "comment") {
-          const position = e.target.position;
-          if (position) {
-            openCommentDialog(position.lineNumber);
-          }
+      if (isLineClick && modeRef.current === "comment") {
+        const position = e.target.position;
+        if (position) {
+          openCommentDialog(position.lineNumber);
         }
-      });
-    }
+      }
+    });
 
-    // For mobile: use onMouseUp which fires more reliably on touch devices,
+    // Mobile: use onMouseUp which fires more reliably on touch devices,
     // but only if the user tapped without scrolling (issue #153).
-    // Track touch gestures to distinguish taps from scrolls.
-    let touchCleanup: (() => void) | null = null;
-    if (isMobile) {
-      const editorDom = editorContainerRef.current!;
-      const onTouchStart = (e: TouchEvent) => {
-        touchScrolledRef.current = false;
-        const t = e.touches[0];
-        touchStartPosRef.current = { x: t.clientX, y: t.clientY };
-      };
-      const onTouchMove = (e: TouchEvent) => {
-        if (touchScrolledRef.current || !touchStartPosRef.current) return;
-        const t = e.touches[0];
-        const dx = t.clientX - touchStartPosRef.current.x;
-        const dy = t.clientY - touchStartPosRef.current.y;
-        if (dx * dx + dy * dy > 100) {
-          // 10px threshold
-          touchScrolledRef.current = true;
+    const editorDom = editorContainerRef.current!;
+    const onTouchStart = (e: TouchEvent) => {
+      touchScrolledRef.current = false;
+      const t = e.touches[0];
+      touchStartPosRef.current = { x: t.clientX, y: t.clientY };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchScrolledRef.current || !touchStartPosRef.current) return;
+      const t = e.touches[0];
+      const dx = t.clientX - touchStartPosRef.current.x;
+      const dy = t.clientY - touchStartPosRef.current.y;
+      if (dx * dx + dy * dy > 100) {
+        touchScrolledRef.current = true;
+      }
+    };
+    const onTouchEnd = () => {
+      touchStartPosRef.current = null;
+    };
+    editorDom.addEventListener("touchstart", onTouchStart, { passive: true });
+    editorDom.addEventListener("touchmove", onTouchMove, { passive: true });
+    editorDom.addEventListener("touchend", onTouchEnd, { passive: true });
+    const touchCleanup = () => {
+      editorDom.removeEventListener("touchstart", onTouchStart);
+      editorDom.removeEventListener("touchmove", onTouchMove);
+      editorDom.removeEventListener("touchend", onTouchEnd);
+    };
+
+    modifiedEditor.onMouseUp((e: Monaco.editor.IEditorMouseEvent) => {
+      if (!isMobileRef.current) return;
+      if (modeRef.current !== "comment") return;
+      if (touchScrolledRef.current) return;
+
+      const isLineClick =
+        e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
+        e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
+
+      if (isLineClick) {
+        const position = e.target.position;
+        if (position) {
+          openCommentDialog(position.lineNumber);
         }
-      };
-      const onTouchEnd = () => {
-        touchStartPosRef.current = null;
-      };
-      editorDom.addEventListener("touchstart", onTouchStart, { passive: true });
-      editorDom.addEventListener("touchmove", onTouchMove, { passive: true });
-      editorDom.addEventListener("touchend", onTouchEnd, { passive: true });
-      touchCleanup = () => {
-        editorDom.removeEventListener("touchstart", onTouchStart);
-        editorDom.removeEventListener("touchmove", onTouchMove);
-        editorDom.removeEventListener("touchend", onTouchEnd);
-      };
+      }
+    });
 
-      modifiedEditor.onMouseUp((e: Monaco.editor.IEditorMouseEvent) => {
-        if (modeRef.current !== "comment") return;
-        if (touchScrolledRef.current) return; // was a scroll, not a tap
-
-        const isLineClick =
-          e.target.type === monaco.editor.MouseTargetType.CONTENT_TEXT ||
-          e.target.type === monaco.editor.MouseTargetType.CONTENT_EMPTY;
-
-        if (isLineClick) {
-          const position = e.target.position;
-          if (position) {
-            openCommentDialog(position.lineNumber);
-          }
-        }
-      });
-    }
-
-    // Add hover highlighting with comment indicator (comment mode only)
+    // Hover highlighting with comment indicator (comment mode only)
     let lastHoveredLine = -1;
     modifiedEditor.onMouseMove((e: Monaco.editor.IEditorMouseEvent) => {
-      // Only show hover effects in comment mode
       if (modeRef.current !== "comment") {
         if (hoverDecorationsRef.current.length > 0) {
           hoverDecorationsRef.current = modifiedEditor.deltaDecorations(
@@ -450,7 +410,6 @@ function DiffViewer({
       }
     });
 
-    // Clear decorations when mouse leaves editor
     modifiedEditor.onMouseLeave(() => {
       lastHoveredLine = -1;
       hoverDecorationsRef.current = modifiedEditor.deltaDecorations(
@@ -459,11 +418,9 @@ function DiffViewer({
       );
     });
 
-    // Add content change listener for auto-save (files) or auto-amend (HEAD commit message)
-    contentChangeDisposableRef.current?.dispose();
-    contentChangeDisposableRef.current = modifiedEditor.onDidChangeModelContent(() => {
-      if (isHeadCommit) {
-        // Debounced amend for HEAD commit message
+    // Single content change listener; branches based on current file context.
+    const contentChangeDisposable = modifiedEditor.onDidChangeModelContent(() => {
+      if (currentFileIsHeadCommitRef.current) {
         if (amendTimeoutRef.current) {
           clearTimeout(amendTimeoutRef.current);
         }
@@ -473,7 +430,7 @@ function DiffViewer({
           if (!model) return;
           const newMessage = model.getValue();
           try {
-            await api.amendGitMessage(cwd, newMessage);
+            await api.amendGitMessage(cwdRef.current, newMessage);
             setAmendStatus("saved");
             setTimeout(() => setAmendStatus("idle"), 2000);
           } catch {
@@ -486,18 +443,101 @@ function DiffViewer({
       }
     });
 
-    // Cleanup function
     return () => {
-      diffUpdateDisposable.dispose();
-      contentChangeDisposableRef.current?.dispose();
-      contentChangeDisposableRef.current = null;
-      touchCleanup?.();
-      if (editorRef.current) {
-        editorRef.current.dispose();
-        editorRef.current = null;
+      contentChangeDisposable.dispose();
+      touchCleanup();
+      const model = diffEditor.getModel();
+      diffEditor.dispose();
+      // Dispose the models we created so they don't accumulate.
+      model?.original.dispose();
+      model?.modified.dispose();
+      editorRef.current = null;
+    };
+  }, [isOpen, monacoLoaded]);
+
+  // Apply mobile-dependent layout options without recreating the editor.
+  useEffect(() => {
+    isMobileRef.current = isMobile;
+    const diffEditor = editorRef.current;
+    if (!diffEditor) return;
+    diffEditor.updateOptions({
+      renderSideBySide: !isMobile,
+      lineNumbers: isMobile ? "off" : "on",
+      glyphMargin: !isMobile,
+      lineDecorationsWidth: isMobile ? 0 : 10,
+      lineNumbersMinChars: isMobile ? 0 : 3,
+      folding: !isMobile,
+      padding: isMobile ? { bottom: 80 } : {},
+    });
+  }, [isMobile]);
+
+  // Swap models into the existing editor when the selected file or its diff
+  // changes. This avoids recreating the editor (see comment above).
+  useEffect(() => {
+    if (!monacoLoaded || !fileDiff || !editorRef.current || !monacoRef.current) {
+      return;
+    }
+    const monaco = monacoRef.current;
+    const diffEditor = editorRef.current;
+
+    const isCommitMsg = isCommitMessageFile(fileDiff.path);
+    const commitHash = isCommitMsg ? commitHashFromPath(fileDiff.path) : null;
+    const isHeadCommit =
+      isCommitMsg && commitMessagesRef.current.some((m) => m.hash === commitHash && m.isHead);
+    currentFileIsHeadCommitRef.current = isHeadCommit;
+
+    // Language from extension; plaintext for commit messages.
+    let language = "plaintext";
+    if (!isCommitMsg) {
+      const ext = "." + (fileDiff.path.split(".").pop()?.toLowerCase() || "");
+      const languages = monaco.languages.getLanguages();
+      for (const lang of languages) {
+        if (lang.extensions?.includes(ext)) {
+          language = lang.id;
+          break;
+        }
+      }
+    }
+
+    const timestamp = Date.now();
+    const originalUri = monaco.Uri.file(`original-${timestamp}-${fileDiff.path}`);
+    const modifiedUri = monaco.Uri.file(`modified-${timestamp}-${fileDiff.path}`);
+    const originalModel = monaco.editor.createModel(fileDiff.oldContent, language, originalUri);
+    const modifiedModel = monaco.editor.createModel(fileDiff.newContent, language, modifiedUri);
+
+    // Capture the previous models so we can dispose them after swapping.
+    const prev = diffEditor.getModel();
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+    prev?.original.dispose();
+    prev?.modified.dispose();
+
+    // Update readOnly based on file type and current mode.
+    const readOnly = isCommitMsg ? !isHeadCommit : modeRef.current === "comment";
+    diffEditor.updateOptions({ readOnly });
+    diffEditor.getModifiedEditor().updateOptions({ readOnly });
+
+    // Auto-scroll to first diff once per file load.
+    let hasScrolledToFirstChange = false;
+    const scrollToFirstChange = () => {
+      if (hasScrolledToFirstChange) return;
+      const changes = diffEditor.getLineChanges();
+      if (changes && changes.length > 0) {
+        hasScrolledToFirstChange = true;
+        const firstChange = changes[0];
+        const targetLine = firstChange.modifiedStartLineNumber || 1;
+        const editor = diffEditor.getModifiedEditor();
+        editor.revealLineInCenter(targetLine);
+        editor.setPosition({ lineNumber: targetLine, column: 1 });
+        setCurrentChangeIndex(0);
       }
     };
-  }, [monacoLoaded, fileDiff, isMobile, commitMessages, cwd]);
+    scrollToFirstChange();
+    const diffUpdateDisposable = diffEditor.onDidUpdateDiff(scrollToFirstChange);
+
+    return () => {
+      diffUpdateDisposable.dispose();
+    };
+  }, [monacoLoaded, fileDiff]);
 
   const loadDiffs = async () => {
     try {
