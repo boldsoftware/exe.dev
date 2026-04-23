@@ -182,7 +182,7 @@ func TestCheckNewThrottleEmailPatternDefaultMessage(t *testing.T) {
 	if !throttled {
 		t.Error("expected user to be throttled")
 	}
-	if !strings.Contains(msg, "VM creation is not available for your account") {
+	if !strings.Contains(msg, "weren't able to verify your account") {
 		t.Errorf("expected default email pattern message, got %q", msg)
 	}
 }

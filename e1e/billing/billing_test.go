@@ -176,7 +176,7 @@ func TestBillingRequired(t *testing.T) {
 	}
 
 	pty.SendLine("new --name=billing-test-vm")
-	pty.WantRE("Billing Required")
+	pty.WantRE("need an active plan")
 	pty.Disconnect()
 }
 
@@ -196,7 +196,7 @@ func TestStripeCheckoutE2E(t *testing.T) {
 	}
 
 	pty.SendLine("new --name=checkout-e2e-vm")
-	pty.WantRE("Billing Required")
+	pty.WantRE("need an active plan")
 
 	// Complete the Stripe checkout flow.
 	if err := serverEnv.CompleteStripeCheckout(t.Context(), cookies, stripeProxy); err != nil {

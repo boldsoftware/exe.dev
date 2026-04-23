@@ -233,7 +233,7 @@ func TestTeamMemberInheritsOwnerPlan(t *testing.T) {
 	t.Run("MemberDeniedBeforeTeam", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.SendLine("new")
-		repl.Want("Billing Required")
+		repl.Want("need an active plan")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
@@ -245,12 +245,12 @@ func TestTeamMemberInheritsOwnerPlan(t *testing.T) {
 
 	// Member should now inherit owner's individual plan and be able to create VMs.
 	// Use newBox which fatals with clear output if "Creating" never appears
-	// (e.g. if parent_id wasn't set and member still gets "Billing Required").
+	// (e.g. if parent_id wasn't set and member still gets denied).
 	var boxName string
 	t.Run("MemberCanCreateVMAfterTeam", func(t *testing.T) {
 		repl := sshToExeDev(t, memberKeyFile)
 		repl.SendLine("new")
-		repl.Reject("Billing Required")
+		repl.Reject("need an active plan")
 		repl.Want("Creating")
 		repl.WantPrompt()
 		repl.Disconnect()

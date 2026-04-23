@@ -4218,7 +4218,7 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 		if re.MatchString(email) {
 			msg := config.Message
 			if msg == "" {
-				msg = "VM creation is not available for your account; contact support@exe.dev"
+				msg = "We weren't able to verify your account.\nPlease contact support@exe.dev and we'll get you sorted out."
 			}
 			return true, msg
 		}
@@ -4228,7 +4228,7 @@ func (s *Server) CheckNewThrottle(ctx context.Context, userID, email string) (bo
 	if isDisposableEmail(email) {
 		msg := config.Message
 		if msg == "" {
-			msg = "VM creation is currently unavailable for your account."
+			msg = "We weren't able to verify your account.\nPlease contact support@exe.dev and we'll get you sorted out."
 		}
 		return true, msg
 	}

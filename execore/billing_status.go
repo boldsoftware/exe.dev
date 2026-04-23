@@ -66,14 +66,14 @@ func (ss *SSHServer) checkCanCreateVM(ctx context.Context, user *exemenu.UserInf
 	// Check if user has VM creation disabled
 	if !allowOverride {
 		if disabled, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetUserNewVMCreationDisabled, user.ID); err == nil && disabled {
-			return "VM creation is not available for your account; contact support@exe.dev"
+			return "We weren't able to verify your account.\nPlease contact support@exe.dev and we'll get you sorted out."
 		}
 	}
 
 	// Check if user's plan grants VM creation
 	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMCreate, user.ID) {
-		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-		return "Billing Required\n\nYou need to add billing information before creating a VM.\n\nVisit: " + billingURL
+		billingURL := ss.server.webBaseURLNoRequest() + "/user"
+		return "You need an active plan to create VMs.\nManage your plan at " + billingURL
 	}
 
 	return ""

@@ -1031,8 +1031,8 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 
 	// Check if user's plan grants VM run
 	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMRun, cc.User.ID) {
-		billingURL := ss.server.webBaseURLNoRequest() + "/billing/update?source=exemenu"
-		return cc.Errorf("Billing Required\n\nYou need active billing to restart a VM.\n\nVisit: %s", billingURL)
+		billingURL := ss.server.webBaseURLNoRequest() + "/user"
+		return cc.Errorf("You need an active plan to restart VMs.\nManage your plan at %s", billingURL)
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])

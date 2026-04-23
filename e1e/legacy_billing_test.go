@@ -125,7 +125,7 @@ func TestLegacyTrialInviteCanCreateVM(t *testing.T) {
 }
 
 // TestLegacyUnpaidUserCannotCreateVM verifies that a user without billing
-// gets "Billing Required" when trying to create a VM via SSH.
+// gets an error when trying to create a VM via SSH.
 func TestLegacyUnpaidUserCannotCreateVM(t *testing.T) {
 	testinfra.SkipWithoutStripe(t) // SkipBilling=true bypasses entitlement checks
 	t.Parallel()
@@ -154,8 +154,8 @@ func TestLegacyUnpaidUserCannotCreateVM(t *testing.T) {
 	pty.SetPrompt(testinfra.ExeDevPrompt)
 	pty.WantPrompt()
 
-	// Try to create a VM — should fail with Billing Required
+	// Try to create a VM — should fail without active plan
 	pty.SendLine("new --name=unpaid-test-vm")
-	pty.WantRE("Billing Required")
+	pty.WantRE("need an active plan")
 	pty.Disconnect()
 }

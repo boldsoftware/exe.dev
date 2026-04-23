@@ -54,7 +54,7 @@ func TestNewVMCreationDisabled(t *testing.T) {
 
 	// Try to create a box - should fail
 	pty.SendLine("new")
-	pty.Want("not available for your account")
+	pty.Want("weren't able to verify your account")
 	pty.WantPrompt()
 	pty.Disconnect()
 }
