@@ -202,6 +202,8 @@ func (s *Server) buildProxyConfig(ctx context.Context, ownerUserID, typ, configJ
 		return buildHTTPProxyConfig(configJSON)
 	case "github":
 		return s.buildGitHubProxyConfig(ctx, ownerUserID, configJSON)
+	case "reflection":
+		return integrationConfigResponse{OK: true, GatewayPath: "/_/gateway/reflection"}, nil
 	default:
 		return integrationConfigResponse{OK: false}, errors.New("unsupported integration type: " + typ)
 	}

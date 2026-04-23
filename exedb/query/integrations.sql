@@ -1,6 +1,6 @@
 -- name: InsertIntegration :exec
-INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments, team_id)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments, team_id, comment)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateIntegrationName :exec
 UPDATE integrations SET name = ? WHERE integration_id = ? AND owner_user_id = ?;

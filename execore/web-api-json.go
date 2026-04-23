@@ -339,15 +339,17 @@ type jsonDiscount struct {
 }
 
 type jsonIntegrationInfo struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	Target       string   `json:"target"`
-	HasHeader    bool     `json:"hasHeader"`
-	HasBasicAuth bool     `json:"hasBasicAuth"`
-	Repositories []string `json:"repositories"`
-	Attachments  []string `json:"attachments"`
-	IsTeam       bool     `json:"isTeam"`
-	PeerVM       string   `json:"peerVM,omitempty"`
+	Name             string   `json:"name"`
+	Type             string   `json:"type"`
+	Target           string   `json:"target"`
+	HasHeader        bool     `json:"hasHeader"`
+	HasBasicAuth     bool     `json:"hasBasicAuth"`
+	Repositories     []string `json:"repositories"`
+	Attachments      []string `json:"attachments"`
+	IsTeam           bool     `json:"isTeam"`
+	PeerVM           string   `json:"peerVM,omitempty"`
+	Comment          string   `json:"comment"`
+	ReflectionFields []string `json:"reflectionFields,omitempty"`
 }
 
 type jsonGitHubAccount struct {
@@ -357,19 +359,20 @@ type jsonGitHubAccount struct {
 }
 
 type jsonIntegrationsData struct {
-	Integrations       []jsonIntegrationInfo `json:"integrations"`
-	GitHubIntegrations []jsonIntegrationInfo `json:"githubIntegrations"`
-	ProxyIntegrations  []jsonIntegrationInfo `json:"proxyIntegrations"`
-	GitHubAccounts     []jsonGitHubAccount   `json:"githubAccounts"`
-	GitHubEnabled      bool                  `json:"githubEnabled"`
-	GitHubAppSlug      string                `json:"githubAppSlug"`
-	HasPushTokens      bool                  `json:"hasPushTokens"`
-	AllTags            []string              `json:"allTags"`
-	TagVMs             map[string][]string   `json:"tagVMs"`
-	Boxes              []jsonBoxMinimal      `json:"boxes"`
-	IntegrationScheme  string                `json:"integrationScheme"`
-	BoxHost            string                `json:"boxHost"`
-	HasTeam            bool                  `json:"hasTeam"`
+	Integrations           []jsonIntegrationInfo `json:"integrations"`
+	GitHubIntegrations     []jsonIntegrationInfo `json:"githubIntegrations"`
+	ProxyIntegrations      []jsonIntegrationInfo `json:"proxyIntegrations"`
+	ReflectionIntegrations []jsonIntegrationInfo `json:"reflectionIntegrations"`
+	GitHubAccounts         []jsonGitHubAccount   `json:"githubAccounts"`
+	GitHubEnabled          bool                  `json:"githubEnabled"`
+	GitHubAppSlug          string                `json:"githubAppSlug"`
+	HasPushTokens          bool                  `json:"hasPushTokens"`
+	AllTags                []string              `json:"allTags"`
+	TagVMs                 map[string][]string   `json:"tagVMs"`
+	Boxes                  []jsonBoxMinimal      `json:"boxes"`
+	IntegrationScheme      string                `json:"integrationScheme"`
+	BoxHost                string                `json:"boxHost"`
+	HasTeam                bool                  `json:"hasTeam"`
 }
 
 type jsonBoxMinimal struct {
@@ -1125,6 +1128,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			Name:        ig.Name,
 			Type:        ig.Type,
 			Attachments: nonNil(ig.GetAttachments()),
+			Comment:     ig.Comment,
 		}
 		switch ig.Type {
 		case "http-proxy":
@@ -1146,6 +1150,11 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
 				info.Repositories = nonNil(cfg.Repositories)
 			}
+		case "reflection":
+			var cfg reflectionIntegrationConfig
+			if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+				info.ReflectionFields = nonNil(cfg.Fields)
+			}
 		}
 		integrations = append(integrations, info)
 	}
@@ -1161,6 +1170,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 				Type:        ig.Type,
 				Attachments: nonNil(ig.GetAttachments()),
 				IsTeam:      true,
+				Comment:     ig.Comment,
 			}
 			switch ig.Type {
 			case "http-proxy":
@@ -1181,18 +1191,25 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
 					info.Repositories = nonNil(cfg.Repositories)
 				}
+			case "reflection":
+				var cfg reflectionIntegrationConfig
+				if err := json.Unmarshal([]byte(ig.Config), &cfg); err == nil {
+					info.ReflectionFields = nonNil(cfg.Fields)
+				}
 			}
 			integrations = append(integrations, info)
 		}
 	}
 
-	var ghIntegrations, proxyIntegrations []jsonIntegrationInfo
+	var ghIntegrations, proxyIntegrations, reflectionIntegrations []jsonIntegrationInfo
 	for _, ig := range integrations {
 		switch ig.Type {
 		case "github":
 			ghIntegrations = append(ghIntegrations, ig)
 		case "http-proxy":
 			proxyIntegrations = append(proxyIntegrations, ig)
+		case "reflection":
+			reflectionIntegrations = append(reflectionIntegrations, ig)
 		}
 	}
 
@@ -1221,15 +1238,16 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 
 	if !showIntegrations {
 		writeJSONOK(w, jsonIntegrationsData{
-			Integrations:       make([]jsonIntegrationInfo, 0),
-			GitHubIntegrations: make([]jsonIntegrationInfo, 0),
-			ProxyIntegrations:  make([]jsonIntegrationInfo, 0),
-			GitHubAccounts:     make([]jsonGitHubAccount, 0),
-			AllTags:            make([]string, 0),
-			TagVMs:             map[string][]string{},
-			Boxes:              make([]jsonBoxMinimal, 0),
-			IntegrationScheme:  s.integrationScheme(),
-			BoxHost:            s.env.BoxHost,
+			Integrations:           make([]jsonIntegrationInfo, 0),
+			GitHubIntegrations:     make([]jsonIntegrationInfo, 0),
+			ProxyIntegrations:      make([]jsonIntegrationInfo, 0),
+			ReflectionIntegrations: make([]jsonIntegrationInfo, 0),
+			GitHubAccounts:         make([]jsonGitHubAccount, 0),
+			AllTags:                make([]string, 0),
+			TagVMs:                 map[string][]string{},
+			Boxes:                  make([]jsonBoxMinimal, 0),
+			IntegrationScheme:      s.integrationScheme(),
+			BoxHost:                s.env.BoxHost,
 		})
 		return
 	}
@@ -1250,19 +1268,20 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 	}
 
 	writeJSONOK(w, jsonIntegrationsData{
-		Integrations:       nonNil(integrations),
-		GitHubIntegrations: nonNil(ghIntegrations),
-		ProxyIntegrations:  nonNil(proxyIntegrations),
-		GitHubAccounts:     ghAccounts,
-		GitHubEnabled:      ghEnabled,
-		GitHubAppSlug:      ghAppSlug,
-		HasPushTokens:      hasPushTokens,
-		AllTags:            nonNil(allTags),
-		TagVMs:             tagVMs,
-		Boxes:              nonNil(profileBoxes),
-		IntegrationScheme:  s.integrationScheme(),
-		BoxHost:            s.env.BoxHost,
-		HasTeam:            hasTeam,
+		Integrations:           nonNil(integrations),
+		GitHubIntegrations:     nonNil(ghIntegrations),
+		ProxyIntegrations:      nonNil(proxyIntegrations),
+		ReflectionIntegrations: nonNil(reflectionIntegrations),
+		GitHubAccounts:         ghAccounts,
+		GitHubEnabled:          ghEnabled,
+		GitHubAppSlug:          ghAppSlug,
+		HasPushTokens:          hasPushTokens,
+		AllTags:                nonNil(allTags),
+		TagVMs:                 tagVMs,
+		Boxes:                  nonNil(profileBoxes),
+		IntegrationScheme:      s.integrationScheme(),
+		BoxHost:                s.env.BoxHost,
+		HasTeam:                hasTeam,
 	})
 }
 

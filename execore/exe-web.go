@@ -70,6 +70,7 @@ func (s *Server) prepareHandler() http.Handler {
 	servMux.Handle("/_/gateway/", lg)
 	servMux.HandleFunc("POST /_/gateway/email/send", s.handleVMEmailSend)
 	servMux.HandleFunc("POST /_/gateway/push/send", s.handleVMPushSend)
+	servMux.HandleFunc("/_/gateway/reflection", s.requireTailscaleOrDev(s.handleVMReflection))
 	servMux.HandleFunc("GET /_/integration-config", s.requireTailscaleOrDev(s.handleIntegrationConfig))
 	servMux.HandleFunc("GET /_/team-integration-config", s.requireTailscaleOrDev(s.handleTeamIntegrationConfig))
 	servMux.HandleFunc("GET /_/integration-cert", s.requireTailscaleOrDev(s.handleIntegrationCert))

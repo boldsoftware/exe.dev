@@ -349,6 +349,7 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 				"type":        ig.Type,
 				"config":      json.RawMessage(ig.Config),
 				"attachments": ig.GetAttachments(),
+				"comment":     ig.Comment,
 			})
 		}
 		for _, ig := range teamIntegrations {
@@ -357,6 +358,7 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 				"type":        ig.Type,
 				"config":      json.RawMessage(ig.Config),
 				"attachments": ig.GetAttachments(),
+				"comment":     ig.Comment,
 				"team":        true,
 			})
 		}
@@ -406,6 +408,14 @@ func summarizeConfig(typ, configJSON string) string {
 		var cfg githubIntegrationConfig
 		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
 			return fmt.Sprintf("repos=%s", strings.Join(cfg.Repositories, ","))
+		}
+	case "reflection":
+		var cfg reflectionIntegrationConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
+			if len(cfg.Fields) == 0 {
+				return "fields=(none)"
+			}
+			return "fields=" + strings.Join(cfg.Fields, ",")
 		}
 	}
 	return configJSON
@@ -496,6 +506,13 @@ func (ss *SSHServer) printIntegrationUsage(cc *exemenu.CommandContext, typ, name
 			cc.Writeln("  git clone %s://%s/%s.git", scheme, intHost, repo)
 		}
 		cc.Writeln("  GH_HOST=%s gh repo view %s", intHost, repo)
+	case "reflection":
+		cc.Writeln("Usage from a VM:")
+		if vmName != "" {
+			cc.Writeln("  ssh %s curl %s://%s/", vmName, scheme, intHost)
+		} else {
+			cc.Writeln("  curl %s://%s/", scheme, intHost)
+		}
 	}
 }
 
@@ -510,9 +527,22 @@ func (f *stringSliceFlag) Set(v string) error {
 	return nil
 }
 
+// commentFromFlags returns the value of the --comment flag, or "" if not set.
+func commentFromFlags(cc *exemenu.CommandContext) string {
+	if cc == nil || cc.FlagSet == nil {
+		return ""
+	}
+	f := cc.FlagSet.Lookup("comment")
+	if f == nil {
+		return ""
+	}
+	return f.Value.String()
+}
+
 var knownIntegrationTypes = map[string]bool{
 	"http-proxy": true,
 	"github":     true,
+	"reflection": true,
 }
 
 func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -566,6 +596,8 @@ func (ss *SSHServer) handleIntegrationsAdd(ctx context.Context, cc *exemenu.Comm
 		return ss.handleAddHTTPProxy(ctx, cc, attachments, teamIDPtr)
 	case "github":
 		return ss.handleAddGitHub(ctx, cc, attachments, teamIDPtr)
+	case "reflection":
+		return ss.handleAddReflection(ctx, cc, attachments, teamIDPtr)
 	default:
 		return cc.Errorf("unknown integration type %q", typeName)
 	}
@@ -581,6 +613,8 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.Bool("peer", false, "authenticate with a generated API key scoped to the target VM")
 	fs.Var(&stringSliceFlag{}, "attach", "attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated")
 	fs.Bool("team", false, "create as a team integration")
+	fs.String("comment", "", "optional free-form comment stored with the integration")
+	fs.String("fields", "email,integrations,tags", "comma-separated reflection fields to expose (email, integrations, tags)")
 	return fs
 }
 
@@ -670,6 +704,7 @@ func (ss *SSHServer) handleAddHTTPProxy(ctx context.Context, cc *exemenu.Command
 			Name:          name,
 			Attachments:   attachments,
 			TeamID:        teamID,
+			Comment:       commentFromFlags(cc),
 		})
 	})
 	if err != nil {
@@ -783,6 +818,7 @@ func (ss *SSHServer) handleAddGitHub(ctx context.Context, cc *exemenu.CommandCon
 			Name:          name,
 			Attachments:   attachments,
 			TeamID:        teamID,
+			Comment:       commentFromFlags(cc),
 		})
 	})
 	if err != nil {

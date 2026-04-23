@@ -99,6 +99,7 @@ func (ss *SSHServer) handleAddHTTPProxyWithPeer(ctx context.Context, cc *exemenu
 			Config:        string(cfgJSON),
 			Name:          name,
 			Attachments:   attachments,
+			Comment:       commentFromFlags(cc),
 		}); err != nil {
 			return fmt.Errorf("inserting integration: %w", err)
 		}

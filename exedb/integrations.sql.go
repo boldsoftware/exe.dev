@@ -38,7 +38,7 @@ func (q *Queries) DeleteTeamIntegration(ctx context.Context, arg DeleteTeamInteg
 }
 
 const getIntegration = `-- name: GetIntegration :one
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 WHERE integration_id = ?
 `
@@ -55,12 +55,13 @@ func (q *Queries) GetIntegration(ctx context.Context, integrationID string) (Int
 		&i.CreatedAt,
 		&i.Attachments,
 		&i.TeamID,
+		&i.Comment,
 	)
 	return i, err
 }
 
 const getIntegrationByOwnerAndName = `-- name: GetIntegrationByOwnerAndName :one
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 WHERE owner_user_id = ? AND name = ? AND team_id IS NULL
 `
@@ -82,12 +83,13 @@ func (q *Queries) GetIntegrationByOwnerAndName(ctx context.Context, arg GetInteg
 		&i.CreatedAt,
 		&i.Attachments,
 		&i.TeamID,
+		&i.Comment,
 	)
 	return i, err
 }
 
 const getIntegrationByTeamAndName = `-- name: GetIntegrationByTeamAndName :one
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 WHERE team_id = ? AND name = ?
 `
@@ -109,13 +111,14 @@ func (q *Queries) GetIntegrationByTeamAndName(ctx context.Context, arg GetIntegr
 		&i.CreatedAt,
 		&i.Attachments,
 		&i.TeamID,
+		&i.Comment,
 	)
 	return i, err
 }
 
 const insertIntegration = `-- name: InsertIntegration :exec
-INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments, team_id)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO integrations (integration_id, owner_user_id, type, config, name, attachments, team_id, comment)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertIntegrationParams struct {
@@ -126,6 +129,7 @@ type InsertIntegrationParams struct {
 	Name          string  `db:"name" json:"name"`
 	Attachments   string  `db:"attachments" json:"attachments"`
 	TeamID        *string `db:"team_id" json:"team_id"`
+	Comment       string  `db:"comment" json:"comment"`
 }
 
 func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationParams) error {
@@ -137,12 +141,13 @@ func (q *Queries) InsertIntegration(ctx context.Context, arg InsertIntegrationPa
 		arg.Name,
 		arg.Attachments,
 		arg.TeamID,
+		arg.Comment,
 	)
 	return err
 }
 
 const listAllIntegrations = `-- name: ListAllIntegrations :many
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 ORDER BY created_at DESC, rowid DESC
 `
@@ -165,6 +170,7 @@ func (q *Queries) ListAllIntegrations(ctx context.Context) ([]Integration, error
 			&i.CreatedAt,
 			&i.Attachments,
 			&i.TeamID,
+			&i.Comment,
 		); err != nil {
 			return nil, err
 		}
@@ -180,7 +186,7 @@ func (q *Queries) ListAllIntegrations(ctx context.Context) ([]Integration, error
 }
 
 const listIntegrationsByTeam = `-- name: ListIntegrationsByTeam :many
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 WHERE team_id = ?
 ORDER BY created_at DESC, rowid DESC
@@ -204,6 +210,7 @@ func (q *Queries) ListIntegrationsByTeam(ctx context.Context, teamID *string) ([
 			&i.CreatedAt,
 			&i.Attachments,
 			&i.TeamID,
+			&i.Comment,
 		); err != nil {
 			return nil, err
 		}
@@ -219,7 +226,7 @@ func (q *Queries) ListIntegrationsByTeam(ctx context.Context, teamID *string) ([
 }
 
 const listIntegrationsByUser = `-- name: ListIntegrationsByUser :many
-SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id
+SELECT integration_id, owner_user_id, type, name, config, created_at, attachments, team_id, comment
 FROM integrations
 WHERE owner_user_id = ? AND team_id IS NULL
 ORDER BY created_at DESC, rowid DESC
@@ -243,6 +250,7 @@ func (q *Queries) ListIntegrationsByUser(ctx context.Context, ownerUserID string
 			&i.CreatedAt,
 			&i.Attachments,
 			&i.TeamID,
+			&i.Comment,
 		); err != nil {
 			return nil, err
 		}

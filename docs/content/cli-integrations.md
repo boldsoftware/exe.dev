@@ -62,6 +62,8 @@ integrations add <type> --name=<name> [--team] [args...]
 **Options:**
 - `--attach`: attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated
 - `--bearer`: bearer token (shorthand for --header="Authorization:Bearer TOKEN")
+- `--comment`: optional free-form comment stored with the integration
+- `--fields`: comma-separated reflection fields to expose (email, integrations, tags)
 - `--header`: header to inject (e.g. X-Auth:secret)
 - `--name`: integration name (required)
 - `--peer`: authenticate with a generated API key scoped to the target VM

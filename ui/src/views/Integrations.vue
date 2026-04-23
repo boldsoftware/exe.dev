@@ -36,6 +36,15 @@
           <i class="pi pi-globe grid-btn-icon"></i>
           <span class="grid-btn-label">HTTP Proxy</span>
         </button>
+        <button class="grid-btn" @click="openAddReflection">
+          <span class="reflection-icon grid-btn-icon" aria-hidden="true">
+            <span class="reflection-frame">
+              <img src="/exy.png" alt="" class="reflection-fish" />
+              <span class="reflection-shimmer"></span>
+            </span>
+          </span>
+          <span class="grid-btn-label">Reflection</span>
+        </button>
         <button v-for="sp in serviceProxies" :key="sp.id" class="grid-btn" @click="openServiceProxy(sp.id)">
           <span class="grid-btn-icon grid-btn-icon-text" v-html="sp.icon"></span>
           <span class="grid-btn-label">{{ sp.label }}</span>
@@ -79,6 +88,17 @@
                       </div>
                     </div>
                   </template>
+                  <template v-else-if="row.type === 'reflection'">
+                    <div class="table-detail-badges">
+                      <span v-for="f in row.reflectionFields" :key="f" class="badge badge-blue">{{ f }}</span>
+                    </div>
+                    <div class="usage-rows">
+                      <div class="usage-row">
+                        <code>curl {{ integrationScheme }}://{{ row.name }}.{{ row.isTeam ? 'team' : 'int' }}.{{ boxHost }}/</code>
+                        <CopyButton :text="`curl ${integrationScheme}://${row.name}.${row.isTeam ? 'team' : 'int'}.${boxHost}/`" title="Copy" />
+                      </div>
+                    </div>
+                  </template>
                   <template v-else>
                     <div class="table-detail-badges">
                       <span class="text-muted">{{ row.target }}</span>
@@ -93,6 +113,7 @@
                       </div>
                     </div>
                   </template>
+                  <div v-if="row.comment" class="integration-comment text-muted">{{ row.comment }}</div>
                 </div>
               </td>
               <td class="col-attach">
@@ -232,6 +253,10 @@
               <label for="svc-team-check">Team integration</label>
               <span class="text-muted">— shared with all team members</span>
             </div>
+          </div>
+          <div class="form-row">
+            <label>Comment <span class="text-muted">(optional)</span></label>
+            <input v-model="svcModal.comment" class="form-input" placeholder="notes about this integration" />
           </div>
           <div v-if="svcModal.showTarget" class="form-row">
             <label>{{ svcModal.targetLabel }}</label>
@@ -400,6 +425,10 @@
             </div>
           </div>
           <div class="form-row">
+            <label>Comment <span class="text-muted">(optional)</span></label>
+            <input v-model="ghModal.comment" class="form-input" placeholder="notes about this integration" />
+          </div>
+          <div class="form-row">
             <label>Attach to</label>
             <div class="multi-select" ref="ghAttachRef">
               <div class="multi-select-tags" v-if="ghModal.attachments.length > 0">
@@ -513,6 +542,10 @@
               <label for="proxy-team-check">Team integration</label>
               <span class="text-muted">— shared with all team members</span>
             </div>
+          </div>
+          <div class="form-row">
+            <label>Comment <span class="text-muted">(optional)</span></label>
+            <input v-model="proxyModal.comment" class="form-input" placeholder="notes about this integration" />
           </div>
           <div class="form-row">
             <label>Target URL</label>
@@ -664,6 +697,94 @@
       </div>
     </div>
 
+    <!-- Reflection Integration Modal -->
+    <div v-if="reflectionModal.visible" class="modal-overlay" @click.self="closeReflectionModal">
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Add Reflection Integration">
+        <div class="modal-header">
+          <h3>Add Reflection Integration</h3>
+          <button class="modal-close" aria-label="Close" @click="closeReflectionModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="section-desc">
+            The reflection integration exposes information about the VM itself back to the VM —
+            its owner's email, the list of integrations attached to it, and its tags. Useful for
+            agents that need to know what they have access to.
+          </p>
+          <div class="form-row">
+            <label>Name</label>
+            <input v-model="reflectionModal.name" class="form-input" placeholder="reflection" />
+          </div>
+          <div v-if="data?.hasTeam" class="form-row">
+            <div class="form-row-check">
+              <input type="checkbox" v-model="reflectionModal.team" id="reflect-team-check" />
+              <label for="reflect-team-check">Team integration</label>
+              <span class="text-muted">— shared with all team members</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Comment <span class="text-muted">(optional)</span></label>
+            <input v-model="reflectionModal.comment" class="form-input" placeholder="notes about this integration" />
+          </div>
+          <div class="form-row">
+            <label>Fields to expose</label>
+            <div class="radio-group">
+              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldEmail" /> email <span class="text-muted">— owner's email address</span></label>
+              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldIntegrations" /> integrations <span class="text-muted">— attached integrations</span></label>
+              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldTags" /> tags <span class="text-muted">— VM tags</span></label>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Attach to</label>
+            <div class="multi-select" ref="reflectionAttachRef">
+              <div class="multi-select-tags" v-if="reflectionModal.attachments.length > 0">
+                <span v-for="a in reflectionModal.attachments" :key="a" class="multi-select-tag" :class="{ 'multi-select-tag-default': a === `tag:${reflectionEffectiveName}` }">
+                  {{ a }}
+                  <span v-if="a.startsWith('tag:')" class="tag-default-hint">{{ tagChipHint(a.slice(4)) }}</span>
+                  <button class="multi-select-tag-remove" @click="removeReflectionAttachment(a)">&times;</button>
+                </span>
+              </div>
+              <input
+                ref="reflectionAttachInputRef"
+                v-model="reflectionAttachSearch"
+                class="form-input"
+                placeholder="Search VMs, tags..."
+                @focus="reflectionAttachOpen = true"
+                @input="reflectionAttachOpen = true"
+                @blur="delayClose(() => reflectionAttachOpen = false)"
+              />
+              <div v-if="reflectionAttachOpen && filteredReflectionAttachOptions.length > 0" class="attach-dropdown">
+                <div
+                  v-for="opt in filteredReflectionAttachOptions"
+                  :key="opt.value"
+                  class="attach-option"
+                  @mousedown.prevent="addReflectionAttachment(opt.value)"
+                >
+                  <span>{{ opt.label }}</span>
+                  <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="cmd-preview">
+            <code v-for="(cmd, i) in reflectionBuiltCommands" :key="i">{{ cmd }}</code>
+            <code v-if="reflectionBuiltCommands.length === 0">Fill in name to preview command</code>
+          </div>
+          <div v-if="reflectionModal.result" class="cmd-result" :class="reflectionModal.result.success ? 'success' : 'error'">
+            {{ reflectionModal.result.output || reflectionModal.result.error }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button v-if="reflectionModal.result?.success" class="btn btn-primary" @click="closeReflectionModal">Done</button>
+          <template v-else>
+            <button class="btn btn-secondary" @click="closeReflectionModal">Cancel</button>
+            <button class="btn btn-primary" :disabled="reflectionBuiltCommands.length === 0 || reflectionModal.running" @click="runReflectionCommand">
+              {{ reflectionModal.running ? 'Running...' : 'Run' }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- Attach Modal (for managing attachments on existing integrations) -->
     <div v-if="attachModal.visible" class="modal-overlay" @click.self="closeAttachModal">
       <div class="modal-panel modal-panel-narrow" role="dialog" aria-modal="true" aria-label="Attach Integration">
@@ -775,7 +896,7 @@ function openGitHubSetup() {
 interface ActiveIntegrationRow {
   name: string
   displayName: string
-  type: 'github' | 'http-proxy'
+  type: 'github' | 'http-proxy' | 'reflection'
   iconSvg: string
   iconClass: string
   target: string
@@ -785,6 +906,8 @@ interface ActiveIntegrationRow {
   peerVM?: string
   hasHeader: boolean
   hasBasicAuth: boolean
+  comment: string
+  reflectionFields: string[]
 }
 
 function matchServiceProxy(ig: IntegrationInfo): ServiceProxyDef | null {
@@ -816,6 +939,8 @@ const allActiveIntegrations = computed((): ActiveIntegrationRow[] => {
       peerVM: ig.peerVM,
       hasHeader: ig.hasHeader,
       hasBasicAuth: ig.hasBasicAuth,
+      comment: ig.comment || '',
+      reflectionFields: [],
     })
   }
 
@@ -835,6 +960,27 @@ const allActiveIntegrations = computed((): ActiveIntegrationRow[] => {
       peerVM: ig.peerVM,
       hasHeader: ig.hasHeader,
       hasBasicAuth: ig.hasBasicAuth,
+      comment: ig.comment || '',
+      reflectionFields: [],
+    })
+  }
+
+  // Reflection integrations
+  for (const ig of (data.value.reflectionIntegrations || [])) {
+    rows.push({
+      name: ig.name,
+      displayName: ig.name,
+      type: 'reflection',
+      iconSvg: '',
+      iconClass: 'pi pi-eye',
+      target: '',
+      repositories: [],
+      attachments: ig.attachments || [],
+      isTeam: ig.isTeam,
+      hasHeader: false,
+      hasBasicAuth: false,
+      comment: ig.comment || '',
+      reflectionFields: ig.reflectionFields || [],
     })
   }
 
@@ -940,6 +1086,7 @@ const ghModal = reactive({
   visible: false,
   repo: '',
   name: '',
+  comment: '',
   team: false,
   attachments: [] as string[],
   tagVMs: [] as string[],
@@ -959,6 +1106,7 @@ const proxyModal = reactive({
   visible: false,
   name: '',
   target: '',
+  comment: '',
   usePeer: false,
   authMethod: 'none',
   basicUser: '',
@@ -995,12 +1143,36 @@ const svcModal = reactive({
   targetLabel: 'Target URL',
   showTarget: false,
   team: false,
+  comment: '',
   fields: [] as ServiceProxyField[],
   attachments: [] as string[],
   tagVMs: [] as string[],
   running: false,
   result: null as { success: boolean; output: string; error: string } | null,
 })
+
+// Reflection add modal
+const reflectionModal = reactive({
+  visible: false,
+  name: 'reflection',
+  comment: '',
+  team: false,
+  fieldEmail: true,
+  fieldIntegrations: true,
+  fieldTags: true,
+  attachments: [] as string[],
+  tagVMs: [] as string[],
+  running: false,
+  result: null as { success: boolean; output: string; error: string } | null,
+})
+const reflectionAttachRef = ref<HTMLElement | null>(null)
+const reflectionAttachInputRef = ref<HTMLInputElement | null>(null)
+const reflectionAttachSearch = ref('')
+const reflectionAttachOpen = ref(false)
+const reflectionTagVMRef = ref<HTMLElement | null>(null)
+const reflectionTagVMInputRef = ref<HTMLInputElement | null>(null)
+const reflectionTagVMSearch = ref('')
+const reflectionTagVMOpen = ref(false)
 
 const svcAttachRef = ref<HTMLElement | null>(null)
 const svcAttachInputRef = ref<HTMLInputElement | null>(null)
@@ -1262,6 +1434,7 @@ const ghBuiltCommands = computed(() => {
   const name = ghEffectiveName.value
   let cmd = `integrations add github --name=${shellQuote(name)} --repository=${shellQuote(ghModal.repo)}`
   if (ghModal.team) cmd += ' --team'
+  if (ghModal.comment.trim()) cmd += ` --comment=${shellQuote(ghModal.comment.trim())}`
   for (const a of ghModal.attachments) {
     cmd += ` --attach=${shellQuote(a)}`
   }
@@ -1361,6 +1534,7 @@ function buildProxyCommands(mask: boolean): string[] {
   const target = (mask && proxyModal.authMethod !== 'basic') ? proxyModal.target.trim() : proxyEffectiveTarget()
   let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(target)}`
   if (proxyModal.team) cmd += ' --team'
+  if (proxyModal.comment.trim()) cmd += ` --comment=${shellQuote(proxyModal.comment.trim())}`
   if (proxyModal.usePeer && detectedPeerVM.value) {
     cmd += ' --peer'
   } else if (proxyModal.authMethod === 'bearer' && proxyModal.bearer.trim()) {
@@ -1503,6 +1677,7 @@ function openServiceProxy(serviceId: string) {
   svcModal.targetLabel = def.targetLabel
   svcModal.showTarget = def.targetEditable
   svcModal.team = false
+  svcModal.comment = ''
   svcModal.fields = def.fields.map(f => ({
     label: f.label, placeholder: f.placeholder, secret: f.secret,
     authRole: f.authRole, headerName: f.headerName, value: '', error: '',
@@ -1536,6 +1711,101 @@ function addSvcTagVM(vm: string) {
 }
 function removeSvcTagVM(vm: string) {
   svcModal.tagVMs = svcModal.tagVMs.filter(v => v !== vm)
+}
+
+// --- Reflection modal ---
+const reflectionEffectiveName = computed(() => reflectionModal.name.trim() || 'reflection')
+const filteredReflectionAttachOptions = computed(() => {
+  const opts = filterAttachOptions(reflectionAttachSearch.value, reflectionModal.attachments)
+  return reflectionModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
+})
+watch(reflectionEffectiveName, (newName, oldName) => {
+  if (oldName) {
+    const oldTag = `tag:${oldName}`
+    const idx = reflectionModal.attachments.indexOf(oldTag)
+    if (idx !== -1) {
+      if (newName) reflectionModal.attachments[idx] = `tag:${newName}`
+      else reflectionModal.attachments.splice(idx, 1)
+    }
+  } else if (newName && reflectionModal.attachments.length === 0) {
+    reflectionModal.attachments.push(`tag:${newName}`)
+  }
+})
+watch(() => reflectionModal.team, (isTeam) => {
+  if (isTeam) reflectionModal.attachments = reflectionModal.attachments.filter(a => a.startsWith('tag:'))
+})
+
+function openAddReflection() {
+  reflectionModal.visible = true
+  reflectionModal.name = 'reflection'
+  reflectionModal.comment = ''
+  reflectionModal.team = false
+  reflectionModal.fieldEmail = true
+  reflectionModal.fieldIntegrations = true
+  reflectionModal.fieldTags = true
+  reflectionModal.attachments = ['tag:reflection']
+  reflectionModal.tagVMs = []
+  reflectionModal.running = false
+  reflectionModal.result = null
+  reflectionAttachSearch.value = ''
+  reflectionTagVMSearch.value = ''
+}
+function closeReflectionModal() {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  reflectionModal.visible = false
+  if (reflectionModal.result?.success) reload()
+}
+function addReflectionAttachment(opt: string) {
+  if (!reflectionModal.attachments.includes(opt)) reflectionModal.attachments.push(opt)
+  reflectionAttachSearch.value = ''
+  nextTick(() => { reflectionAttachInputRef.value?.focus(); reflectionAttachOpen.value = true })
+}
+function removeReflectionAttachment(opt: string) {
+  reflectionModal.attachments = reflectionModal.attachments.filter(a => a !== opt)
+}
+
+const reflectionSelectedFields = computed(() => {
+  const fs: string[] = []
+  if (reflectionModal.fieldEmail) fs.push('email')
+  if (reflectionModal.fieldIntegrations) fs.push('integrations')
+  if (reflectionModal.fieldTags) fs.push('tags')
+  return fs
+})
+
+const reflectionBuiltCommands = computed(() => {
+  const name = reflectionEffectiveName.value
+  if (!name) return [] as string[]
+  const fields = reflectionSelectedFields.value
+  if (fields.length === 0) return [] as string[]
+  const fieldsArg = fields.length === 3 ? 'all' : fields.join(',')
+  let cmd = `integrations add reflection --name=${shellQuote(name)} --fields=${shellQuote(fieldsArg)}`
+  if (reflectionModal.team) cmd += ' --team'
+  if (reflectionModal.comment.trim()) cmd += ` --comment=${shellQuote(reflectionModal.comment.trim())}`
+  for (const a of reflectionModal.attachments) cmd += ` --attach=${shellQuote(a)}`
+  return [cmd]
+})
+
+async function runReflectionCommand() {
+  const cmds = reflectionBuiltCommands.value
+  if (cmds.length === 0) return
+  reflectionModal.running = true
+  reflectionModal.result = null
+  try {
+    const outputs: string[] = []
+    for (const cmd of cmds) {
+      const res = await runCommand(cmd)
+      if (!res.success) {
+        reflectionModal.result = { success: false, output: '', error: res.output || res.error || 'Command failed' }
+        return
+      }
+      if (res.output) outputs.push(res.output)
+    }
+    reflectionModal.result = { success: true, output: outputs.join('\n') || 'Done', error: '' }
+  } catch (err: any) {
+    reflectionModal.result = { success: false, output: '', error: err.message || 'Network error' }
+  } finally {
+    reflectionModal.running = false
+  }
 }
 
 function svcValidateFields(): boolean {
@@ -1579,6 +1849,7 @@ function buildSvcCommands(mask: boolean): string[] {
   const displayTarget = mask ? (svcModal.showTarget ? svcModal.target.trim() : svcModal.targetPlaceholder) : effectiveTarget
   let cmd = `integrations add http-proxy --name=${shellQuote(name)} --target=${shellQuote(displayTarget)}`
   if (svcModal.team) cmd += ' --team'
+  if (svcModal.comment.trim()) cmd += ` --comment=${shellQuote(svcModal.comment.trim())}`
   for (const f of svcModal.fields) {
     if (f.authRole === 'header' && f.headerName && f.value.trim()) {
       cmd += mask ? ` --header=${shellQuote(`${f.headerName}: ••••`)}` : ` --header=${shellQuote(`${f.headerName}: ${f.value.trim()}`)}`
@@ -1812,6 +2083,7 @@ async function openAddGitHubRepo() {
   ghModal.visible = true
   ghModal.repo = ''
   ghModal.name = ''
+  ghModal.comment = ''
   ghModal.team = false
   ghModal.attachments = []
   ghModal.tagVMs = []
@@ -1883,6 +2155,7 @@ function openAddHTTPProxy() {
   proxyModal.basicPass = ''
   proxyModal.bearer = ''
   proxyModal.header = ''
+  proxyModal.comment = ''
   proxyModal.team = false
   proxyModal.attachments = []
   proxyModal.tagVMs = []
@@ -2949,4 +3222,111 @@ select.form-input {
   color: var(--text-color);
   font-weight: 500;
 }
+/* Reflection tile: exy.png in an ornate frame, shimmering like a reflecting pool */
+.reflection-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4em;
+  height: 1.4em;
+  line-height: 1;
+}
+.reflection-frame {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 45% 55% 48% 52% / 55% 48% 52% 45%;
+  background:
+    radial-gradient(circle at 30% 30%, #fff8e0 0%, #d4af37 30%, #8b6914 70%, #4a3810 100%);
+  padding: 2px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 230, 150, 0.9),
+    inset 0 0 4px rgba(139, 105, 20, 0.6),
+    0 0 3px rgba(212, 175, 55, 0.5);
+}
+.reflection-frame::before {
+  /* inner ornate ring */
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  border: 1px solid rgba(74, 56, 16, 0.7);
+  pointer-events: none;
+  z-index: 2;
+}
+.reflection-fish {
+  width: 78%;
+  height: 78%;
+  object-fit: contain;
+  border-radius: inherit;
+  /* subtle vertical flip suggestion via gradient — keep fish upright, reflection is in the shimmer */
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25));
+  animation: reflection-sway 6s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+}
+.reflection-shimmer {
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+  mix-blend-mode: screen;
+  z-index: 3;
+}
+.reflection-shimmer::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    repeating-linear-gradient(
+      115deg,
+      transparent 0px,
+      transparent 8px,
+      rgba(255, 255, 255, 0.25) 9px,
+      transparent 10px,
+      transparent 18px,
+      rgba(180, 220, 255, 0.15) 19px,
+      transparent 20px
+    );
+  animation: reflection-ripple 6s linear infinite;
+}
+.reflection-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(
+    100deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 60%
+  );
+  animation: reflection-sweep 7s ease-in-out infinite;
+}
+@keyframes reflection-ripple {
+  from { transform: translateY(0) translateX(0); }
+  to   { transform: translateY(-8px) translateX(-6px); }
+}
+@keyframes reflection-sweep {
+  0%   { transform: translateX(-100%) rotate(0deg); opacity: 0; }
+  20%  { opacity: 0.5; }
+  50%  { transform: translateX(30%) rotate(0deg); opacity: 0.5; }
+  80%  { opacity: 0; }
+  100% { transform: translateX(100%) rotate(0deg); opacity: 0; }
+}
+@keyframes reflection-sway {
+  0%,100% { transform: translateY(0) rotate(-0.5deg); }
+  50%     { transform: translateY(-0.5px) rotate(0.5deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reflection-fish,
+  .reflection-shimmer::before,
+  .reflection-shimmer::after { animation: none; }
+}
+.grid-btn:hover .reflection-shimmer::after { animation-duration: 3.5s; }
+.grid-btn:hover .reflection-fish { animation-duration: 3s; }
+
 </style>

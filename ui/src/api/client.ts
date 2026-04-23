@@ -113,7 +113,7 @@ export interface SiteSessionInfo {
 
 export interface IntegrationInfo {
   name: string
-  type: string // github, http-proxy
+  type: string // github, http-proxy, reflection
   target: string
   hasHeader: boolean
   hasBasicAuth: boolean
@@ -121,6 +121,8 @@ export interface IntegrationInfo {
   attachments: string[]
   isTeam: boolean
   peerVM?: string
+  comment: string
+  reflectionFields?: string[]
 }
 
 export interface GitHubAccountInfo {
@@ -275,6 +277,7 @@ export interface IntegrationsData {
   integrations: IntegrationInfo[]
   githubIntegrations: IntegrationInfo[]
   proxyIntegrations: IntegrationInfo[]
+  reflectionIntegrations: IntegrationInfo[]
   githubAccounts: GitHubAccountInfo[]
   githubEnabled: boolean
   githubAppSlug: string
