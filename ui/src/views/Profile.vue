@@ -664,7 +664,7 @@
           <input ref="supportFileInput" type="file" multiple @change="onSupportFilesChange" :disabled="support.sending" />
           <div v-if="support.files.length > 0" class="support-files">
             <div v-for="(f, i) in support.files" :key="i" class="support-file">
-              <span>{{ f.name }} <span class="text-muted">({{ formatBytes(f.size) }})</span></span>
+              <span>{{ f.name }} <span class="text-muted">({{ formatAttachBytes(f.size) }})</span></span>
               <button class="btn btn-secondary btn-xs" @click="removeSupportFile(i)" :disabled="support.sending">Remove</button>
             </div>
           </div>
@@ -875,7 +875,7 @@ const support = reactive({
 const supportTotalBytes = computed(() => support.files.reduce((a, f) => a + f.size, 0))
 const canSendSupport = computed(() => !support.sending && support.subject.trim().length > 0 && support.body.trim().length > 0 && supportTotalBytes.value <= supportMaxBytes)
 
-function formatBytes(n: number): string {
+function formatAttachBytes(n: number): string {
   if (n < 1024) return n + ' B'
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
   return (n / (1024 * 1024)).toFixed(1) + ' MB'
