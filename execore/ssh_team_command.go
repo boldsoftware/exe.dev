@@ -209,17 +209,14 @@ func (ss *SSHServer) isSudoUser(cc *exemenu.CommandContext) bool {
 	return ss.server.UserHasExeSudo(context.Background(), cc.User.ID)
 }
 
-// canCreateTeam checks if user is NOT in a team and HAS team:create entitlement (for team enable)
+// canCreateTeam checks if user is NOT already in a team (for team enable visibility).
+// The entitlement check happens inside the handler so we can give a helpful error message.
 func (ss *SSHServer) canCreateTeam(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
 		return false
 	}
-	// Must not already be in a team
 	team, _ := ss.server.GetTeamForUser(context.Background(), cc.User.ID)
-	if team != nil {
-		return false
-	}
-	return ss.server.UserHasEntitlement(context.Background(), plan.SourceSSH, plan.TeamCreate, cc.User.ID)
+	return team == nil
 }
 
 // isTeamBillingOwner checks if the user is a team billing owner (for team disable)
@@ -245,6 +242,13 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 	}
 	if team != nil {
 		return cc.Errorf("You are already in a team: %s", team.DisplayName)
+	}
+
+	// Check entitlement — give a clear message if missing
+	if !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.TeamCreate, cc.User.ID) {
+		cc.Writeln("Teams requires a paid plan.")
+		cc.Writeln("Upgrade at \033[1m%s/user\033[0m to enable teams.", ss.server.env.WebHost)
+		return nil
 	}
 
 	cc.Writeln("")
