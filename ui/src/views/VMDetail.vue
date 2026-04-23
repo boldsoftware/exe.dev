@@ -79,10 +79,6 @@
         </div>
       </div>
 
-      <!-- Usage History Charts - temporarily hidden pending metrics updates
-      <UsageChart :vm-name="box.name" :vm-status="box.status" />
-      -->
-
       <div class="section-divider"></div>
 
       <!-- Billing Usage -->
@@ -230,7 +226,6 @@ import EmojiPicker from '../components/EmojiPicker.vue'
 import { useCommand } from '../composables/useCommand'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
-import UsageChart from '../components/UsageChart.vue'
 import VMDetailSections from '../components/VMDetailSections.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 

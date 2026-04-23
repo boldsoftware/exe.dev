@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// TestBillingUsageAPI tests the /api/billing/usage and /api/billing/usage/vms
-// endpoints end-to-end with a real metricsd and exed.
+// TestBillingUsageAPI tests the /api/billing/usage/vms endpoint
+// end-to-end with a real metricsd and exed.
 func TestBillingUsageAPI(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 1)
@@ -41,20 +41,6 @@ func TestBillingUsageAPI(t *testing.T) {
 
 	client := newClientWithCookies(t, cookies)
 
-	t.Run("unauthenticated_usage_401", func(t *testing.T) {
-		noGolden(t)
-
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd))
-		if err != nil {
-			t.Fatalf("GET /api/billing/usage failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("expected 401, got %d", resp.StatusCode)
-		}
-	})
-
 	t.Run("unauthenticated_vms_401", func(t *testing.T) {
 		noGolden(t)
 
@@ -76,10 +62,6 @@ func TestBillingUsageAPI(t *testing.T) {
 			name string
 			url  string
 		}{
-			{"no granularity", "/api/billing/usage?start=2024-01-01T00:00:00Z&end=2025-01-01T00:00:00Z"},
-			{"no start", "/api/billing/usage?granularity=monthly&end=2025-01-01T00:00:00Z"},
-			{"no end", "/api/billing/usage?granularity=monthly&start=2024-01-01T00:00:00Z"},
-			{"bad granularity", "/api/billing/usage?granularity=hourly&start=2024-01-01T00:00:00Z&end=2025-01-01T00:00:00Z"},
 			{"vms no start", "/api/billing/usage/vms?end=2025-01-01T00:00:00Z"},
 			{"vms no end", "/api/billing/usage/vms?start=2024-01-01T00:00:00Z"},
 		}
@@ -95,75 +77,6 @@ func TestBillingUsageAPI(t *testing.T) {
 					t.Errorf("%s: expected 400, got %d: %s", tc.name, resp.StatusCode, body)
 				}
 			})
-		}
-	})
-
-	t.Run("monthly_returns_json", func(t *testing.T) {
-		noGolden(t)
-
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
-		resp, err := client.Get(url)
-		if err != nil {
-			t.Fatalf("GET failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
-		}
-
-		var result struct {
-			PeriodStart string `json:"period_start"`
-			PeriodEnd   string `json:"period_end"`
-			Metrics     []struct {
-				Date           string `json:"date"`
-				DiskAvgBytes   int64  `json:"disk_avg_bytes"`
-				BandwidthBytes int64  `json:"bandwidth_bytes"`
-			} `json:"metrics"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-		if result.PeriodStart == "" || result.PeriodEnd == "" {
-			t.Error("expected period_start and period_end in response")
-		}
-		// Metrics may or may not have data yet depending on rollup timing,
-		// but the response shape must be correct (array, not null).
-		if result.Metrics == nil {
-			t.Error("expected metrics array (possibly empty), got null")
-		}
-	})
-
-	t.Run("daily_returns_json", func(t *testing.T) {
-		noGolden(t)
-
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=daily&start=%s&end=%s", Env.HTTPPort(), windowStart, windowEnd)
-		resp, err := client.Get(url)
-		if err != nil {
-			t.Fatalf("GET failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
-		}
-
-		var result struct {
-			PeriodStart string `json:"period_start"`
-			PeriodEnd   string `json:"period_end"`
-			Metrics     []struct {
-				Date           string `json:"date"`
-				DiskAvgBytes   int64  `json:"disk_avg_bytes"`
-				BandwidthBytes int64  `json:"bandwidth_bytes"`
-			} `json:"metrics"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-		if result.Metrics == nil {
-			t.Error("expected metrics array (possibly empty), got null")
 		}
 	})
 
@@ -201,21 +114,6 @@ func TestBillingUsageAPI(t *testing.T) {
 		}
 		if result.Metrics == nil {
 			t.Error("expected metrics array (possibly empty), got null")
-		}
-	})
-
-	t.Run("post_not_allowed", func(t *testing.T) {
-		noGolden(t)
-
-		url := fmt.Sprintf("http://localhost:%d/api/billing/usage?granularity=monthly&start=2024-01-01T00:00:00Z&end=2025-01-01T00:00:00Z", Env.HTTPPort())
-		resp, err := client.Post(url, "application/json", nil)
-		if err != nil {
-			t.Fatalf("POST failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("expected 405, got %d", resp.StatusCode)
 		}
 	})
 

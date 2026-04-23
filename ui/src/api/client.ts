@@ -503,19 +503,3 @@ export async function fetchDocsAll(): Promise<DocsAllData> {
   return resp.json()
 }
 
-// --- VM Compute Usage API ---
-
-export interface VMComputeUsagePoint {
-  timestamp: string
-  cpu_cores: number
-  cpu_nominal: number
-  memory_bytes: number
-  disk_used_bytes: number
-  disk_capacity_bytes: number
-  net_rx_bytes_per_sec: number
-  net_tx_bytes_per_sec: number
-}
-
-export async function fetchVMComputeUsage(name: string, hours: number): Promise<VMComputeUsagePoint[]> {
-  return fetchJSON(`/api/vm/${encodeURIComponent(name)}/compute-usage?hours=${hours}`)
-}

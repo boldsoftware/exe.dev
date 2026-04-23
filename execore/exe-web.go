@@ -990,18 +990,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleAPILLMUsage(w, r, userID)
 		return
-	case "/api/billing/usage":
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-		s.handleAPIBillingUsage(w, r, userID)
-		return
 	case "/api/dns-check":
 		s.handleDNSCheck(w, r)
 		return

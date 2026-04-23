@@ -19,18 +19,6 @@ func (s *Server) routeAPIVM(w http.ResponseWriter, r *http.Request, path string)
 	}
 
 	switch suffix {
-	case "compute-usage":
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return true
-		}
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return true
-		}
-		s.handleAPIVMComputeUsage(w, r, userID, name)
-		return true
 	case "compute-usage/live":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
