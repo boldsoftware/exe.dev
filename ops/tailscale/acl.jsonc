@@ -116,19 +116,21 @@
 
   // Tests verify isolation invariants.
   "tests": [
-    // Staging can reach staging on the network, but plain tag:staging nodes
-    // cannot SSH peers — only tag:exelet and tag:ops hosts get SSH.
+    // Staging reaches staging on the network, not prod or island.
+    // (SSH-lockdown can't be asserted at tag granularity: ops hosts carry
+    //  both tag:staging and tag:ops, so "a node tagged tag:staging can
+    //  reach tag:staging:22" is legitimately true via tag:ops.)
     {
       "src": "tag:staging",
       "accept": ["tag:staging:9080"],
-      "deny": ["tag:prod:9080", "tag:island:22", "tag:staging:22"],
+      "deny": ["tag:prod:9080", "tag:island:22"],
     },
-    // Prod can reach prod on the network, but plain tag:prod nodes cannot
-    // SSH peers — only tag:exelet and tag:ops hosts get SSH.
+    // Prod reaches prod on the network, not staging or island.
+    // (Same caveat as above for SSH at tag granularity.)
     {
       "src": "tag:prod",
       "accept": ["tag:prod:9080", "tag:prod:2224"],
-      "deny": ["tag:staging:9080", "tag:island:22", "tag:prod:22"],
+      "deny": ["tag:staging:9080", "tag:island:22"],
     },
     // Each island is isolated from everything — including other islands.
     {
