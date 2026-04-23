@@ -8,6 +8,12 @@ suborder: 4
 You can point your own domain at your exe.dev VM.
 TLS certificates are issued automatically.
 
+## Check Your DNS
+
+<div id="dns-checker"></div>
+
+## Setting Up DNS
+
 To point your domain at an exe.dev VM, edit the records in your domain's
 DNS provider. (If you have not setup a DNS provider, your domain registrar
 usually provides one.)
@@ -77,6 +83,3 @@ You must add an explicit CNAME entry for each custom name you want to support.
 If you need an arbitrary list of custom names that point to a single
 exe.dev VM, please [contact support](./getting-help).
 
-## Check Your DNS
-
-<div id="dns-checker"></div>
