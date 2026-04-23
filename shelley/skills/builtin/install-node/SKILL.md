@@ -6,7 +6,7 @@ description: Use when the user needs Node.js or npm installed, or when a task re
 Install Node.js using nodeenv via uvx:
 
 ```bash
-uvx nodeenv --lts ~/node
+uvx nodeenv -n lts ~/node
 mkdir -p ~/.local/bin
 ln -sf ~/node/bin/node ~/.local/bin/node
 ln -sf ~/node/bin/npm ~/.local/bin/npm
