@@ -315,3 +315,105 @@ func TestBillingBareCommandShowsUpdate(t *testing.T) {
 	repl.WantPrompt()
 	repl.Disconnect()
 }
+
+// TestBillingInvoicesEmpty tests that `billing invoices` shows no invoices
+// for a user with no Stripe history.
+func TestBillingInvoicesEmpty(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "invoices-empty@test-billing.example")
+	pty.Disconnect()
+
+	repl := sshToExeDev(t, keyFile)
+	repl.SendLine("billing invoices")
+	repl.Want("No invoices found")
+	repl.WantPrompt()
+	repl.Disconnect()
+}
+
+// TestBillingInvoicesJSON tests that `billing invoices --json` returns
+// a valid JSON structure even with no invoices.
+func TestBillingInvoicesJSON(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "invoices-json@test-billing.example")
+	pty.Disconnect()
+
+	result := runParseExeDevJSON[map[string]any](t, keyFile, "billing", "invoices", "--json")
+	invoices, ok := result["invoices"].([]any)
+	if !ok {
+		t.Fatalf("expected invoices array, got %T: %v", result["invoices"], result)
+	}
+	if len(invoices) != 0 {
+		t.Errorf("expected empty invoices, got %d", len(invoices))
+	}
+}
+
+// TestBillingReceiptsEmpty tests that `billing receipts` shows no receipts
+// for a user with no credit purchases.
+func TestBillingReceiptsEmpty(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "receipts-empty@test-billing.example")
+	pty.Disconnect()
+
+	repl := sshToExeDev(t, keyFile)
+	repl.SendLine("billing receipts")
+	repl.Want("No credit purchase receipts found")
+	repl.WantPrompt()
+	repl.Disconnect()
+}
+
+// TestBillingReceiptsJSON tests that `billing receipts --json` returns
+// a valid JSON structure even with no receipts.
+func TestBillingReceiptsJSON(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDevWithEmail(t, "receipts-json@test-billing.example")
+	pty.Disconnect()
+
+	result := runParseExeDevJSON[map[string]any](t, keyFile, "billing", "receipts", "--json")
+	receipts, ok := result["receipts"].([]any)
+	if !ok {
+		t.Fatalf("expected receipts array, got %T: %v", result["receipts"], result)
+	}
+	if len(receipts) != 0 {
+		t.Errorf("expected empty receipts, got %d", len(receipts))
+	}
+}
+
+// TestBillingInvoicesTeamMemberHidden tests that regular team members
+// cannot use `billing invoices`.
+func TestBillingInvoicesTeamMemberHidden(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	ownerPTY, _, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-billing-inv-hidden.example")
+	memberPTY, _, memberKeyFile, memberEmail := registerForExeDevWithEmail(t, "member@test-billing-inv-hidden.example")
+	ownerPTY.Disconnect()
+	memberPTY.Disconnect()
+
+	enableRootSupport(t, ownerEmail)
+	createTeam(t, ownerKeyFile, "billing_inv_hidden", "BillingInvHiddenTeam", ownerEmail)
+	addTeamMember(t, "billing_inv_hidden", memberEmail)
+
+	repl := sshToExeDev(t, memberKeyFile)
+	repl.SendLine("billing invoices")
+	repl.Want("command not available")
+	repl.WantPrompt()
+	repl.Disconnect()
+}

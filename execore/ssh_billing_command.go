@@ -34,6 +34,22 @@ func (ss *SSHServer) billingCommand() *exemenu.Command {
 				FlagSetFunc: jsonOnlyFlags("billing-update"),
 				Available:   ss.canSeeBilling,
 			},
+			{
+				Name:        "invoices",
+				Description: "Show recent invoices",
+				Usage:       "billing invoices",
+				Handler:     ss.handleBillingInvoicesCommand,
+				FlagSetFunc: jsonOnlyFlags("billing-invoices"),
+				Available:   ss.canSeeBilling,
+			},
+			{
+				Name:        "receipts",
+				Description: "Show receipts for credit purchases",
+				Usage:       "billing receipts",
+				Handler:     ss.handleBillingReceiptsCommand,
+				FlagSetFunc: jsonOnlyFlags("billing-receipts"),
+				Available:   ss.canSeeBilling,
+			},
 		},
 	}
 	cmd.Handler = func(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -143,6 +159,151 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 	cc.Writeln("")
 	cc.Writeln("  Manage your plan at \033[1m%s/user\033[0m", ss.server.webBaseURLNoRequest())
 	cc.Writeln("")
+	return nil
+}
+
+// handleBillingInvoicesCommand shows the user's recent invoices.
+func (ss *SSHServer) handleBillingInvoicesCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	account, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetAccountByUserID, cc.User.ID)
+	if err != nil {
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"invoices": []any{}})
+			return nil
+		}
+		cc.Writeln("No billing account found.")
+		return nil
+	}
+
+	upcoming, err := ss.server.billing.UpcomingInvoice(ctx, account.ID)
+	if err != nil {
+		ss.server.slog().WarnContext(ctx, "failed to fetch upcoming invoice", "error", err, "user_id", cc.User.ID)
+	}
+	invoices, err := ss.server.billing.ListInvoices(ctx, account.ID)
+	if err != nil {
+		ss.server.slog().WarnContext(ctx, "failed to list invoices", "error", err, "user_id", cc.User.ID)
+	}
+
+	if cc.WantJSON() {
+		type jsonInvoice struct {
+			Description string `json:"description"`
+			Plan        string `json:"plan,omitempty"`
+			Date        string `json:"date"`
+			Amount      int64  `json:"amount_cents"`
+			Status      string `json:"status"`
+			URL         string `json:"url,omitempty"`
+			PDF         string `json:"pdf,omitempty"`
+		}
+		var rows []jsonInvoice
+		if upcoming != nil {
+			rows = append(rows, jsonInvoice{
+				Description: upcoming.Description,
+				Plan:        upcoming.PlanName,
+				Date:        upcoming.PeriodStart.Format("2006-01-02"),
+				Amount:      upcoming.AmountPaid,
+				Status:      "upcoming",
+			})
+		}
+		for _, inv := range invoices {
+			rows = append(rows, jsonInvoice{
+				Description: inv.Description,
+				Plan:        inv.PlanName,
+				Date:        inv.Date.Format("2006-01-02"),
+				Amount:      inv.AmountPaid,
+				Status:      inv.Status,
+				URL:         inv.HostedInvoiceURL,
+				PDF:         inv.InvoicePDF,
+			})
+		}
+		if rows == nil {
+			rows = []jsonInvoice{}
+		}
+		cc.WriteJSON(map[string]any{"invoices": rows})
+		return nil
+	}
+
+	if upcoming == nil && len(invoices) == 0 {
+		cc.Writeln("No invoices found.")
+		return nil
+	}
+
+	cc.Writeln("")
+	if upcoming != nil {
+		label := "Upcoming"
+		if upcoming.PlanName != "" {
+			label += " — " + upcoming.PlanName
+		}
+		cc.Writeln("  \033[1m%s\033[0m", label)
+		cc.Writeln("  %s – %s · $%d.%02d",
+			upcoming.PeriodStart.Format("Jan 2"),
+			upcoming.PeriodEnd.Format("Jan 2, 2006"),
+			upcoming.AmountPaid/100, upcoming.AmountPaid%100)
+		cc.Writeln("")
+	}
+
+	for _, inv := range invoices {
+		status := ""
+		if inv.Status == "open" {
+			status = " \033[33m(open)\033[0m"
+		}
+		label := inv.Date.Format("Jan 2, 2006")
+		if inv.PlanName != "" {
+			label += " — " + inv.PlanName
+		}
+		cc.Writeln("  \033[1m%s\033[0m%s", label, status)
+		cc.Writeln("  $%d.%02d", inv.AmountPaid/100, inv.AmountPaid%100)
+		if inv.HostedInvoiceURL != "" {
+			cc.Writeln("  \033[2m%s\033[0m", inv.HostedInvoiceURL)
+		}
+		cc.Writeln("")
+	}
+	return nil
+}
+
+// handleBillingReceiptsCommand shows receipts for credit purchases.
+func (ss *SSHServer) handleBillingReceiptsCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	account, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetAccountByUserID, cc.User.ID)
+	if err != nil {
+		if cc.WantJSON() {
+			cc.WriteJSON(map[string]any{"receipts": []any{}})
+			return nil
+		}
+		cc.Writeln("No billing account found.")
+		return nil
+	}
+
+	since := time.Now().AddDate(0, -6, 0)
+	receipts, err := ss.server.billing.ReceiptURLsAfter(ctx, account.ID, since)
+	if err != nil {
+		ss.server.slog().WarnContext(ctx, "failed to list receipts", "error", err, "user_id", cc.User.ID)
+	}
+
+	if cc.WantJSON() {
+		type jsonReceipt struct {
+			Date string `json:"date"`
+			URL  string `json:"url"`
+		}
+		rows := make([]jsonReceipt, len(receipts))
+		for i, r := range receipts {
+			rows[i] = jsonReceipt{
+				Date: r.Created.Format("2006-01-02"),
+				URL:  r.URL,
+			}
+		}
+		cc.WriteJSON(map[string]any{"receipts": rows})
+		return nil
+	}
+
+	if len(receipts) == 0 {
+		cc.Writeln("No credit purchase receipts found.")
+		return nil
+	}
+
+	cc.Writeln("")
+	for _, r := range receipts {
+		cc.Writeln("  \033[1m%s\033[0m", r.Created.Format("Jan 2, 2006"))
+		cc.Writeln("  \033[2m%s\033[0m", r.URL)
+		cc.Writeln("")
+	}
 	return nil
 }
 

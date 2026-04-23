@@ -41,3 +41,27 @@ billing update
 **Options:**
 - `--json`: output in JSON format
 
+### billing invoices
+
+Show recent invoices
+
+**Usage:**
+```
+billing invoices
+```
+
+**Options:**
+- `--json`: output in JSON format
+
+### billing receipts
+
+Show receipts for credit purchases
+
+**Usage:**
+```
+billing receipts
+```
+
+**Options:**
+- `--json`: output in JSON format
+
