@@ -405,7 +405,7 @@ def add_retry_trailer(count):
     r = subprocess.run(
         ["git", "interpret-trailers", "--if-exists=replace",
          "--trailer", f"CI-Retries: {count}"],
-        input=msg, capture_output=True, text=True,
+        input=msg + "\n", capture_output=True, text=True,
     )
     new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\nCI-Retries: {count}"
     git("commit", "--amend", "-m", new_msg)
@@ -417,7 +417,7 @@ def set_trailer(key, value):
     r = subprocess.run(
         ["git", "interpret-trailers", "--if-exists=replace",
          "--trailer", f"{key}: {value}"],
-        input=msg, capture_output=True, text=True,
+        input=msg + "\n", capture_output=True, text=True,
     )
     new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\n{key}: {value}"
     git("commit", "--amend", "-m", new_msg)
