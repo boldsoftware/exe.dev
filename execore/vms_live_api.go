@@ -33,8 +33,9 @@ type vmsLivePool struct {
 
 // vmsLiveResponse is the JSON response for GET /api/vms/live.
 type vmsLiveResponse struct {
-	VMs  []vmsLiveVM `json:"vms"`
-	Pool vmsLivePool `json:"pool"`
+	VMs      []vmsLiveVM `json:"vms"`
+	Pool     vmsLivePool `json:"pool"`
+	IsSudoer bool        `json:"is_sudoer"`
 }
 
 // HandleAPIVMsLive handles GET /api/vms/live.
@@ -91,5 +92,6 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 			MemUsedBytes: memUsed,
 			MemMaxBytes:  memMax,
 		},
+		IsSudoer: s.UserHasExeSudo(ctx, userID),
 	})
 }
