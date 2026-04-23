@@ -522,6 +522,22 @@ def main():
         )
         segments.append(push_text)
 
+        # Failure notification step — runs even when tests fail.
+        # Success notifications are handled by rebase-and-push.py.
+        notify_lines = [
+            '- label: ":slack: notify"',
+            '  key: notify-slack',
+            '  allow_dependency_failure: true',
+            '  depends_on:',
+        ]
+        for k in all_keys:
+            notify_lines.append(f'    - {k}')
+        notify_lines += [
+            '  command: python3 .buildkite/steps/notify-slack.py',
+            '  timeout_in_minutes: 5',
+        ]
+        segments.append('\n'.join(notify_lines))
+
     # psimon: collect CI machine pressure data as the very last step.
     final_keys = collect_step_keys("\n".join(segments))
     psimon_text = generate_psimon_step(final_keys)

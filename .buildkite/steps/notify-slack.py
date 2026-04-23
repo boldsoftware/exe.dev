@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Post build results to Slack.
+"""Post build failure results to Slack.
 
-Uses the Buildkite API to determine if any steps failed, then calls
-bin/slack-notify-queue.py with the appropriate status.
+Runs as a pipeline step with allow_dependency_failure: true so it
+executes even when tests fail.  Only sends a notification when the
+build actually failed — the success path is handled by
+rebase-and-push.py which has richer context (rebased SHA, commit log).
 
 Secrets needed (via `buildkite-agent secret get`):
   NTFY_SLACK_WEBHOOK_URL
@@ -56,8 +58,8 @@ def get_build_status(api_token, build_number):
 
 
 def extract_actor(branch):
-    """Extract username from kite-queue-<user>-<rest> or kite-test-<user>-<rest>."""
-    m = re.match(r"^kite-(?:queue|test)-([^-]+)-", branch)
+    """Extract username from kite-queue-<user>-<rest> or kite-queue-<user>."""
+    m = re.match(r"^kite-(?:queue|test)-([^-]+)", branch)
     return m.group(1) if m else "unknown"
 
 
@@ -72,6 +74,13 @@ def main():
 
     status = get_build_status(api_token, build_number)
 
+    if status == "success":
+        # Success notification is sent by rebase-and-push.py with richer
+        # context (rebased commit SHA, commit log, etc.).  Skip here to
+        # avoid duplicate Slack messages.
+        print("Build succeeded; skipping notification (handled by push step).")
+        return
+
     branch = os.environ.get("BUILDKITE_BRANCH", "unknown")
     actor = extract_actor(branch)
     commit_subject = os.environ.get("BUILDKITE_MESSAGE", "unknown")
@@ -79,12 +88,16 @@ def main():
     commit_sha = os.environ.get("BUILDKITE_COMMIT", "")
     commit_url = f"https://github.com/boldsoftware/exe/commit/{commit_sha}"
 
+    env = os.environ.copy()
+    env["CI_SOURCE"] = "buildkite"
+
     subprocess.run(
         [
             sys.executable, "bin/slack-notify-queue.py",
             webhook_url, status, commit_subject,
             actor, run_url, commit_url, branch,
         ],
+        env=env,
         check=True,
     )
 
