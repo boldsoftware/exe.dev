@@ -52,6 +52,18 @@ func TestClassifyDNSResult(t *testing.T) {
 			wantStatus: "partial",
 		},
 		{
+			name: "apex with A pointing to exe but www CNAME points elsewhere",
+			result: dnsCheckResult{
+				Domain:      "example.com",
+				IsApex:      true,
+				ARecords:    []string{"1.2.3.4"},
+				PointsToExe: true,
+				WWWCNAME:    "dbm48s5ns80mx.cloudfront.net",
+				// BoxName not set because www CNAME target is not an exe.xyz host
+			},
+			wantStatus: "partial",
+		},
+		{
 			name: "apex with A not pointing to exe",
 			result: dnsCheckResult{
 				Domain:   "example.com",

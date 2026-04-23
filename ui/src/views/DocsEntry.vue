@@ -265,7 +265,7 @@ function renderDNSResult(d: any): string {
     let wwwOk = false
     if (d.wwwCname) {
       wwwActual = d.wwwCname
-      wwwOk = !d.wwwMissing
+      wwwOk = d.wwwPointsToExe === true
     } else if (d.wwwCnameError) {
       wwwActual = d.wwwCnameError
     } else {

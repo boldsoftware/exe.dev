@@ -50,9 +50,10 @@ type dnsCheckResult struct {
 	IsApex bool `json:"isApex"`
 
 	// www subdomain check (relevant for apex domains)
-	WWWCNAME      string `json:"wwwCname,omitempty"`
-	WWWCNAMEError string `json:"wwwCnameError,omitempty"`
-	WWWMissing    bool   `json:"wwwMissing"`
+	WWWCNAME       string `json:"wwwCname,omitempty"`
+	WWWCNAMEError  string `json:"wwwCnameError,omitempty"`
+	WWWMissing     bool   `json:"wwwMissing"`
+	WWWPointsToExe bool   `json:"wwwPointsToExe"`
 
 	// The box host suffix (e.g. "exe.xyz")
 	BoxHost string `json:"boxHost"`
@@ -171,6 +172,7 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 				result.WWWCNAME = wwwCname
 				if boxName := s.extractBoxName(wwwCname); boxName != "" {
 					result.BoxName = boxName
+					result.WWWPointsToExe = true
 				}
 			} else {
 				result.WWWMissing = true
