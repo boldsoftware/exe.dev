@@ -8,8 +8,8 @@ func TestResourceLimitsConstants(t *testing.T) {
 	if MinMemory != 2*1024*1024*1024 {
 		t.Errorf("MinMemory = %d, want 2 GiB (%d)", MinMemory, 2*1024*1024*1024)
 	}
-	if MinDisk != 4*1024*1024*1024 {
-		t.Errorf("MinDisk = %d, want 4 GiB (%d)", MinDisk, 4*1024*1024*1024)
+	if MinDisk != 10*1024*1024*1024 {
+		t.Errorf("MinDisk = %d, want 10 GiB (%d)", MinDisk, 10*1024*1024*1024)
 	}
 	if MinCPUs != 1 {
 		t.Errorf("MinCPUs = %d, want 1", MinCPUs)

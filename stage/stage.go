@@ -13,9 +13,9 @@ import (
 // Resource limits for VM creation
 const (
 	// Minimum resource limits (all users)
-	MinMemory = 2 * 1024 * 1024 * 1024 // 2 GiB minimum RAM
-	MinDisk   = 4 * 1024 * 1024 * 1024 // 4 GiB minimum disk (for ZFS base image)
-	MinCPUs   = 1                      // 1 CPU minimum
+	MinMemory = 2 * 1024 * 1024 * 1024  // 2 GiB minimum RAM
+	MinDisk   = 10 * 1024 * 1024 * 1024 // 10 GiB minimum disk (matches exelet BaseImageSize; ZFS clones can only grow)
+	MinCPUs   = 1                       // 1 CPU minimum
 
 	// Maximum resource limits for support users (root_support=1)
 	SupportMaxMemory = 32 * 1024 * 1024 * 1024  // 32 GiB max RAM for support

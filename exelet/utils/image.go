@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	// baseImageSize is the fixed size for base images (10GB sparse)
-	baseImageSize = 10 * 1024 * 1024 * 1024
+	// BaseImageSize is the fixed size for base images (10GB sparse). Instance
+	// disks are cloned from this and can only grow, so it also serves as the
+	// minimum disk size for new instances.
+	BaseImageSize = 10 * 1024 * 1024 * 1024
 	// tempImagePrefix is the prefix used for temporary image volumes during import
 	tempImagePrefix = "tmp-"
 )
@@ -52,8 +54,8 @@ func LoadImageWithMetadata(ctx context.Context, imageRef, platform string, metad
 	// use a conservative 3x multiplier to estimate uncompressed size
 	compressedSize := image.GetManifestSize(metadata.Manifest)
 	estimatedSize := compressedSize * 3
-	if estimatedSize > baseImageSize {
-		return "", fmt.Errorf("image too large: estimated uncompressed size %d bytes (compressed: %d) exceeds maximum %d bytes", estimatedSize, compressedSize, baseImageSize)
+	if estimatedSize > BaseImageSize {
+		return "", fmt.Errorf("image too large: estimated uncompressed size %d bytes (compressed: %d) exceeds maximum %d bytes", estimatedSize, compressedSize, BaseImageSize)
 	}
 
 	log.DebugContext(ctx, "loading image", "image", imageRef, "digest", imageFSID, "compressedSize", compressedSize, "estimatedSize", estimatedSize)
@@ -70,7 +72,7 @@ func LoadImageWithMetadata(ctx context.Context, imageRef, platform string, metad
 	// create 10G sparse volume with temporary name
 	if _, err := storageManager.Create(opCtx, tempFSID, &storageapi.FilesystemConfig{
 		FsType: "ext4",
-		Size:   baseImageSize,
+		Size:   BaseImageSize,
 	}); err != nil {
 		return "", fmt.Errorf("error creating temporary image storage: %w", err)
 	}

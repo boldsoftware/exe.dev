@@ -23,6 +23,7 @@ import (
 
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
+	"exe.dev/exelet/utils"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 	"exe.dev/xshelley"
@@ -95,6 +96,9 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	// validate
 	if err := req.Validate(); err != nil {
 		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if req.Disk < utils.BaseImageSize {
+		return status.Errorf(codes.InvalidArgument, "disk size %d is below minimum of %d bytes", req.Disk, utils.BaseImageSize)
 	}
 
 	ctx := stream.Context()
