@@ -6,121 +6,56 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="icon" href="/favicon.ico">
     <title>About - exe.dev</title>
-    <meta name="description" content="A computer for everyone. Affordable VMs on the internet with persistent storage.">
+    <meta name="description" content="Meet the team behind exe.dev">
     <link rel="canonical" href="https://exe.dev/about">
     <meta property="og:title" content="About - exe.dev">
-    <meta property="og:description" content="A computer for everyone. Affordable VMs on the internet with persistent storage.">
+    <meta property="og:description" content="Meet the team behind exe.dev">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://exe.dev/about">
     <meta property="og:site_name" content="exe.dev">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="common.css">
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 40px 20px;
-            text-align: center;
-            overflow-x: hidden;
-        }
-        main {
-            max-width: 900px;
-            width: 100%;
-        }
-        h1 {
-            font-size: clamp(70px, 14vw, 140px);
-            line-height: 0.9;
-            margin-bottom: 40px;
-            font-weight: normal;
-            letter-spacing: -0.02em;
-        }
-        main p {
-            max-width: 720px;
-            margin: 0 auto 1em;
-            line-height: 1.7;
-            color: var(--color-text-secondary);
-            text-align: left;
-        }
-        hr {
-            width: 200px;
-            height: 40px;
-            border: 0;
-            margin: 40px auto;
-            position: relative;
-            opacity: 0.4;
-        }
-        hr::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent 0%, var(--color-text-secondary) 20%, var(--color-text-secondary) 80%, transparent 100%);
-        }
-        hr::after {
-            content: '❦';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
-            background: var(--color-bg);
-            padding: 0 10px;
-            color: var(--color-text-secondary);
-        }
-        nav {
-            margin-top: 50px;
-            text-align: center;
-        }
-        nav a {
-            display: inline-block;
-            font-size: var(--text-sm);
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            font-variant: small-caps;
-            color: var(--color-text-secondary);
-        }
-        nav a + a::before {
-            content: '';
-            display: inline-block;
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: currentColor;
-            opacity: 0.6;
-            margin: 0 12px 2px;
-            vertical-align: middle;
-        }
-        @media (max-width: 600px) {
-            h1 { margin-left: 0; margin-right: 0; }
-            hr { transform: scale(0.8); margin: 30px auto; }
-            nav a { font-size: var(--text-xxs); letter-spacing: 0.2em; }
-            nav a + a::before { margin: 0 8px 2px; }
-        }
-    </style>
-
+    <link rel="stylesheet" href="about.css">
 </head>
 <body>
     <main>
-        <h1>A Computer For Everyone</h1>
+        <h1>who we are</h1>
 
-        <p>
-            It has never been easier for billions of people to buy a powerful, general-purpose computer they can hold in their hands. From a Raspberry Pi to an atmega, you can have gigahertz and gigabytes to build anything you want.
-        </p>
-        <p>
-            Internet servers have not kept up. There are easy and cheap ways to run websites, but each fully fledged VM on the internet is still costly. At exe.dev you get all the VMs you need.
-        </p>
+        <p class="intro">We are a small team based in the Bay Area who build internet infrastructure designed for developers.</p>
 
-        <hr/>
+        <div class="team-grid">
+            <div class="team-member">
+                <img src="david-crawshaw.jpg" alt="David Crawshaw" />
+                <h2>David Crawshaw</h2>
+                <p>David is one of the co-founders of Tailscale and served as CTO 2019&ndash;2024. Before that, he worked at Google. <a href="https://www.linkedin.com/in/crawshaw/" target="_blank" rel="noopener" aria-label="David Crawshaw on LinkedIn"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="linkedin-icon"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a></p>
+            </div>
 
-        <nav>
-            <a href="/about">about</a>
-            <a href="/blog">blog</a>
-            <a href="/jobs">jobs</a>
-        </nav>
+            <div class="team-member">
+                <img src="josh-bleecher-snyder.jpg" alt="Josh Bleecher Snyder" />
+                <h2>Josh Bleecher Snyder</h2>
+                <p>Josh was previously co-founder and CTO of card.io and Canopy Climate, and an early Tailscale Member of Technical Staff. He is a long-time contributor to the Go compiler and runtime. <a href="https://www.linkedin.com/in/josharian/" target="_blank" rel="noopener" aria-label="Josh Bleecher Snyder on LinkedIn"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="linkedin-icon"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a></p>
+            </div>
+
+            <div class="team-member">
+                <img src="philip-zeyliger.jpg" alt="Philip Zeyliger" />
+                <h2>Philip Zeyliger</h2>
+                <p>Philip previously worked at Airtable, Cloudera, Google, and D.&thinsp;E.&thinsp;Shaw. <a href="https://www.linkedin.com/in/philipzeyliger/" target="_blank" rel="noopener" aria-label="Philip Zeyliger on LinkedIn"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="linkedin-icon"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a></p>
+            </div>
+        </div>
+
+        <div class="follow-us">
+            <h2>Follow us</h2>
+            <div class="follow-links">
+                <a href="https://discord.gg/jc9WQUfaxf" target="_blank" rel="noopener">Discord</a>
+                <a href="https://bsky.app/profile/exe.dev" target="_blank" rel="noopener">Bluesky</a>
+                <a href="https://x.com/ssh_exe_dev" target="_blank" rel="noopener">X</a>
+                <a href="https://blog.exe.dev" target="_blank" rel="noopener">Blog</a>
+            </div>
+        </div>
     </main>
+    <script src="topbar.js"></script>
+    <script src="footer.js"></script>
 </body>
 </html>

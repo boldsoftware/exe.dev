@@ -2,7 +2,7 @@
     "use strict";
     var footer = document.createElement("footer");
     footer.innerHTML =
-        '<a href="/docs/what-is-exe">About</a>' +
+        '<a href="/about">About</a>' +
         '<span>&bull;</span>' +
         '<a href="https://blog.exe.dev">Blog</a>' +
         '<span>&bull;</span>' +

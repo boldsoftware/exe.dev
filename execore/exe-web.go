@@ -773,8 +773,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://blog.exe.dev", http.StatusTemporaryRedirect)
 		return
 	case "/about":
-		http.Redirect(w, r, "/docs/what-is-exe", http.StatusTemporaryRedirect)
-		return
+		s.serveStaticFile(w, r, "about.html")
 	case "/llm-gateway-models", "/llm-gateway-models/":
 		s.handleLLMGatewayModels(w, r)
 		return
