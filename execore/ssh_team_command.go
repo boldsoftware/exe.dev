@@ -262,7 +262,7 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 	cc.Writeln("Your existing VMs will become part of the team.")
 	cc.Writeln("")
 
-	cc.Write("Enable teams? (yes/no): ")
+	cc.SetPrompt("Enable teams? (yes/no): ")
 	confirm, err := cc.ReadLine()
 	if err != nil {
 		return err
@@ -274,7 +274,7 @@ func (ss *SSHServer) handleTeamEnableCommand(ctx context.Context, cc *exemenu.Co
 	}
 
 	for {
-		cc.Write("Team name: ")
+		cc.SetPrompt("Team name: ")
 		displayName, err := cc.ReadLine()
 		if err != nil {
 			return err
@@ -333,7 +333,7 @@ func (ss *SSHServer) handleTeamDisableCommand(ctx context.Context, cc *exemenu.C
 	cc.Writeln("Your VMs will remain on your personal account.")
 	cc.Writeln("")
 
-	cc.Write("Disable team? (yes/no): ")
+	cc.SetPrompt("Disable team? (yes/no): ")
 	confirm, err := cc.ReadLine()
 	if err != nil {
 		return err

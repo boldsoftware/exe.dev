@@ -7,18 +7,30 @@ suborder: 2
 
 ## Creating a team
 
-Run `team enable` in your SSH session. You'll be prompted for a team name,
-and you'll become the billing owner.
+Teams requires a paid plan. On a free/trial plan, both paths below will
+tell you to upgrade first at [exe.dev/user](https://exe.dev/user).
+
+There are two ways to create a team:
+
+**From your profile page.** Visit [exe.dev/user](https://exe.dev/user).
+If you're eligible, you'll see a **Teams** section with a "Create
+Team" form. Enter a name and click **Create Team**.
+
+**From SSH.** Run `team enable` from inside the exe.dev REPL — it's
+interactive, so SSH in first rather than invoking it as a one-shot
+command:
 
 ```
-$ team enable
+$ ssh user@exe.xyz
+exe.dev ▶ team enable
 Enable teams? (yes/no): yes
 Team name: Acme Corp
 Team Acme Corp created!
 Use team add <email> to invite members.
 ```
 
-Your existing VMs become part of the team's shared pool.
+Either way, you become the team's billing owner, and your existing VMs
+become part of the team's shared pool.
 
 ## Inviting members
 

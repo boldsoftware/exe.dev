@@ -19,7 +19,7 @@ Disabling team Self Service Squad will:
 
 Your VMs will remain on your personal account.
 
-Disable team? (yes/no): localhost ▶ yes
+Disable team? (yes/no): yes
 Team Self Service Squad has been disabled.
 PROMPT ▶ exit
 Goodbye!

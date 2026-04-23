@@ -21,7 +21,7 @@ Disabling team NonOwnerTeam will:
 
 Your VMs will remain on your personal account.
 
-Disable team? (yes/no): localhost ▶ yes
+Disable team? (yes/no): yes
 Team NonOwnerTeam has been disabled.
 PROMPT ▶ exit
 Goodbye!

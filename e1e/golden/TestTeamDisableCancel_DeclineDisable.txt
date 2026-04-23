@@ -19,7 +19,7 @@ Disabling team Cancel Test Team will:
 
 Your VMs will remain on your personal account.
 
-Disable team? (yes/no): localhost ▶ no
+Disable team? (yes/no): no
 Cancelled.
 PROMPT ▶ team
 Team: Cancel Test Team

@@ -20,8 +20,8 @@ Teams lets you:
 You will become the billing owner for this team.
 Your existing VMs will become part of the team.
 
-Enable teams? (yes/no): localhost ▶ yes
-Team name: localhost ▶ Self Service Squad
+Enable teams? (yes/no): yes
+Team name: Self Service Squad
 
 Team Self Service Squad created!
 Use team add <email> to invite members.

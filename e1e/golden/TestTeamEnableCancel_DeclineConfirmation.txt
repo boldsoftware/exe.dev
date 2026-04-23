@@ -20,7 +20,7 @@ Teams lets you:
 You will become the billing owner for this team.
 Your existing VMs will become part of the team.
 
-Enable teams? (yes/no): localhost ▶ no
+Enable teams? (yes/no): no
 Cancelled.
 PROMPT ▶ team
 You are not part of a team.
