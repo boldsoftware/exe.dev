@@ -626,35 +626,9 @@
       <!-- Support -->
       <section v-if="data.canEmailSupport" class="card">
         <h2 class="card-title">Support</h2>
-        <p class="section-help">
-          Email the exe.dev support team. We'll reply to <strong>{{ data.user.email }}</strong>.
-          Attachments up to a combined {{ supportMaxMB }}&nbsp;MB are supported.
-        </p>
-        <div class="form-row">
-          <label>Subject</label>
-          <input v-model="support.subject" class="form-input" placeholder="Short summary" :disabled="support.sending" />
-        </div>
-        <div class="form-row">
-          <label>Message</label>
-          <textarea v-model="support.body" class="form-input" rows="6" placeholder="Describe what you need help with…" :disabled="support.sending"></textarea>
-        </div>
-        <div class="form-row">
-          <label>Attachments</label>
-          <input ref="supportFileInput" type="file" multiple @change="onSupportFilesChange" :disabled="support.sending" />
-          <div v-if="support.files.length > 0" class="support-files">
-            <div v-for="(f, i) in support.files" :key="i" class="support-file">
-              <span>{{ f.name }} <span class="text-muted">({{ formatBytes(f.size) }})</span></span>
-              <button class="btn btn-secondary btn-xs" @click="removeSupportFile(i)" :disabled="support.sending">Remove</button>
-            </div>
-            <div class="text-muted" style="font-size: 12px;">Total: {{ formatBytes(supportTotalBytes) }}</div>
-          </div>
-        </div>
-        <div v-if="support.error" class="error-text">{{ support.error }}</div>
-        <div v-if="support.success" class="support-success">Message sent. We'll get back to you at {{ data.user.email }}.</div>
+        <p class="section-help">We'd love to hear from you!</p>
         <div style="margin-top: 12px;">
-          <button class="btn btn-primary" :disabled="!canSendSupport" @click="sendSupportEmail">
-            {{ support.sending ? 'Sending…' : 'Send to support' }}
-          </button>
+          <button class="btn btn-secondary" @click="openSupportModal">Contact support</button>
         </div>
       </section>
 
@@ -671,6 +645,40 @@
         </table>
       </section>
     </template>
+
+    <!-- Support Modal -->
+    <div v-if="showSupportModal" class="modal-overlay" @click.self="closeSupportModal">
+      <div class="modal-box support-modal">
+        <div class="modal-title">Contact support</div>
+        <p class="section-help">We'd love to hear from you!</p>
+        <div class="form-group">
+          <label>Subject</label>
+          <input v-model="support.subject" class="form-input" :disabled="support.sending" />
+        </div>
+        <div class="form-group">
+          <label>Message</label>
+          <textarea v-model="support.body" class="form-input" rows="6" :disabled="support.sending"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Attachments</label>
+          <input ref="supportFileInput" type="file" multiple @change="onSupportFilesChange" :disabled="support.sending" />
+          <div v-if="support.files.length > 0" class="support-files">
+            <div v-for="(f, i) in support.files" :key="i" class="support-file">
+              <span>{{ f.name }} <span class="text-muted">({{ formatBytes(f.size) }})</span></span>
+              <button class="btn btn-secondary btn-xs" @click="removeSupportFile(i)" :disabled="support.sending">Remove</button>
+            </div>
+          </div>
+        </div>
+        <p v-if="support.error" class="error-text">{{ support.error }}</p>
+        <p v-if="support.success" class="support-success">Message sent.</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" :disabled="!canSendSupport" @click="sendSupportEmail">
+            {{ support.sending ? 'Sending…' : 'Send' }}
+          </button>
+          <button class="btn btn-secondary" :disabled="support.sending" @click="closeSupportModal">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Region Change Modal -->
     <div v-if="showRegionModal" class="modal-overlay" @click.self="showRegionModal = false">
@@ -846,6 +854,16 @@ const creatingTeam = ref(false)
 const supportMaxMB = 25
 const supportMaxBytes = supportMaxMB * 1024 * 1024
 const supportFileInput = ref<HTMLInputElement | null>(null)
+const showSupportModal = ref(false)
+function openSupportModal() {
+  support.error = ''
+  support.success = false
+  showSupportModal.value = true
+}
+function closeSupportModal() {
+  if (support.sending) return
+  showSupportModal.value = false
+}
 const support = reactive({
   subject: '',
   body: '',
@@ -901,6 +919,7 @@ async function sendSupportEmail() {
     support.body = ''
     support.files = []
     if (supportFileInput.value) supportFileInput.value.value = ''
+    setTimeout(() => { showSupportModal.value = false; support.success = false }, 1200)
   } catch (e: any) {
     support.error = e?.message || 'Failed to send message'
   } finally {
@@ -1226,6 +1245,7 @@ function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   if (apiKeyModal.visible) { closeApiKeyModal(); return }
   if (showRegionModal.value) { showRegionModal.value = false; return }
+  if (showSupportModal.value) { closeSupportModal(); return }
 }
 
 const modal = reactive({
