@@ -92,6 +92,8 @@ type Env struct {
 	DefaultDisk   uint64 // override disk size for new boxes in bytes; 0 = defer to tier catalog
 	DefaultCPUs   uint64 // default number of CPUs for new boxes
 
+	EnforcePlanCPUMax bool // whether to enforce plan-tier MaxCPUs as the account-level cgroup cpu.max (false = use 2x heuristic)
+
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 	RedirectHTTPToHTTPS   bool // whether the HTTP server should redirect all requests to HTTPS (port 80 → 443)
 
@@ -157,6 +159,8 @@ func Invalid() Env {
 		DefaultMemory: 0, // invalid: must be > 0
 		DefaultDisk:   0, // invalid: no tier catalog available in invalid env
 		DefaultCPUs:   0, // invalid: must be > 0
+
+		EnforcePlanCPUMax: false,
 
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
@@ -236,6 +240,8 @@ func Local() Env {
 		DefaultDisk:   10 * 1024 * 1024 * 1024, // 10 GiB
 		DefaultCPUs:   2,
 
+		EnforcePlanCPUMax: true,
+
 		GitHubTokenRenewalStartupDelay: 5 * time.Second,
 
 		ProdLockEnv: "",
@@ -304,6 +310,8 @@ func Test() Env {
 		DefaultDisk:   11 * 1024 * 1024 * 1024, // 11 GiB
 		DefaultCPUs:   2,
 
+		EnforcePlanCPUMax: true,
+
 		GitHubTokenRenewalStartupDelay: 5 * time.Second,
 
 		ProdLockEnv: "",
@@ -369,6 +377,8 @@ func Staging() Env {
 		DefaultMemory: 8 * 1024 * 1024 * 1024, // 8 GiB
 		DefaultDisk:   0,                      // 0 = defer to tier catalog (25 GiB)
 		DefaultCPUs:   2,
+
+		EnforcePlanCPUMax: true,
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
@@ -451,6 +461,8 @@ func Prod() Env {
 		DefaultMemory: 8 * 1024 * 1024 * 1024, // 8 GiB
 		DefaultDisk:   0,                      // 0 = defer to tier catalog (25 GiB)
 		DefaultCPUs:   2,
+
+		EnforcePlanCPUMax: false, // TODO: enable after staging validation
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"exe.dev/billing/plan"
 	"exe.dev/desiredstate"
 	"exe.dev/exedb"
 )
@@ -120,21 +121,48 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// When EnforcePlanCPUMax is enabled, look up each user's plan to get
+	// the tier's MaxCPUs for account-level enforcement.
+	userPlanMaxCPUs := make(map[string]uint64) // user_id -> plan MaxCPUs (0 = no limit)
+	if s.env.EnforcePlanCPUMax {
+		for groupID := range groupSet {
+			planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, groupID)
+			if err != nil {
+				// User has no plan; fall through to 2x heuristic.
+				continue
+			}
+			userPlanMaxCPUs[groupID] = plan.MaxCPUsForPlan(planRow.PlanID)
+		}
+	}
+
 	// Build groups (one per unique user_id on this host).
-	// Default group cpu.max = 2x the max allocated CPUs across the user's VMs,
-	// giving headroom for bursts while still capping total usage.
-	// User-level cgroup overrides are applied on top of this default.
+	//
+	// Priority for account-slice cpu.max:
+	//   1. User cgroup overrides (abuse throttle or VIP boost) — always wins.
+	//   2. Plan tier MaxCPUs (when EnforcePlanCPUMax is on and MaxCPUs > 0).
+	//   3. Fallback: 2x the max allocated CPUs across the user's VMs.
 	var groups []desiredstate.Group
 	for groupID := range groupSet {
 		var cgroups []desiredstate.CgroupSetting
-		if maxCPUs := userMaxCPUs[groupID]; maxCPUs > 0 {
-			const period = 100000
+
+		const period = 100000
+		if planMax := userPlanMaxCPUs[groupID]; planMax > 0 {
+			// Plan-based enforcement: cap account to tier's vCPU pool.
+			quota := int64(planMax) * period
+			cgroups = append(cgroups, desiredstate.CgroupSetting{
+				Path:  "cpu.max",
+				Value: fmt.Sprintf("%d %d", quota, period),
+			})
+		} else if maxCPUs := userMaxCPUs[groupID]; maxCPUs > 0 {
+			// Heuristic fallback: 2x max allocated CPUs for burst headroom.
 			quota := maxCPUs * 2 * period
 			cgroups = append(cgroups, desiredstate.CgroupSetting{
 				Path:  "cpu.max",
 				Value: fmt.Sprintf("%d %d", quota, period),
 			})
 		}
+
+		// User-level cgroup overrides are applied on top — they always win.
 		if overrides, ok := userOverrides[groupID]; ok {
 			cgroups = desiredstate.ApplyOverrides(cgroups, overrides)
 		}
