@@ -151,6 +151,41 @@ watch(themePreference, (v) => {
 watch(effectiveTheme, (theme) => {
   document.documentElement.classList.toggle('light-mode', theme === 'light')
 }, { immediate: true })
+
+// Toggle env-* class on <html> so CSS can theme accents per environment.
+watch(() => serverVersion.value?.environment, (env) => {
+  const root = document.documentElement
+  root.classList.toggle('env-staging', env === 'staging')
+  root.classList.toggle('env-prod', env === 'prod')
+  updateFavicon(env)
+}, { immediate: true })
+
+// updateFavicon swaps in a hue-rotated version of /exe.png for staging so the
+// browser tab icon matches the in-app tint. For other envs it restores the
+// original asset. Failures are silent — a stale/original favicon is harmless.
+async function updateFavicon(env: string | undefined) {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+  if (!link) return
+  if (env !== 'staging') {
+    link.href = '/exe.png'
+    return
+  }
+  try {
+    const img = new Image()
+    img.src = '/exe.png'
+    await img.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.filter = 'hue-rotate(90deg)'
+    ctx.drawImage(img, 0, 0)
+    link.href = canvas.toDataURL('image/png')
+  } catch {
+    // ignore — leave whatever favicon the browser already has
+  }
+}
 </script>
 
 <style>
@@ -181,11 +216,12 @@ watch(effectiveTheme, (theme) => {
   --text-color-secondary: #8b949e;
   --text-color-muted: #6e7681;
 
-  /* Primary (cyan) */
+  /* Primary (cyan for prod; overridden per-env below) */
   --primary-color: #48d1cc;
   --primary-color-text: #000000;
-  --primary-50: rgba(72, 209, 204, 0.08);
-  --primary-100: rgba(72, 209, 204, 0.16);
+  --primary-rgb: 72, 209, 204;
+  --primary-50: rgba(var(--primary-rgb), 0.08);
+  --primary-100: rgba(var(--primary-rgb), 0.16);
   --primary-hover: #7ee8e4;
 
   /* Semantic colors */
@@ -224,8 +260,9 @@ watch(effectiveTheme, (theme) => {
 
   --primary-color: #0f9690;
   --primary-color-text: #ffffff;
-  --primary-50: rgba(15, 150, 144, 0.08);
-  --primary-100: rgba(15, 150, 144, 0.16);
+  --primary-rgb: 15, 150, 144;
+  --primary-50: rgba(var(--primary-rgb), 0.08);
+  --primary-100: rgba(var(--primary-rgb), 0.16);
   --primary-hover: #0c7a75;
 
   --green-400: #1a7f37;
@@ -246,6 +283,28 @@ watch(effectiveTheme, (theme) => {
   --sidebar-item-active-text: var(--text-color);
 }
 
+/* ── Staging environment: purple accent override ── */
+:root.env-staging {
+  --primary-color: #a78bfa;
+  --primary-color-text: #000000;
+  --primary-rgb: 167, 139, 250;
+  --primary-hover: #c4b5fd;
+}
+
+:root.env-staging.light-mode {
+  --primary-color: #7c3aed;
+  --primary-color-text: #ffffff;
+  --primary-rgb: 124, 58, 237;
+  --primary-hover: #6d28d9;
+}
+
+/* Tint the raster logo to match the env accent. The source asset is
+ * cyan (~180° hue); +90° lands in the violet range. */
+.env-staging .logo-icon,
+.env-staging .mobile-logo-icon {
+  filter: hue-rotate(90deg);
+}
+
 html, body {
   height: 100%;
 }
@@ -260,19 +319,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
   /* Subtle grid pattern */
   background-image:
-    linear-gradient(rgba(72, 209, 204, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(72, 209, 204, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(var(--primary-rgb), 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--primary-rgb), 0.03) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
 .light-mode body {
   background-image:
-    linear-gradient(rgba(15, 150, 144, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 150, 144, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(var(--primary-rgb), 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--primary-rgb), 0.04) 1px, transparent 1px);
 }
 
 .light-mode ::selection {
-  background: rgba(15, 150, 144, 0.25);
+  background: rgba(var(--primary-rgb), 0.25);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -311,7 +370,7 @@ a:hover {
 
 /* Selection styling */
 ::selection {
-  background: rgba(72, 209, 204, 0.3);
+  background: rgba(var(--primary-rgb), 0.3);
   color: var(--text-color);
 }
 
@@ -395,6 +454,7 @@ a:hover {
 }
 
 .logo-text {
+  color: var(--primary-color);
   font-size: 1rem;
   text-transform: uppercase;
   white-space: nowrap;
@@ -656,7 +716,7 @@ a:hover {
     font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--text-color);
+    color: var(--primary-color);
   }
 
   .mobile-logo-icon {
