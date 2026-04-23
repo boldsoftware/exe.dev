@@ -256,6 +256,22 @@ ProcessLogs:
 			return nil, fmt.Errorf("timeout waiting for exeprox to start. Output:\n%s", out)
 		}
 	}
+
+	// Drain any listening/proxy events buffered before "server started".
+drainListening:
+	for {
+		select {
+		case ln := <-listeningC:
+			switch ln.typ {
+			case "http":
+				httpPort = ln.port
+			}
+		case proxyPorts = <-proxyPortsC:
+		default:
+			break drainListening
+		}
+	}
+
 	if httpPort == 0 {
 		return nil, fmt.Errorf("failed to start all required ports (http %d)", httpPort)
 	}
