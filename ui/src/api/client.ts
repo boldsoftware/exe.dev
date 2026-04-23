@@ -429,7 +429,6 @@ export interface VMsLivePool {
 export interface VMsLiveResponse {
   vms: VMsLiveVM[]
   pool: VMsLivePool
-  is_sudoer: boolean
 }
 
 export async function fetchVMsLive(): Promise<VMsLiveResponse> {

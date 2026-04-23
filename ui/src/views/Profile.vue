@@ -113,13 +113,13 @@
                 Your plan is managed by your team billing admins: {{ data.teamInfo.billingAdmins.join(', ') }}
               </div>
 
-              <!-- Resource Usage (live) -->
-              <template v-if="liveMetrics && data.planCapacity && data.planCapacity.maxCPUs > 0">
+              <!-- Resource Usage (live) — only shown when backend returns VM metrics -->
+              <template v-if="liveMetrics && liveMetrics.vms.length > 0 && data.planCapacity && data.planCapacity.maxCPUs > 0">
                 <div class="billing-divider"></div>
                 <div class="resource-usage-header">Resource Usage (live)</div>
 
                 <div class="resource-meters">
-                  <div v-if="liveMetrics.is_sudoer" class="resource-meter">
+                  <div class="resource-meter">
                     <span class="meter-label">vCPU</span>
                     <div class="meter-bar-wrap">
                       <div class="meter-bar">
@@ -135,7 +135,7 @@
                       </div>
                     </div>
                   </div>
-                  <div v-if="liveMetrics.is_sudoer && liveMetrics.pool.mem_max_bytes > 0" class="resource-meter">
+                  <div v-if="liveMetrics.pool.mem_max_bytes > 0" class="resource-meter">
                     <span class="meter-label">Memory</span>
                     <div class="meter-bar-wrap">
                       <div class="meter-bar">
@@ -186,7 +186,7 @@
                 </div>
 
                 <!-- Per-VM breakdown (sudoer only) -->
-                <div v-if="liveMetrics.is_sudoer && liveMetrics.vms.length > 0" class="vm-breakdown">
+                <div v-if="liveMetrics.vms.length > 0" class="vm-breakdown">
                   <div class="vm-breakdown-header">Per-VM Breakdown</div>
                   <table class="vm-breakdown-table">
                     <thead>

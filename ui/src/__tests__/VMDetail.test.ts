@@ -181,7 +181,7 @@ describe('VMDetail', () => {
     mockFetchVMUsage.mockReturnValue(new Promise(() => {}))
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
-    mockFetchVMsLive.mockResolvedValue({ vms: [], pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 }, is_sudoer: true })
+    mockFetchVMsLive.mockResolvedValue({ vms: [], pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 } })
   })
 
   afterEach(() => {
@@ -469,7 +469,6 @@ describe('VMDetail', () => {
         { name: 'other-vm', status: 'running', cpu_percent: 100, cpus: 4, mem_bytes: 0, mem_capacity_bytes: 16 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
       pool: { cpu_used: 1.425, cpu_max: 8, mem_used_bytes: 24 * 1024 * 1024 * 1024, mem_max_bytes: 32 * 1024 * 1024 * 1024 },
-      is_sudoer: true,
     })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
@@ -501,7 +500,6 @@ describe('VMDetail', () => {
         { name: 'my-vm', status: 'running', cpu_percent: 150, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
       pool: { cpu_used: 1.5, cpu_max: 8, mem_used_bytes: 0, mem_max_bytes: 0 },
-      is_sudoer: true,
     })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
@@ -534,7 +532,6 @@ describe('VMDetail', () => {
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
       pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 16 * 1024 * 1024 * 1024 },
-      is_sudoer: true,
     })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
@@ -563,7 +560,6 @@ describe('VMDetail', () => {
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
       pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 0 },
-      is_sudoer: true,
     })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
@@ -593,7 +589,6 @@ describe('VMDetail', () => {
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
       pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 0, mem_max_bytes: 0 },
-      is_sudoer: true,
     })
     const wrapper = await mountVMDetail()
     const legend = wrapper.find('.pool-legend')
@@ -633,7 +628,7 @@ describe('VMDetail', () => {
     expect(mockFetchVMsLive).not.toHaveBeenCalled()
   })
 
-  it('hides pool section when user is not a sudoer', async () => {
+  it('hides pool section when backend returns empty vms (metrics not validated)', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
@@ -650,11 +645,8 @@ describe('VMDetail', () => {
       net_tx_bytes: 0,
     })
     mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 0, mem_max_bytes: 0 },
-      is_sudoer: false,
+      vms: [],
+      pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 },
     })
     const wrapper = await mountVMDetail()
     expect(wrapper.find('.pool-section').exists()).toBe(false)

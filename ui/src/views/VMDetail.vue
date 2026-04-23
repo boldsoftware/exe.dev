@@ -65,8 +65,8 @@
         <button class="btn btn-secondary" @click="showCreationLog = true">View Creation Log</button>
       </div>
 
-      <!-- Resource Pool (live, sudoer only) -->
-      <div v-if="thisVMPool && poolData?.is_sudoer" class="pool-section">
+      <!-- Resource Pool (live) -->
+      <div v-if="thisVMPool" class="pool-section">
         <div class="pool-title">Resource Pool (live)</div>
 
         <div class="pool-row">

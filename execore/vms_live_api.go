@@ -33,15 +33,21 @@ type vmsLivePool struct {
 
 // vmsLiveResponse is the JSON response for GET /api/vms/live.
 type vmsLiveResponse struct {
-	VMs      []vmsLiveVM `json:"vms"`
-	Pool     vmsLivePool `json:"pool"`
-	IsSudoer bool        `json:"is_sudoer"`
+	VMs  []vmsLiveVM `json:"vms"`
+	Pool vmsLivePool `json:"pool"`
 }
 
 // HandleAPIVMsLive handles GET /api/vms/live.
 // Returns live metrics for all VMs owned by the user, plus a pool summary.
+// Returns empty vms when EnforcePlanCPUMax is off (metrics not yet validated).
 func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
+
+	if !s.env.EnforcePlanCPUMax {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(vmsLiveResponse{VMs: []vmsLiveVM{}})
+		return
+	}
 
 	// Fetch live metrics for all user's VMs via exelet gRPC.
 	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID)
@@ -92,6 +98,5 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 			MemUsedBytes: memUsed,
 			MemMaxBytes:  memMax,
 		},
-		IsSudoer: s.UserHasExeSudo(ctx, userID),
 	})
 }
