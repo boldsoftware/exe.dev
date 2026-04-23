@@ -399,20 +399,10 @@ def run_post_hook(command):
         print(f"q: post hook {command!r} exited {r.returncode}", file=sys.stderr)
 
 
-def add_retry_trailer(count):
-    """Amend HEAD to add/update CI-Retries: <count> trailer."""
-    msg = git("log", "--format=%B", "-n", "1", "HEAD")
-    r = subprocess.run(
-        ["git", "interpret-trailers", "--if-exists=replace",
-         "--trailer", f"CI-Retries: {count}"],
-        input=msg + "\n", capture_output=True, text=True,
-    )
-    new_msg = r.stdout.strip() if r.returncode == 0 else msg.rstrip() + f"\n\nCI-Retries: {count}"
-    git("commit", "--amend", "-m", new_msg)
-
-
 def set_trailer(key, value):
     """Amend HEAD so trailer `key: value` is present (replacing any existing)."""
+    # git() strips trailing newlines; interpret-trailers needs the input to
+    # end in \n to insert a blank line between the body and the trailer block.
     msg = git("log", "--format=%B", "-n", "1", "HEAD")
     r = subprocess.run(
         ["git", "interpret-trailers", "--if-exists=replace",
@@ -730,7 +720,7 @@ def main():
     # --- Push + monitor (with retries) ---
     for attempt in range(1, max_attempts + 1):
         if attempt > 1:
-            add_retry_trailer(attempt - 1)
+            set_trailer("CI-Retries", attempt - 1)
             commit = git("rev-parse", "HEAD")
             short = commit[:7]
             print(f"\nq: retry {attempt - 1}/{args.retries} ({short})", file=sys.stderr)
