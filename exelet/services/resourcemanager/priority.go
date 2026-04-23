@@ -2,6 +2,7 @@ package resourcemanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,8 +31,21 @@ const (
 	memoryHighRatio = 0.8
 )
 
-// requiredControllers lists the cgroup controllers needed for priority management
-var requiredControllers = []string{"cpu", "io", "memory"}
+// requiredControllers lists the cgroup controllers needed for priority
+// management and per-VM accounting. hugetlb is included so that VMs booted
+// with hugepages have their guest RAM charged to the per-VM scope via
+// hugetlb.<size>.current — without it, CH memory from hugepages bypasses
+// memory.current entirely and nothing per-VM sees those bytes. hugetlb is
+// not available on kernels built without CONFIG_HUGETLB_CONTROLLER; in that
+// case enableController treats it as a best-effort no-op and logs a warning
+// rather than failing.
+var requiredControllers = []string{"cpu", "io", "memory", "hugetlb"}
+
+// errControllerUnavailable is returned by enableController when the requested
+// controller is not listed in the target cgroup's cgroup.controllers (e.g.
+// hugetlb on a kernel without CONFIG_HUGETLB_CONTROLLER). Callers treat this
+// as a graceful degradation and proceed without the controller.
+var errControllerUnavailable = fmt.Errorf("controller not available at this cgroup level")
 
 // initControllers attempts to enable required cgroup v2 controllers at the root
 // and slice level. This must be called before any VMs are placed into cgroups.
@@ -39,6 +53,12 @@ func (m *ResourceManager) initControllers(ctx context.Context) {
 	// First, try to enable controllers at the root cgroup level
 	for _, ctrl := range requiredControllers {
 		if err := m.enableController(m.cgroupRoot, ctrl); err != nil {
+			if errors.Is(err, errControllerUnavailable) {
+				m.log.WarnContext(ctx, "cgroup controller not available at root - proceeding without it",
+					"controller", ctrl,
+					"hint", "kernel may be built without support (e.g. CONFIG_HUGETLB_CONTROLLER for hugetlb)")
+				continue
+			}
 			m.log.WarnContext(ctx, "failed to enable cgroup controller at root - VM priority management may not work correctly",
 				"controller", ctrl,
 				"error", err,
@@ -58,6 +78,12 @@ func (m *ResourceManager) initControllers(ctx context.Context) {
 	// Enable controllers on the slice so child scopes can use them
 	for _, ctrl := range requiredControllers {
 		if err := m.enableController(slicePath, ctrl); err != nil {
+			if errors.Is(err, errControllerUnavailable) {
+				m.log.DebugContext(ctx, "cgroup controller not available on slice - skipping",
+					"controller", ctrl,
+					"slice", cgroupSlice)
+				continue
+			}
 			m.log.WarnContext(ctx, "failed to enable cgroup controller on slice",
 				"controller", ctrl,
 				"slice", cgroupSlice,
@@ -188,6 +214,9 @@ func (m *ResourceManager) ensureAccountSlice(ctx context.Context, groupID string
 	// or may not be enabled yet if another goroutine just created the slice.
 	for _, ctrl := range requiredControllers {
 		if err := m.enableController(slicePath, ctrl); err != nil {
+			if errors.Is(err, errControllerUnavailable) {
+				continue
+			}
 			m.log.WarnContext(ctx, "failed to enable cgroup controller on group slice",
 				"controller", ctrl,
 				"group_id", groupID,
@@ -370,7 +399,10 @@ func (m *ResourceManager) setMemoryHigh(cgroupPath, value string) error {
 	return os.WriteFile(highFile, []byte(value), 0o644)
 }
 
-// enableController enables a controller on a cgroup.
+// enableController enables a controller on a cgroup. Returns
+// errControllerUnavailable if the controller is not listed in this cgroup's
+// cgroup.controllers (i.e. not supported by the kernel or not enabled higher
+// up), so callers can degrade gracefully.
 func (m *ResourceManager) enableController(cgroupPath, controller string) error {
 	subtreeControl := filepath.Join(cgroupPath, "cgroup.subtree_control")
 
@@ -385,6 +417,26 @@ func (m *ResourceManager) enableController(cgroupPath, controller string) error 
 	for _, ctrl := range strings.Fields(string(data)) {
 		if ctrl == controller {
 			return nil
+		}
+	}
+
+	// Check that the controller is actually available at this cgroup. The
+	// kernel exposes the set of available controllers via cgroup.controllers
+	// at each cgroup; if the controller isn't listed there, attempting to
+	// enable it via subtree_control returns EINVAL. Catch that case up front
+	// so callers can distinguish "kernel does not support this" (e.g. hugetlb
+	// without CONFIG_HUGETLB_CONTROLLER) from "EACCES"/other failures.
+	available, availErr := os.ReadFile(filepath.Join(cgroupPath, "cgroup.controllers"))
+	if availErr == nil {
+		found := false
+		for _, ctrl := range strings.Fields(string(available)) {
+			if ctrl == controller {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%w: %s", errControllerUnavailable, controller)
 		}
 	}
 

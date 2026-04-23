@@ -161,8 +161,10 @@ func TestPriorityWeights(t *testing.T) {
 }
 
 func TestRequiredControllers(t *testing.T) {
-	// Verify that cpu, io, and memory controllers are required
-	expected := map[string]bool{"cpu": true, "io": true, "memory": true}
+	// Verify that cpu, io, memory, and hugetlb controllers are required.
+	// hugetlb is included so VMs booted with hugepages have per-VM memory
+	// accounting (guest RAM from hugepages bypasses memory.current).
+	expected := map[string]bool{"cpu": true, "io": true, "memory": true, "hugetlb": true}
 
 	if len(requiredControllers) != len(expected) {
 		t.Errorf("requiredControllers has %d controllers, want %d", len(requiredControllers), len(expected))
