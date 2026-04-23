@@ -3,7 +3,7 @@
 title: "exit"
 description: "Exit"
 subheading: "9. CLI Reference"
-suborder: 21
+suborder: 22
 published: true
 ---
 

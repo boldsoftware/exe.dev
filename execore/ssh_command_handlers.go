@@ -473,6 +473,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		ss.defaultsCommand(),
 		ss.integrationsCommand(),
 		ss.teamCommand(),
+		ss.billingCommand(),
 		ss.shelleyCommand(),
 		ss.promptCommand(),
 		{

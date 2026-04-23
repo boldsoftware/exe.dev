@@ -3,7 +3,7 @@
 title: "grant-support-root"
 description: "Allow exe.dev support to log in to a VM"
 subheading: "9. CLI Reference"
-suborder: 20
+suborder: 21
 published: true
 ---
 
