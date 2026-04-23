@@ -657,7 +657,7 @@
         </div>
         <div class="form-group">
           <label>Message</label>
-          <textarea v-model="support.body" class="form-input" rows="6" :disabled="support.sending"></textarea>
+          <textarea v-model="support.body" class="form-input" rows="6" :disabled="support.sending" @paste="onSupportPaste"></textarea>
         </div>
         <div class="form-group">
           <label>Attachments</label>
@@ -894,6 +894,37 @@ function onSupportFilesChange(ev: Event) {
 function removeSupportFile(i: number) {
   support.files.splice(i, 1)
   if (supportFileInput.value) supportFileInput.value.value = ''
+}
+
+function onSupportPaste(ev: ClipboardEvent) {
+  const cd = ev.clipboardData
+  if (!cd) return
+  // Collect any non-text items (e.g. pasted images/screenshots) as attachments.
+  // Text (including text/html) is left alone so the default paste behavior runs.
+  const attached: File[] = []
+  for (const item of cd.items) {
+    if (item.kind !== 'file') continue
+    const f = item.getAsFile()
+    if (f) attached.push(f)
+  }
+  if (attached.length === 0) return
+  ev.preventDefault()
+  let idx = support.files.length + 1
+  for (let f of attached) {
+    // Screenshots often come in as 'image.png' — give them a more useful name.
+    if (/^image\.[a-z0-9]+$/i.test(f.name) || !f.name) {
+      const ext = (f.type.split('/')[1] || 'bin').split(';')[0]
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      f = new File([f], `pasted-${ts}-${idx}.${ext}`, { type: f.type })
+    }
+    support.files.push(f)
+    idx++
+  }
+  support.error = ''
+  support.success = false
+  if (supportTotalBytes.value > supportMaxBytes) {
+    support.error = `Attachments exceed ${supportMaxMB} MB total.`
+  }
 }
 
 async function sendSupportEmail() {
