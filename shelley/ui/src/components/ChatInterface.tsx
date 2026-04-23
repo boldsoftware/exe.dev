@@ -2249,62 +2249,72 @@ function ChatInterface({
                     const override = toolOverrides[tool.name];
                     const current: "default" | "on" | "off" = override || "default";
                     return (
-                      <div key={tool.name} className="tool-override-row">
-                        <div className="tool-override-info">
-                          <div className="tool-override-name">
-                            {tool.name}
+                      <React.Fragment key={tool.name}>
+                        <div className="tool-override-row">
+                          <div className="tool-override-info">
+                            <span className="tool-override-name">{tool.name}</span>
                             {tool.name === "orchestrator" && (
                               <span className="experimental-badge">experimental</span>
                             )}
+                            <span className="tool-override-summary">{tool.summary}</span>
                           </div>
-                          <div className="tool-override-summary">{tool.summary}</div>
+                          <div className="tool-override-choices" role="radiogroup">
+                            {(
+                              [
+                                ["default", `Default (${tool.default_on ? "on" : "off"})`],
+                                ["on", "On"],
+                                ["off", "Off"],
+                              ] as const
+                            ).map(([val, label]) => (
+                              <button
+                                key={val}
+                                type="button"
+                                role="radio"
+                                aria-checked={current === val}
+                                className={`tool-override-choice${
+                                  current === val ? " active" : ""
+                                }`}
+                                onClick={() => setToolOverride(tool.name, val)}
+                                disabled={sending}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        <div className="tool-override-choices" role="radiogroup">
-                          {(
-                            [
-                              ["default", `Default (${tool.default_on ? "on" : "off"})`],
-                              ["on", "On"],
-                              ["off", "Off"],
-                            ] as const
-                          ).map(([val, label]) => (
-                            <button
-                              key={val}
-                              type="button"
-                              role="radio"
-                              aria-checked={current === val}
-                              className={`tool-override-choice${current === val ? " active" : ""}`}
-                              onClick={() => setToolOverride(tool.name, val)}
+                        {tool.name === "orchestrator" && toolOverrides["orchestrator"] === "on" && (
+                          <div className="tool-override-row tool-override-suboption">
+                            <label
+                              className="tool-override-suboption-label"
+                              htmlFor="subagent-backend-select"
+                            >
+                              Subagent backend
+                            </label>
+                            <select
+                              id="subagent-backend-select"
+                              className="orchestrator-backend-dropdown"
+                              value={subagentBackend}
+                              onChange={(e) =>
+                                setSubagentBackend(
+                                  e.target.value as "shelley" | "claude-cli" | "codex-cli",
+                                )
+                              }
                               disabled={sending}
                             >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                              <option value="shelley">Shelley (native)</option>
+                              {cliAgents.includes("claude-cli") && (
+                                <option value="claude-cli">Claude CLI</option>
+                              )}
+                              {cliAgents.includes("codex-cli") && (
+                                <option value="codex-cli">Codex CLI</option>
+                              )}
+                            </select>
+                          </div>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </div>
-                {toolOverrides["orchestrator"] === "on" && (
-                  <div className="orchestrator-backend-select">
-                    <label className="orchestrator-backend-label">Subagent backend</label>
-                    <select
-                      className="orchestrator-backend-dropdown"
-                      value={subagentBackend}
-                      onChange={(e) =>
-                        setSubagentBackend(e.target.value as "shelley" | "claude-cli" | "codex-cli")
-                      }
-                      disabled={sending}
-                    >
-                      <option value="shelley">Shelley (native)</option>
-                      {cliAgents.includes("claude-cli") && (
-                        <option value="claude-cli">Claude CLI</option>
-                      )}
-                      {cliAgents.includes("codex-cli") && (
-                        <option value="codex-cli">Codex CLI</option>
-                      )}
-                    </select>
-                  </div>
-                )}
                 <div className="advanced-settings-footer">
                   Non-default selections are stored in browser localStorage (
                   <code>{TOOL_OVERRIDES_KEY}</code>).

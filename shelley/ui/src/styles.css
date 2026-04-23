@@ -3377,8 +3377,8 @@ svg {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   padding: 0.5rem 0.75rem;
-  min-width: 360px;
-  max-width: 460px;
+  min-width: 520px;
+  max-width: 680px;
   max-height: 70vh;
   overflow-y: auto;
 }
@@ -3386,15 +3386,14 @@ svg {
 .tool-override-list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
 }
 
 .tool-override-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.25rem 0;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
   border-bottom: 1px dashed var(--border);
 }
 
@@ -3404,9 +3403,12 @@ svg {
 
 .tool-override-info {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.4rem;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .tool-override-name {
@@ -3414,12 +3416,35 @@ svg {
   font-size: 0.75rem;
   color: var(--text-primary);
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .tool-override-summary {
   font-size: 0.6875rem;
   color: var(--text-tertiary);
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-override-suboption {
+  padding-left: 1rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
+}
+
+.tool-override-suboption .orchestrator-backend-dropdown {
+  width: auto;
+  max-width: 200px;
+}
+
+.tool-override-suboption-label {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
 }
 
 .tool-override-choices {
