@@ -93,6 +93,9 @@ func run() error {
 		Handler: srv.Handler(),
 	}
 
+	slackFeed := logging.NewSlackFeed(slog.Default(), env)
+	slackFeed.ServiceStarted(ctx, "metricsd")
+
 	slog.InfoContext(ctx, "starting metricsd", "addr", ln.Addr().String(), "db", *dbPath, "archive_dir", aDir, "tailscale_only", env.ListenOnTailscaleOnly)
 
 	return httpServer.Serve(ln)

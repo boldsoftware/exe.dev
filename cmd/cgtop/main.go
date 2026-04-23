@@ -3,11 +3,13 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"exe.dev/logging"
+	"exe.dev/stage"
 )
 
 //go:embed index.html
@@ -296,7 +299,16 @@ func findSubtree(node *CgroupNode, path string) *CgroupNode {
 func main() {
 	httpAddr := flag.String("http", ":9090", "HTTP listen address")
 	cgroupRoot := flag.String("root", "", "cgroup2 root path (auto-detected if empty)")
+	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	flag.Parse()
+
+	env, err := stage.Parse(*stageName)
+	if err != nil {
+		log.Fatalf("bad stage: %v", err)
+	}
+
+	slackFeed := logging.NewSlackFeed(slog.Default(), env)
+	slackFeed.ServiceStarted(context.Background(), "cgtop")
 
 	root := *cgroupRoot
 	if root == "" {
