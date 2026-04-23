@@ -22,8 +22,8 @@
 <tr><th>Image</th><td>{{.Image}}</td></tr>
 <tr><th>Container Host</th><td>{{.Ctrhost}}</td></tr>
 <tr><th>Container ID</th><td>{{.ContainerID}}</td></tr>
-<tr><th>Owner</th><td>{{.OwnerEmail}}</td></tr>
-<tr><th>Owner User ID</th><td>{{.OwnerUserID}}</td></tr>
+<tr><th>Owner</th><td>{{if .OwnerUserID}}<a href="/debug/user?userId={{.OwnerUserID}}">{{.OwnerEmail}}</a>{{else}}{{.OwnerEmail}}{{end}}</td></tr>
+<tr><th>Owner User ID</th><td>{{if .OwnerUserID}}<a href="/debug/user?userId={{.OwnerUserID}}">{{.OwnerUserID}}</a>{{end}}</td></tr>
 <tr><th>Created At</th><td>{{.CreatedAt}}</td></tr>
 <tr><th>Updated At</th><td>{{.UpdatedAt}}</td></tr>
 <tr><th>Last Started At</th><td>{{.LastStartedAt}}</td></tr>
