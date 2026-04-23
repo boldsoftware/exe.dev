@@ -5,6 +5,10 @@
 // the TCP/UDP level. What's restricted is who gets a shell:
 //   - group:dev can SSH to staging and island (no key flip).
 //   - group:prod can SSH to prod (passkey required).
+//   - tag:exelet can SSH tag:replica (ZFS replication; zone confinement
+//     via the intra-zone network grants).
+//   - tag:ops can SSH the fleet in its zone (same confinement story).
+//   - Plain tag:prod / tag:staging cannot SSH peers.
 //
 // To grant emergency full access, add to grants:
 //   { "src": ["*"], "dst": ["*"], "ip": ["*"] }
@@ -67,18 +71,16 @@
       "users": ["autogroup:nonroot", "root"],
     },
     // Regular devs can SSH to non-prod (no key flip needed).
-    // tag:staging included as src for staging-internal SSH (exed-staging → exelets).
     {
       "action": "accept",
-      "src": ["group:dev", "tag:staging"],
+      "src": ["group:dev"],
       "dst": ["tag:staging", "tag:island"],
       "users": ["autogroup:nonroot", "root"],
     },
     // Prod users can SSH to prod. Passkey-authenticated; deliberate switch.
-    // tag:prod included as src for prod-internal SSH (product SSH pipeline).
     {
       "action": "accept",
-      "src": ["group:prod", "tag:prod"],
+      "src": ["group:prod"],
       "dst": ["tag:prod"],
       "users": ["autogroup:nonroot", "root"],
     },
@@ -114,17 +116,19 @@
 
   // Tests verify isolation invariants.
   "tests": [
-    // Staging can reach staging, but not prod or island.
+    // Staging can reach staging on the network, but plain tag:staging nodes
+    // cannot SSH peers — only tag:exelet and tag:ops hosts get SSH.
     {
       "src": "tag:staging",
       "accept": ["tag:staging:9080"],
-      "deny": ["tag:prod:9080", "tag:island:22"],
+      "deny": ["tag:prod:9080", "tag:island:22", "tag:staging:22"],
     },
-    // Prod can reach prod, but not staging or island.
+    // Prod can reach prod on the network, but plain tag:prod nodes cannot
+    // SSH peers — only tag:exelet and tag:ops hosts get SSH.
     {
       "src": "tag:prod",
       "accept": ["tag:prod:9080", "tag:prod:2224"],
-      "deny": ["tag:staging:9080", "tag:island:22"],
+      "deny": ["tag:staging:9080", "tag:island:22", "tag:prod:22"],
     },
     // Each island is isolated from everything — including other islands.
     {
