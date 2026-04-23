@@ -36,6 +36,12 @@
     "tag:island": ["autogroup:admin"],
     "tag:staging": ["autogroup:admin"],
     "tag:prod": ["autogroup:admin"],
+    // Role tags used to scope tagged-node SSH. Zone confinement falls out
+    // of the existing network grants (tag:prod↔tag:prod, tag:staging↔tag:staging),
+    // so these rules can be zone-agnostic.
+    "tag:exelet": ["autogroup:admin"],  // exelet primaries (ZFS replication source)
+    "tag:replica": ["autogroup:admin"], // exelet replicas (ZFS replication dest)
+    "tag:ops": ["autogroup:admin"],     // exe-ops / exe-ops-staging (fleet deploys)
   },
 
   "grants": [
@@ -74,6 +80,25 @@
       "action": "accept",
       "src": ["group:prod", "tag:prod"],
       "dst": ["tag:prod"],
+      "users": ["autogroup:nonroot", "root"],
+    },
+    // ZFS replication: exelet -> its replica. One-way; restores are also
+    // exelet-initiated (exelet/services/replication/target_ssh.go Receive
+    // pulls via SSH). Zone confinement via network grants.
+    // Root-only: cmd/exed/exed.go uses ssh://root@... for replication.
+    {
+      "action": "accept",
+      "src": ["tag:exelet"],
+      "dst": ["tag:replica"],
+      "users": ["root"],
+    },
+    // Ops fleet deploys: exe-ops / exe-ops-staging upload binaries via
+    // `ssh user@host 'cat > tmp'` (exe-ops/server/deploy/manager.go:627,874).
+    // Zone confinement via network grants.
+    {
+      "action": "accept",
+      "src": ["tag:ops"],
+      "dst": ["tag:prod", "tag:staging"],
       "users": ["autogroup:nonroot", "root"],
     },
   ],
