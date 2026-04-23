@@ -38,7 +38,13 @@ function hashString(s: string): number {
 }
 
 const bgColor = computed(() => {
-  const h = hashString(props.name) % 360
+  // Match the Shelley server's favicon hash key so the icon color is
+  // consistent between the VMs list and the Shelley tab itself.
+  // See generateFaviconSVG / serveIndexWithInit in shelley/server/handlers.go:
+  // the server hashes `<hostname>:<listenPort>` where hostname is os.Hostname()
+  // with ".exe.xyz" appended if it has no dots, and listenPort defaults to 9999.
+  const key = `${props.name}.exe.xyz:9999`
+  const h = hashString(key) % 360
   return `hsl(${h}, 70%, 55%)`
 })
 
