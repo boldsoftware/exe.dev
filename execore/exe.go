@@ -1305,13 +1305,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	// Initialize drip campaign runner for trial onboarding emails.
 	s.dripRunner = drip.NewRunner(s.db, cfg.Env, func(ctx context.Context, msg email.Message) error {
 		return s.sendEmail(ctx, sendEmailParams{
-			emailType: msg.Type,
-			to:        msg.To,
-			subject:   msg.Subject,
-			body:      msg.Body,
-			fromName:  "David Crawshaw",
-			replyTo:   msg.ReplyTo,
-			attrs:     msg.Attrs,
+			emailType:   msg.Type,
+			to:          msg.To,
+			subject:     msg.Subject,
+			body:        msg.Body,
+			fromName:    "David Crawshaw",
+			replyTo:     msg.ReplyTo,
+			attrs:       msg.Attrs,
+			attachments: nil,
 		})
 	}, slog)
 
@@ -1939,13 +1940,14 @@ func (s *Server) sendBoxCreatedEmail(ctx context.Context, to, userID string, det
 	}
 
 	if err := s.sendEmail(ctx, sendEmailParams{
-		emailType: email.TypeBoxCreated,
-		to:        to,
-		subject:   subject,
-		body:      body.String(),
-		fromName:  "",
-		replyTo:   "",
-		attrs:     []slog.Attr{slog.String("user_id", userID)},
+		emailType:   email.TypeBoxCreated,
+		to:          to,
+		subject:     subject,
+		body:        body.String(),
+		fromName:    "",
+		replyTo:     "",
+		attrs:       []slog.Attr{slog.String("user_id", userID)},
+		attachments: nil,
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box created email", "to", to, "box", details.VMName, "error", err)
 	}
@@ -1972,13 +1974,14 @@ func (s *Server) sendBoxMaintenanceEmail(ctx context.Context, boxName, reason st
 	}
 
 	if err := s.sendEmail(ctx, sendEmailParams{
-		emailType: email.TypeBoxMaintenance,
-		to:        boxInfo.OwnerEmail,
-		subject:   subject,
-		body:      body,
-		fromName:  "",
-		replyTo:   "",
-		attrs:     []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
+		emailType:   email.TypeBoxMaintenance,
+		to:          boxInfo.OwnerEmail,
+		subject:     subject,
+		body:        body,
+		fromName:    "",
+		replyTo:     "",
+		attrs:       []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
+		attachments: nil,
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send box maintenance email", "to", boxInfo.OwnerEmail, "box", boxName, "error", err)
 	}

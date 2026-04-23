@@ -1393,6 +1393,7 @@ func (s *Server) handleAPIProfileSupport(w http.ResponseWriter, r *http.Request,
 		to:          "support@" + s.env.WebHost,
 		subject:     subject,
 		body:        fullBody,
+		fromName:    "",
 		replyTo:     user.Email,
 		attachments: attachments,
 		attrs: []slog.Attr{

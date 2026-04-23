@@ -823,13 +823,14 @@ This link will expire in 24 hours.
 Best regards,
 The %s team`, verifyURL, s.env.WebHost)
 		if err := s.sendEmail(ctx, sendEmailParams{
-			emailType: email.TypeWebAuthVerification,
-			to:        pending.Email,
-			subject:   subject,
-			body:      body,
-			fromName:  "",
-			replyTo:   "",
-			attrs:     []slog.Attr{slog.String("user_id", userID)},
+			emailType:   email.TypeWebAuthVerification,
+			to:          pending.Email,
+			subject:     subject,
+			body:        body,
+			fromName:    "",
+			replyTo:     "",
+			attrs:       []slog.Attr{slog.String("user_id", userID)},
+			attachments: nil,
 		}); err != nil {
 			s.slog().ErrorContext(ctx, "failed to send verification email", "error", err, "email", pending.Email)
 		}
@@ -1871,13 +1872,14 @@ Best regards,
 The %s team`, code, webHost)
 
 		err = s.sendEmail(r.Context(), sendEmailParams{
-			emailType: email.TypeWebAuthVerification,
-			to:        addr,
-			subject:   subject,
-			body:      body,
-			fromName:  "",
-			replyTo:   "",
-			attrs:     nil,
+			emailType:   email.TypeWebAuthVerification,
+			to:          addr,
+			subject:     subject,
+			body:        body,
+			fromName:    "",
+			replyTo:     "",
+			attrs:       nil,
+			attachments: nil,
 		})
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", addr)
@@ -1915,13 +1917,14 @@ The %s team`, verifyEmailURL, webHost)
 		emailType = email.TypeLoginWithExeVerification
 	}
 	err = s.sendEmail(r.Context(), sendEmailParams{
-		emailType: emailType,
-		to:        addr,
-		subject:   subject,
-		body:      body,
-		fromName:  "",
-		replyTo:   "",
-		attrs:     nil,
+		emailType:   emailType,
+		to:          addr,
+		subject:     subject,
+		body:        body,
+		fromName:    "",
+		replyTo:     "",
+		attrs:       nil,
+		attachments: nil,
 	})
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err, "email", addr)

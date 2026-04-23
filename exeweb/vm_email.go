@@ -95,13 +95,14 @@ func (ps *ProxyServer) HandleVMEmailSend(w http.ResponseWriter, r *http.Request)
 
 	// Send the email
 	if err := ps.Data.SendEmail(ctx, email.SendRequest{
-		Type:     email.TypeSendFromInsideVM,
-		To:       ud.Email,
-		Subject:  req.Subject,
-		Body:     req.Body,
-		UserID:   bd.CreatedByUserID,
-		FromName: ps.Env.BoxSub(boxName),
-		ReplyTo:  "",
+		Type:        email.TypeSendFromInsideVM,
+		To:          ud.Email,
+		Subject:     req.Subject,
+		Body:        req.Body,
+		UserID:      bd.CreatedByUserID,
+		FromName:    ps.Env.BoxSub(boxName),
+		ReplyTo:     "",
+		Attachments: nil,
 	}); err != nil {
 		ps.Lg.ErrorContext(ctx, "failed to send VM email", "error", err, "box", boxName, "to", ud.Email)
 		WriteVMEmailError(w, "failed to send email", http.StatusInternalServerError)

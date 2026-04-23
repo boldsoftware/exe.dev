@@ -70,13 +70,14 @@ func (s *Server) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
 
 	// Send the email
 	if err := s.sendEmail(ctx, sendEmailParams{
-		emailType: email.TypeSendFromInsideVM,
-		to:        userEmail,
-		subject:   req.Subject,
-		body:      req.Body,
-		fromName:  s.env.BoxSub(boxName),
-		replyTo:   "",
-		attrs:     []slog.Attr{slog.String("user_id", box.CreatedByUserID)},
+		emailType:   email.TypeSendFromInsideVM,
+		to:          userEmail,
+		subject:     req.Subject,
+		body:        req.Body,
+		fromName:    s.env.BoxSub(boxName),
+		replyTo:     "",
+		attrs:       []slog.Attr{slog.String("user_id", box.CreatedByUserID)},
+		attachments: nil,
 	}); err != nil {
 		s.slog().ErrorContext(ctx, "failed to send VM email", "error", err, "box", boxName, "to", userEmail)
 		exeweb.WriteVMEmailError(w, "failed to send email", http.StatusInternalServerError)

@@ -549,6 +549,7 @@ Trace ID: %s
 			slog.String("box", box.Name),
 			slog.String("error_class", string(class)),
 		},
+		attachments: nil,
 	}); err != nil {
 		srv.slog().ErrorContext(ctx, "failed to send LMTP delivery failure notification",
 			"box", box.Name, "to", boxInfo.OwnerEmail, "error_class", class, "error", err)
@@ -593,13 +594,14 @@ Regards,
 `, boxName, env.BoxHost, count, env.MaxMaildirEmails, env.ReplHost, boxName, env.WebHost)
 
 	if err := sender.Send(ctx, email.Message{
-		Type:    email.TypeEmailLimitExceeded,
-		From:    from,
-		To:      boxInfo.OwnerEmail,
-		Subject: subject,
-		Body:    body,
-		ReplyTo: "",
-		Attrs:   []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
+		Type:        email.TypeEmailLimitExceeded,
+		From:        from,
+		To:          boxInfo.OwnerEmail,
+		Subject:     subject,
+		Body:        body,
+		ReplyTo:     "",
+		Attrs:       []slog.Attr{slog.String("user_id", boxInfo.CreatedByUserID)},
+		Attachments: nil,
 	}); err != nil {
 		srv.slog().ErrorContext(ctx, "failed to send email limit notification", "box", boxName, "to", boxInfo.OwnerEmail, "error", err)
 	} else {

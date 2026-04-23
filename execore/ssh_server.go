@@ -1359,13 +1359,14 @@ Best regards,
 The EXE.DEV team`, publicKey, verifyURL)
 
 		if err := ss.server.sendEmail(s.Context(), sendEmailParams{
-			emailType: emailpkg.TypeDeviceVerification,
-			to:        email,
-			subject:   subject,
-			body:      body,
-			fromName:  "",
-			replyTo:   "",
-			attrs:     []slog.Attr{slog.String("user_id", userID)},
+			emailType:   emailpkg.TypeDeviceVerification,
+			to:          email,
+			subject:     subject,
+			body:        body,
+			fromName:    "",
+			replyTo:     "",
+			attrs:       []slog.Attr{slog.String("user_id", userID)},
+			attachments: nil,
 		}); err != nil {
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %w", err)
@@ -1395,13 +1396,14 @@ Best regards,
 The EXE.DEV team`, verifyURL)
 
 	if err := ss.server.sendEmail(s.Context(), sendEmailParams{
-		emailType: emailpkg.TypeNewUserVerification,
-		to:        email,
-		subject:   subject,
-		body:      body,
-		fromName:  "",
-		replyTo:   "",
-		attrs:     nil,
+		emailType:   emailpkg.TypeNewUserVerification,
+		to:          email,
+		subject:     subject,
+		body:        body,
+		fromName:    "",
+		replyTo:     "",
+		attrs:       nil,
+		attachments: nil,
 	}); err != nil {
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %w", err)

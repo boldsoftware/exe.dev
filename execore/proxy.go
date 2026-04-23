@@ -491,13 +491,14 @@ func (pd *proxyData) SendEmail(ctx context.Context, req email.SendRequest) error
 		attrs = append(attrs, slog.String("user_id", req.UserID))
 	}
 	return pd.s.sendEmail(ctx, sendEmailParams{
-		emailType: req.Type,
-		to:        req.To,
-		subject:   req.Subject,
-		body:      req.Body,
-		fromName:  req.FromName,
-		replyTo:   req.ReplyTo,
-		attrs:     attrs,
+		emailType:   req.Type,
+		to:          req.To,
+		subject:     req.Subject,
+		body:        req.Body,
+		fromName:    req.FromName,
+		replyTo:     req.ReplyTo,
+		attrs:       attrs,
+		attachments: nil,
 	})
 }
 

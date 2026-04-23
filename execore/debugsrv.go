@@ -4633,13 +4633,14 @@ func (s *Server) handleDebugEmailSend(w http.ResponseWriter, r *http.Request) {
 
 	from := fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost)
 	err := sender.Send(ctx, email.Message{
-		Type:    email.TypeDebugTest,
-		From:    from,
-		To:      to,
-		Subject: subject,
-		Body:    body,
-		ReplyTo: "",
-		Attrs:   nil,
+		Type:        email.TypeDebugTest,
+		From:        from,
+		To:          to,
+		Subject:     subject,
+		Body:        body,
+		ReplyTo:     "",
+		Attrs:       nil,
+		Attachments: nil,
 	})
 	if err != nil {
 		s.slog().ErrorContext(ctx, "debug email send failed", "provider", provider, "to", to, "error", err)
@@ -5216,13 +5217,14 @@ https://%s/
 `, count, inviteWord, planDesc, s.env.WebHost, s.env.WebHost)
 
 	if err := s.sendEmail(ctx, sendEmailParams{
-		emailType: email.TypeInvitesAllocated,
-		to:        user.Email,
-		subject:   subject,
-		body:      body,
-		fromName:  "",
-		replyTo:   "",
-		attrs:     []slog.Attr{slog.String("user_id", user.UserID)},
+		emailType:   email.TypeInvitesAllocated,
+		to:          user.Email,
+		subject:     subject,
+		body:        body,
+		fromName:    "",
+		replyTo:     "",
+		attrs:       []slog.Attr{slog.String("user_id", user.UserID)},
+		attachments: nil,
 	}); err != nil {
 		s.slog().WarnContext(ctx, "failed to send invites allocated email", "to", user.Email, "error", err)
 	}

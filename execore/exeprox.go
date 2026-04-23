@@ -593,13 +593,14 @@ func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailR
 		attrs = append(attrs, slog.String("user_id", req.UserID))
 	}
 	err := es.s.sendEmail(ctx, sendEmailParams{
-		emailType: email.Type(req.EmailType),
-		to:        req.To,
-		subject:   req.Subject,
-		body:      req.Body,
-		fromName:  req.FromName,
-		replyTo:   req.ReplyTo,
-		attrs:     attrs,
+		emailType:   email.Type(req.EmailType),
+		to:          req.To,
+		subject:     req.Subject,
+		body:        req.Body,
+		fromName:    req.FromName,
+		replyTo:     req.ReplyTo,
+		attrs:       attrs,
+		attachments: nil,
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

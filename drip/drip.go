@@ -268,6 +268,7 @@ func (r *Runner) sendAndRecord(ctx context.Context, u exedb.ListTrialUsersForDri
 			slog.String("campaign", campaignTrialOnboarding),
 			slog.String("step", stepName),
 		},
+		Attachments: nil,
 	})
 
 	status := statSent
