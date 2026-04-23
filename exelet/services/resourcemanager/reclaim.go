@@ -41,11 +41,10 @@ type reclaimTarget struct {
 // ReclaimMemory proactively reclaims physical memory by writing to cgroup v2
 // memory.reclaim files, pushing VM pages to swap.
 //
-// Cloud-hypervisor processes fault in guest RAM before the resource manager
-// moves them into exelet cgroups, so the guest memory pages are typically
-// charged to the root cgroup rather than individual VM scopes. For this
-// reason, the root cgroup reclaim (phase 2) is usually where the actual
-// memory gets freed.
+// Most cloud-hypervisor processes are now started directly inside their VM
+// scopes, so guest RAM should be charged to the per-VM cgroup. Phase 2 still
+// reclaims from the root cgroup as a fallback for legacy charges from older
+// placements or recovery scenarios.
 func (m *ResourceManager) ReclaimMemory(ctx context.Context, bytes uint64) error {
 	targets := m.reclaimTargets()
 
@@ -91,9 +90,9 @@ func (m *ResourceManager) ReclaimMemory(ctx context.Context, bytes uint64) error
 		m.writeMemoryReclaim(ctx, filepath.Join(t.cgroupPath, "memory.reclaim"), t.memoryBytes)
 	}
 
-	// Phase 2: Reclaim from the root cgroup. This is where the bulk of
-	// VM guest RAM lives because VMM processes fault in pages before being
-	// moved into exelet cgroups. Requires kernel 6.1+.
+	// Phase 2: Reclaim from the root cgroup as a fallback for any VM guest RAM
+	// that was charged there before per-VM placement was fixed, or during
+	// recovery scenarios. Requires kernel 6.1+.
 	if avail := m.readMemAvailable(); avail < bytes {
 		rootPath := filepath.Join(m.cgroupRoot, "memory.reclaim")
 		deficit := bytes - avail
