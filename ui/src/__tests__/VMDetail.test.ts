@@ -232,13 +232,13 @@ describe('VMDetail', () => {
     expect(wrapper.text()).toContain('my-vm') // breadcrumb
   })
 
-  it('renders subtitle with region, image, and created date', async () => {
+  it('renders region, image, and created date in details grid', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     const wrapper = await mountVMDetail()
-    const subtitle = wrapper.find('.vm-subtitle').text()
-    expect(subtitle).toContain('us-west')
-    expect(subtitle).toContain('ubuntu-22.04')
-    expect(subtitle).toContain('2024-01-15')
+    const text = wrapper.text()
+    expect(text).toContain('us-west')
+    expect(text).toContain('ubuntu-22.04')
+    expect(text).toContain('2024-01-15')
   })
 
   it('renders SSH command', async () => {
@@ -264,18 +264,21 @@ describe('VMDetail', () => {
     expect(tagsRow.text()).toContain('#web')
   })
 
-  it('hides tags row when no tags', async () => {
+  it('shows empty Tags row with Add Tag button when no tags', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     const wrapper = await mountVMDetail()
-    expect(wrapper.find('.tags-row').exists()).toBe(false)
+    const tagsRow = wrapper.find('.tags-row')
+    expect(tagsRow.exists()).toBe(true)
+    expect(tagsRow.text()).not.toContain('#')
+    expect(tagsRow.text()).toContain('Add Tag')
   })
 
   // --- Action buttons ---
 
-  it('renders HTTPS and Terminal action pills', async () => {
+  it('renders HTTPS and Terminal action buttons', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     const wrapper = await mountVMDetail()
-    const pills = wrapper.findAll('.action-pill')
+    const pills = wrapper.findAll('.action-btn-expanded')
     const texts = pills.map(p => p.text())
     expect(texts.some(t => t.includes('HTTPS'))).toBe(true)
     expect(texts.some(t => t.includes('Terminal'))).toBe(true)
@@ -286,14 +289,14 @@ describe('VMDetail', () => {
       boxes: [makeBox({ shelleyURL: 'https://my-vm.exe.cloud/shelley' })],
     }))
     const wrapper = await mountVMDetail()
-    const pills = wrapper.findAll('.action-pill')
+    const pills = wrapper.findAll('.action-btn-expanded')
     expect(pills.some(p => p.text().includes('Shelley'))).toBe(true)
   })
 
   it('hides Shelley button when shelleyURL is empty', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     const wrapper = await mountVMDetail()
-    const pills = wrapper.findAll('.action-pill')
+    const pills = wrapper.findAll('.action-btn-expanded')
     expect(pills.some(p => p.text().includes('Shelley'))).toBe(false)
   })
 
@@ -302,7 +305,7 @@ describe('VMDetail', () => {
       boxes: [makeBox({ vscodeURL: 'vscode://vscode-remote/ssh-remote+my-vm/home/exedev' })],
     }))
     const wrapper = await mountVMDetail()
-    const pills = wrapper.findAll('.action-pill')
+    const pills = wrapper.findAll('.action-btn-expanded')
     expect(pills.some(p => p.text().includes('Editor'))).toBe(true)
   })
 
@@ -329,29 +332,19 @@ describe('VMDetail', () => {
     expect(wrapper.find('.badge-team').exists()).toBe(false)
   })
 
-  // --- Junk drawer ---
+  // --- Team sharing action button ---
 
-  it('opens junk drawer on ellipsis button click', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.junk-drawer').exists()).toBe(false)
-    await wrapper.find('.junk-btn').trigger('click')
-    expect(wrapper.find('.junk-drawer').exists()).toBe(true)
-  })
-
-  it('hides Share with Team drawer item when hasTeam is false', async () => {
+  it('hides Share with Team action when hasTeam is false', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({ hasTeam: false }))
     const wrapper = await mountVMDetail()
-    await wrapper.find('.junk-btn').trigger('click')
-    const items = wrapper.findAll('.drawer-item').map(i => i.text())
+    const items = wrapper.findAll('.action-btn-expanded').map(i => i.text())
     expect(items.some(t => t.includes('Team'))).toBe(false)
   })
 
-  it('shows Share with Team drawer item when hasTeam is true', async () => {
+  it('shows Share with Team action when hasTeam is true', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({ hasTeam: true }))
     const wrapper = await mountVMDetail()
-    await wrapper.find('.junk-btn').trigger('click')
-    const items = wrapper.findAll('.drawer-item').map(i => i.text())
+    const items = wrapper.findAll('.action-btn-expanded').map(i => i.text())
     expect(items.some(t => t.includes('Team'))).toBe(true)
   })
 
@@ -475,7 +468,7 @@ describe('VMDetail', () => {
     }))
     const wrapper = await mountVMDetail()
     expect(wrapper.find('.modal-overlay').exists()).toBe(false)
-    const editorBtn = wrapper.findAll('.action-pill').find(p => p.text().includes('Editor'))
+    const editorBtn = wrapper.findAll('.action-btn-expanded').find(p => p.text().includes('Editor'))
     await editorBtn!.trigger('click')
     expect(wrapper.find('.modal-overlay').exists()).toBe(true)
     expect(wrapper.find('.modal-title').text()).toBe('Open in Editor')
@@ -486,7 +479,7 @@ describe('VMDetail', () => {
       boxes: [makeBox({ vscodeURL: 'vscode://vscode-remote/ssh-remote+my-vm/home/exedev' })],
     }))
     const wrapper = await mountVMDetail()
-    const editorBtn = wrapper.findAll('.action-pill').find(p => p.text().includes('Editor'))
+    const editorBtn = wrapper.findAll('.action-btn-expanded').find(p => p.text().includes('Editor'))
     await editorBtn!.trigger('click')
     expect(wrapper.find('.modal-overlay').exists()).toBe(true)
     await wrapper.find('.modal-close').trigger('click')
@@ -500,7 +493,7 @@ describe('VMDetail', () => {
     }))
     localStorage.setItem('preferred-editor', 'vscode')
     const wrapper = await mountVMDetail()
-    const editorBtn = wrapper.findAll('.action-pill').find(p => p.text().includes('Editor'))
+    const editorBtn = wrapper.findAll('.action-btn-expanded').find(p => p.text().includes('Editor'))
     await editorBtn!.trigger('click')
     const url = wrapper.find('.editor-url').text()
     expect(url).toContain('vscode://vscode-remote/ssh-remote+my-vm')
@@ -512,7 +505,7 @@ describe('VMDetail', () => {
     }))
     localStorage.setItem('preferred-editor', 'cursor')
     const wrapper = await mountVMDetail()
-    const editorBtn = wrapper.findAll('.action-pill').find(p => p.text().includes('Editor'))
+    const editorBtn = wrapper.findAll('.action-btn-expanded').find(p => p.text().includes('Editor'))
     await editorBtn!.trigger('click')
     const url = wrapper.find('.editor-url').text()
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')

@@ -21,115 +21,40 @@
     </div>
 
     <div v-else-if="box" class="vm-card">
-      <!-- Header -->
+      <!-- Header: status dot + name + badges -->
       <div class="vm-header">
-        <div class="vm-header-left">
-          <span ref="emojiAnchor" class="emoji-anchor">
-            <StatusDot
-              :status="box.status"
-              :emoji="box.emoji"
-              clickable
-              @edit="openEmojiPicker"
-            />
-          </span>
-          <EmojiPicker
-            :open="emojiOpen"
-            :anchor-el="emojiAnchor"
-            :current="box.emoji"
-            :saving="emojiSaving"
-            :error-msg="emojiError"
-            @close="emojiOpen = false"
-            @pick="onEmojiPick"
+        <span ref="emojiAnchor" class="emoji-anchor">
+          <StatusDot
+            :status="box.status"
+            :emoji="box.emoji"
+            clickable
+            @edit="openEmojiPicker"
           />
-          <h1 class="vm-name">{{ box.name }}</h1>
-          <span v-if="box.proxyShare === 'public'" class="badge badge-public">PUBLIC</span>
-          <span v-if="box.isTeamShared" class="badge badge-team">TEAM</span>
-        </div>
-        <div class="vm-actions">
-          <a :href="box.proxyURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open HTTPS">
-            <i class="pi pi-globe"></i><span class="pill-label"> HTTPS</span>
-          </a>
-          <a :href="box.terminalURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open Terminal">
-            <i class="pi pi-chevron-right"></i><span class="pill-label"> Terminal</span>
-          </a>
-          <a v-if="box.shelleyURL" :href="box.shelleyURL" class="action-pill" target="_blank" rel="noopener noreferrer" title="Open Shelley">
-            <i class="pi pi-sparkles"></i><span class="pill-label"> Shelley</span>
-          </a>
-          <button v-if="box.vscodeURL" class="action-pill" @click="editorModalOpen = true" title="Open Editor">
-            <i class="pi pi-code"></i><span class="pill-label"> Editor</span>
-          </button>
-          <div class="junk-drawer-wrap">
-            <button class="action-pill junk-btn" :class="{ active: drawerOpen }" @click.stop="drawerOpen = !drawerOpen" title="More actions">
-              <i class="pi pi-ellipsis-h"></i>
-            </button>
-            <div v-if="drawerOpen" class="junk-drawer" @click.stop>
-              <button class="drawer-item" @click="doAction('share')"><i class="pi pi-share-alt"></i> Share</button>
-              <button v-if="hasTeam" class="drawer-item" @click="doAction('share-team')">
-                <i class="pi pi-users"></i> {{ box.isTeamShared ? 'Unshare Team' : 'Share with Team' }}
-              </button>
-              <button class="drawer-item" @click="doAction('share-link')"><i class="pi pi-link"></i> Share Link</button>
-              <button class="drawer-item" @click="doAction('add-tag')"><i class="pi pi-tag"></i> Add Tag</button>
-              <button v-if="box.routeKnown" class="drawer-item" @click="doAction('set-port', box.proxyURL)"><i class="pi pi-sliders-h"></i> Proxy Port</button>
-              <button v-if="box.routeKnown && box.proxyShare === 'public'" class="drawer-item" @click="doAction('set-private')"><i class="pi pi-lock"></i> Make Private</button>
-              <button v-if="box.routeKnown && box.proxyShare !== 'public'" class="drawer-item" @click="doAction('set-public')"><i class="pi pi-unlock"></i> Make Public</button>
-              <button class="drawer-item" @click="doAction('copy')"><i class="pi pi-clone"></i> Copy</button>
-              <button class="drawer-item" @click="doAction('rename')"><i class="pi pi-pencil"></i> Rename</button>
-              <button class="drawer-item" @click="doAction('restart')"><i class="pi pi-refresh"></i> Restart</button>
-              <button class="drawer-item danger" @click="doAction('delete')"><i class="pi pi-trash"></i> Delete</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Subtitle -->
-      <div class="vm-subtitle">
-        <span v-if="box.region">{{ box.region }}</span>
-        <span v-if="box.region && box.image" class="sep">·</span>
-        <span v-if="box.image">{{ box.image }}</span>
-        <span v-if="box.createdAt" class="sep">·</span>
-        <span v-if="box.createdAt">Created {{ box.createdAt }}</span>
-
-      </div>
-
-      <!-- SSH Field -->
-      <div v-if="box.sshCommand" class="ssh-row">
-        <code class="ssh-cmd">{{ box.sshCommand }}</code>
-        <CopyButton :text="box.sshCommand" title="Copy SSH command" />
-      </div>
-
-      <!-- Tags -->
-      <div v-if="box.displayTags && box.displayTags.length" class="tags-row">
-        <span v-for="tag in box.displayTags" :key="tag" class="tag tag-removable">
-          #{{ tag }}
-          <button class="tag-remove" @click="doAction('remove-tag', tag)">&times;</button>
         </span>
+        <EmojiPicker
+          :open="emojiOpen"
+          :anchor-el="emojiAnchor"
+          :current="box.emoji"
+          :saving="emojiSaving"
+          :error-msg="emojiError"
+          @close="emojiOpen = false"
+          @pick="onEmojiPick"
+        />
+        <h1 class="vm-name">{{ box.name }}</h1>
+        <span v-if="box.totalShareCount > 0" class="badge badge-share" :title="`Shared with ${box.sharedUserCount} user(s) and ${box.shareLinkCount} link(s)`">
+          👥 {{ box.totalShareCount }}
+        </span>
+        <span v-if="box.isTeamShared" class="badge badge-team">TEAM</span>
+        <span v-if="box.proxyShare === 'public'" class="badge badge-public">PUBLIC</span>
       </div>
 
-      <!-- Sharing Section -->
-      <div v-if="(box.sharedEmails && box.sharedEmails.length > 0) || (box.shareLinks && box.shareLinks.length > 0)" class="sharing-section">
-        <!-- Shared emails -->
-        <div v-if="box.sharedEmails && box.sharedEmails.length > 0" class="sharing-group">
-          <div class="sharing-label">Shared with:</div>
-          <div class="shared-list">
-            <div v-for="email in box.sharedEmails" :key="email" class="shared-item">
-              <span>{{ email }}</span>
-              <button class="remove-btn" @click="doAction('remove-share', email)">&times;</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Share links -->
-        <div v-if="box.shareLinks && box.shareLinks.length > 0" class="sharing-group">
-          <div class="sharing-label">Share links:</div>
-          <div class="shared-list">
-            <div v-for="link in box.shareLinks" :key="link.token" class="shared-item">
-              <code class="share-link-url">{{ link.url }}</code>
-              <CopyButton :text="link.url" title="Copy link" />
-              <button class="remove-btn" @click="doAction('remove-share-link', link.token)">&times;</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Shared detail sections (same layout as the VM list expanded row) -->
+      <VMDetailSections
+        :box="box"
+        :has-team="hasTeam"
+        :show-usage-panel="false"
+        @action="onDetailAction"
+      />
 
       <!-- Creation Log -->
       <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" @done="load" @fail="load" />
@@ -306,6 +231,7 @@ import { useCommand } from '../composables/useCommand'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import UsageChart from '../components/UsageChart.vue'
+import VMDetailSections from '../components/VMDetailSections.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
 const route = useRoute()
@@ -363,9 +289,6 @@ const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Provisioned specs (fetched once from live metrics endpoint)
 const liveMetrics = ref<VMLiveMetrics | null>(null)
-
-// Junk drawer
-const drawerOpen = ref(false)
 
 // Creation log
 const showCreationLog = ref(false)
@@ -543,7 +466,14 @@ function openModal(opts: Partial<typeof modal>) {
     suggestions: [],
     ...opts,
   })
-  drawerOpen.value = false
+}
+
+function onDetailAction(a: { type: string; boxName: string; extra?: any }) {
+  if (a.type === 'open-editor') {
+    editorModalOpen.value = true
+    return
+  }
+  doAction(a.type, a.extra)
 }
 
 function doAction(type: string, extra?: any) {
@@ -682,23 +612,16 @@ async function onModalSuccess() {
 
 function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (drawerOpen.value) { drawerOpen.value = false; return }
   if (editorModalOpen.value) { editorModalOpen.value = false; return }
-}
-
-function onDocumentClick() {
-  drawerOpen.value = false
 }
 
 onMounted(() => {
   load()
   document.addEventListener('keydown', onEscapeKey)
-  document.addEventListener('click', onDocumentClick)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEscapeKey)
-  document.removeEventListener('click', onDocumentClick)
 })
 </script>
 
@@ -775,15 +698,8 @@ onBeforeUnmount(() => {
 .vm-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.vm-header-left {
-  display: flex;
-  align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .emoji-anchor {
@@ -801,6 +717,7 @@ onBeforeUnmount(() => {
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -817,242 +734,10 @@ onBeforeUnmount(() => {
   color: var(--badge-share-text);
 }
 
-.vm-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.action-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  background: var(--btn-bg);
-  border: 1px solid var(--btn-border);
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: inherit;
-  line-height: 1;
-  color: var(--btn-text);
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.action-pill:hover, .action-pill.active {
-  background: var(--btn-hover-bg);
-  border-color: var(--btn-hover-border);
-  color: var(--btn-hover-text);
-  text-decoration: none;
-}
-
-.action-pill i {
-  font-size: 12px;
-}
-
-/* Junk drawer */
-.junk-drawer-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.junk-btn {
-  padding: 6px 12px;
-}
-
-.junk-drawer {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  min-width: 160px;
-  z-index: 100;
-  overflow: hidden;
-}
-
-.drawer-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 14px;
-  background: none;
-  border: none;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--text-color);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.1s;
-}
-
-.drawer-item:hover {
-  background: var(--surface-inset);
-}
-
-.drawer-item.danger {
-  color: var(--danger-color);
-}
-
-.drawer-item i {
-  font-size: 12px;
-  width: 14px;
-  text-align: center;
-  color: var(--text-color-muted);
-}
-
-.drawer-item.danger i {
-  color: var(--danger-color);
-}
-
-/* Subtitle */
-.vm-subtitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-color-muted);
-  flex-wrap: wrap;
-}
-
-.sep {
-  opacity: 0.5;
-}
-
-/* SSH */
-.ssh-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface-inset, var(--surface-ground));
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-}
-
-.ssh-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-
-.ssh-cmd {
-  flex: 1;
-  font-size: 12px;
-  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
-  color: var(--code-text);
-  word-break: break-all;
-}
-
-/* Tags */
-.tags-row {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.tag {
-  font-size: 11px;
-  color: var(--tag-text);
-  background: var(--tag-bg);
-  padding: 2px 8px;
-  border-radius: 3px;
-}
-
-.tag-removable {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.tag-remove {
-  background: none;
-  border: none;
-  color: var(--text-color-muted);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.tag-remove:hover {
-  color: var(--danger-color);
-}
-
-/* Sharing Section */
-.sharing-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--surface-inset, var(--surface-ground));
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 12px 16px;
-}
-
-.sharing-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sharing-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.shared-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.shared-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
-.share-link-url {
-  font-size: 11px;
-  color: var(--code-text);
-  background: var(--code-bg);
-  padding: 2px 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.remove-btn {
-  background: none;
-  border: none;
-  color: var(--text-color-muted);
-  cursor: pointer;
-  padding: 2px 6px;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.remove-btn:hover {
-  color: var(--danger-color);
+.badge-share {
+  background: var(--badge-share-bg);
+  color: var(--badge-share-text);
+  font-weight: 500;
 }
 
 /* Creation Log */
@@ -1393,17 +1078,6 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 640px) {
-  .vm-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .vm-actions {
-    width: 100%;
-  }
-  .pill-label {
-    display: none;
-  }
-}
+
 
 </style>
