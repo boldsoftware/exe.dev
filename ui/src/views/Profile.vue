@@ -32,6 +32,13 @@
         <h2 class="card-title">Account</h2>
         <div class="info-grid">
           <div class="info-row">
+            <span class="info-label">Support</span>
+            <span class="info-value">
+              <button class="btn btn-secondary" @click="openSupportModal">E-mail support</button>
+              &ensp;<a href="mailto:support@exe.dev">support@exe.dev</a>
+            </span>
+          </div>
+          <div class="info-row">
             <span class="info-label">Email</span>
             <span class="info-value">{{ data.user.email }}</span>
           </div>
@@ -448,11 +455,6 @@
               </template>
             </div>
 
-            <!-- Support -->
-            <div class="support-section">
-              <span class="support-label">Support</span>
-              <a href="mailto:support@exe.dev">support@exe.dev</a>
-            </div>
           </template>
         </div>
       </section>
@@ -623,15 +625,6 @@
       </section>
 
       <!-- Shared VMs -->
-      <!-- Support -->
-      <section v-if="data.canEmailSupport" class="card">
-        <h2 class="card-title">Support</h2>
-        <p class="section-help">We'd love to hear from you!</p>
-        <div style="margin-top: 12px;">
-          <button class="btn btn-secondary" @click="openSupportModal">Contact support</button>
-        </div>
-      </section>
-
       <section v-if="data.sharedBoxes.length > 0" class="card">
         <h2 class="card-title">Sites Shared With You</h2>
         <table class="mini-table">
@@ -2660,28 +2653,6 @@ async function toggleNewsletter(event: Event) {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-color);
-}
-
-/* Support Section */
-.support-section {
-  padding-top: 16px;
-  border-top: 1px solid var(--surface-border);
-  font-size: 12px;
-}
-
-.support-label {
-  color: var(--text-color-muted);
-  margin-right: 8px;
-}
-
-.support-section a {
-  color: var(--text-color-muted);
-  text-decoration: none;
-}
-
-.support-section a:hover {
-  color: var(--text-color);
-  text-decoration: underline;
 }
 
 /* Team credits banner */

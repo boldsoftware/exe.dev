@@ -2,7 +2,6 @@ package execore
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +10,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"exe.dev/exedb"
 )
 
 // captureSupportEmail sets up a fake email server that captures emails.
@@ -61,37 +58,10 @@ func postSupport(t *testing.T, s *Server, cookie, subject, body string, files ma
 	return resp
 }
 
-func makeUserSudoer(t *testing.T, s *Server, email string) string {
-	t.Helper()
-	userID, err := s.GetUserIDByEmail(context.Background(), email)
-	if err != nil {
-		t.Fatalf("GetUserIDByEmail: %v", err)
-	}
-	if err := withTx1(s, context.Background(), (*exedb.Queries).SetUserRootSupport, exedb.SetUserRootSupportParams{
-		UserID:      userID,
-		RootSupport: 1,
-	}); err != nil {
-		t.Fatalf("SetUserRootSupport: %v", err)
-	}
-	return userID
-}
-
-func TestAPIProfileSupportForbiddenWithoutSudo(t *testing.T) {
-	s := newTestServer(t)
-	cookie := createTestUserWithCookie(t, s, "nonsudo@example.com")
-	resp := postSupport(t, s, cookie, "hello", "need help", nil)
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("want 403, got %d: %s", resp.StatusCode, body)
-	}
-}
-
 func TestAPIProfileSupportSendsEmailWithReplyToAndAttachment(t *testing.T) {
 	s := newTestServer(t)
-	const userEmail = "sudouser@example.com"
+	const userEmail = "user@example.com"
 	cookie := createTestUserWithCookie(t, s, userEmail)
-	makeUserSudoer(t, s, userEmail)
 	emailCh := captureSupportEmail(t, s)
 
 	resp := postSupport(t, s, cookie, "Help me!", "I can't log in.", map[string][]byte{
@@ -134,9 +104,8 @@ func TestAPIProfileSupportSendsEmailWithReplyToAndAttachment(t *testing.T) {
 
 func TestAPIProfileSupportRejectsEmptySubject(t *testing.T) {
 	s := newTestServer(t)
-	const userEmail = "sudouser2@example.com"
+	const userEmail = "user2@example.com"
 	cookie := createTestUserWithCookie(t, s, userEmail)
-	makeUserSudoer(t, s, userEmail)
 	resp := postSupport(t, s, cookie, "", "body", nil)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {

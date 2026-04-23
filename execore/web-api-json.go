@@ -883,7 +883,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		PlanCapacity:       planCapacity,
 		BasicUser:          basicUser,
 		ShowIntegrations:   showIntegrations,
-		CanEmailSupport:    s.UserHasExeSudo(r.Context(), userID),
+		CanEmailSupport:    true,
 		InviteCount:        inviteCount,
 		CanRequestInvites:  canRequestInvites,
 		Credits: jsonCreditInfo{
@@ -1311,12 +1311,6 @@ const supportEmailMaxAttachments = 10
 // Gated to root-support ('exe sudo') users for now.
 func (s *Server) handleAPIProfileSupport(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
-
-	// Gate: sudoers only for now.
-	if !s.UserHasExeSudo(ctx, userID) {
-		http.Error(w, "support email is not available for your account", http.StatusForbidden)
-		return
-	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, supportEmailMaxRequestSize)
 	if err := r.ParseMultipartForm(supportEmailMaxRequestSize); err != nil {
