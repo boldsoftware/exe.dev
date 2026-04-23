@@ -402,6 +402,38 @@ export async function fetchVMLiveMetrics(name: string): Promise<VMLiveMetrics> {
   return fetchJSON(`/api/vm/${encodeURIComponent(name)}/compute-usage/live`)
 }
 
+// --- All VMs Live Metrics + Pool Summary ---
+
+export interface VMsLiveVM {
+  name: string
+  status: string
+  cpu_percent: number
+  cpus: number
+  mem_bytes: number
+  mem_capacity_bytes: number
+  disk_bytes: number
+  disk_logical_bytes: number
+  disk_capacity_bytes: number
+  net_rx_bytes: number
+  net_tx_bytes: number
+}
+
+export interface VMsLivePool {
+  cpu_used: number
+  cpu_max: number
+  mem_used_bytes: number
+  mem_max_bytes: number
+}
+
+export interface VMsLiveResponse {
+  vms: VMsLiveVM[]
+  pool: VMsLivePool
+}
+
+export async function fetchVMsLive(): Promise<VMsLiveResponse> {
+  return fetchJSON('/api/vms/live')
+}
+
 export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {
   const data = await fetchDashboard()
   const box = data.boxes.find(b => b.name === name) ?? null

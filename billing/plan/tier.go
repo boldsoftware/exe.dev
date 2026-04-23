@@ -128,6 +128,16 @@ func MaxCPUsForPlan(planID string) uint64 {
 	return tier.Quotas.MaxCPUs
 }
 
+// MaxMemoryForPlan returns the memory pool limit (in bytes) for a plan.
+// Returns 0 if the plan is unknown or has no memory pool quota.
+func MaxMemoryForPlan(planID string) uint64 {
+	tier, err := getTierByID(planID)
+	if err != nil {
+		return 0
+	}
+	return tier.Quotas.MaxMemory
+}
+
 // NextTier returns the next larger tier in the same category, or nil if
 // the current tier is the largest. Tiers are ordered by MaxCPUs ascending.
 func NextTier(currentID string) *Tier {

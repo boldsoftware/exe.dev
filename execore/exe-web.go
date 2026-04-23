@@ -978,6 +978,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleAPIBillingUsageVMs(w, r, userID)
 		return
+	case "/api/vms/live":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.HandleAPIVMsLive(w, r, userID)
+		return
 	case "/api/llm-usage":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
