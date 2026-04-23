@@ -41,6 +41,34 @@ function ConversationDrawer({
   showActiveTrigger,
 }: ConversationDrawerProps) {
   const { t } = useI18n();
+
+  // Build the URL for a conversation, or null if it has no slug to route to.
+  const conversationUrl = (conversation: Conversation): string | null => {
+    if (!conversation.slug) return null;
+    return `/c/${conversation.slug}`;
+  };
+
+  // For left-clicks with a modifier key (cmd/ctrl/shift/meta), open the conversation
+  // in a new tab/window instead of switching in place. Returns true if handled.
+  const handleModifiedClick = (e: React.MouseEvent, conversation: Conversation): boolean => {
+    if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return false;
+    const url = conversationUrl(conversation);
+    if (!url) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(url, "_blank", "noopener");
+    return true;
+  };
+
+  // Middle-click (auxiliary button 1) opens in a new background tab.
+  const handleAuxClick = (e: React.MouseEvent, conversation: Conversation) => {
+    if (e.button !== 1) return;
+    const url = conversationUrl(conversation);
+    if (!url) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(url, "_blank", "noopener");
+  };
   const [showArchived, setShowArchived] = useState(false);
   const [archivedConversations, setArchivedConversations] = useState<Conversation[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
@@ -426,10 +454,14 @@ function ConversationDrawer({
       <React.Fragment key={conversation.conversation_id}>
         <div
           className={`conversation-item ${isActive ? "active" : ""}`}
-          onClick={() => {
-            if (!showArchived) {
-              onSelectConversation(conversation);
-            }
+          onClick={(e) => {
+            if (showArchived) return;
+            if (handleModifiedClick(e, conversation)) return;
+            onSelectConversation(conversation);
+          }}
+          onAuxClick={(e) => {
+            if (showArchived) return;
+            handleAuxClick(e, conversation);
           }}
           style={{ cursor: showArchived ? "default" : "pointer" }} // Dynamic: cursor depends on showArchived state
         >
@@ -619,7 +651,11 @@ function ConversationDrawer({
                 <div
                   key={sub.conversation_id}
                   className={`conversation-item subagent-item drawer-subagent-item-style ${isSubActive ? "active" : ""}`}
-                  onClick={() => onSelectConversation(sub)}
+                  onClick={(e) => {
+                    if (handleModifiedClick(e, sub)) return;
+                    onSelectConversation(sub);
+                  }}
+                  onAuxClick={(e) => handleAuxClick(e, sub)}
                 >
                   <div className="drawer-conversation-item-flex-container">
                     <div className="drawer-conversation-header-row">

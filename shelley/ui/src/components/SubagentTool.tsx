@@ -134,6 +134,8 @@ function SubagentTool({
                 <a
                   href={`/c/${slug}`}
                   onClick={(e) => {
+                    // Let the browser handle cmd/ctrl/shift/middle-click (open in new tab/window).
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
                     e.preventDefault();
                     // Navigate to the subagent conversation
                     window.history.pushState({}, "", `/c/${slug}`);
