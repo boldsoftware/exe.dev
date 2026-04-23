@@ -36,6 +36,27 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 		return nil, false, status.Errorf(codes.Internal, "failed to edit snapshot config: %v", err)
 	}
 
+	// Persist a minimal instance config BEFORE RestoreFromSnapshot so that
+	// cloud-hypervisor is spawned into the correct per-VM cgroup via
+	// CLONE_INTO_CGROUP. PrepareVMCgroup loads the persisted config to learn
+	// the VM's GroupID; without this early write the file is absent and the
+	// VMM falls back to spawning in the exelet's cgroup, so guest RAM pages
+	// get mis-attributed for the lifetime of the VM. The final config (with
+	// RUNNING/STOPPED state, SSH port, network, etc.) is saved below.
+	earlyInstance := &api.Instance{
+		ID:        instanceID,
+		Name:      sourceInstance.Name,
+		Image:     sourceInstance.Image,
+		Node:      s.config.Name,
+		GroupID:   groupID,
+		State:     api.VMState_CREATING,
+		CreatedAt: sourceInstance.CreatedAt,
+		UpdatedAt: time.Now().UnixNano(),
+	}
+	if err := s.saveInstanceConfig(earlyInstance); err != nil {
+		return nil, false, status.Errorf(codes.Internal, "failed to save early instance config: %v", err)
+	}
+
 	// Restore from snapshot (starts CH daemon, restores, resumes)
 	s.log.InfoContext(ctx, "live: restoring VM from snapshot", "instance", instanceID)
 	restoreErr := s.vmm.RestoreFromSnapshot(ctx, instanceID, snapshotDir)

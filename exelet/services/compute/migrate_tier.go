@@ -777,6 +777,24 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 	// context so that operator cancellation cannot strand the VM.
 	ctx = context.Background()
 
+	// Persist an updated instance config BEFORE RestoreFromSnapshot so that
+	// PrepareVMCgroup (invoked at CH spawn time via CLONE_INTO_CGROUP) sees
+	// the correct, up-to-date GroupID and RootDiskPath for this instance.
+	// Without this, the persisted config is stale from before migration and,
+	// although in practice GroupID does not change, keeping the on-disk
+	// config in sync matches the create/clone/receive paths and avoids
+	// relying on coincidental staleness-tolerance. The final save below is
+	// retained as a bookkeeping no-op that refreshes UpdatedAt.
+	if earlyCfg, loadErr := s.loadInstanceConfig(instanceID); loadErr == nil {
+		earlyCfg.VMConfig.RootDiskPath = dstFS.Path
+		earlyCfg.UpdatedAt = time.Now().UnixNano()
+		if saveErr := s.saveInstanceConfig(earlyCfg); saveErr != nil {
+			return fmt.Errorf("save early config before restore: %w", saveErr)
+		}
+	} else {
+		return fmt.Errorf("load config for early save: %w", loadErr)
+	}
+
 	// Restore from snapshot with new disk path
 	s.log.InfoContext(ctx, "tier migration: restoring VM", "instance", instanceID)
 	if err := s.vmm.RestoreFromSnapshot(ctx, instanceID, snapshotDir); err != nil {
