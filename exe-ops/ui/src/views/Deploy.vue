@@ -666,7 +666,7 @@ import {
   type RolloutTarget,
 } from '../api/client'
 
-const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops'])
+const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops', 'exepipe'])
 
 // Multi-select state
 const selectedProcs = reactive(new Set<string>())
@@ -1285,7 +1285,7 @@ function isDeploying(p: DeployProcess): boolean {
 }
 
 const deployableStages = new Set(['staging', 'prod', 'global'])
-const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed', 'exeprox'])
+const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed', 'exeprox', 'exepipe'])
 
 function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false

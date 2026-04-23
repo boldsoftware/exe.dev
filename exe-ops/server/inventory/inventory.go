@@ -217,6 +217,12 @@ var processesByRole = map[string][]processSpec{
 			versionURL: func(d string) string { return "http://" + d + ":9090/debug/gitsha" },
 			metricsURL: func(d string) string { return "http://" + d + ":9090/debug/metrics" },
 		},
+		{
+			name:       "exepipe",
+			debugURL:   func(d string) string { return "http://" + d + ":30304/" },
+			versionURL: func(d string) string { return "http://" + d + ":30304/debug/gitsha" },
+			metricsURL: func(d string) string { return "http://" + d + ":30304/metrics" },
+		},
 	},
 	"exeprox": {
 		{

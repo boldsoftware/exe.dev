@@ -13,6 +13,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/net/tsaddr"
+
+	"exe.dev/logging"
 )
 
 // exepipeHTTPServer is a simple HTTP server.
@@ -91,9 +93,18 @@ func (ehs *exepipeHTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		ehs.handleHealth(w, r)
 	case "/metrics":
 		ehs.handleMetrics(w, r)
+	case "/debug/gitsha":
+		ehs.handleDebugGitsha(w, r)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleDebugGitsha returns the git SHA the binary was built from.
+// Used by exe-ops to verify the deployed binary after restart.
+func (ehs *exepipeHTTPServer) handleDebugGitsha(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, logging.GitCommit())
 }
 
 // handleHealth handles a /health HTTP request.

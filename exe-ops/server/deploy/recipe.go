@@ -84,7 +84,7 @@ func (r Recipe) remoteUser() string {
 // to prod-stage hosts. Processes not in this set require staging first.
 func prodDeployAllowed(process string) bool {
 	switch process {
-	case "metricsd", "cgtop", "exeletd", "exed", "exeprox":
+	case "metricsd", "cgtop", "exeletd", "exed", "exeprox", "exepipe":
 		return true
 	}
 	return false
@@ -188,6 +188,24 @@ var Recipes = map[string]Recipe{
 			"staging": "ops/deploy/metricsd-staging.service",
 			"prod":    "ops/deploy/metricsd-prod.service",
 			"global":  "ops/deploy/metricsd-prod.service",
+		},
+	},
+	"exepipe": {
+		BuildTarget: "./cmd/exepipe",
+		BinaryName:  "exepipe",
+		// The service picks the newest binary via "ls -t exepipe.* | head -n1".
+		// exepipe.latest symlink exists so that rollback works by `ln -sf`ing
+		// to an older binary — that bumps the symlink's mtime, making it the
+		// newest entry and routing exec through it (same pattern as exeprox).
+		SymlinkName: "exepipe.latest",
+		RemoteDir:   "/home/ubuntu",
+		ServiceUnit: "exepipe.service",
+		HealthPort:  30304,
+		HealthPath:  "/debug/gitsha",
+		ServiceFiles: map[string]string{
+			"staging": "ops/deploy/exepipe-staging.service",
+			"prod":    "ops/deploy/exepipe-prod.service",
+			"global":  "ops/deploy/exepipe-prod.service",
 		},
 	},
 	"exe-ops": {
