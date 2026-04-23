@@ -134,15 +134,17 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
     fetchVMLiveMetrics: vi.fn(),
+    fetchVMsLive: vi.fn(),
   }
 })
 
-import { fetchDashboard, fetchVMUsage, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics } from '../api/client'
+import { fetchDashboard, fetchVMUsage, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchVMUsage = vi.mocked(fetchVMUsage)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
 const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
+const mockFetchVMsLive = vi.mocked(fetchVMsLive)
 
 // ---------------------------------------------------------------------------
 // Mount helper
@@ -178,6 +180,7 @@ describe('VMDetail', () => {
     mockFetchVMUsage.mockReturnValue(new Promise(() => {}))
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
+    mockFetchVMsLive.mockResolvedValue({ vms: [], pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 } })
   })
 
   afterEach(() => {
@@ -348,54 +351,7 @@ describe('VMDetail', () => {
     expect(items.some(t => t.includes('Team'))).toBe(true)
   })
 
-  // --- Billing: This Billing Period ---
-
-  it('shows billing period loading spinner', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    // fetchVMUsage never resolves
-    mockFetchVMUsage.mockReturnValue(new Promise(() => {}))
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.card-loading').exists()).toBe(true)
-  })
-
-  it('renders usage data in billing period card', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({
-      period_start: '2024-01-01',
-      period_end: '2024-02-01',
-      metrics: [makeUsageEntry()],
-    })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    const text = wrapper.text()
-    expect(text).toContain('20 GB') // disk_provisioned
-    expect(text).toContain('1 GB') // bandwidth
-    expect(text).toContain('10 GB') // included_disk
-    expect(text).toContain('1.0h') // cpu_seconds = 3600
-  })
-
-  it('shows empty state when no usage entry for this VM', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({
-      period_start: '2024-01-01',
-      period_end: '2024-02-01',
-      metrics: [], // no entry for my-vm
-    })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('No usage data for this period')
-  })
-
-  it('shows period label from billing dates', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard({
-      billing: { periodStart: '2024-01-01', periodEnd: '2024-02-01' },
-    }))
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    expect(wrapper.text()).toContain('January 1')
-    expect(wrapper.text()).toContain('February 1')
-  })
+  // --- Shelley Usage ---
 
   it('renders LLM usage with the API period label', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({
@@ -435,29 +391,6 @@ describe('VMDetail', () => {
     mockFetchBoxLLMUsage.mockRejectedValue(new Error('llm down'))
     await mountVMDetail()
     expect(consoleError).toHaveBeenCalledWith('Failed to load VM LLM usage:', expect.any(Error))
-  })
-
-  it('marks disk overage row with overage class', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({
-      period_start: '2024-01-01',
-      period_end: '2024-02-01',
-      metrics: [makeUsageEntry({
-        display: {
-          disk_provisioned: '20 GB',
-          bandwidth: '1 GB',
-          included_disk: '10 GB',
-          included_bandwidth: '0 B',
-          overage_disk: '$2.00',
-          overage_bandwidth: '',
-        },
-      })],
-    })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    const overageRow = wrapper.findAll('.card-row').find(r => r.classes('overage'))
-    expect(overageRow).toBeDefined()
-    expect(overageRow!.text()).toContain('$2.00')
   })
 
   // --- Editor modal ---
@@ -511,9 +444,9 @@ describe('VMDetail', () => {
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
 
-  // --- Provisioned bar ---
+  // --- Pool section (resource pool bars) ---
 
-  it('shows provisioned bar with vCPUs, memory, and disk for running VMs', async () => {
+  it('shows pool section with stacked bars when pool data and live metrics are available', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
@@ -529,88 +462,244 @@ describe('VMDetail', () => {
       net_rx_bytes: 1048576,
       net_tx_bytes: 524288,
     })
-    const wrapper = await mountVMDetail()
-    const bar = wrapper.find('.provisioned-bar')
-    expect(bar.exists()).toBe(true)
-    const items = bar.findAll('.prov-item')
-    expect(items).toHaveLength(3)
-    expect(items[0].find('.prov-value').text()).toBe('2')
-    expect(items[1].find('.prov-value').text()).toBe('8 GB')
-    expect(items[2].find('.prov-value').text()).toBe('30 GB')
-  })
-
-  it('rounds memory up to standard provisioned size (7.2 GiB -> 8 GB)', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 1.0,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 25 * 1024 * 1024 * 1024,
-      mem_capacity_bytes: 7.2 * 1024 * 1024 * 1024,
-      cpus: 4,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
+    mockFetchVMsLive.mockResolvedValue({
+      vms: [
+        { name: 'my-vm', status: 'running', cpu_percent: 42.5, cpus: 2, mem_bytes: 1073741824, mem_capacity_bytes: 8 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+        { name: 'other-vm', status: 'running', cpu_percent: 100, cpus: 4, mem_bytes: 0, mem_capacity_bytes: 16 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+      ],
+      pool: { cpu_used: 1.425, cpu_max: 8, mem_used_bytes: 24 * 1024 * 1024 * 1024, mem_max_bytes: 32 * 1024 * 1024 * 1024 },
     })
     const wrapper = await mountVMDetail()
-    const items = wrapper.findAll('.prov-item')
-    expect(items[1].find('.prov-value').text()).toBe('8 GB')
+    const poolSection = wrapper.find('.pool-section')
+    expect(poolSection.exists()).toBe(true)
+    expect(poolSection.text()).toContain('Resource Pool (live)')
+    // Should have stacked bar segments
+    expect(poolSection.findAll('.pool-seg-this').length).toBeGreaterThanOrEqual(1)
+    expect(poolSection.findAll('.pool-seg-other').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('only shows provisioned fields that have data (skips zeros)', async () => {
+  it('shows correct CPU values in pool section', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
       status: 'running',
-      cpu_percent: 0,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 25 * 1024 * 1024 * 1024,
-      mem_capacity_bytes: 0,
-      cpus: 0,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    const wrapper = await mountVMDetail()
-    const bar = wrapper.find('.provisioned-bar')
-    expect(bar.exists()).toBe(true)
-    const items = bar.findAll('.prov-item')
-    expect(items).toHaveLength(1)
-    expect(items[0].find('.prov-label').text()).toBe('Disk')
-    expect(items[0].find('.prov-value').text()).toBe('25 GB')
-  })
-
-  it('hides provisioned bar entirely when no data available', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 0,
+      cpu_percent: 150,
       mem_bytes: 0,
       swap_bytes: 0,
       disk_bytes: 0,
       disk_logical_bytes: 0,
       disk_capacity_bytes: 0,
       mem_capacity_bytes: 0,
-      cpus: 0,
+      cpus: 2,
       net_rx_bytes: 0,
       net_tx_bytes: 0,
     })
+    mockFetchVMsLive.mockResolvedValue({
+      vms: [
+        { name: 'my-vm', status: 'running', cpu_percent: 150, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+      ],
+      pool: { cpu_used: 1.5, cpu_max: 8, mem_used_bytes: 0, mem_max_bytes: 0 },
+    })
     const wrapper = await mountVMDetail()
-    expect(wrapper.find('.provisioned-bar').exists()).toBe(false)
+    const poolSection = wrapper.find('.pool-section')
+    expect(poolSection.exists()).toBe(true)
+    // thisCPU = 150/100 = 1.5, totalCPU = 1.5, maxCPU = 8
+    const cpuRow = poolSection.findAll('.pool-row')[0]
+    expect(cpuRow.find('.pool-label').text()).toBe('vCPU')
+    expect(cpuRow.find('.pool-values').text()).toContain('1.5')
+    expect(cpuRow.find('.pool-values').text()).toContain('of 8')
   })
 
-  it('does not show provisioned bar for stopped VMs', async () => {
+  it('shows memory row in pool section when maxMem > 0', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 4 * 1024 * 1024 * 1024,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    mockFetchVMsLive.mockResolvedValue({
+      vms: [
+        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+      ],
+      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 16 * 1024 * 1024 * 1024 },
+    })
+    const wrapper = await mountVMDetail()
+    const poolSection = wrapper.find('.pool-section')
+    const labels = poolSection.findAll('.pool-label').map(l => l.text())
+    expect(labels).toContain('Memory')
+  })
+
+  it('hides memory row in pool section when maxMem is 0', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 4 * 1024 * 1024 * 1024,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    mockFetchVMsLive.mockResolvedValue({
+      vms: [
+        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+      ],
+      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 0 },
+    })
+    const wrapper = await mountVMDetail()
+    const poolSection = wrapper.find('.pool-section')
+    const labels = poolSection.findAll('.pool-label').map(l => l.text())
+    expect(labels).toContain('vCPU')
+    expect(labels).not.toContain('Memory')
+  })
+
+  it('shows legend with VM name in pool section', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 0,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    mockFetchVMsLive.mockResolvedValue({
+      vms: [
+        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
+      ],
+      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 0, mem_max_bytes: 0 },
+    })
+    const wrapper = await mountVMDetail()
+    const legend = wrapper.find('.pool-legend')
+    expect(legend.exists()).toBe(true)
+    expect(legend.text()).toContain('my-vm')
+    expect(legend.text()).toContain('other VMs')
+  })
+
+  it('hides pool section when fetchVMsLive returns cpu_max = 0 (unlimited plan)', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 0,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    // Default beforeEach mock already returns cpu_max: 0
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.pool-section').exists()).toBe(false)
+  })
+
+  it('hides pool section for stopped VMs (fetchProvisionedSpecs not called)', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({
       boxes: [makeBox({ status: 'stopped' })],
     }))
     const wrapper = await mountVMDetail()
-    expect(wrapper.find('.provisioned-bar').exists()).toBe(false)
+    expect(wrapper.find('.pool-section').exists()).toBe(false)
+    expect(mockFetchVMLiveMetrics).not.toHaveBeenCalled()
+    expect(mockFetchVMsLive).not.toHaveBeenCalled()
+  })
+
+  // --- Per-VM section (disk & transfer bars) ---
+
+  it('shows disk bar in per-VM section when disk and included_disk data available', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 5 * 1024 * 1024 * 1024,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 20 * 1024 * 1024 * 1024,
+      mem_capacity_bytes: 0,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    mockFetchVMUsage.mockResolvedValue({
+      period_start: '2024-01-01',
+      period_end: '2024-02-01',
+      metrics: [makeUsageEntry({ included_disk_bytes: 30 * 1024 * 1024 * 1024 })],
+    })
+    mockFetchProfile.mockResolvedValue(makeProfile())
+    const wrapper = await mountVMDetail()
+    const perVm = wrapper.find('.per-vm-section')
+    expect(perVm.exists()).toBe(true)
+    const labels = perVm.findAll('.pool-label').map(l => l.text())
+    expect(labels).toContain('Disk')
+    const diskRow = perVm.findAll('.pool-row').find(r => r.find('.pool-label').text() === 'Disk')!
+    expect(diskRow.find('.pool-values').text()).toContain('included')
+  })
+
+  it('shows transfer bar in per-VM section when included_bandwidth data available', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    mockFetchVMLiveMetrics.mockResolvedValue({
+      name: 'my-vm',
+      status: 'running',
+      cpu_percent: 50,
+      mem_bytes: 0,
+      swap_bytes: 0,
+      disk_bytes: 0,
+      disk_logical_bytes: 0,
+      disk_capacity_bytes: 0,
+      mem_capacity_bytes: 0,
+      cpus: 2,
+      net_rx_bytes: 0,
+      net_tx_bytes: 0,
+    })
+    mockFetchVMUsage.mockResolvedValue({
+      period_start: '2024-01-01',
+      period_end: '2024-02-01',
+      metrics: [makeUsageEntry({
+        included_bandwidth_bytes: 100 * 1024 * 1024 * 1024,
+        bandwidth_bytes: 25 * 1024 * 1024 * 1024,
+      })],
+    })
+    mockFetchProfile.mockResolvedValue(makeProfile())
+    const wrapper = await mountVMDetail()
+    const perVm = wrapper.find('.per-vm-section')
+    expect(perVm.exists()).toBe(true)
+    const labels = perVm.findAll('.pool-label').map(l => l.text())
+    expect(labels).toContain('Transfer')
+    const transferRow = perVm.findAll('.pool-row').find(r => r.find('.pool-label').text() === 'Transfer')!
+    expect(transferRow.find('.pool-values').text()).toContain('included')
+  })
+
+  it('hides per-VM section when liveMetrics is null (stopped VM)', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({
+      boxes: [makeBox({ status: 'stopped' })],
+    }))
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.per-vm-section').exists()).toBe(false)
   })
 
   // --- Charts placeholder still hidden ---

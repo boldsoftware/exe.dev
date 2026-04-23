@@ -27,7 +27,7 @@ type vmsLiveVM struct {
 type vmsLivePool struct {
 	CPUUsed      float64 `json:"cpu_used"`       // sum of cpu_percent/100 across running VMs
 	CPUMax       uint64  `json:"cpu_max"`        // plan MaxCPUs (0 = unlimited)
-	MemUsedBytes uint64  `json:"mem_used_bytes"` // sum of mem_capacity across running VMs
+	MemUsedBytes uint64  `json:"mem_used_bytes"` // sum of mem_bytes (actual usage) across running VMs
 	MemMaxBytes  uint64  `json:"mem_max_bytes"`  // plan MaxMemory (0 = unlimited)
 }
 
@@ -66,7 +66,7 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 			})
 			if row.Status == "running" {
 				cpuUsed += row.CPUPercent / 100.0
-				memUsed += row.MemCapacity
+				memUsed += row.MemBytes
 			}
 		}
 	}

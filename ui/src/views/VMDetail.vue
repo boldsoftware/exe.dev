@@ -66,63 +66,53 @@
       </div>
 
       <!-- Provisioned -->
-      <div v-if="box.status === 'running' && provItems.length" class="provisioned-section">
-        <div class="metrics-section-heading">Provisioned</div>
-        <div class="provisioned-bar">
-          <template v-for="(item, i) in provItems" :key="item.label">
-            <div v-if="i > 0" class="prov-sep"></div>
-            <div class="prov-item">
-              <span class="prov-label">{{ item.label }}</span>
-              <span class="prov-value">{{ item.value }}</span>
-            </div>
-          </template>
+      <!-- Resource Pool (live) -->
+      <div v-if="thisVMPool" class="pool-section">
+        <div class="pool-title">Resource Pool (live)</div>
+
+        <div class="pool-row">
+          <span class="pool-label">vCPU</span>
+          <div class="pool-track">
+            <div class="pool-seg pool-seg-other" :style="{ left: '0', width: poolPct(thisVMPool.otherCPU, thisVMPool.maxCPU) }"></div>
+            <div class="pool-seg pool-seg-this" :style="{ left: poolPct(thisVMPool.otherCPU, thisVMPool.maxCPU), width: poolPct(thisVMPool.thisCPU, thisVMPool.maxCPU) }"></div>
+          </div>
+          <span class="pool-values">{{ thisVMPool.thisCPU.toFixed(1) }} of {{ thisVMPool.maxCPU }}</span>
+        </div>
+
+        <div v-if="thisVMPool.maxMem > 0" class="pool-row">
+          <span class="pool-label">Memory</span>
+          <div class="pool-track">
+            <div class="pool-seg pool-seg-other" :style="{ left: '0', width: poolPct(thisVMPool.otherMem, thisVMPool.maxMem) }"></div>
+            <div class="pool-seg pool-seg-this" :style="{ left: poolPct(thisVMPool.otherMem, thisVMPool.maxMem), width: poolPct(thisVMPool.thisMem, thisVMPool.maxMem) }"></div>
+          </div>
+          <span class="pool-values">{{ poolFmtGB(thisVMPool.thisMem) }} of {{ poolFmtGB(thisVMPool.maxMem) }}</span>
+        </div>
+
+        <div class="pool-legend">
+          <span><span class="legend-dot this"></span>{{ thisVMPool.vmName }}</span>
+          <span><span class="legend-dot other"></span>other VMs</span>
+        </div>
+      </div>
+
+      <!-- Per-VM resources (not pooled) -->
+      <div v-if="liveMetrics" class="per-vm-section">
+        <div v-if="liveMetrics.disk_capacity_bytes > 0 && vmUsage && vmUsage.included_disk_bytes > 0" class="pool-row">
+          <span class="pool-label">Disk</span>
+          <div class="pool-track">
+            <div class="pool-seg pool-seg-this" style="left: 0" :style="{ width: poolPct(liveMetrics.disk_capacity_bytes, vmUsage.included_disk_bytes) }"></div>
+          </div>
+          <span class="pool-values">{{ poolFmtGB(liveMetrics.disk_capacity_bytes) }} of {{ poolFmtGB(vmUsage.included_disk_bytes) }} included</span>
+        </div>
+        <div v-if="vmUsage && vmUsage.included_bandwidth_bytes > 0" class="pool-row">
+          <span class="pool-label">Transfer</span>
+          <div class="pool-track">
+            <div class="pool-seg pool-seg-this" style="left: 0" :style="{ width: poolPct(vmUsage.bandwidth_bytes, vmUsage.included_bandwidth_bytes) }"></div>
+          </div>
+          <span class="pool-values">{{ poolFmtGB(vmUsage.bandwidth_bytes) }} of {{ poolFmtGB(vmUsage.included_bandwidth_bytes) }} included</span>
         </div>
       </div>
 
       <div class="section-divider"></div>
-
-      <!-- Billing Usage -->
-      <div class="billing-section">
-        <div class="section-heading">Compute Usage<span v-if="periodLabel" class="section-heading-sub">{{ periodLabel }}</span></div>
-          <div v-if="usageLoading" class="card-loading"><i class="pi pi-spin pi-spinner"></i></div>
-          <template v-else-if="vmUsage">
-            <div class="card-row">
-              <span class="card-label">Disk included</span>
-              <span class="card-value">{{ vmUsage.display.included_disk || '—' }}</span>
-            </div>
-            <div class="card-row">
-              <span class="card-label">Disk provisioned</span>
-              <span class="card-value">{{ vmUsage.display.disk_provisioned || '—' }}</span>
-            </div>
-            <div v-if="vmUsage.display.overage_disk" class="card-row overage">
-              <span class="card-label">Disk overage</span>
-              <span class="card-value">{{ vmUsage.display.overage_disk }}</span>
-            </div>
-            <div class="card-row card-row-spacer"></div>
-            <div class="card-row">
-              <span class="card-label">Bandwidth included</span>
-              <span class="card-value">{{ vmUsage.display.included_bandwidth || '—' }}</span>
-            </div>
-            <div class="card-row">
-              <span class="card-label">Bandwidth used</span>
-              <span class="card-value">{{ vmUsage.display.bandwidth || '—' }}</span>
-            </div>
-            <div v-if="vmUsage.display.overage_bandwidth" class="card-row overage">
-              <span class="card-label">Bandwidth overage</span>
-              <span class="card-value">{{ vmUsage.display.overage_bandwidth }}</span>
-            </div>
-            <div class="card-row card-row-spacer"></div>
-            <div class="card-row">
-              <span class="card-label">CPU time</span>
-              <span class="card-value">{{ formatCPUTime(vmUsage.cpu_seconds) }}</span>
-            </div>
-            <div class="card-row">
-              <span class="card-label">I/O</span>
-              <span class="card-value">{{ formatBytes(vmUsage.io_read_bytes + vmUsage.io_write_bytes) }}</span>
-            </div>
-          </template>
-          <div v-else class="card-empty">No usage data for this period.</div>
-      </div>
 
       <!-- Shelley Usage for this VM -->
       <div v-if="llmUsage && llmUsage.models.length" class="billing-section llm-usage-section">
@@ -137,11 +127,6 @@
         </div>
       </div>
 
-      <!-- Charts placeholder (hidden until implemented) -->
-      <!-- <div class="section-placeholder">
-        <div class="placeholder-title">Usage History</div>
-        <div class="placeholder-body">Historical usage charts will appear here.</div>
-      </div> -->
     </div>
 
     <!-- VM not found -->
@@ -215,10 +200,12 @@ import {
   fetchVMUsage,
   fetchBoxLLMUsage,
   fetchVMLiveMetrics,
+  fetchVMsLive,
   type BoxInfo,
   type VMUsageEntry,
   type BoxLLMUsageResponse,
   type VMLiveMetrics,
+  type VMsLiveResponse,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
@@ -274,16 +261,15 @@ async function onEmojiPick(emoji: string) {
 }
 
 // Billing / usage
-const usageLoading = ref(true)
 const vmUsage = ref<VMUsageEntry | null>(null)
-const periodStart = ref('')
-const periodEnd = ref('')
 
 // LLM usage
 const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Provisioned specs (fetched once from live metrics endpoint)
 const liveMetrics = ref<VMLiveMetrics | null>(null)
+const poolData = ref<VMsLiveResponse | null>(null)
+
 
 // Creation log
 const showCreationLog = ref(false)
@@ -321,65 +307,13 @@ function fmtPeriodDate(s: string): string {
   return new Date(s).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })
 }
 
-const periodLabel = computed(() => {
-  if (!periodStart.value || !periodEnd.value) return ''
-  return `${fmtPeriodDate(periodStart.value)} – ${fmtPeriodDate(periodEnd.value)}`
-})
-
 const llmPeriodLabel = computed(() => {
   if (!llmUsage.value?.periodStart || !llmUsage.value?.periodEnd) return ''
   return `${fmtPeriodDate(llmUsage.value.periodStart)} – ${fmtPeriodDate(llmUsage.value.periodEnd)}`
 })
 
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let v = bytes
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
-  return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
 
-function formatCPUTime(seconds: number): string {
-  if (!seconds) return '0s'
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  return `${(seconds / 3600).toFixed(1)}h`
-}
-
-// --- Provisioned specs (only show fields that have data) ---
-const provItems = computed(() => {
-  if (!liveMetrics.value) return []
-  const items: { label: string; value: string }[] = []
-  if (liveMetrics.value.cpus) items.push({ label: 'vCPUs', value: String(liveMetrics.value.cpus) })
-  if (liveMetrics.value.mem_capacity_bytes) items.push({ label: 'Memory', value: roundedMemoryGB(liveMetrics.value.mem_capacity_bytes) })
-  if (liveMetrics.value.disk_capacity_bytes) items.push({ label: 'Disk', value: roundedGB(liveMetrics.value.disk_capacity_bytes) })
-  return items
-})
-
-// Round memory to the nearest standard provisioned size (power-of-2 GiB).
-// The reported value is often slightly under due to kernel/firmware overhead
-// (e.g. 7.2 GiB for an 8 GB VM).
-function roundedMemoryGB(bytes: number): string {
-  if (!bytes) return '0 B'
-  const gb = bytes / (1024 * 1024 * 1024)
-  const sizes = [1, 2, 4, 8, 16, 32, 64, 128]
-  for (const s of sizes) {
-    if (gb <= s) return `${s} GB`
-  }
-  return `${Math.ceil(gb)} GB`
-}
-
-function roundedGB(bytes: number): string {
-  if (!bytes) return '0 B'
-  const gb = bytes / (1024 * 1024 * 1024)
-  if (gb >= 1) return `${Math.round(gb)} GB`
-  const mb = bytes / (1024 * 1024)
-  if (mb >= 1) return `${Math.round(mb)} MB`
-  const kb = bytes / 1024
-  return `${Math.round(kb)} KB`
-}
 
 async function fetchProvisionedSpecs() {
   try {
@@ -387,6 +321,49 @@ async function fetchProvisionedSpecs() {
   } catch {
     // Silently ignore — provisioned bar just won't show
   }
+  try {
+    poolData.value = await fetchVMsLive()
+  } catch {
+    // Silently ignore — pool section just won't show
+  }
+}
+
+// Pool context computations for this VM
+const thisVMPool = computed(() => {
+  if (!poolData.value || !liveMetrics.value) return null
+  const thisVM = poolData.value.vms.find(v => v.name === vmName.value)
+  if (!thisVM) return null
+  const pool = poolData.value.pool
+  if (pool.cpu_max === 0) return null // unlimited plan, no pool bar
+
+  const thisCPU = thisVM.cpu_percent / 100
+  const otherCPU = Math.max(0, pool.cpu_used - thisCPU)
+  const thisMem = thisVM.mem_bytes
+  const otherMem = Math.max(0, pool.mem_used_bytes - thisMem)
+
+  return {
+    thisCPU,
+    otherCPU,
+    totalCPU: pool.cpu_used,
+    maxCPU: pool.cpu_max,
+    thisMem,
+    otherMem,
+    totalMem: pool.mem_used_bytes,
+    maxMem: pool.mem_max_bytes,
+    vmName: thisVM.name,
+  }
+})
+
+function poolPct(value: number, max: number): string {
+  if (max === 0) return '0%'
+  return Math.min((value / max) * 100, 100) + '%'
+}
+
+function poolFmtGB(bytes: number): string {
+  const gb = bytes / (1024 * 1024 * 1024)
+  if (gb >= 1) return gb.toFixed(1) + ' GB'
+  const mb = bytes / (1024 * 1024)
+  return mb.toFixed(0) + ' MB'
 }
 
 async function load() {
@@ -398,8 +375,6 @@ async function load() {
     box.value = found
     allBoxes.value = data.boxes
     hasTeam.value = data.hasTeam || false
-    periodStart.value = data.billing.periodStart as unknown as string
-    periodEnd.value = data.billing.periodEnd as unknown as string
 
     if (found) {
       // Load usage and profile in parallel, non-blocking
@@ -409,8 +384,7 @@ async function load() {
       ).then(usageResp => {
         const entry = usageResp.metrics?.find(m => m.vm_name === vmName.value) ?? null
         vmUsage.value = entry
-        usageLoading.value = false
-      }).catch(() => { usageLoading.value = false })
+      }).catch(() => {})
 
       fetchBoxLLMUsage(vmName.value).then(u => {
         llmUsage.value = u
@@ -421,8 +395,6 @@ async function load() {
       if (found.status === 'running') {
         fetchProvisionedSpecs()
       }
-    } else {
-      usageLoading.value = false
     }
   } catch (err: any) {
     loadError.value = err.message || 'Failed to load VM'
@@ -778,18 +750,6 @@ onBeforeUnmount(() => {
   text-transform: none;
 }
 
-.card-loading {
-  color: var(--text-color-muted);
-  font-size: 13px;
-  padding: 8px 0;
-}
-
-.card-empty {
-  font-size: 12px;
-  color: var(--text-color-muted);
-  padding: 4px 0;
-}
-
 .card-row {
   display: flex;
   justify-content: space-between;
@@ -804,11 +764,6 @@ onBeforeUnmount(() => {
   border-bottom: none;
 }
 
-.card-row-spacer {
-  border-bottom: none;
-  padding: 2px 0;
-}
-
 .card-label {
   color: var(--text-color-muted);
   font-size: 12px;
@@ -821,10 +776,6 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.card-row.overage .card-value {
-  color: var(--danger-color);
-}
-
 .llm-usage-section {
   border-top: 1px solid var(--surface-border);
   padding-top: 1rem;
@@ -832,27 +783,6 @@ onBeforeUnmount(() => {
 }
 .card-row-total {
   font-weight: 600;
-}
-/* Placeholder sections */
-.section-placeholder {
-  background: var(--surface-card);
-  border: 1px dashed var(--surface-border);
-  border-radius: 8px;
-  padding: 24px 20px;
-}
-
-.placeholder-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-color-muted);
-  margin-bottom: 8px;
-}
-
-.placeholder-body {
-  font-size: 13px;
-  color: var(--text-color-muted);
 }
 
 /* Editor modal */
@@ -1015,61 +945,93 @@ onBeforeUnmount(() => {
   text-decoration: none;
 }
 
-/* --- Provisioned bar --- */
-.metrics-section-heading {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-color-muted);
-  text-transform: uppercase;
-  margin-bottom: 10px;
+/* Pool context section */
+.pool-section {
+  margin-top: 16px;
 }
-
-.provisioned-bar {
+.pool-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.pool-row {
   display: flex;
   align-items: center;
-  gap: 24px;
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  padding: 14px 20px;
-  background: var(--surface-card);
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 8px;
 }
-
-.prov-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.pool-row:last-of-type { margin-bottom: 0; }
+.pool-label {
+  width: 55px;
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  flex-shrink: 0;
 }
-
-.prov-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-color-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.prov-value {
-  font-size: 16px;
-  font-weight: 700;
-  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
-  color: var(--text-color);
-}
-
-.prov-sep {
-  width: 1px;
-  height: 24px;
+.pool-track {
+  flex: 1;
+  height: 12px;
   background: var(--surface-border);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.pool-seg {
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
+.pool-seg-this {
+  background: var(--primary-color, #0969da);
+  opacity: 0.85;
+  z-index: 2;
+}
+.pool-seg-other {
+  background: var(--text-color-secondary, #c8d1da);
+  opacity: 0.4;
+  z-index: 1;
+}
+.pool-values {
+  min-width: 140px;
+  text-align: right;
+  font-size: 11px;
+  flex-shrink: 0;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.per-vm-section {
+  margin-top: 12px;
+}
+.pool-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.legend-dot.this {
+  background: var(--primary-color, #0969da);
+  opacity: 0.85;
+}
+.legend-dot.other {
+  background: var(--text-color-secondary, #c8d1da);
+  opacity: 0.4;
 }
 
 @media (max-width: 768px) {
-  .provisioned-bar {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .prov-sep {
-    display: none;
+  .pool-values {
+    min-width: 100px;
+    font-size: 10px;
   }
 }
 
