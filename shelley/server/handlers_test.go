@@ -420,3 +420,39 @@ func TestHandleWriteFile(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }
+
+func TestHandleTools(t *testing.T) {
+	t.Parallel()
+	h := NewTestHarness(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/tools", nil)
+	w := httptest.NewRecorder()
+	h.server.handleTools(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp struct {
+		Tools []struct {
+			Name      string `json:"name"`
+			Summary   string `json:"summary"`
+			DefaultOn bool   `json:"default_on"`
+		} `json:"tools"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Tools) == 0 {
+		t.Fatalf("expected non-empty tools list")
+	}
+	var hasBash bool
+	for _, tt := range resp.Tools {
+		if tt.Name == "bash" {
+			hasBash = true
+			if !tt.DefaultOn {
+				t.Fatalf("bash should be default on")
+			}
+		}
+	}
+	if !hasBash {
+		t.Fatalf("bash missing from registry")
+	}
+}

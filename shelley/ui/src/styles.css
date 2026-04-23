@@ -3377,7 +3377,102 @@ svg {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   padding: 0.5rem 0.75rem;
-  min-width: 200px;
+  min-width: 360px;
+  max-width: 460px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.tool-override-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tool-override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.tool-override-row:last-child {
+  border-bottom: none;
+}
+
+.tool-override-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-override-name {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tool-override-summary {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+.tool-override-choices {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tool-override-choice {
+  border: none;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.tool-override-choice:last-child {
+  border-right: none;
+}
+
+.tool-override-choice:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.tool-override-choice.active {
+  background: var(--blue-text, #3b82f6);
+  color: white;
+}
+
+.tool-override-choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.advanced-settings-footer {
+  margin-top: 0.5rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.advanced-settings-footer code {
+  background: var(--bg-base);
+  padding: 0 0.2rem;
+  border-radius: 0.15rem;
+  font-family: var(--font-mono);
 }
 
 .advanced-settings-header {

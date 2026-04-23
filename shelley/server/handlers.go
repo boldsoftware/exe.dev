@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
@@ -847,6 +848,12 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Invalid subagent_backend: %s; must be one of: shelley, claude-cli, codex-cli", convOpts.SubagentBackend), http.StatusBadRequest)
 			return
 		}
+		for name, v := range convOpts.ToolOverrides {
+			if v != "on" && v != "off" {
+				http.Error(w, fmt.Sprintf("Invalid tool_overrides[%s]=%q; must be \"on\" or \"off\"", name, v), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr, &modelID, convOpts)
@@ -1217,6 +1224,18 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.getModelList())
+}
+
+// handleTools returns the list of tools available to conversations.
+func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"tools": claudetool.ToolRegistry,
+	})
 }
 
 // handleConversationPreviews handles GET /api/conversations/previews

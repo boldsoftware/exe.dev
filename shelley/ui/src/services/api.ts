@@ -57,6 +57,16 @@ class ApiService {
     return response.json();
   }
 
+  async getTools(): Promise<{
+    tools: Array<{ name: string; summary: string; default_on: boolean }>;
+  }> {
+    const response = await fetch(`${this.baseUrl}/tools`);
+    if (!response.ok) {
+      throw new Error(`Failed to get tools: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   async searchConversations(query: string): Promise<ConversationWithState[]> {
     const params = new URLSearchParams({
       q: query,

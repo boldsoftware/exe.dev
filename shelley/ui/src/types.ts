@@ -64,6 +64,8 @@ export interface ChatRequest {
   conversation_options?: {
     type?: "normal" | "orchestrator";
     subagent_backend?: "shelley" | "claude-cli" | "codex-cli";
+    tool_overrides?: Record<string, "on" | "off">;
+    disable_all_tools?: boolean;
   };
   queue?: boolean;
 }

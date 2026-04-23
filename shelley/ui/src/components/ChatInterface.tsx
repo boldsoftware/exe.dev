@@ -516,6 +516,7 @@ interface ChatInterfaceProps {
     cwd?: string,
     conversationType?: "normal" | "orchestrator",
     subagentBackend?: "shelley" | "claude-cli" | "codex-cli",
+    toolOverrides?: Record<string, "on" | "off">,
   ) => Promise<void>;
   onDistillConversation?: (
     sourceConversationId: string,
@@ -727,11 +728,12 @@ function ChatInterface({
     }
   }, [currentConversation?.conversation_id]);
 
-  // Reset cwdInitialized and orchestrator mode when switching to a new conversation
+  // Reset cwdInitialized and subagent backend when switching to a new conversation.
+  // Tool overrides are intentionally NOT reset — they persist across conversations
+  // via localStorage so the user's choices stick.
   useEffect(() => {
     if (conversationId === null) {
       setCwdInitialized(false);
-      setOrchestratorMode(false);
       setSubagentBackend("shelley");
       setShowAdvancedSettings(false);
     }
@@ -836,13 +838,60 @@ function ChatInterface({
   const [toolProgress, setToolProgress] = useState<Record<string, ToolProgress>>({});
   // Streaming LLM text: accumulated text from stream deltas
   const [streamingText, setStreamingText] = useState("");
-  const [orchestratorMode, setOrchestratorMode] = useState(false);
   const [subagentBackend, setSubagentBackend] = useState<"shelley" | "claude-cli" | "codex-cli">(
     "shelley",
   );
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const advancedSettingsRef = useRef<HTMLDivElement>(null);
   const cliAgents = window.__SHELLEY_INIT__?.cli_agents || [];
+
+  // Tool registry (fetched from server) and user overrides (persisted to localStorage).
+  // Value "on"/"off" = explicit override. Absent = use the registry's default_on.
+  // Special pseudo-tool name "orchestrator" maps to conversationType.
+  const [availableTools, setAvailableTools] = useState<
+    Array<{ name: string; summary: string; default_on: boolean }>
+  >([]);
+  const TOOL_OVERRIDES_KEY = "shelley.toolOverrides";
+  const [toolOverrides, setToolOverridesState] = useState<Record<string, "on" | "off">>(() => {
+    try {
+      const raw = localStorage.getItem(TOOL_OVERRIDES_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const clean: Record<string, "on" | "off"> = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (v === "on" || v === "off") clean[k] = v;
+        }
+        return clean;
+      }
+    } catch {
+      /* ignore */
+    }
+    return {};
+  });
+  const setToolOverride = (name: string, value: "default" | "on" | "off") => {
+    setToolOverridesState((prev) => {
+      const next = { ...prev };
+      if (value === "default") delete next[name];
+      else next[name] = value;
+      try {
+        if (Object.keys(next).length === 0) {
+          localStorage.removeItem(TOOL_OVERRIDES_KEY);
+        } else {
+          localStorage.setItem(TOOL_OVERRIDES_KEY, JSON.stringify(next));
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+  useEffect(() => {
+    api
+      .getTools()
+      .then((r) => setAvailableTools(r.tools))
+      .catch(() => {});
+  }, []);
 
   // Close advanced settings popover on click outside
   useEffect(() => {
@@ -1706,12 +1755,20 @@ function ChatInterface({
             throw new Error(`Invalid working directory: ${validation.error}`);
           }
         }
+        const orchestratorOn = toolOverrides["orchestrator"] === "on";
+        // Filter to only real tool overrides (exclude the "orchestrator" pseudo-tool).
+        const realOverrides: Record<string, "on" | "off"> = {};
+        for (const [k, v] of Object.entries(toolOverrides)) {
+          if (k === "orchestrator") continue;
+          realOverrides[k] = v;
+        }
         await onFirstMessage(
           message.trim(),
           selectedModel,
           selectedCwd || undefined,
-          orchestratorMode ? "orchestrator" : undefined,
-          orchestratorMode ? subagentBackend : undefined,
+          orchestratorOn ? "orchestrator" : undefined,
+          orchestratorOn ? subagentBackend : undefined,
+          Object.keys(realOverrides).length > 0 ? realOverrides : undefined,
         );
       } else if (conversationId) {
         await api.sendMessage(conversationId, {
@@ -2156,7 +2213,9 @@ function ChatInterface({
           />
           <div className="advanced-settings-wrapper" ref={advancedSettingsRef}>
             <button
-              className={`advanced-settings-trigger${orchestratorMode ? " active" : ""}`}
+              className={`advanced-settings-trigger${
+                Object.keys(toolOverrides).length > 0 ? " active" : ""
+              }`}
               onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
               title="Advanced settings"
               disabled={sending}
@@ -2177,39 +2236,55 @@ function ChatInterface({
             </button>
             {showAdvancedSettings && (
               <div className="advanced-settings-popover">
-                <div className="advanced-settings-header">Advanced Settings</div>
-                <label className="orchestrator-toggle">
-                  <input
-                    type="checkbox"
-                    checked={orchestratorMode}
-                    onChange={(e) => {
-                      setOrchestratorMode(e.target.checked);
-                      if (!e.target.checked) setSubagentBackend("shelley");
-                    }}
-                    disabled={sending}
-                  />
-                  <span className="orchestrator-toggle-label">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <circle cx="12" cy="5" r="3" />
-                      <circle cx="5" cy="19" r="3" />
-                      <circle cx="19" cy="19" r="3" />
-                      <line x1="12" y1="8" x2="5" y2="16" />
-                      <line x1="12" y1="8" x2="19" y2="16" />
-                    </svg>
-                    Orchestrator
-                    <span className="experimental-badge">experimental</span>
-                  </span>
-                </label>
-                {orchestratorMode && (
+                <div className="advanced-settings-header">Tools</div>
+                <div className="tool-override-list">
+                  {[
+                    {
+                      name: "orchestrator",
+                      summary: "Shelley orchestrator mode (delegates to subagents).",
+                      default_on: false,
+                    },
+                    ...availableTools,
+                  ].map((tool) => {
+                    const override = toolOverrides[tool.name];
+                    const current: "default" | "on" | "off" = override || "default";
+                    return (
+                      <div key={tool.name} className="tool-override-row">
+                        <div className="tool-override-info">
+                          <div className="tool-override-name">
+                            {tool.name}
+                            {tool.name === "orchestrator" && (
+                              <span className="experimental-badge">experimental</span>
+                            )}
+                          </div>
+                          <div className="tool-override-summary">{tool.summary}</div>
+                        </div>
+                        <div className="tool-override-choices" role="radiogroup">
+                          {(
+                            [
+                              ["default", `Default (${tool.default_on ? "on" : "off"})`],
+                              ["on", "On"],
+                              ["off", "Off"],
+                            ] as const
+                          ).map(([val, label]) => (
+                            <button
+                              key={val}
+                              type="button"
+                              role="radio"
+                              aria-checked={current === val}
+                              className={`tool-override-choice${current === val ? " active" : ""}`}
+                              onClick={() => setToolOverride(tool.name, val)}
+                              disabled={sending}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {toolOverrides["orchestrator"] === "on" && (
                   <div className="orchestrator-backend-select">
                     <label className="orchestrator-backend-label">Subagent backend</label>
                     <select
@@ -2230,6 +2305,10 @@ function ChatInterface({
                     </select>
                   </div>
                 )}
+                <div className="advanced-settings-footer">
+                  Non-default selections are stored in browser localStorage (
+                  <code>{TOOL_OVERRIDES_KEY}</code>).
+                </div>
               </div>
             )}
           </div>

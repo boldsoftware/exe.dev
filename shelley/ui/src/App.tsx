@@ -608,16 +608,24 @@ function App() {
     cwd?: string,
     conversationType?: "normal" | "orchestrator",
     subagentBackend?: "shelley" | "claude-cli" | "codex-cli",
+    toolOverrides?: Record<string, "on" | "off">,
   ) => {
     try {
+      const hasOverrides = toolOverrides && Object.keys(toolOverrides).length > 0;
+      const convOpts =
+        conversationType === "orchestrator" || hasOverrides
+          ? {
+              ...(conversationType === "orchestrator"
+                ? { type: "orchestrator" as const, subagent_backend: subagentBackend || "shelley" }
+                : {}),
+              ...(hasOverrides ? { tool_overrides: toolOverrides } : {}),
+            }
+          : undefined;
       const response = await api.sendMessageWithNewConversation({
         message,
         model,
         cwd,
-        conversation_options:
-          conversationType === "orchestrator"
-            ? { type: "orchestrator", subagent_backend: subagentBackend || "shelley" }
-            : undefined,
+        conversation_options: convOpts,
       });
       const newConversationId = response.conversation_id;
 

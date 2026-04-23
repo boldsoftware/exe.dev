@@ -238,6 +238,11 @@ func WithTxRes[T any](db *DB, ctx context.Context, fn func(*generated.Queries) (
 type ConversationOptions struct {
 	Type            string `json:"type,omitempty"`             // "normal" (default) or "orchestrator"
 	SubagentBackend string `json:"subagent_backend,omitempty"` // "shelley" (default), "claude-cli", "codex-cli"
+	// ToolOverrides maps tool name to "on" or "off". Tools not listed use their default.
+	ToolOverrides map[string]string `json:"tool_overrides,omitempty"`
+	// DisableAllTools disables every tool by default; ToolOverrides with "on" re-enable individual tools.
+	// Useful for API clients that can't enumerate the tool registry.
+	DisableAllTools bool `json:"disable_all_tools,omitempty"`
 }
 
 // IsOrchestrator returns true if the conversation is in orchestrator mode.

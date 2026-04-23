@@ -609,6 +609,8 @@ func (cm *ConversationManager) createOrchestratorSystemPrompt(ctx context.Contex
 		ParentConversationID: cm.conversationID,
 		EnableBrowser:        cm.toolSetConfig.EnableBrowser,
 		CLIAgent:             cm.conversationOptions.SubagentBackend,
+		ToolOverrides:        cm.conversationOptions.ToolOverrides,
+		DisableAllTools:      cm.conversationOptions.DisableAllTools,
 	})
 	defer ts.Cleanup()
 
@@ -796,8 +798,12 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 			OnWorkingDirChange:   toolSetConfig.OnWorkingDirChange,
 			EnableBrowser:        toolSetConfig.EnableBrowser,
 			CLIAgent:             conversationOpts.SubagentBackend,
+			ToolOverrides:        conversationOpts.ToolOverrides,
+			DisableAllTools:      conversationOpts.DisableAllTools,
 		})
 	} else {
+		toolSetConfig.ToolOverrides = conversationOpts.ToolOverrides
+		toolSetConfig.DisableAllTools = conversationOpts.DisableAllTools
 		toolSet = claudetool.NewToolSet(processCtx, toolSetConfig)
 	}
 
