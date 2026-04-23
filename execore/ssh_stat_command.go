@@ -110,6 +110,36 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 		cc.Writeln("  Status:     %s", liveRow.Status)
 	}
 
+	// Pool context (only for plans with pool limits).
+	if planErr == nil && liveRow != nil && liveRow.Status == "running" {
+		cpuMax := plan.MaxCPUsForPlan(planID)
+		memMax := plan.MaxMemoryForPlan(planID)
+		if cpuMax > 0 || memMax > 0 {
+			// Compute totals across all VMs.
+			var totalCPU float64
+			var totalMem uint64
+			for _, row := range usageRows {
+				if row.Status == "running" {
+					totalCPU += row.CPUPercent / 100.0
+					totalMem += row.MemBytes
+				}
+			}
+			thisCPU := liveRow.CPUPercent / 100.0
+
+			cc.Writeln("")
+			cc.Writeln("  \033[2mRESOURCE POOL\033[0m")
+			if cpuMax > 0 {
+				cc.Writeln("  vCPU:      %s", poolBar(totalCPU, float64(cpuMax),
+					fmt.Sprintf("%.1f of %d (this VM: %.1f)", clampF64(totalCPU, float64(cpuMax)), cpuMax, thisCPU)))
+			}
+			if memMax > 0 {
+				thisMem := liveRow.MemBytes
+				cc.Writeln("  Memory:    %s", poolBar(float64(totalMem), float64(memMax),
+					fmt.Sprintf("%s of %s (this VM: %s)", fmtBytes(clampU64(totalMem, memMax)), fmtBytes(memMax), fmtBytes(thisMem))))
+			}
+		}
+	}
+
 	cc.Writeln("")
 	cc.Writeln("  Period:     %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
 

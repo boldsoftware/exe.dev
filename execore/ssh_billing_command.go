@@ -108,6 +108,27 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 			result["default_disk_gb"] = tier.Quotas.DefaultDisk / (1024 * 1024 * 1024)
 			result["max_disk_gb"] = tier.Quotas.MaxDisk / (1024 * 1024 * 1024)
 			result["bandwidth_gb"] = tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024)
+
+			// Include live pool usage in JSON.
+			usageRows, usageErr := ss.fetchVMUsageForUser(ctx, cc.User.ID)
+			if usageErr == nil && len(usageRows) > 0 {
+				var cpuUsed float64
+				var memUsed uint64
+				var diskProvisioned uint64
+				for _, row := range usageRows {
+					if row.Status == "running" {
+						cpuUsed += row.CPUPercent / 100.0
+						memUsed += row.MemBytes
+					}
+					diskProvisioned += row.DiskCapacity
+				}
+				result["usage"] = map[string]any{
+					"cpu_used":               cpuUsed,
+					"mem_used_bytes":         memUsed,
+					"disk_provisioned_bytes": diskProvisioned,
+					"vm_count":               len(usageRows),
+				}
+			}
 		}
 		cc.WriteJSON(result)
 		return nil
@@ -154,12 +175,87 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 			cc.Writeln("")
 			cc.Writeln("  $%d/month", tier.MonthlyPriceCents/100)
 		}
+
+		// Live pool utilization bars (only for plans with pool limits).
+		if tier.Quotas.MaxCPUs > 0 || tier.Quotas.MaxMemory > 0 {
+			ss.writeBillingPlanPoolBars(ctx, cc, tier, planRow)
+		}
 	}
 
 	cc.Writeln("")
 	cc.Writeln("  Manage your plan at \033[1m%s/user\033[0m", ss.server.webBaseURLNoRequest())
 	cc.Writeln("")
 	return nil
+}
+
+// writeBillingPlanPoolBars fetches live metrics and writes pool utilization bars.
+func (ss *SSHServer) writeBillingPlanPoolBars(ctx context.Context, cc *exemenu.CommandContext, tier plan.Tier, planRow exedb.GetActivePlanForUserRow) {
+	usageRows, err := ss.fetchVMUsageForUser(ctx, cc.User.ID)
+	if err != nil || len(usageRows) == 0 {
+		return
+	}
+
+	var cpuUsed float64
+	var memUsed uint64
+	var diskProvisioned uint64
+	for _, row := range usageRows {
+		if row.Status == "running" {
+			cpuUsed += row.CPUPercent / 100.0
+			memUsed += row.MemBytes
+		}
+		diskProvisioned += row.DiskCapacity
+	}
+
+	cc.Writeln("")
+	cc.Writeln("  \033[2mRESOURCE USAGE\033[0m")
+
+	if tier.Quotas.MaxCPUs > 0 {
+		cpuMax := float64(tier.Quotas.MaxCPUs)
+		suffix := fmt.Sprintf("%.1f / %d cores", clampF64(cpuUsed, cpuMax), tier.Quotas.MaxCPUs)
+		cc.Writeln("  vCPU:      %s", poolBar(cpuUsed, cpuMax, suffix))
+	}
+	if tier.Quotas.MaxMemory > 0 {
+		cc.Writeln("  Memory:    %s", poolBarBytes(memUsed, tier.Quotas.MaxMemory, ""))
+	}
+
+	// Disk: per-VM model, sum provisioned vs sum included.
+	if tier.Quotas.DefaultDisk > 0 {
+		vmCount := uint64(len(usageRows))
+		if vmCount == 0 {
+			vmCount = 1
+		}
+		diskIncluded := tier.Quotas.DefaultDisk * vmCount
+		var diskColor string
+		if diskProvisioned > diskIncluded {
+			diskColor = "\033[33m" // yellow
+		} else {
+			diskColor = "\033[32m" // green
+		}
+		cc.Writeln("  Disk:      %s%s / %s provisioned\033[0m", diskColor, fmtBytes(diskProvisioned), fmtBytes(diskIncluded))
+	}
+
+	// Bandwidth from billing period.
+	if tier.Quotas.DefaultBandwidth > 0 {
+		var totalBandwidth int64
+		if ss.server.metricsdURL != "" {
+			accountID := planRow.AccountID
+			periodStart, periodEnd := billingPeriodForUser(ctx, ss.server, accountID, nil)
+			client := newMetricsClient(ss.server.metricsdURL)
+			summaries, mErr := client.queryUsage(ctx, []string{cc.User.ID}, periodStart, periodEnd)
+			if mErr == nil {
+				for _, summary := range summaries {
+					for _, vm := range summary.VMs {
+						totalBandwidth += vm.BandwidthBytes
+					}
+				}
+			}
+		}
+		bwMax := tier.Quotas.DefaultBandwidth * uint64(len(usageRows))
+		if bwMax == 0 {
+			bwMax = tier.Quotas.DefaultBandwidth
+		}
+		cc.Writeln("  Bandwidth: %s", poolBarBytes(uint64(totalBandwidth), bwMax, "used"))
+	}
 }
 
 // handleBillingInvoicesCommand shows the user's recent invoices.
