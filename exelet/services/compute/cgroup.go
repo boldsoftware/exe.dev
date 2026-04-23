@@ -3,7 +3,8 @@ package compute
 import (
 	"context"
 	"errors"
-	"io/fs"
+
+	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
 // cgroupPathForVM resolves the cgroup directory that cloud-hypervisor should
@@ -33,7 +34,7 @@ func (s *Service) cgroupPathForVM(ctx context.Context, id string) (string, error
 	groupID := ""
 	if inst, err := s.loadInstanceConfig(id); err == nil {
 		groupID = inst.GroupID
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	} else if !errors.Is(err, api.ErrNotFound) {
 		return "", err
 	}
 	return preparer.PrepareVMCgroup(ctx, id, groupID)
