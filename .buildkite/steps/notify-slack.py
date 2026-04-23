@@ -90,6 +90,11 @@ def main():
 
     env = os.environ.copy()
     env["CI_SOURCE"] = "buildkite"
+    # Help resolve the human when the branch-derived actor is a shared CI login.
+    if os.environ.get("BUILDKITE_BUILD_AUTHOR"):
+        env.setdefault("COMMIT_AUTHOR", os.environ["BUILDKITE_BUILD_AUTHOR"])
+    if os.environ.get("BUILDKITE_BUILD_AUTHOR_EMAIL"):
+        env.setdefault("COMMIT_AUTHOR_EMAIL", os.environ["BUILDKITE_BUILD_AUTHOR_EMAIL"])
 
     subprocess.run(
         [

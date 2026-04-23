@@ -179,8 +179,9 @@ def notify_slack(origin_main_before: str):
 
     main_sha = run("git", "rev-parse", "HEAD", capture=True).stdout.strip()
     commit_subject = run("git", "log", "-1", "--format=%s", capture=True).stdout.strip()
-    # Use git author name for attribution (resolves to team member in the script).
+    # Use git author name/email for attribution (resolves to team member in the script).
     commit_author = run("git", "log", "-1", "--format=%an", capture=True).stdout.strip()
+    commit_author_email = run("git", "log", "-1", "--format=%ae", capture=True).stdout.strip()
     branch = os.environ.get("BUILDKITE_BRANCH", "")
     build_url = os.environ.get("BUILDKITE_BUILD_URL", "")
     commit_url = f"https://github.com/{GITHUB_ORG}/exe/commit/{main_sha}"
@@ -195,6 +196,7 @@ def notify_slack(origin_main_before: str):
     env = os.environ.copy()
     env["COMMIT_LOG"] = commit_log
     env["COMMIT_AUTHOR"] = commit_author
+    env["COMMIT_AUTHOR_EMAIL"] = commit_author_email
     env["CI_SOURCE"] = "buildkite"
 
     # Extract actor from branch name (kite-queue-<user>-...).

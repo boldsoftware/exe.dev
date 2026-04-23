@@ -4,9 +4,12 @@
 Usage: slack-notify-queue.py WEBHOOK_URL STATUS COMMIT_SUBJECT ACTOR RUN_URL COMMIT_URL BRANCH_NAME
 
 Environment variables:
-  COMMIT_LOG:     newline-separated "sha subject" lines (up to 15) from push-to-main
-  COMMIT_AUTHOR:  git commit author name, used as fallback when ACTOR doesn't resolve
-  CI_SOURCE:      "buildkite" or "gha" (default); adds 🪁 for buildkite runs
+  COMMIT_LOG:          newline-separated "sha subject" lines (up to 15) from push-to-main
+  COMMIT_AUTHOR:       git commit author name, used as fallback when ACTOR doesn't resolve
+  COMMIT_AUTHOR_EMAIL: git commit author email; its local part is used as another
+                       candidate, which matters when ACTOR is a shared CI login
+                       (e.g. USER=exedev) that doesn't identify the human
+  CI_SOURCE:           "buildkite" or "gha" (default); adds 🪁 for buildkite runs
 
 STATUS is "success" or "failure".
 ACTOR is the GitHub username of the person who pushed the commit.
@@ -50,16 +53,25 @@ def resolve_mention(actor, branch_name, people):
     if branch_user:
         candidates.append(branch_user)
 
+    # Shared CI logins (e.g. USER=exedev on Buildkite agents) don't identify
+    # the human; fall back to the local part of the git author email.
+    commit_email = os.environ.get("COMMIT_AUTHOR_EMAIL", "").strip()
+    if commit_email and "@" in commit_email:
+        candidates.append(commit_email.split("@", 1)[0])
+
     commit_author = os.environ.get("COMMIT_AUTHOR", "").strip()
     if commit_author:
         candidates.append(commit_author)
 
     for candidate in candidates:
         # Skip bot/system actors.
-        if "[bot]" in candidate:
+        if not candidate or "[bot]" in candidate:
             continue
+        cand_lower = candidate.lower()
         for person in people:
-            if person.get("github") == candidate or candidate in person.get("aliases", []):
+            names = [person.get("github", ""), person.get("name", "")]
+            names += list(person.get("aliases", []))
+            if cand_lower in {n.lower() for n in names if n}:
                 return f"<@{person['slack_member_id']}>"
 
     # No match found; use the best human-readable name available.
