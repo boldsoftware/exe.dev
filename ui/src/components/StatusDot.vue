@@ -84,6 +84,7 @@ button.status-dot:hover { transform: scale(1.15); border-color: var(--surface-bo
   cursor: default;
   transition: transform 0.12s, border-color 0.12s, background 0.12s;
   font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  filter: grayscale(1);
 }
 
 .status-emoji.clickable {
@@ -96,9 +97,9 @@ button.status-dot:hover { transform: scale(1.15); border-color: var(--surface-bo
   transform: scale(1.08);
 }
 
-.status-emoji.stopped { filter: grayscale(1); opacity: 0.55; }
+.status-emoji.stopped { opacity: 0.55; }
 .status-emoji.creating { animation: pulse 1.5s ease-in-out infinite; }
-.status-emoji.error { filter: hue-rotate(-30deg) saturate(1.3); }
+.status-emoji.error { filter: grayscale(1) hue-rotate(-30deg) saturate(1.3); }
 .status-emoji.pending { opacity: 0.55; }
 
 @keyframes pulse {
