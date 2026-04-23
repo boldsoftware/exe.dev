@@ -96,8 +96,7 @@ async function streamCreation() {
           }
           if (data) {
             try {
-              const text = atob(data)
-              terminal.write(text)
+              terminal.write(base64ToBytes(data))
             } catch { /* skip bad base64 */ }
           }
         } else if (line === '') {
@@ -128,6 +127,14 @@ async function loadStoredLog() {
   } catch {
     terminal.write('Failed to load creation log\r\n')
   }
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  // Uint8Array.fromBase64 is new; fall back to atob + charCodeAt.
+  const u8 = Uint8Array as unknown as { fromBase64?: (s: string) => Uint8Array }
+  if (u8.fromBase64) return u8.fromBase64(b64)
+  const bin = atob(b64)
+  return Uint8Array.from(bin, c => c.charCodeAt(0))
 }
 
 onBeforeUnmount(() => {
@@ -163,5 +170,16 @@ onBeforeUnmount(() => {
 .creation-log-terminal :deep(.xterm) {
   height: 100%;
   padding: 4px;
+  background: var(--surface-ground, #ffffff);
+}
+
+.creation-log-terminal :deep(.xterm-viewport) {
+  background-color: transparent !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .creation-log-terminal :deep(.xterm) {
+    background: #1e1e1e;
+  }
 }
 </style>
