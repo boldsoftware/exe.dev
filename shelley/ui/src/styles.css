@@ -3377,10 +3377,32 @@ svg {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   padding: 0.5rem 0.75rem;
-  min-width: 520px;
-  max-width: 680px;
+  min-width: min(520px, calc(100vw - 1rem));
+  max-width: min(680px, calc(100vw - 1rem));
   max-height: 70vh;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 640px) {
+  .advanced-settings-popover {
+    position: fixed;
+    inset: 3rem 0.5rem auto 0.5rem;
+    margin: 0;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100vh - 4rem);
+  }
+  .tool-override-summary {
+    display: none;
+  }
+  .tool-override-row {
+    padding: 0.35rem 0;
+  }
+  .tool-override-choice {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+  }
 }
 
 .tool-override-list {
@@ -3395,6 +3417,7 @@ svg {
   gap: 0.5rem;
   padding: 0.2rem 0;
   border-bottom: 1px dashed var(--border);
+  flex-wrap: wrap;
 }
 
 .tool-override-row:last-child {
