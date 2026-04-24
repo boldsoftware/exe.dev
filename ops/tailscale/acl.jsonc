@@ -87,12 +87,13 @@
     // ZFS replication: exelet -> its replica. One-way; restores are also
     // exelet-initiated (exelet/services/replication/target_ssh.go Receive
     // pulls via SSH). Zone confinement via network grants.
-    // Root-only: cmd/exed/exed.go uses ssh://root@... for replication.
+    // root is required for replication (cmd/exed/exed.go uses ssh://root@...);
+    // nonroot is allowed so operators on exelet hosts can shell into replicas.
     {
       "action": "accept",
       "src": ["tag:exelet"],
       "dst": ["tag:replica"],
-      "users": ["root"],
+      "users": ["autogroup:nonroot", "root"],
     },
     // Ops fleet deploys: exe-ops / exe-ops-staging upload binaries via
     // `ssh user@host 'cat > tmp'` (exe-ops/server/deploy/manager.go:627,874).
