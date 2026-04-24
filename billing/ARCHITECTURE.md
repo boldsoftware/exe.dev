@@ -127,7 +127,9 @@ Skips duplicate updates when the active plan's base category already matches.
 
 | File | Role |
 |------|------|
-| `billing/billing.go` | `Manager`: Subscribe, VerifyCheckout, SyncSubscriptions, syncAccountPlan, pricing |
+| `billing/billing.go` | `Manager`: Subscribe, VerifyCheckout, SyncSubscriptions, syncAccountPlan, pricing, plan migration |
+| `billing/invoices.go` | Invoice listing, upcoming invoice preview, credit balance, discounts |
+| `billing/payment_method.go` | Payment method retrieval, card/link/PayPal formatting |
 | `billing/credits.go` | `Credits` interface: GiftCredits, SpendCredits, BuyCredits, SyncCredits |
 | `billing/webhook.go` | Stripe webhook signature verification and storage |
 | `billing/plan/plan.go` | Plan catalog, `ForUser()` resolution, versioned plan IDs |
