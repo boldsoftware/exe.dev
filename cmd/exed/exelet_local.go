@@ -19,7 +19,7 @@ import (
 // startExeletsLocal bootstraps the local environment and starts an exelet
 // directly on this machine. This is used on Linux hosts (e.g. exe.dev VMs)
 // where the exelet runs alongside exed.
-func startExeletsLocal(env stage.Env, httpAddr, metricsdURL string) (addr string, cleanup func(), retErr error) {
+func startExeletsLocal(env stage.Env, httpAddr, metricsdURL, networkCIDR string) (addr string, cleanup func(), retErr error) {
 	slog.Info("starting local exelet on Linux")
 
 	// Use an existing exeletd binary if available, otherwise build one.
@@ -58,7 +58,7 @@ func startExeletsLocal(env stage.Env, httpAddr, metricsdURL string) (addr string
 		"--stage", "local",
 		"--data-dir", "/data/exelet",
 		"--storage-manager-address", "zfs:///data/exelet/storage?dataset=tank",
-		"--network-manager-address", "nat:///data/exelet/network?network=100.64.0.0%2F24&disable_bandwidth=true",
+		"--network-manager-address", localExeletNetworkManagerAddress(networkCIDR),
 		"--runtime-address", "cloudhypervisor:///data/exelet/runtime",
 		"--listen-address", "tcp://:9080",
 		"--http-addr", ":9081",

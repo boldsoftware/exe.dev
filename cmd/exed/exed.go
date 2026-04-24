@@ -61,6 +61,7 @@ func run() error {
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	profileStartup := flag.Duration("profile-startup", 0, "If set, CPU-profile the first <duration> of server startup. The profile is written to $TMPDIR and served at /debug/startup-profile (speedscope viewer at /debug/startup-profile/view).")
 	startExelet := flag.Bool("start-exelet", false, "Build and start exelet locally or on lima-exe-ctr (local/test only)")
+	exeletNetworkCIDR := flag.String("exelet-network-cidr", "", "with -start-exelet, override the NAT CIDR passed to exelet (for example 100.64.0.0/16); empty keeps the platform default")
 	multiExelet := flag.Bool("multi-exelet", false, "with -start-exelet, also start exelet on lima-exe-ctr-tests; may interact badly with concurrent automated tests")
 	enableExeletStorageReplication := flag.Bool("enable-exelet-storage-replication", false, "with -multi-exelet, enable storage replication from exe-ctr to exe-ctr-tests")
 	startMetricsd := flag.Bool("start-metricsd", false, "with -start-exelet, also start metricsd locally and configure exelet to send metrics")
@@ -130,6 +131,16 @@ func run() error {
 		return fmt.Errorf("-start-metricsd requires -start-exelet")
 	}
 
+	// -exelet-network-cidr requires -start-exelet
+	if *exeletNetworkCIDR != "" && !*startExelet {
+		return fmt.Errorf("-exelet-network-cidr requires -start-exelet")
+	}
+
+	normalizedExeletNetworkCIDR, err := normalizeExeletNetworkCIDR(*exeletNetworkCIDR)
+	if err != nil {
+		return err
+	}
+
 	// Validate -start-exelet is incompatible with explicit addresses
 	if *startExelet {
 		if *exeletAddresses != "" {
@@ -167,7 +178,7 @@ func run() error {
 		}
 
 		if runtime.GOOS == "linux" {
-			addr, cleanup, err := startExeletsLocal(env, *httpAddr, metricsdURL)
+			addr, cleanup, err := startExeletsLocal(env, *httpAddr, metricsdURL, normalizedExeletNetworkCIDR)
 			if err != nil {
 				return fmt.Errorf("failed to start local exelet: %w", err)
 			}
@@ -177,7 +188,7 @@ func run() error {
 			slog.Info("exelet started successfully", "address", addr)
 			*exeletAddresses = addr
 		} else {
-			addr, gw, cleanupForwarder, err := startExeletsRemote(env, *httpAddr, *multiExelet, *enableExeletStorageReplication, metricsdURL)
+			addr, gw, cleanupForwarder, err := startExeletsLima(env, *httpAddr, *multiExelet, *enableExeletStorageReplication, metricsdURL, normalizedExeletNetworkCIDR)
 			if err != nil {
 				return fmt.Errorf("failed to start exelets: %w", err)
 			}
@@ -389,11 +400,11 @@ func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, po
 	return err == nil
 }
 
-// startExeletsRemote builds exelet, uploads to lima dev host(s), kills old instances, and starts them.
+// startExeletsLima builds exelet, uploads to Lima dev host(s), kills old instances, and starts them.
 // If multiExelet is true, also starts on lima-exe-ctr-tests.
 // If enableReplication is true, enables storage replication from primary to secondary host.
 // Returns a comma-separated list of exelet addresses and gateway address.
-func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableReplication bool, metricsdURL string) (_, _ string, cleanup func(), retErr error) {
+func startExeletsLima(env stage.Env, httpAddr string, multiExelet, enableReplication bool, metricsdURL, networkCIDR string) (_, _ string, cleanup func(), retErr error) {
 	const (
 		// Primary, normal dev lima VM
 		limaDevHost = "lima-exe-ctr.local"
@@ -405,7 +416,7 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 	if multiExelet {
 		hosts = append(hosts, limaDevHostTests)
 	}
-	slog.Info("starting remote exelets", "hosts", hosts)
+	slog.Info("starting Lima exelets", "hosts", hosts)
 
 	// Build exelet binary
 	slog.Info("building exelet binary")
@@ -509,7 +520,7 @@ func startExeletsRemote(env stage.Env, httpAddr string, multiExelet, enableRepli
 		if replicationTarget != "" && i == 0 {
 			hostReplicationTarget = replicationTarget
 		}
-		addr, err := startExeletOnHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel, hostReplicationTarget, metricsdURL)
+		addr, err := startExeletOnLimaHost(ctx, host, binPath, env.LogFormat, env.LogLevel, httpAddr, gateway, needsTunnel, hostReplicationTarget, metricsdURL, networkCIDR)
 		if err != nil {
 			retErr = fmt.Errorf("failed to start exelet on %q: %w", host, err)
 			return
@@ -613,10 +624,10 @@ func startReplicationForwarder(ctx context.Context, gateway string, forwarderPor
 	return nil, fmt.Errorf("socat did not start listening within timeout")
 }
 
-// startExeletOnHost starts exelet on a single host. Returns the exelet address.
+// startExeletOnLimaHost starts exelet on a single Lima host. Returns the exelet address.
 // If replicationTarget is non-empty, configures storage replication to that target.
-func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, httpAddr, gateway string, needsTunnel bool, replicationTarget, metricsdURL string) (string, error) {
-	slog.InfoContext(ctx, "starting remote exelet", "host", host)
+func startExeletOnLimaHost(ctx context.Context, host, binPath, logFormat, logLevel, httpAddr, gateway string, needsTunnel bool, replicationTarget, metricsdURL, networkCIDR string) (string, error) {
+	slog.InfoContext(ctx, "starting Lima exelet", "host", host)
 
 	// Stop any existing exelet instances
 	// no error handling because pkill fails if there's nothing to kill
@@ -624,7 +635,7 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 
 	// Upload binary
 	remotePath := "/tmp/exeletd"
-	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remotePath)
+	slog.InfoContext(ctx, "uploading exelet to Lima host", "host", host, "path", remotePath)
 	if err := scpUpload(binPath, host, remotePath); err != nil {
 		return "", fmt.Errorf("failed to upload exelet: %w", err)
 	}
@@ -657,8 +668,8 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 		if httpPort == 0 {
 			// Parse failed, or dynamic port. Use gateway approach.
 			exedURL = fmt.Sprintf("http://%s%s", gateway, httpAddr)
-			slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
-			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL); err != nil {
+			slog.InfoContext(ctx, "starting exeletd on Lima host", "exed_url", exedURL)
+			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL, networkCIDR); err != nil {
 				return "", err
 			}
 			return waitForExeletAddress(host)
@@ -679,8 +690,8 @@ func startExeletOnHost(ctx context.Context, host, binPath, logFormat, logLevel, 
 	}
 
 	// Start exelet via SSH - the SSH command will keep running
-	slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL, "replication_target", replicationTarget)
-	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL); err != nil {
+	slog.InfoContext(ctx, "starting exeletd on Lima host", "exed_url", exedURL, "replication_target", replicationTarget)
+	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL, networkCIDR); err != nil {
 		return "", err
 	}
 	return waitForExeletAddress(host)
@@ -773,13 +784,13 @@ func generateReplicationKnownHosts(ctx context.Context, exeletHost, replicationT
 	return knownHostsPath, nil
 }
 
-// startExeletProcess starts the exelet process on the remote host via SSH.
+// startExeletProcess starts the exelet process on the Lima host via SSH.
 // If replicationTarget is non-empty, adds storage replication flags.
 // If metricsdURL is non-empty, adds metrics daemon flags.
-func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL string) error {
+func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL, replicationTarget, replicationKnownHosts, metricsdURL, networkCIDR string) error {
 	host = normalizeLimaSSHHost(host)
-	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages --reserved-cpus 0`,
-		logFormat, logLevel, exedURL)
+	baseCmd := fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --stage local --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address "%s" --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s --instance-domain exe.cloud --enable-hugepages --reserved-cpus 0`,
+		logFormat, logLevel, limaExeletNetworkManagerAddress(networkCIDR), exedURL)
 
 	if replicationTarget != "" {
 		baseCmd += fmt.Sprintf(` --storage-replication-enabled --storage-replication-target=%s --storage-replication-interval=5m --storage-replication-retention=24`, replicationTarget)
