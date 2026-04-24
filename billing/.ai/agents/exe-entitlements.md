@@ -18,7 +18,7 @@ tools: Read, Edit, Write, Bash, Glob, Grep, Agent
 ## Responsibilities
 
 - Define and maintain the set of entitlements (e.g. `llm:use`, `credit:purchase`, `vm:create`, `vm:run`, `invite:request`, `team:create`)
-- Define and maintain the plan catalog (VIP, Restricted, Team, Individual, Friend, Grandfathered, Invite, Basic)
+- Define and maintain the plan catalog (Restricted, Team, Individual, Friend, Grandfathered, Invite, Basic)
 - Implement plan resolution logic: given a user's billing state, determine their `PlanVersion`
 - Implement entitlement checks: given a plan, determine whether a specific entitlement is granted
 - Ensure `billing/entitlement` remains import-cycle-free (stdlib only)

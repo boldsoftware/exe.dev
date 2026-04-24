@@ -284,21 +284,6 @@ var tiers = map[string]Tier{
 
 	// --- Single-tier plans: one "default" tier each ---
 
-	"vip:default:monthly:20260106": {
-		ID:           "vip:default:monthly:20260106",
-		Category:     CategoryVIP,
-		Name:         "Standard",
-		StripePrices: map[string]stripePriceInfo{},
-		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       50,
-			MaxTeamVMs:       0,
-			DefaultDisk:      25 * gb,
-			MaxDisk:          75 * gb,
-			DefaultBandwidth: 100 * gb,
-		},
-		Entitlements: nil,
-	},
 	"enterprise:default:monthly:20260106": {
 		ID:           "enterprise:default:monthly:20260106",
 		Category:     CategoryEnterprise,

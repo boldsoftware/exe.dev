@@ -30,11 +30,6 @@ func TestGetPlanCategory(t *testing.T) {
 			want:   CategoryBasic,
 		},
 		{
-			name:   "friend with overrides is VIP",
-			inputs: userPlanInputs{HasExplicitOverrides: true},
-			want:   CategoryVIP,
-		},
-		{
 			name:   "friend without overrides",
 			inputs: userPlanInputs{PlanID: new("friend")},
 			want:   CategoryFriend,
@@ -136,7 +131,6 @@ func TestSignupBonusCreditUSD(t *testing.T) {
 		want    float64
 	}{
 		{CategoryIndividual, 100.0},
-		{CategoryVIP, 0},
 		{CategoryTeam, 0},
 		{CategoryFriend, 0},
 		{CategoryGrandfathered, 0},
@@ -206,13 +200,6 @@ func TestParsePlanID(t *testing.T) {
 			wantVer:  "",
 		},
 		{
-			name:     "bare vip",
-			input:    "vip",
-			wantPlan: CategoryVIP,
-			wantInt:  "",
-			wantVer:  "",
-		},
-		{
 			name:     "empty string",
 			input:    "",
 			wantPlan: Category(""),
@@ -260,7 +247,6 @@ func TestBasePlan(t *testing.T) {
 		{"individual", CategoryIndividual},
 		{"basic", CategoryBasic},
 		{"friend", CategoryFriend},
-		{"vip", CategoryVIP},
 	}
 	for _, tt := range tests {
 		got := Base(tt.input)
@@ -321,7 +307,7 @@ func TestAllPlansComplete(t *testing.T) {
 	all := AllPlans()
 	want := []Category{
 		CategoryBasic, CategoryEnterprise, CategoryFriend, CategoryGrandfathered,
-		CategoryIndividual, CategoryRestricted, CategoryTeam, CategoryTrial, CategoryVIP,
+		CategoryIndividual, CategoryRestricted, CategoryTeam, CategoryTrial,
 	}
 	if len(all) != len(want) {
 		t.Fatalf("AllPlans() returned %d plans, want %d", len(all), len(want))
@@ -363,15 +349,6 @@ func TestGetPlanForUser(t *testing.T) {
 				CreatedAt: &newDate,
 			},
 			want: CategoryFriend,
-		},
-		{
-			name: "vip plan",
-			row: exedb.GetUserPlanDataRow{
-				PlanID:               new("vip:monthly:20260106"),
-				HasExplicitOverrides: 1,
-				CreatedAt:            &newDate,
-			},
-			want: CategoryVIP,
 		},
 		{
 			name: "active trial",
@@ -472,8 +449,6 @@ func TestCategoryFromProductName(t *testing.T) {
 		{"INDIVIDUAL", CategoryIndividual, true},
 		{"Team", CategoryTeam, true},
 		{"team", CategoryTeam, true},
-		{"VIP", CategoryVIP, true},
-		{"vip", CategoryVIP, true},
 		{"Enterprise", CategoryEnterprise, true},
 		{"enterprise", CategoryEnterprise, true},
 		{"Unknown", Category(""), false},

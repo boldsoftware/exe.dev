@@ -138,7 +138,7 @@ func (s *Server) handleExeletDesired(w http.ResponseWriter, r *http.Request) {
 	// Build groups (one per unique user_id on this host).
 	//
 	// Priority for account-slice cpu.max:
-	//   1. User cgroup overrides (abuse throttle or VIP boost) — always wins.
+	//   1. User cgroup overrides (abuse throttle or manual boost) — always wins.
 	//   2. Plan tier MaxCPUs (when EnforcePlanCPUMax is on and MaxCPUs > 0).
 	//   3. Fallback: 2x the max allocated CPUs across the user's VMs.
 	var groups []desiredstate.Group

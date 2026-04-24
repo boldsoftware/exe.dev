@@ -14,7 +14,7 @@ import (
 // so the account slice should get cpu.max = "200000 100000" (2 CPUs × 100ms period).
 //
 // It also verifies that user-level cgroup overrides take priority over the
-// plan-based limit (both expanding for VIPs and throttling for abuse).
+// plan-based limit (both expanding via overrides and throttling for abuse).
 func TestVCPUPoolEnforcement(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 1)
@@ -96,7 +96,7 @@ func TestVCPUPoolEnforcement(t *testing.T) {
 		t.Fatalf("VM scope cpu.max = %q, want %q", cpuMax, expected)
 	})
 
-	// 3. User override expands beyond plan (e.g. VIP boost to 4 CPUs).
+	// 3. User override expands beyond plan (e.g. admin boost to 4 CPUs).
 	t.Run("override_expands", func(t *testing.T) {
 		setUserCgroupOverride(t, userID, "4") // 4 CPUs
 		waitForAccountCPUMax(t, "400000 100000", 90*time.Second)

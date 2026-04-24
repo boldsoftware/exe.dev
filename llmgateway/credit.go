@@ -103,7 +103,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 	// Determine base plan based on plan category
 	var p Plan
 	switch planCategory {
-	case plan.CategoryFriend, plan.CategoryVIP:
+	case plan.CategoryFriend:
 		p = planFriend
 	case plan.CategoryIndividual, plan.CategoryTeam, plan.CategoryEnterprise:
 		p = planHasBilling

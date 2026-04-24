@@ -362,8 +362,6 @@ SELECT
             LIMIT 1
         )
     ) AS INTEGER) AS team_billing_active,
-    -- Explicit overrides: VIP status is determined by plan_id prefix 'vip:'
-    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
     ap.trial_expires_at,
     -- User info
     u.created_at,
@@ -422,7 +420,6 @@ SELECT
             LIMIT 1
         )
     ) AS INTEGER) AS team_billing_active,
-    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
     ap.trial_expires_at,
     u.created_at,
     CAST(COALESCE(

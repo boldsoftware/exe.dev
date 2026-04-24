@@ -661,8 +661,6 @@ SELECT
             LIMIT 1
         )
     ) AS INTEGER) AS team_billing_active,
-    -- Explicit overrides: VIP status is determined by plan_id prefix 'vip:'
-    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
     ap.trial_expires_at,
     -- User info
     u.created_at,
@@ -702,12 +700,11 @@ WHERE u.user_id = ?1
 `
 
 type GetUserPlanDataRow struct {
-	PlanID               *string    `db:"plan_id" json:"plan_id"`
-	TeamBillingActive    int64      `db:"team_billing_active" json:"team_billing_active"`
-	HasExplicitOverrides int64      `db:"has_explicit_overrides" json:"has_explicit_overrides"`
-	TrialExpiresAt       *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
-	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
-	BillingStatus        string     `db:"billing_status" json:"billing_status"`
+	PlanID            *string    `db:"plan_id" json:"plan_id"`
+	TeamBillingActive int64      `db:"team_billing_active" json:"team_billing_active"`
+	TrialExpiresAt    *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	CreatedAt         *time.Time `db:"created_at" json:"created_at"`
+	BillingStatus     string     `db:"billing_status" json:"billing_status"`
 }
 
 // GetUserPlanData returns all data needed to determine a user's plan category.
@@ -718,7 +715,6 @@ func (q *Queries) GetUserPlanData(ctx context.Context, userID string) (GetUserPl
 	err := row.Scan(
 		&i.PlanID,
 		&i.TeamBillingActive,
-		&i.HasExplicitOverrides,
 		&i.TrialExpiresAt,
 		&i.CreatedAt,
 		&i.BillingStatus,
@@ -923,7 +919,6 @@ SELECT
             LIMIT 1
         )
     ) AS INTEGER) AS team_billing_active,
-    CASE WHEN ap.plan_id LIKE 'vip:%' THEN 1 ELSE 0 END AS has_explicit_overrides,
     ap.trial_expires_at,
     u.created_at,
     CAST(COALESCE(
@@ -960,13 +955,12 @@ LEFT JOIN account_plans ap ON ap.account_id = a.id AND ap.ended_at IS NULL
 `
 
 type ListAllUserPlanDataRow struct {
-	UserID               string     `db:"user_id" json:"user_id"`
-	PlanID               *string    `db:"plan_id" json:"plan_id"`
-	TeamBillingActive    int64      `db:"team_billing_active" json:"team_billing_active"`
-	HasExplicitOverrides int64      `db:"has_explicit_overrides" json:"has_explicit_overrides"`
-	TrialExpiresAt       *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
-	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
-	BillingStatus        string     `db:"billing_status" json:"billing_status"`
+	UserID            string     `db:"user_id" json:"user_id"`
+	PlanID            *string    `db:"plan_id" json:"plan_id"`
+	TeamBillingActive int64      `db:"team_billing_active" json:"team_billing_active"`
+	TrialExpiresAt    *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+	CreatedAt         *time.Time `db:"created_at" json:"created_at"`
+	BillingStatus     string     `db:"billing_status" json:"billing_status"`
 }
 
 // ListAllUserPlanData is like GetUserPlanData but returns rows for all users.
@@ -984,7 +978,6 @@ func (q *Queries) ListAllUserPlanData(ctx context.Context) ([]ListAllUserPlanDat
 			&i.UserID,
 			&i.PlanID,
 			&i.TeamBillingActive,
-			&i.HasExplicitOverrides,
 			&i.TrialExpiresAt,
 			&i.CreatedAt,
 			&i.BillingStatus,

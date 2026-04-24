@@ -1959,12 +1959,11 @@ func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
 	planDataByUser := make(map[string]exedb.GetUserPlanDataRow, len(planRows))
 	for _, pr := range planRows {
 		planDataByUser[pr.UserID] = exedb.GetUserPlanDataRow{
-			PlanID:               pr.PlanID,
-			TeamBillingActive:    pr.TeamBillingActive,
-			HasExplicitOverrides: pr.HasExplicitOverrides,
-			TrialExpiresAt:       pr.TrialExpiresAt,
-			CreatedAt:            pr.CreatedAt,
-			BillingStatus:        pr.BillingStatus,
+			PlanID:            pr.PlanID,
+			TeamBillingActive: pr.TeamBillingActive,
+			TrialExpiresAt:    pr.TrialExpiresAt,
+			CreatedAt:         pr.CreatedAt,
+			BillingStatus:     pr.BillingStatus,
 		}
 	}
 

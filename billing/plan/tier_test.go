@@ -38,14 +38,6 @@ func TestParseTierID(t *testing.T) {
 			wantVersion:  "20260106",
 		},
 		{
-			name:         "4-part vip default",
-			input:        "vip:default:monthly:20260106",
-			wantCategory: CategoryVIP,
-			wantTier:     "default",
-			wantInterval: "monthly",
-			wantVersion:  "20260106",
-		},
-		{
 			name:         "3-part legacy individual",
 			input:        "individual:monthly:20260106",
 			wantCategory: CategoryIndividual,
@@ -124,21 +116,6 @@ func TestGetTierByID(t *testing.T) {
 			wantID:   "individual:small:monthly:20260106",
 			wantName: "Small",
 			wantCat:  CategoryIndividual,
-		},
-		{
-			name:     "vip default",
-			id:       "vip:default:monthly:20260106",
-			wantID:   "vip:default:monthly:20260106",
-			wantName: "Standard",
-			wantCat:  CategoryVIP,
-		},
-		{
-			// Legacy bare vip ID maps to default vip tier.
-			name:     "bare vip",
-			id:       "vip",
-			wantID:   "vip:default:monthly:20260106",
-			wantName: "Standard",
-			wantCat:  CategoryVIP,
 		},
 		{
 			// Bare "individual" (used by test helpers / syncAccountPlan) maps
@@ -240,14 +217,6 @@ func TestTierGrants(t *testing.T) {
 	if !tierGrants(small, LLMUse) {
 		t.Error("individual:small should grant LLMUse")
 	}
-
-	vip := mustgetTierByID(t, "vip:default:monthly:20260106")
-	if !tierGrants(vip, VMCreate) {
-		t.Error("vip:default should grant VMCreate")
-	}
-	if tierGrants(vip, Entitlement{"anything:new", "New"}) {
-		t.Error("vip:default should not grant unknown entitlements")
-	}
 }
 
 func TestGrants(t *testing.T) {
@@ -267,11 +236,6 @@ func TestGrants(t *testing.T) {
 	// Bare "individual" (test helpers and syncAccountPlan insert this)
 	if !Grants("individual", VMCreate) {
 		t.Error("bare 'individual' should grant VMCreate")
-	}
-
-	// VIP explicit entitlements (no wildcard)
-	if Grants("vip:default:monthly:20260106", Entitlement{"anything:new", "New"}) {
-		t.Error("vip should not grant unknown entitlements")
 	}
 
 	// Basic plan should not grant VMCreate
@@ -333,11 +297,6 @@ func TestTiersByCategory(t *testing.T) {
 			t.Errorf("tier %q has category %q, want Individual", tier.ID, tier.Category)
 		}
 	}
-
-	vipTiers := TiersByCategory(CategoryVIP)
-	if len(vipTiers) != 1 {
-		t.Errorf("TiersByCategory(VIP) len = %d, want 1", len(vipTiers))
-	}
 }
 
 func TestTierIDFromStripePriceKey(t *testing.T) {
@@ -371,7 +330,6 @@ func TestBasePlanHandles4PartTierID(t *testing.T) {
 	}{
 		{"individual:small:monthly:20260106", CategoryIndividual},
 		{"individual:xlarge:monthly:20260106", CategoryIndividual},
-		{"vip:default:monthly:20260106", CategoryVIP},
 		{"team:default:monthly:20260106", CategoryTeam},
 	}
 	for _, tt := range tests {
@@ -418,12 +376,6 @@ func TestRemainingDiskQuota_Legacy(t *testing.T) {
 			planID:      "basic",
 			currentDisk: 10 * gb,
 			want:        0,
-		},
-		{
-			name:        "vip plan",
-			planID:      "vip",
-			currentDisk: 10 * gb,
-			want:        65 * gb, // 75 - 10 = 65 GB
 		},
 		{
 			name:        "unknown plan",
@@ -492,12 +444,6 @@ func TestIncludedDisk(t *testing.T) {
 			envDefault: 0,
 			want:       25 * gb,
 		},
-		{
-			name:       "vip prod",
-			tierID:     "vip",
-			envDefault: 0,
-			want:       25 * gb,
-		},
 		// Local: env.DefaultDisk=10GB < tier → use env.
 		{
 			name:       "individual small local",
@@ -559,7 +505,6 @@ func TestMaxDiskForPlanWithEnv(t *testing.T) {
 		{"individual small", "individual:small:monthly:20260106", 75 * gb},
 		{"individual xlarge", "individual:xlarge:monthly:20260106", 75 * gb},
 		{"trial", "trial", 75 * gb},
-		{"vip", "vip", 75 * gb},
 		{"friend", "friend", 75 * gb},
 		{"basic", "basic", 0},
 		{"restricted", "restricted", 0},
@@ -709,11 +654,6 @@ func TestEffectiveMaxDisk(t *testing.T) {
 			want:   0,
 		},
 		{
-			name:   "vip prod no override",
-			planID: "vip",
-			want:   75 * gb,
-		},
-		{
 			name:        "trial prod with support override",
 			planID:      "trial",
 			userMaxDisk: 150 * gb,
@@ -724,12 +664,6 @@ func TestEffectiveMaxDisk(t *testing.T) {
 		{
 			name:           "individual test no override",
 			planID:         "individual:small:monthly:20260106",
-			envDefaultDisk: 11 * gb,
-			want:           11 * gb,
-		},
-		{
-			name:           "vip test no override",
-			planID:         "vip",
 			envDefaultDisk: 11 * gb,
 			want:           11 * gb,
 		},

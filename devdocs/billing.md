@@ -10,7 +10,6 @@ Access control uses a plan-based system defined in `billing/plan/`. Each account
 
 | Plan | Grants | LLM Category |
 |------|--------|--------------|
-| `vip` | All entitlements (wildcard) | `friend` |
 | `enterprise` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
 | `team` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
 | `individual` | LLM, credits, invites, teams, VM create/run, disk resize | `has_billing` |
@@ -23,8 +22,7 @@ Access control uses a plan-based system defined in `billing/plan/`. Each account
 **Plan resolution** (`billing/plan/plan.go:GetPlanCategory`), in priority order:
 
 1. `canceled` billing status -> `basic` (overrides everything)
-2. `HasExplicitOverrides` (plan_id like `vip:%`) -> `vip`
-3. `friend` category -> `friend`
+2. `friend` category -> `friend`
 4. Team billing active -> `team`
 5. `has_billing` category -> `individual`
 6. Trial exemption not yet expired -> `trial`

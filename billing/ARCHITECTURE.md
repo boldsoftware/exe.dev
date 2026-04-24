@@ -8,7 +8,6 @@ All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a v
 
 | Plan | ID | Paid | Entitlements |
 |------|-----|------|--------------|
-| VIP | `vip` | No | All (wildcard) |
 | Enterprise | `enterprise:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
 | Team | `team:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
 | Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize |
@@ -18,12 +17,12 @@ All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a v
 | Basic | `basic:monthly:20260106` | No | LLM only |
 | Restricted | `restricted` | No | None |
 
-Only Individual gets `TeamCreate`. Only VIP gets the `All` wildcard.
+Only Individual gets `TeamCreate`.
 
 ### Versioned Plan IDs
 
 Plan IDs use a colon-separated format:
-- **Bare category:** `individual`, `friend`, `vip`
+- **Bare category:** `individual`, `friend`
 - **3-part legacy:** `individual:monthly:20260106`
 - **4-part tier:** `individual:medium:monthly:20260106`
 
@@ -34,8 +33,7 @@ Plan IDs use a colon-separated format:
 `plan.ForUser()` is the canonical way to determine a user's plan. Priority:
 
 1. `canceled` billing status → Basic
-2. `HasExplicitOverrides` → VIP
-3. `plan_id` is `"friend"` or `"free"` → Friend
+2. `plan_id` is `"friend"` or `"free"` → Friend
 4. Team billing active → Team
 5. Active billing → Individual
 6. Trial not expired → Trial
@@ -80,7 +78,7 @@ Entitlements are boolean feature gates defined in `billing/plan/entitlement.go`.
 | VMCreate | `vm:create` | Create VMs |
 | VMRun | `vm:run` | Run VMs |
 | DiskResize | `disk:resize` | Resize VM Disks |
-| All | `*` | Wildcard (VIP only) |
+| All | `*` | Wildcard (reserved) |
 
 Checked via `execore/billing_status.go:UserHasEntitlement()`, which resolves user → account → active plan → tier → entitlements. For team members, the parent account's plan is used.
 
@@ -112,7 +110,7 @@ Usage rows are bucketed by hour (`hour_bucket`). Each hour gets one row per acco
 ### Gateway Credit Refresh
 
 Gateway credits refresh lazily on every LLM request via `CheckAndRefreshCredit` in `llmgateway/credit.go`:
-- **Paid users:** Monthly reset to plan's `MonthlyLLMCreditUSD` (e.g. $20 for Individual, $500 for VIP/Enterprise/Team/Friend)
+- **Paid users:** Monthly reset to plan's `MonthlyLLMCreditUSD` (e.g. $20 for Individual, $500 for Enterprise/Team/Friend)
 - **Free users:** No refresh (flat lifetime grant)
 
 ## Subscription Sync

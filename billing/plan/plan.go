@@ -13,7 +13,6 @@ type Category string
 
 // Plan category constants.
 const (
-	CategoryVIP           Category = "vip"
 	CategoryEnterprise    Category = "enterprise"
 	CategoryTeam          Category = "team"
 	CategoryIndividual    Category = "individual"
@@ -38,7 +37,7 @@ type Plan struct {
 	// interval this is the same as string(Category).
 	ID string
 
-	// Category is the base plan identifier (e.g., "individual", "vip").
+	// Category is the base plan identifier (e.g., "individual", "friend").
 	Category Category
 
 	// Available indicates whether this plan can be assigned to new accounts.
@@ -186,12 +185,11 @@ func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error
 	}
 
 	inputs := userPlanInputs{
-		BillingStatus:        row.BillingStatus,
-		PlanID:               row.PlanID,
-		TrialExpiresAt:       row.TrialExpiresAt,
-		CreatedAt:            row.CreatedAt,
-		HasExplicitOverrides: row.HasExplicitOverrides != 0,
-		TeamBillingActive:    row.TeamBillingActive != 0,
+		BillingStatus:     row.BillingStatus,
+		PlanID:            row.PlanID,
+		TrialExpiresAt:    row.TrialExpiresAt,
+		CreatedAt:         row.CreatedAt,
+		TeamBillingActive: row.TeamBillingActive != 0,
 	}
 
 	return getPlanCategory(inputs), nil
@@ -202,12 +200,11 @@ func ForUser(ctx context.Context, q DataQuerier, userID string) (Category, error
 // plan data for many users in a single query.
 func CategoryFromRow(row exedb.GetUserPlanDataRow) Category {
 	inputs := userPlanInputs{
-		BillingStatus:        row.BillingStatus,
-		PlanID:               row.PlanID,
-		TrialExpiresAt:       row.TrialExpiresAt,
-		CreatedAt:            row.CreatedAt,
-		HasExplicitOverrides: row.HasExplicitOverrides != 0,
-		TeamBillingActive:    row.TeamBillingActive != 0,
+		BillingStatus:     row.BillingStatus,
+		PlanID:            row.PlanID,
+		TrialExpiresAt:    row.TrialExpiresAt,
+		CreatedAt:         row.CreatedAt,
+		TeamBillingActive: row.TeamBillingActive != 0,
 	}
 	return getPlanCategory(inputs)
 }
@@ -220,8 +217,6 @@ func CategoryFromProductName(name string) (Category, bool) {
 		return CategoryIndividual, true
 	case "team":
 		return CategoryTeam, true
-	case "vip":
-		return CategoryVIP, true
 	case "enterprise":
 		return CategoryEnterprise, true
 	default:
@@ -269,31 +264,11 @@ type userPlanInputs struct {
 	// CreatedAt is when the user account was created.
 	CreatedAt *time.Time
 
-	// HasExplicitOverrides indicates VIP-style per-user overrides exist.
-	HasExplicitOverrides bool
-
 	// TeamBillingActive is true when the user's team billing owner has active billing.
 	TeamBillingActive bool
 }
 
 var plans = map[Category]Plan{
-	CategoryVIP: {
-		ID:                  "vip",
-		Available:           true,
-		Category:            CategoryVIP,
-		Name:                "VIP",
-		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "vip:default:monthly:20260106",
-		Entitlements: map[Entitlement]bool{
-			LLMUse:         true,
-			CreditPurchase: true,
-			InviteRequest:  true,
-			TeamCreate:     true,
-			VMCreate:       true,
-			VMRun:          true,
-			DiskResize:     true,
-		},
-	},
 	CategoryEnterprise: {
 		ID:                  "enterprise:monthly:20260106",
 		Available:           true,
@@ -426,11 +401,6 @@ func getPlanCategory(inputs userPlanInputs) Category {
 	// grandfathered status, exemptions, and trial access.
 	if inputs.BillingStatus == "canceled" {
 		return CategoryBasic
-	}
-
-	// VIP: identified by explicit overrides flag (from plan_id like 'vip:%').
-	if inputs.HasExplicitOverrides {
-		return CategoryVIP
 	}
 
 	// Friend: plan_id is "friend" or "free".
