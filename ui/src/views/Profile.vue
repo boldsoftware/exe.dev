@@ -113,135 +113,7 @@
                 Your plan is managed by your team billing admins: {{ data.teamInfo.billingAdmins.join(', ') }}
               </div>
 
-              <!-- Resource Usage (live) — only shown when backend returns VM metrics -->
-              <template v-if="liveMetrics && liveMetrics.vms.length > 0 && data.planCapacity && data.planCapacity.maxCPUs > 0">
-                <div class="billing-divider"></div>
-                <div class="resource-usage-header">Resource Usage (live)</div>
 
-                <div class="resource-meters">
-                  <div class="resource-meter">
-                    <span class="meter-label">vCPU</span>
-                    <div class="meter-bar-wrap">
-                      <div class="meter-bar">
-                        <div
-                          class="meter-fill"
-                          :class="meterColor(poolCpuMax > 0 ? (poolCpuUsed / poolCpuMax) * 100 : 0)"
-                          :style="{ width: poolCpuMax > 0 ? Math.min((poolCpuUsed / poolCpuMax) * 100, 100) + '%' : '0%' }"
-                        ></div>
-                      </div>
-                      <div class="meter-values">
-                        <span class="meter-used">{{ Math.min(poolCpuUsed, poolCpuMax).toFixed(1) }} cores</span>
-                        <span>{{ poolCpuMax }} cores</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="poolMemMaxBytes > 0" class="resource-meter">
-                    <span class="meter-label">Memory</span>
-                    <div class="meter-bar-wrap">
-                      <div class="meter-bar">
-                        <div
-                          class="meter-fill"
-                          :class="meterColor((poolMemUsedBytes / poolMemMaxBytes) * 100)"
-                          :style="{ width: Math.min((poolMemUsedBytes / poolMemMaxBytes) * 100, 100) + '%' }"
-                        ></div>
-                      </div>
-                      <div class="meter-values">
-                        <span class="meter-used">{{ formatBytes(Math.min(poolMemUsedBytes, poolMemMaxBytes)) }}</span>
-                        <span>{{ formatBytes(poolMemMaxBytes) }}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="data.planCapacity && data.planCapacity.bandwidthGB > 0" class="resource-meter">
-                    <span class="meter-label">Bandwidth</span>
-                    <div class="meter-bar-wrap">
-                      <div class="meter-bar">
-                        <div
-                          class="meter-fill"
-                          :class="meterColor((totalBandwidthBytes / (data.planCapacity.bandwidthGB * 1024 * 1024 * 1024)) * 100)"
-                          :style="{ width: Math.min((totalBandwidthBytes / (data.planCapacity.bandwidthGB * 1024 * 1024 * 1024)) * 100, 100) + '%' }"
-                        ></div>
-                      </div>
-                      <div class="meter-values">
-                        <span class="meter-used">{{ formatBytes(totalBandwidthBytes) }} used</span>
-                        <span>{{ data.planCapacity.bandwidthGB }} GB included</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="totalDiskIncludedBytes > 0" class="resource-meter">
-                    <span class="meter-label">Disk</span>
-                    <div class="meter-bar-wrap">
-                      <div class="meter-bar">
-                        <div
-                          class="meter-fill"
-                          :class="totalDiskProvisionedBytes > totalDiskIncludedBytes ? 'yellow' : 'green'"
-                          :style="{ width: Math.min((totalDiskProvisionedBytes / totalDiskIncludedBytes) * 100, 100) + '%' }"
-                        ></div>
-                      </div>
-                      <div class="meter-values">
-                        <span class="meter-used">{{ formatBytes(totalDiskProvisionedBytes) }} provisioned</span>
-                        <span>{{ formatBytes(totalDiskIncludedBytes) }} included</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Per-VM breakdown (sudoer only) -->
-                <div v-if="liveMetrics.vms.length > 0" class="vm-breakdown">
-                  <div class="vm-breakdown-header">Per-VM Breakdown</div>
-                  <table class="vm-breakdown-table">
-                    <thead>
-                      <tr>
-                        <th>VM</th>
-                        <th>vCPU</th>
-                        <th>Memory</th>
-                        <th>Disk</th>
-                        <th>Bandwidth</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="vm in liveMetrics.vms" :key="vm.name">
-                        <td>
-                          <div class="vm-name-cell">
-                            <span class="status-dot" :class="vm.status === 'running' ? 'running' : 'stopped'"></span>
-                            <router-link v-if="vm.status === 'running'" :to="'/vm/' + vm.name" class="vm-link">{{ vm.name }}</router-link>
-                            <span v-else class="text-muted">{{ vm.name }}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <template v-if="vm.status === 'running'">
-                            <div class="cpu-cell">
-                              {{ Math.min(vm.cpu_percent / 100, poolCpuMax > 0 ? poolCpuMax : Infinity).toFixed(1) }}
-                              <div class="cpu-mini-bar">
-                                <div class="cpu-mini-fill" :class="meterColor(poolCpuMax > 0 ? (vm.cpu_percent / 100 / poolCpuMax) * 100 : 0)" :style="{ width: cpuMiniWidth(vm.cpu_percent, poolCpuMax) }"></div>
-                              </div>
-                            </div>
-                          </template>
-                          <span v-else class="text-muted">&mdash;</span>
-                        </td>
-                        <td>
-                          <template v-if="vm.status === 'running'">{{ formatBytes(vm.mem_bytes) }}</template>
-                          <span v-else class="text-muted">&mdash;</span>
-                        </td>
-                        <td>{{ formatBytes(vm.disk_capacity_bytes) }}</td>
-                        <td>{{ formatBytes(vmBandwidth(vm.name)) }}</td>
-                      </tr>
-                      <tr v-if="liveMetrics.vms.length > 1" class="totals-row">
-                        <td>Total</td>
-                        <td>{{ Math.min(poolCpuUsed, poolCpuMax).toFixed(1) }} / {{ poolCpuMax }}</td>
-                        <td>{{ formatBytes(Math.min(poolMemUsedBytes, poolMemMaxBytes)) }} / {{ formatBytes(poolMemMaxBytes) }}</td>
-                        <td>{{ formatBytes(totalDiskProvisionedBytes) }}</td>
-                        <td>{{ formatBytes(totalBandwidthBytes) }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <!-- Upsell -->
-                <div v-if="data.planCapacity.nextTier" class="billing-upsell">
-                  <span class="billing-upsell-text">Need more power? Upgrade to <strong>{{ data.planCapacity.nextTier.poolSize }}</strong> for ${{ data.planCapacity.nextTier.monthlyPriceCents / 100 }}/mo.</span>
-                  <a href="/billing/update?source=upgrade" class="billing-upsell-link">Upgrade</a>
-                </div>
-              </template>
             </div>
 
             <!-- Payment Section -->
@@ -810,7 +682,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { fetchProfile, fetchLLMUsage, fetchVMsLive, fetchVMsPool, runCommand, shellQuote, type ProfileData, type LLMUsageResponse, type VMsLiveResponse, type VMsPoolResponse } from '../api/client'
+import { fetchProfile, fetchLLMUsage, runCommand, shellQuote, type ProfileData, type LLMUsageResponse } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
@@ -824,21 +696,7 @@ const loadError = ref('')
 const data = ref<ProfileData | null>(null)
 const llmUsage = ref<LLMUsageResponse | null>(null)
 const llmLoading = ref(false)
-const liveMetrics = ref<VMsLiveResponse | null>(null)
-const poolInfo = ref<VMsPoolResponse | null>(null)
-let liveMetricsTimer: ReturnType<typeof setInterval> | null = null
 
-// Derived pool aggregates from live VM data.
-const poolCpuUsed = computed(() => {
-  if (!liveMetrics.value) return 0
-  return liveMetrics.value.vms.reduce((sum, vm) => sum + vm.cpu_percent / 100, 0)
-})
-const poolMemUsedBytes = computed(() => {
-  if (!liveMetrics.value) return 0
-  return liveMetrics.value.vms.reduce((sum, vm) => sum + vm.mem_bytes, 0)
-})
-const poolCpuMax = computed(() => poolInfo.value?.cpu_max ?? 0)
-const poolMemMaxBytes = computed(() => poolInfo.value?.mem_max_bytes ?? 0)
 const expandedDays = ref<Set<string>>(new Set())
 const passkeyName = ref('')
 const deletingPasskeys = ref<Set<number>>(new Set())
@@ -1314,8 +1172,6 @@ async function loadProfile() {
     if (data.value.billingPeriodStart && data.value.billingPeriodEnd) {
       loadLLMUsage()
     }
-    // Start live metrics polling.
-    loadLiveMetrics()
   } catch (err: any) {
     console.error('Failed to load profile:', err)
     loadError.value = err.message || 'Failed to load data'
@@ -1324,75 +1180,15 @@ async function loadProfile() {
   }
 }
 
-async function loadLiveMetrics() {
-  try {
-    const [live, pool] = await Promise.all([fetchVMsLive(), fetchVMsPool()])
-    liveMetrics.value = live
-    poolInfo.value = pool
-  } catch {
-    // Silently ignore — metrics are best-effort.
-  }
-}
 
-// TODO: totalBandwidthBytes and vmBandwidth will be replaced by live metrics in a separate change.
-const totalBandwidthBytes = computed(() => 0)
-
-function vmBandwidth(_vmName: string): number {
-  return 0
-}
-
-const totalDiskProvisionedBytes = computed(() => {
-  if (!liveMetrics.value) return 0
-  return liveMetrics.value.vms.reduce((sum, vm) => sum + vm.disk_capacity_bytes, 0)
-})
-
-const totalDiskIncludedBytes = computed(() => {
-  if (!data.value?.planCapacity || !liveMetrics.value) return 0
-  const vmCount = liveMetrics.value.vms.length || 1
-  return data.value.planCapacity.defaultDiskGB * 1024 * 1024 * 1024 * vmCount
-})
-
-function startLiveMetricsPolling() {
-  if (liveMetricsTimer) return
-  liveMetricsTimer = setInterval(loadLiveMetrics, 10_000)
-}
-
-function stopLiveMetricsPolling() {
-  if (liveMetricsTimer) {
-    clearInterval(liveMetricsTimer)
-    liveMetricsTimer = null
-  }
-}
-
-function meterColor(pct: number): string {
-  if (pct >= 90) return 'red'
-  if (pct >= 70) return 'yellow'
-  return 'green'
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const gb = bytes / (1024 * 1024 * 1024)
-  if (gb >= 1) return gb.toFixed(1) + ' GB'
-  const mb = bytes / (1024 * 1024)
-  return mb.toFixed(0) + ' MB'
-}
-
-function cpuMiniWidth(cpuPercent: number, poolMax: number): string {
-  if (poolMax === 0) return '0%'
-  const pct = Math.min((cpuPercent / 100 / poolMax) * 100, 100)
-  return pct + '%'
-}
 
 onMounted(() => {
   document.addEventListener('keydown', onEscapeKey)
   loadProfile()
-  startLiveMetricsPolling()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEscapeKey)
-  stopLiveMetricsPolling()
 })
 
 function openModal(opts: Partial<typeof modal>) {
@@ -1920,175 +1716,6 @@ async function toggleNewsletter(event: Event) {
 }
 
 /* Upsell */
-.billing-upsell {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 10px 14px;
-  background: var(--surface-section, var(--surface-hover));
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  font-size: 13px;
-}
-.billing-upsell-text {
-  color: var(--text-color-secondary);
-}
-.billing-upsell-text strong {
-  color: var(--text-color);
-}
-.billing-upsell-link {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--primary-color);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.billing-upsell-link:hover {
-  text-decoration: underline;
-}
-
-/* Resource Usage section */
-.billing-divider {
-  border-top: 1px solid var(--surface-border);
-  margin: 16px 0;
-}
-.resource-usage-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 14px;
-}
-.resource-meters {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.resource-meter {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.meter-label {
-  width: 80px;
-  font-size: 12px;
-  color: var(--text-color-secondary);
-  flex-shrink: 0;
-}
-.meter-bar-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.meter-bar {
-  height: 8px;
-  background: var(--surface-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.meter-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s;
-}
-.meter-fill.green { background: var(--green-500, #22c55e); }
-.meter-fill.yellow { background: var(--yellow-500, #eab308); }
-.meter-fill.red { background: var(--red-500, #ef4444); }
-.meter-values {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--text-color-secondary);
-}
-.meter-used {
-  color: var(--text-color);
-  font-weight: 500;
-}
-
-/* Per-VM breakdown */
-.vm-breakdown {
-  margin-top: 16px;
-}
-.vm-breakdown-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 10px;
-}
-.vm-breakdown-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.vm-breakdown-table th {
-  text-align: right;
-  padding: 4px 8px;
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--text-color-secondary);
-  border-bottom: 1px solid var(--surface-border);
-}
-.vm-breakdown-table th:first-child { text-align: left; }
-.vm-breakdown-table td {
-  padding: 6px 8px;
-  text-align: right;
-  border-bottom: 1px solid var(--surface-hover, #f1f5f9);
-}
-.vm-breakdown-table td:first-child { text-align: left; }
-.vm-breakdown-table tr:last-child td { border-bottom: none; }
-.vm-breakdown-table tr:hover td { background: var(--surface-hover, #f8fafc); }
-.vm-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.status-dot.running { background: var(--green-500, #22c55e); }
-.status-dot.stopped { background: var(--text-color-secondary); }
-.vm-link {
-  color: var(--text-color);
-  text-decoration: none;
-  font-weight: 500;
-}
-.vm-link:hover { color: var(--primary-color); }
-.cpu-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: flex-end;
-}
-.cpu-mini-bar {
-  width: 40px;
-  height: 4px;
-  background: var(--surface-border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.cpu-mini-fill {
-  height: 100%;
-  border-radius: 2px;
-}
-.cpu-mini-fill.green { background: var(--green-500, #22c55e); }
-.cpu-mini-fill.yellow { background: var(--yellow-500, #eab308); }
-.cpu-mini-fill.red { background: var(--red-500, #ef4444); }
-.text-muted { color: var(--text-color-secondary); }
-.totals-row td {
-  font-weight: 600;
-  border-top: 1px solid var(--surface-border) !important;
-  color: var(--text-color);
-}
-
 /* Divider sections (Payment, Invoices) */
 .billing-divider-section {
   border-top: 1px solid var(--surface-border);
@@ -2698,25 +2325,10 @@ async function toggleNewsletter(event: Event) {
     gap: 12px;
   }
 
-  .billing-upsell {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
   .payment-method-callout {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
-  }
-
-  .meter-label {
-    width: 60px;
-    font-size: 11px;
-  }
-
-  .vm-breakdown-table {
-    font-size: 11px;
   }
 
   .buy-section {
