@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +19,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 // ExedInstance describes the running exed process.
@@ -724,20 +721,4 @@ func (ei *ExedInstance) Restart(ctx context.Context, exeletAddrs []string, testR
 	}
 
 	return nil
-}
-
-// BoxClientSSHKey returns the ssh client private key (PEM bytes) stored for
-// the given box in exed's database. Intended for e1e tests that need to dial
-// into a box out-of-band without going through the piper/proxy path.
-func (ei *ExedInstance) BoxClientSSHKey(ctx context.Context, name string) ([]byte, error) {
-	db, err := sql.Open("sqlite", "file:"+ei.dbPath+"?mode=ro")
-	if err != nil {
-		return nil, fmt.Errorf("open exed db: %w", err)
-	}
-	defer db.Close()
-	var key []byte
-	if err := db.QueryRowContext(ctx, "SELECT ssh_client_private_key FROM boxes WHERE name = ?", name).Scan(&key); err != nil {
-		return nil, fmt.Errorf("query ssh_client_private_key for %q: %w", name, err)
-	}
-	return key, nil
 }

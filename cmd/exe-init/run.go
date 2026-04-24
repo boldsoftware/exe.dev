@@ -110,9 +110,6 @@ func runAction(clix *cli.Context) error {
 		return err
 	}
 
-	// operator ssh server on vsock. Best-effort; does not block boot.
-	startOperatorSSH()
-
 	// entrypoint
 	slog.Info("starting entrypoint")
 	pid, err := runEntrypoint(imageConfig)

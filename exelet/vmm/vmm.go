@@ -36,10 +36,6 @@ type VMM interface {
 	Logs(ctx context.Context, id string) (io.ReadCloser, error)
 	// Console returns a pty for the specified id
 	Console(ctx context.Context, id string) (string, error)
-	// OperatorSSHSocketPath returns the unix socket path bound by the VMM for
-	// the guest's operator SSH. Connecting to it (via a hybrid-vsock
-	// handshake) reaches the in-guest SSH server exe-init runs on boot.
-	OperatorSSHSocketPath(id string) string
 	// Stop implements VM stop (hard kill)
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete. mac scopes the IPAM lease release so a

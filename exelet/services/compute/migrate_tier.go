@@ -760,7 +760,7 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 
 	// Edit snapshot config: update disk path, keep same IP (pass nil for targetNetwork)
 	kernelPath := filepath.Join(instanceDir, kernelName)
-	if err := editSnapshotConfig(snapshotDir, dstFS.Path, kernelPath, s.vmm.OperatorSSHSocketPath(instanceID), instance.VMConfig, nil); err != nil {
+	if err := editSnapshotConfig(snapshotDir, dstFS.Path, kernelPath, instance.VMConfig, nil); err != nil {
 		return fmt.Errorf("edit snapshot config: %w", err)
 	}
 
