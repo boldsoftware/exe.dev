@@ -776,9 +776,8 @@ onBeforeUnmount(() => {
 }
 
 .llm-usage-section {
-  border-top: 1px solid var(--surface-border);
-  padding-top: 1rem;
-  margin-top: 0.5rem;
+  padding-top: 0;
+  margin-top: 0;
 }
 .card-row-total {
   font-weight: 600;
