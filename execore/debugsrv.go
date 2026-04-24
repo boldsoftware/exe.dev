@@ -1780,6 +1780,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		AvailablePools       []string
 		ExeletOptions        []string
 		BoxNameJSON          template.JS
+		GrafanaLinks         []vmGrafanaLink
 	}{
 		Name:                 box.Name,
 		ID:                   int64(box.ID),
@@ -1809,6 +1810,7 @@ func (s *Server) handleDebugBoxDetails(w http.ResponseWriter, r *http.Request) {
 		AvailablePools:       availablePools,
 		ExeletOptions:        exeletOptions,
 		BoxNameJSON:          template.JS(boxNameJSON),
+		GrafanaLinks:         vmGrafanaLinks(box.Name),
 	}
 
 	s.renderDebugTemplate(ctx, w, "box-details.html", data)

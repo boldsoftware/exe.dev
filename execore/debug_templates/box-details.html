@@ -141,6 +141,15 @@
 {{end}}
 </div>
 
+{{if .GrafanaLinks}}
+<div class="section">
+<h2>Grafana (per-VM metrics)</h2>
+<ul>
+{{range .GrafanaLinks}}<li><a href="{{.URL}}" target="_blank" rel="noopener">{{.Label}}</a></li>
+{{end}}</ul>
+</div>
+{{end}}
+
 <div class="section">
 <h2>Usage Metrics</h2>
 <link rel="stylesheet" href="/static/usage-charts.css">
