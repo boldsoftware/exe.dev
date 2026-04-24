@@ -67,6 +67,7 @@ type Env struct {
 	StripeAPIURL           string // override Stripe API base URL (e.g. local httprr proxy); empty means Stripe defaults
 	ReplDev                bool   // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
 	WebDev                 bool   // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
+	DebugDev               bool   // whether /debug endpoints and other local-only endpoints (e.g. /metrics) bypass Tailscale/human-user access gates; used for local development and e1e tests that hit exed over loopback
 	ProxyDev               bool   // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
 	GatewayDev             bool   // allow X-Exedev-Box auth even when request source IP isn't tailscale
 	SkipBanner             bool   // whether to skip showing the EXE banner on repl login
@@ -135,6 +136,7 @@ func Invalid() Env {
 		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
+		DebugDev:               false,
 		ProxyDev:               false,
 		GatewayDev:             false,
 		SkipBanner:             false,
@@ -212,6 +214,7 @@ func Local() Env {
 		StripeAPIURL:           "",
 		ReplDev:                true,
 		WebDev:                 true,
+		DebugDev:               true,
 		ProxyDev:               true,
 		GatewayDev:             true,
 		SkipBanner:             false,
@@ -282,6 +285,7 @@ func Test() Env {
 		StripeAPIURL:           os.Getenv("STRIPE_API_URL"),
 		ReplDev:                false,
 		WebDev:                 false,
+		DebugDev:               true, // e1e tests reach exed over loopback, not Tailscale
 		ProxyDev:               true,
 		GatewayDev:             true,
 		SkipBanner:             true,
@@ -350,6 +354,7 @@ func Staging() Env {
 		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
+		DebugDev:               false,
 		ProxyDev:               false,
 		GatewayDev:             false,
 		SkipBanner:             false,
@@ -434,6 +439,7 @@ func Prod() Env {
 		StripeAPIURL:           "",
 		ReplDev:                false,
 		WebDev:                 false,
+		DebugDev:               false,
 		ProxyDev:               false,
 		GatewayDev:             false,
 		SkipBanner:             false,

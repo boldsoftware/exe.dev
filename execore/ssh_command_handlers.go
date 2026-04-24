@@ -1116,17 +1116,26 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("VM is in state %q and cannot be restarted", state.String())
 	}
 
-	// Start the instance with retries
+	// Start the instance with retries.
+	// FailedPrecondition can be transient: after a synchronous StopInstance
+	// the VMM may still be finishing its Shutdown transition, so StartInstance
+	// briefly sees an "invalid state to start". Retry those with backoff;
+	// fail fast on other errors.
+	const startMaxAttempts = 8
 	var startErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	for attempt := 1; attempt <= startMaxAttempts; attempt++ {
 		_, startErr = exeletClient.client.StartInstance(restartCtx, &api.StartInstanceRequest{
 			ID: containerID,
 		})
 		if startErr == nil {
 			break
 		}
-		if attempt < maxAttempts {
-			time.Sleep(100 * time.Millisecond)
+		s, ok := status.FromError(startErr)
+		if !ok || s.Code() != codes.FailedPrecondition {
+			break
+		}
+		if attempt < startMaxAttempts {
+			time.Sleep(250 * time.Millisecond)
 		}
 	}
 	if startErr != nil {
@@ -1134,7 +1143,7 @@ func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.Comma
 		if s, ok := status.FromError(startErr); ok && s.Code() == codes.FailedPrecondition {
 			return cc.Errorf("VM cannot be started: %s", s.Message())
 		}
-		return fmt.Errorf("failed to start instance after %d attempts: %w", maxAttempts, startErr)
+		return fmt.Errorf("failed to start instance after %d attempts: %w", startMaxAttempts, startErr)
 	}
 
 	// Verify the instance is actually running after start

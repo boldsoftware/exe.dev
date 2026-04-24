@@ -52,7 +52,6 @@ import (
 	"exe.dev/tracing"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"tailscale.com/client/local"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -9183,9 +9182,8 @@ func (s *Server) handleDebugGitHubIntegrationsRefresh(w http.ResponseWriter, r *
 // request, or empty string if the identity can't be determined (e.g.
 // loopback connections, tagged nodes).
 func tailscaleUser(ctx context.Context, remoteAddr string) string {
-	lc := new(local.Client)
-	who, err := lc.WhoIs(ctx, remoteAddr)
-	if err != nil || who.UserProfile == nil {
+	who := exedebug.TailscaleWhoIs(ctx, remoteAddr)
+	if !exedebug.IsHumanTailscaleUser(who) {
 		return ""
 	}
 	return who.UserProfile.LoginName
@@ -9720,18 +9718,19 @@ func (s *Server) debugSQLTablesPlaceholder(ctx context.Context) string {
 }
 
 // checkDebugSQLAuth verifies the request comes from a Tailscale user
-// authorized to use the SQL query tool. In WebDev mode, it returns "webdev"
+// authorized to use the SQL query tool. In debug-dev mode, it returns "webdev"
 // with no checks. Otherwise, the user's login name must contain "passkey".
 // On failure, it writes an HTTP error and returns ("", false).
 func (s *Server) checkDebugSQLAuth(w http.ResponseWriter, r *http.Request) (who string, ok bool) {
-	if s.env.WebDev {
+	if s.env.DebugDev {
 		return "webdev", true
 	}
-	who = tailscaleUser(r.Context(), r.RemoteAddr)
-	if who == "" {
+	whois := exedebug.TailscaleWhoIs(r.Context(), r.RemoteAddr)
+	if !exedebug.IsHumanTailscaleUser(whois) {
 		http.Error(w, "SQL query requires a Tailscale user", http.StatusForbidden)
 		return "", false
 	}
+	who = whois.UserProfile.LoginName
 	if !strings.Contains(who, "passkey") {
 		http.Error(w, fmt.Sprintf("SQL query requires a passkey-authenticated Tailscale user; you are logged in as %q. Re-authenticate to Tailscale with a passkey-backed identity and try again.", who), http.StatusForbidden)
 		return "", false

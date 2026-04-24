@@ -545,9 +545,12 @@ func (wp *WebProxy) handleDebugWho(w http.ResponseWriter, r *http.Request) {
 // handleBlogProxy proxies /__exe.dev/blog/* requests to blog.exe.dev,
 // reaching the blog externally from this exeprox's location.
 // This replaces SSH+curl for monitoring tools like rummyd.
-// Access is restricted to loopback and Tailscale IPs.
+// Access is restricted to Tailscale IPs.
 func (wp *WebProxy) handleBlogProxy(w http.ResponseWriter, r *http.Request) {
-	exedebug.RequireLocalAccess(http.HandlerFunc(wp.serveBlogProxy)).ServeHTTP(w, r)
+	if !exedebug.AllowLocalAccess(wp.env, w, r) {
+		return
+	}
+	wp.serveBlogProxy(w, r)
 }
 
 func (wp *WebProxy) serveBlogProxy(w http.ResponseWriter, r *http.Request) {
@@ -587,7 +590,7 @@ func (wp *WebProxy) serveBlogProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMetrics serves the /metrics HTTP request.
-// Access control is handled by exedebug.RequireLocalAccess in the caller.
+// Access control is handled by exedebug.AllowLocalAccess in the caller.
 func (wp *WebProxy) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	handler := promhttp.HandlerFor(wp.proxy.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)

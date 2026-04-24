@@ -540,7 +540,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// proxy whose port differs from exed's main listener port,
 	// causing isRequestOnMainPort to reject the request.
 	if r.URL.Path == "/exelet-desired" {
-		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleExeletDesired)).ServeHTTP(w, r)
+		if !exedebug.AllowLocalAccess(s.env, w, r) {
+			return
+		}
+		s.handleExeletDesired(w, r)
 		return
 	}
 	if r.URL.Path == "/_/peer-proxy" {
@@ -571,9 +574,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle root path and user dashboard
 	path := r.URL.Path
-	// Debug endpoints (pprof, expvar), gated by localhost or Tailscale access
+	// Debug endpoints (pprof, expvar), gated on a human Tailscale user
+	// (tagged nodes are rejected; see AllowDebugAccess).
 	if strings.HasPrefix(path, "/debug") {
-		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleDebug)).ServeHTTP(w, r)
+		if !exedebug.AllowDebugAccess(s.env, w, r) {
+			return
+		}
+		s.handleDebug(w, r)
 		return
 	} else if path == "/docs/pricing" {
 		http.Redirect(w, r, "/pricing", http.StatusTemporaryRedirect)
@@ -754,7 +761,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		io.WriteString(w, "ok")
 	case "/metrics":
-		exedebug.RequireLocalAccess(http.HandlerFunc(s.handleMetrics)).ServeHTTP(w, r)
+		if exedebug.AllowLocalAccess(s.env, w, r) {
+			s.handleMetrics(w, r)
+		}
 	case exeweb.SSHKnownHostsPath:
 		s.handleKnownHosts(w, r)
 		return

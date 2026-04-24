@@ -97,7 +97,9 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		wp.handleHealth(w, r)
 		return
 	case r.URL.Path == "/metrics":
-		exedebug.RequireLocalAccess(http.HandlerFunc(wp.handleMetrics)).ServeHTTP(w, r)
+		if exedebug.AllowLocalAccess(wp.env, w, r) {
+			wp.handleMetrics(w, r)
+		}
 		return
 	case r.URL.Path == "/debug" || strings.HasPrefix(r.URL.Path, "/debug/"):
 		// exeprox serves its own /debug surface (pprof, expvar, gitsha)
@@ -105,7 +107,10 @@ func (wp *WebProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// /debug falls through to the redirect to exed below, so that we
 		// don't shadow user VMs or exed's /debug endpoints.
 		if wp.tsDomain != "" && domz.Canonicalize(domz.StripPort(host)) == wp.tsDomain {
-			exedebug.RequireLocalAccess(wp.debugHandler()).ServeHTTP(w, r)
+			if !exedebug.AllowDebugAccess(wp.env, w, r) {
+				return
+			}
+			wp.debugHandler().ServeHTTP(w, r)
 			return
 		}
 	}

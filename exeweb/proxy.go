@@ -21,6 +21,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/domz"
 	"exe.dev/email"
+	"exe.dev/exedebug"
 	"exe.dev/metricsbag"
 	"exe.dev/publicips"
 	"exe.dev/sshkey"
@@ -369,9 +370,13 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		ps.Data.HLLNoteEvents(r.Context(), userID, events)
 	}
 
-	// Handle debug path in dev/test environments
-	if r.URL.Path == "/__exe.dev/debug" && ps.Env.WebDev {
-		// Show debug info for /__exe.dev/debug in dev mode
+	// Handle debug path. Gated by AllowDebugAccess so that in prod only
+	// a human Tailscale user (or tag:ops) can see the route/auth details,
+	// and in dev/test it's open.
+	if r.URL.Path == "/__exe.dev/debug" {
+		if !exedebug.AllowDebugAccess(ps.Env, w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
 		fmt.Fprintf(w, "Box: %s\n", boxName)

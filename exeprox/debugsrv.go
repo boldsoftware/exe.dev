@@ -19,7 +19,7 @@ import (
 )
 
 // debugHandler constructs and returns the debug endpoint mux.
-// All routes are already gated by exedebug.RequireLocalAccess
+// All routes are already gated by exedebug.AllowDebugAccess
 // in the caller (ServeHTTP).
 func (wp *WebProxy) debugHandler() http.Handler {
 	mux := http.NewServeMux()

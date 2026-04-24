@@ -18,6 +18,7 @@ import (
 	"exe.dev/exedebug"
 	"exe.dev/region"
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -286,36 +287,34 @@ func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
 	}
 }
 
-// TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
+// TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics.
+//
+// /metrics is gated by AllowLocalAccess, which requires a Tailscale source IP
+// in prod. Real http.Get via server.httpURL() arrives from 127.0.0.1 and would
+// be rejected, so the request is synthesized with a Tailscale RemoteAddr and
+// dispatched through the full HTTP handler chain.
 func TestMetricsEndpoint(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
 	// Make a request to the health endpoint first to trigger HTTP metrics
-	healthResp, err := http.Get(baseURL + "/health")
-	if err != nil {
-		t.Fatalf("Failed to make health request: %v", err)
-	}
-	healthResp.Body.Close()
+	healthReq := httptest.NewRequest("GET", baseURL+"/health", nil)
+	healthReq.RemoteAddr = "100.64.1.1:12345"
+	healthW := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(healthW, healthReq)
 
 	// Make request to metrics endpoint
-	resp, err := http.Get(baseURL + "/metrics")
-	if err != nil {
-		t.Fatalf("Failed to fetch metrics: %v", err)
-	}
-	defer resp.Body.Close()
+	req := httptest.NewRequest("GET", baseURL+"/metrics", nil)
+	req.RemoteAddr = "100.64.1.1:12345"
+	w := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(w, req)
 
-	if resp.StatusCode != 200 {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Failed to read response body: %v", err)
+	if w.Code != 200 {
+		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	bodyStr := string(body)
+	bodyStr := w.Body.String()
 
 	// Debug: print the actual response
 	t.Logf("Metrics response body: %s", bodyStr)
@@ -485,32 +484,26 @@ func TestPricingPage(t *testing.T) {
 	}
 }
 
-// TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
+// TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented.
+// See TestMetricsEndpoint for why this uses synthesized Tailscale-sourced requests.
 func TestHTTPMetricsInstrumentation(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 	baseURL := server.httpURL()
 
 	// Make a request to the health endpoint
-	resp, err := http.Get(baseURL + "/health")
-	if err != nil {
-		t.Fatalf("Failed to make health check request: %v", err)
-	}
-	resp.Body.Close()
+	healthReq := httptest.NewRequest("GET", baseURL+"/health", nil)
+	healthReq.RemoteAddr = "100.64.1.1:12345"
+	healthW := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(healthW, healthReq)
 
 	// Now fetch metrics to see if the request was recorded
-	resp, err = http.Get(baseURL + "/metrics")
-	if err != nil {
-		t.Fatalf("Failed to fetch metrics: %v", err)
-	}
-	defer resp.Body.Close()
+	req := httptest.NewRequest("GET", baseURL+"/metrics", nil)
+	req.RemoteAddr = "100.64.1.1:12345"
+	w := httptest.NewRecorder()
+	server.httpServer.Handler.ServeHTTP(w, req)
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("Failed to read metrics response: %v", err)
-	}
-
-	bodyStr := string(body)
+	bodyStr := w.Body.String()
 
 	// Check that we have HTTP request metrics
 	if !strings.Contains(bodyStr, "http_requests_total") {
@@ -547,97 +540,51 @@ func (s *Server) createTestBox(t *testing.T, userID, ctrhost, name, containerID,
 	}
 }
 
-// TestMetricsEndpointProtection tests that /metrics is protected by IP restrictions
-func TestMetricsEndpointProtection(t *testing.T) {
+// TestAllowLocalAccess exercises the IP-based access gate used by
+// /metrics, /exelet-desired, and other local-only endpoints.
+func TestAllowLocalAccess(t *testing.T) {
 	t.Parallel()
-	// Test the requireLocalAccess decorator directly
 
-	// Create a simple test handler
-	testHandler := func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+	prod := stage.Test()
+	prod.DebugDev = false
+	webdev := stage.Test()
+	webdev.DebugDev = true
+
+	cases := []struct {
+		name       string
+		env        stage.Env
+		remoteAddr string
+		wantOK     bool
+		wantStatus int // status written on deny; ignored when wantOK is true
+	}{
+		{"prod_external_ip_denied", prod, "192.168.1.100:12345", false, http.StatusNotFound},
+		{"prod_tailscale_ip_allowed", prod, "100.64.1.1:12345", true, 0},
+		{"prod_loopback_denied", prod, "127.0.0.1:12345", false, http.StatusNotFound},
+		{"prod_loopback_ipv6_denied", prod, "[::1]:12345", false, http.StatusNotFound},
+		{"prod_malformed_remote_addr", prod, "invalid-ip", false, http.StatusInternalServerError},
+		{"webdev_external_ip_allowed", webdev, "192.168.1.100:12345", true, 0},
+		{"webdev_loopback_allowed", webdev, "127.0.0.1:12345", true, 0},
+		{"webdev_loopback_ipv6_allowed", webdev, "[::1]:12345", true, 0},
+		{"webdev_malformed_remote_addr_allowed", webdev, "invalid-ip", true, 0},
 	}
-
-	// Test request from non-localhost, non-Tailscale IP should be denied
-	t.Run("external_ip_denied", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "192.168.1.100:12345" // Simulate external IP
-		w := httptest.NewRecorder()
-
-		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected status 404 for external IP, got %d", w.Code)
-		}
-	})
-
-	// Test request from localhost should be allowed
-	t.Run("localhost_allowed", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "127.0.0.1:12345" // Localhost IP
-		w := httptest.NewRecorder()
-
-		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200 for localhost, got %d", w.Code)
-		}
-		body := w.Body.String()
-		if body != "success" {
-			t.Errorf("Expected 'success' in response body, got: %s", body)
-		}
-	})
-
-	// Test request from IPv6 localhost should be allowed
-	t.Run("localhost_ipv6_allowed", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "[::1]:12345" // IPv6 localhost
-		w := httptest.NewRecorder()
-
-		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200 for IPv6 localhost, got %d", w.Code)
-		}
-		body := w.Body.String()
-		if body != "success" {
-			t.Errorf("Expected 'success' in response body, got: %s", body)
-		}
-	})
-
-	// Test request from Tailscale IP should be allowed
-	t.Run("tailscale_ip_allowed", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "100.64.1.1:12345" // Tailscale IP range
-		w := httptest.NewRecorder()
-
-		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200 for Tailscale IP, got %d", w.Code)
-		}
-		body := w.Body.String()
-		if body != "success" {
-			t.Errorf("Expected 'success' in response body, got: %s", body)
-		}
-	})
-
-	// Test malformed RemoteAddr
-	t.Run("malformed_remote_addr", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/test", nil)
-		req.RemoteAddr = "invalid-ip" // Malformed IP
-		w := httptest.NewRecorder()
-
-		exedebug.RequireLocalAccess(http.HandlerFunc(testHandler)).ServeHTTP(w, req)
-
-		if w.Code != http.StatusInternalServerError {
-			t.Errorf("Expected status 500 for malformed IP, got %d", w.Code)
-		}
-		body := w.Body.String()
-		if !strings.Contains(body, "remoteaddr check") {
-			t.Errorf("Expected 'remoteaddr check' error in response body, got: %s", body)
-		}
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.RemoteAddr = tc.remoteAddr
+			w := httptest.NewRecorder()
+			got := exedebug.AllowLocalAccess(tc.env, w, req)
+			if got != tc.wantOK {
+				t.Errorf("AllowLocalAccess = %v, want %v (body: %s)", got, tc.wantOK, w.Body.String())
+			}
+			if !tc.wantOK && w.Code != tc.wantStatus {
+				t.Errorf("denied status = %d, want %d (body: %s)", w.Code, tc.wantStatus, w.Body.String())
+			}
+			if tc.wantStatus == http.StatusInternalServerError &&
+				!strings.Contains(w.Body.String(), "remoteaddr check") {
+				t.Errorf("expected 'remoteaddr check' in body, got: %s", w.Body.String())
+			}
+		})
+	}
 }
 
 // TestWebAuthFlowCreatesNewUser tests that the web auth flow creates a new user if they don't exist
