@@ -1392,7 +1392,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		// choose which account to use, even if they already have a session cookie
 		// in the system browser.
 		if !flow.isAppTokenFlow() {
-			// Apply invite code for login-with-exe users who visit with an invite code.
+			// Apply invite code for existing users who visit with an invite code.
 			if code := r.URL.Query().Get("invite"); code != "" {
 				s.maybeApplyInviteCode(r.Context(), s.lookupUnusedInviteCode(r.Context(), code), userID)
 			}
@@ -1691,11 +1691,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Use the invite code we already looked up (needed for new user notification and email verification).
-	// For existing users, only allow invite codes for login-with-exe users — regular existing
-	// users cannot apply invite codes post-facto.
+	// Invite codes work for both new and existing users.
 	var inviteCodeID *int64
 	var inviterEmail string
-	if invite != nil && (isNewUser || s.isLoginWithExeOnly(r.Context(), userID)) {
+	if invite != nil {
 		inviteCodeID = &invite.ID
 		inviterEmail = s.getInviteGiverEmail(r.Context(), invite)
 		s.slog().InfoContext(r.Context(), "valid invite code provided via web auth", "code", invite.Code)

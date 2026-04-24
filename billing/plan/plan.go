@@ -375,6 +375,7 @@ var plans = map[Category]Plan{
 		DefaultTier: "basic:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
+			InviteClaim:      true,
 			BillingSelfServe: true,
 			AccountDelete:    true,
 		},

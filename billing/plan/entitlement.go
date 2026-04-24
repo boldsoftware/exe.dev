@@ -21,6 +21,7 @@ var (
 
 	// Invite operations.
 	InviteRequest = Entitlement{"invite:request", "Request Invites"}
+	InviteClaim   = Entitlement{"invite:claim", "Claim Invite Codes"}
 
 	// Team operations.
 	TeamCreate = Entitlement{"team:create", "Create Teams"}
@@ -49,6 +50,7 @@ func AllEntitlements() []Entitlement {
 		LLMUse,
 		CreditPurchase,
 		InviteRequest,
+		InviteClaim,
 		TeamCreate,
 		VMCreate,
 		VMRun,

@@ -54,6 +54,7 @@ func TestAllEntitlements(t *testing.T) {
 		"llm:use":           true,
 		"credit:purchase":   true,
 		"invite:request":    true,
+		"invite:claim":      true,
 		"team:create":       true,
 		"vm:create":         true,
 		"vm:run":            true,
@@ -153,6 +154,32 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 		got := Grants(p.ID, AccountDelete)
 		if got != want {
 			t.Errorf("plan %q: Grants(AccountDelete) = %v, want %v", cat, got, want)
+		}
+	}
+}
+
+// TestInviteClaimEntitlementByPlan verifies only Basic grants invite:claim.
+func TestInviteClaimEntitlementByPlan(t *testing.T) {
+	wantClaim := map[Category]bool{
+		CategoryEnterprise:    false,
+		CategoryTeam:          false,
+		CategoryIndividual:    false,
+		CategoryFriend:        false,
+		CategoryGrandfathered: false,
+		CategoryTrial:         false,
+		CategoryBasic:         true,
+		CategoryRestricted:    false,
+	}
+
+	for cat, want := range wantClaim {
+		p, ok := plans[cat]
+		if !ok {
+			t.Errorf("plan %q not found in plans map", cat)
+			continue
+		}
+		got := Grants(p.ID, InviteClaim)
+		if got != want {
+			t.Errorf("plan %q: Grants(InviteClaim) = %v, want %v", cat, got, want)
 		}
 	}
 }

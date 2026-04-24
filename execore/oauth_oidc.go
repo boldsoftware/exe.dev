@@ -335,7 +335,7 @@ func (s *Server) handleOIDCExistingUser(w http.ResponseWriter, r *http.Request, 
 		s.slog().ErrorContext(ctx, "failed to resolve pending team invites", "error", err)
 	}
 
-	// Apply invite code for login-with-exe users who are re-authenticating with an invite code.
+	// Apply invite code for existing users who are re-authenticating with an invite code.
 	if oauthState.InviteCodeID != nil {
 		s.maybeApplyInviteCode(ctx, s.lookupInviteCodeByID(ctx, *oauthState.InviteCodeID), userID)
 	}

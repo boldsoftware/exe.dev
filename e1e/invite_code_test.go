@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -544,10 +545,10 @@ func TestSSHInviteCodeForLoginWithExeUser(t *testing.T) {
 	pty.Disconnect()
 }
 
-// TestExistingUserCannotApplyInviteCode tests that a regular existing user
-// (NOT created via login-with-exe) visiting /auth?invite=CODE while already
-// authenticated does NOT get the invite code applied.
-func TestExistingUserCannotApplyInviteCode(t *testing.T) {
+// TestExistingUserCanApplyInviteCode tests that a regular existing user
+// visiting /auth?invite=CODE while already authenticated gets the invite
+// code applied to their account.
+func TestExistingUserCanApplyInviteCode(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
 	e1eTestsOnlyRunOnce(t)
@@ -566,7 +567,7 @@ func TestExistingUserCannotApplyInviteCode(t *testing.T) {
 	}
 
 	// Step 3: Visit /auth?invite=CODE while already authenticated.
-	// The server should NOT apply the invite code for a regular existing user.
+	// The server should apply the invite code for the existing user.
 	client := newClientWithCookies(t, cookies)
 	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
 	resp, err := client.Get(authURL)
@@ -575,16 +576,101 @@ func TestExistingUserCannotApplyInviteCode(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// Step 4: Verify the invite code was NOT applied — user should have no billing exemption.
+	// Step 4: Verify the invite code was applied.
 	exemption := getUserBillingExemption(t, email)
-	if exemption != "" {
-		t.Errorf("expected no billing_exemption for regular existing user, got %q", exemption)
+	if exemption != "free" {
+		t.Errorf("expected billing_exemption='free' for existing user after invite, got %q", exemption)
+	}
+}
+
+// TestExistingUserCanApplyTrialInviteCode tests that an existing user can
+// redeem a trial invite code and get a trial plan.
+func TestExistingUserCanApplyTrialInviteCode(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a regular user via web login.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies, err := Env.servers.WebLoginWithEmail(email)
+	if err != nil {
+		t.Fatalf("web login failed: %v", err)
 	}
 
-	// Step 5: Verify the invite code is still unused — a new user should be able to use it.
+	// Step 2: Create a trial invite code.
+	inviteCode, err := Env.servers.CreateInviteCode("trial")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 3: Visit /auth?invite=CODE while already authenticated.
+	client := newClientWithCookies(t, cookies)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to GET /auth with invite: %v", err)
+	}
+	resp.Body.Close()
+
+	// Step 4: Verify the user got a trial plan.
+	planType := getUserPlanType(t, email)
+	if !strings.HasPrefix(planType, "trial") {
+		t.Errorf("expected plan_type to start with 'trial' for existing user after trial invite, got %q", planType)
+	}
+}
+
+// TestNonBasicUserCannotApplyInviteCode tests that a user on a non-basic plan
+// (e.g. trial) visiting /auth?invite=CODE does NOT get the invite code applied.
+func TestNonBasicUserCannotApplyInviteCode(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	// Step 1: Create a regular user via web login.
+	email := t.Name() + testinfra.FakeEmailSuffix
+	cookies, err := Env.servers.WebLoginWithEmail(email)
+	if err != nil {
+		t.Fatalf("web login failed: %v", err)
+	}
+
+	// Step 2: Grant them a trial so they're on a non-basic plan.
+	userID := getUserIDByEmail(t, email)
+	grantTrialURL := fmt.Sprintf("http://localhost:%d/debug/users/grant-trial", Env.servers.Exed.HTTPPort)
+	resp, err := http.PostForm(grantTrialURL, url.Values{"user_id": {userID}})
+	if err != nil {
+		t.Fatalf("grant trial failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("grant trial returned %d", resp.StatusCode)
+	}
+
+	// Step 3: Create a free invite code.
+	inviteCode, err := Env.servers.CreateInviteCode("free")
+	if err != nil {
+		t.Fatalf("failed to create invite code: %v", err)
+	}
+
+	// Step 4: Visit /auth?invite=CODE while already authenticated.
+	// The server should NOT apply the invite code for a non-basic user.
+	client := newClientWithCookies(t, cookies)
+	authURL := fmt.Sprintf("http://localhost:%d/auth?invite=%s", Env.servers.Exed.HTTPPort, inviteCode)
+	resp2, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to GET /auth with invite: %v", err)
+	}
+	resp2.Body.Close()
+
+	// Step 5: Verify the user is still on trial, not downgraded to free.
+	planType := getUserPlanType(t, email)
+	if !strings.HasPrefix(planType, "trial") {
+		t.Errorf("expected plan_type to remain 'trial:...' for non-basic user, got %q", planType)
+	}
+
+	// Step 6: Verify the invite code is still unused.
 	newEmail := t.Name() + "-second" + testinfra.FakeEmailSuffix
 	if _, err := Env.servers.WebLoginWithInvite(newEmail, inviteCode); err != nil {
-		t.Errorf("invite code should still be usable after regular user visited /auth with it: %v", err)
+		t.Errorf("invite code should still be usable after non-basic user visited /auth with it: %v", err)
 	}
 }
 
@@ -645,4 +731,33 @@ func isLoginWithExeUser(t *testing.T, email string) bool {
 	}
 	t.Fatalf("user %q not found in debug API", email)
 	return false
+}
+
+// getUserPlanType returns the plan_id for a user from the debug API.
+func getUserPlanType(t *testing.T, email string) string {
+	t.Helper()
+	httpPort := Env.servers.Exed.HTTPPort
+
+	usersURL := fmt.Sprintf("http://localhost:%d/debug/users?format=json", httpPort)
+	resp, err := http.Get(usersURL)
+	if err != nil {
+		t.Fatalf("failed to query debug users API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var users []struct {
+		Email  string `json:"email"`
+		PlanID string `json:"plan_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		t.Fatalf("failed to decode debug users response: %v", err)
+	}
+
+	for _, u := range users {
+		if strings.EqualFold(u.Email, email) {
+			return u.PlanID
+		}
+	}
+	t.Fatalf("user %q not found in debug API", email)
+	return ""
 }

@@ -1073,10 +1073,10 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}
-		// Apply invite code for existing login-with-exe users.
+		// Apply invite code for existing users.
 		// New users have their invite applied during email verification,
-		// but existing login-with-exe users go through device verification
-		// which doesn't handle invites.
+		// but existing users go through device verification which doesn't
+		// handle invites.
 		ss.server.maybeApplyInviteCode(ctx, inviteCode, user.UserID)
 	} else {
 		// Email matches GitHub's. Rely on their verification; create user directly now.
@@ -1558,31 +1558,30 @@ func (s *Server) applyInviteCode(ctx context.Context, inviteCode *exedb.InviteCo
 	})
 }
 
-// isLoginWithExeOnly reports whether the user was created solely through the
-// login-with-exe (proxy auth) flow and hasn't already used an invite code.
-func (s *Server) isLoginWithExeOnly(ctx context.Context, userID string) bool {
-	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
-	if err != nil {
-		return false
-	}
-	return user.CreatedForLoginWithExe && user.SignedUpWithInviteID == nil
-}
-
-// maybeApplyInviteCode applies an invite code for an existing login-with-exe user.
-// Regular existing users cannot apply invite codes post-facto.
+// maybeApplyInviteCode applies an invite code for an existing user.
+// Only users whose plan grants invite:claim can redeem invites (currently
+// just the basic plan). Users on other plans are skipped to avoid
+// unexpected downgrades.
 // Safe to call with a nil invite (no-op).
 func (s *Server) maybeApplyInviteCode(ctx context.Context, invite *exedb.InviteCode, userID string) {
 	if invite == nil {
 		return
 	}
-	if !s.isLoginWithExeOnly(ctx, userID) {
+	planData, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserPlanData, userID)
+	if err != nil {
+		s.slog().ErrorContext(ctx, "failed to get plan data for invite code", "error", err, "user_id", userID)
+		return
+	}
+	planID := plan.ID(plan.CategoryFromRow(planData))
+	if !plan.Grants(planID, plan.InviteClaim) {
+		s.slog().InfoContext(ctx, "skipping invite code, plan lacks invite:claim", "user_id", userID, "plan_id", planID)
 		return
 	}
 	if err := s.applyInviteCode(ctx, invite, userID); err != nil {
-		s.slog().ErrorContext(ctx, "failed to apply invite code for login-with-exe user", "error", err, "user_id", userID)
+		s.slog().ErrorContext(ctx, "failed to apply invite code for existing user", "error", err, "user_id", userID)
 		return
 	}
-	s.slog().InfoContext(ctx, "invite code applied for login-with-exe user", "code", invite.Code, "user_id", userID, "plan_type", invite.PlanType)
+	s.slog().InfoContext(ctx, "invite code applied for existing user", "code", invite.Code, "user_id", userID, "plan_type", invite.PlanType)
 	if invite.PlanType == "trial" {
 		s.slackFeed.TrialStarted(ctx, userID)
 	}
