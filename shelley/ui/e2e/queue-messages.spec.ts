@@ -21,7 +21,8 @@ async function newConversation(page: import('@playwright/test').Page) {
   return messageInput;
 }
 
-// Helper: fill input and click send, then wait for "Agent working" status
+// Helper: fill input and click send, then wait for the "working..." status.
+// On narrow viewports the status text is "working..." (no "Agent " prefix).
 async function sendAndWaitForWorking(page: import('@playwright/test').Page, text: string) {
   const messageInput = page.getByTestId('message-input');
   await messageInput.fill(text);
@@ -29,7 +30,7 @@ async function sendAndWaitForWorking(page: import('@playwright/test').Page, text
   await expect(sendButton).toBeEnabled({ timeout: 5000 });
   await sendButton.tap();
   await page.waitForFunction(
-    () => document.body.textContent?.includes('Agent working') ?? false,
+    () => document.body.textContent?.includes('working...') ?? false,
     undefined,
     { timeout: 30000 },
   );
