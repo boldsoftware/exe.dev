@@ -2,16 +2,16 @@
   <div class="usage-view">
     <!-- Pool Summary -->
     <div v-if="pool && pool.cpu_max > 0" class="pool-section">
-      <div class="pool-heading">Resource Pool</div>
+      <div class="pool-heading">Resource Pool <span class="pool-heading-peak">peak, {{ rangeLabel }}</span></div>
       <div class="pool-summary">
         <div class="pool-metric">
-          <div class="pool-label">CPU <span class="pool-value">{{ peakCpu.toFixed(1) }} / {{ pool.cpu_max }} cores</span> <span class="pool-peak">peak, {{ rangeLabel }}</span></div>
+          <div class="pool-label">CPU <span class="pool-value">{{ peakCpu.toFixed(1) }} / {{ pool.cpu_max }} cores</span></div>
           <div class="pool-bar-track">
             <div class="pool-bar-fill" :class="barColor(pool.cpu_max > 0 ? (peakCpu / pool.cpu_max) * 100 : 0)" :style="{ width: pct(peakCpu, pool.cpu_max) }"></div>
           </div>
         </div>
         <div v-if="pool.mem_max_bytes > 0" class="pool-metric">
-          <div class="pool-label">RSS <span class="pool-value">{{ fmtGB(peakMemGB) }} / {{ fmtGB(pool.mem_max_bytes / GB) }}</span> <span class="pool-peak">peak, {{ rangeLabel }}</span></div>
+          <div class="pool-label">RSS <span class="pool-value">{{ fmtGB(peakMemGB) }} / {{ fmtGB(pool.mem_max_bytes / GB) }}</span></div>
           <div class="pool-bar-track">
             <div class="pool-bar-fill" :class="barColor((peakMemGB / (pool.mem_max_bytes / GB)) * 100)" :style="{ width: pct(peakMemGB, pool.mem_max_bytes / GB) }"></div>
           </div>
@@ -356,6 +356,15 @@ const filteredRows = computed(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-color-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pool-heading-peak {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
 }
 .pool-summary {
   display: flex;
@@ -388,13 +397,6 @@ const filteredRows = computed(() => {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-color);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.pool-label .pool-peak {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-color-muted);
   text-transform: none;
   letter-spacing: 0;
 }
