@@ -276,8 +276,11 @@ RUN mkdir -p /home/exedev/.local/bin && \
     ln -s /home/exedev/.local/bin/claude /usr/local/bin/claude
 
 # Install pi (pi-coding-agent) standalone binary
+ARG PI_VERSION=
 RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
-    PI_VERSION=$(curl -fsSL https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name') && \
+    if [ -z "${PI_VERSION}" ]; then \
+        PI_VERSION=$(curl -fsSL https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r '.tag_name'); \
+    fi && \
     curl -fsSL "https://github.com/badlogic/pi-mono/releases/download/${PI_VERSION}/pi-linux-${ARCH}.tar.gz" | \
     tar xz -C /home/exedev/.local/ && \
     ln -s /home/exedev/.local/pi/pi /home/exedev/.local/bin/pi && \
