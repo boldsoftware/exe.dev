@@ -59,20 +59,37 @@
       </div>
 
       <!-- HEAD info -->
-      <div v-if="inventory" class="head-info">
-        <span class="head-label">HEAD</span>
-        <code class="head-sha">{{ inventory.head_sha.slice(0, 7) }}</code>
-        <span class="head-subject">{{ inventory.head_subject }}</span>
-        <span class="head-date">{{ formatRelative(inventory.head_date) }}</span>
-        <router-link
-          v-if="exedBehindCount > 0"
-          :to="{ path: '/deploy', query: { action: 'deploy-exed' } }"
-          class="deploy-exed-btn"
-        >
-          <i class="pi pi-upload"></i>
-          Deploy exed
-          <span class="deploy-exed-badge">{{ exedBehindCount }} behind</span>
-        </router-link>
+      <div v-if="inventory" class="head-section">
+        <div class="head-info" @click="toggleCommitLog" role="button">
+          <span class="head-label">HEAD</span>
+          <a :href="commitURL(inventory.head_sha)" target="_blank" rel="noopener" class="head-sha" @click.stop>{{ inventory.head_sha.slice(0, 7) }}</a>
+          <span class="head-subject">{{ inventory.head_subject }}</span>
+          <span class="head-date">{{ formatRelative(inventory.head_date) }}</span>
+          <i class="pi head-chevron" :class="showCommitLog ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+          <router-link
+            v-if="exedBehind > 0"
+            :to="{ path: '/deploy', query: { action: 'deploy-exed' } }"
+            class="deploy-exed-btn"
+            @click.stop
+          >
+            <i class="pi pi-upload"></i>
+            Deploy exed
+            <span class="deploy-exed-badge">{{ exedBehind }} {{ exedBehind === 1 ? 'commit' : 'commits' }} behind</span>
+          </router-link>
+        </div>
+        <div v-if="showCommitLog" class="commit-log">
+          <div v-if="commitLogLoading" class="commit-log-loading">
+            <i class="pi pi-spin pi-spinner"></i> Loading commits…
+          </div>
+          <div v-else-if="commitLogError" class="commit-log-error">{{ commitLogError }}</div>
+          <template v-else>
+            <div v-for="c in commitLog" :key="c.sha" class="commit-row">
+              <a :href="commitURL(c.sha)" target="_blank" rel="noopener" class="commit-sha">{{ c.sha.slice(0, 7) }}</a>
+              <span class="commit-subject">{{ c.subject }}</span>
+              <span class="commit-date">{{ formatRelative(c.date) }}</span>
+            </div>
+          </template>
+        </div>
       </div>
 
       <!-- Recent Deploys -->
@@ -126,7 +143,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { fetchDeployInventory, fetchDeploys, type DeployInventory, type DeployStatus } from '../api/client'
+import { fetchDeployInventory, fetchDeploys, fetchDeployCommits, type DeployInventory, type DeployStatus, type DeployCommit } from '../api/client'
 
 const loading = ref(true)
 const error = ref('')
@@ -148,6 +165,30 @@ onMounted(async () => {
   }
 })
 
+const showCommitLog = ref(false)
+const commitLog = ref<DeployCommit[]>([])
+const commitLogLoading = ref(false)
+const commitLogError = ref('')
+
+function commitURL(sha: string): string {
+  return `https://github.com/boldsoftware/exe/commit/${sha}`
+}
+
+async function toggleCommitLog() {
+  showCommitLog.value = !showCommitLog.value
+  if (showCommitLog.value && commitLog.value.length === 0 && inventory.value) {
+    commitLogLoading.value = true
+    commitLogError.value = ''
+    try {
+      commitLog.value = await fetchDeployCommits('', inventory.value.head_sha, 30)
+    } catch (e: any) {
+      commitLogError.value = e.message
+    } finally {
+      commitLogLoading.value = false
+    }
+  }
+}
+
 const totalProcesses = computed(() => inventory.value?.processes.length ?? 0)
 const upToDateCount = computed(() =>
   inventory.value?.processes.filter(p => p.commits_behind === 0).length ?? 0
@@ -156,9 +197,10 @@ const behindCount = computed(() =>
   inventory.value?.processes.filter(p => p.commits_behind > 0).length ?? 0
 )
 const recentDeployCount = computed(() => deploys.value.length)
-const exedBehindCount = computed(() =>
-  inventory.value?.processes.filter(p => p.process === 'exed' && p.commits_behind > 0).length ?? 0
-)
+const exedBehind = computed(() => {
+  const exed = inventory.value?.processes.find(p => p.process === 'exed')
+  return exed?.commits_behind ?? 0
+})
 
 const stageRoleSummary = computed(() => {
   if (!inventory.value) return []
@@ -280,16 +322,32 @@ function formatRelative(dateStr: string): string {
 }
 
 /* HEAD info */
+.head-section {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
 .head-info {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
   font-size: 0.8rem;
-  margin-bottom: 1.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.head-info:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.03));
+}
+
+.head-chevron {
+  font-size: 0.65rem;
+  color: var(--text-color-muted);
+  flex-shrink: 0;
 }
 
 .head-label {
@@ -307,6 +365,11 @@ function formatRelative(dateStr: string): string {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   color: var(--primary-color);
+  text-decoration: none;
+}
+
+.head-sha:hover {
+  text-decoration: underline;
 }
 
 .head-subject {
@@ -348,6 +411,63 @@ function formatRelative(dateStr: string): string {
   background: rgba(255, 255, 255, 0.2);
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
+}
+
+/* Commit log */
+.commit-log {
+  border-top: 1px solid var(--surface-border);
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.commit-log-loading,
+.commit-log-error {
+  padding: 0.75rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-color-secondary);
+}
+
+.commit-log-error {
+  color: var(--red-400);
+}
+
+.commit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.commit-row:last-child {
+  border-bottom: none;
+}
+
+.commit-sha {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.commit-sha:hover {
+  text-decoration: underline;
+}
+
+.commit-subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-color);
+}
+
+.commit-date {
+  color: var(--text-color-muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
 }
 
 /* Sections */

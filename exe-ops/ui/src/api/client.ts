@@ -81,9 +81,10 @@ export interface DeployCommit {
   date: string
 }
 
-export async function fetchDeployCommits(from: string, to: string): Promise<DeployCommit[]> {
+export async function fetchDeployCommits(from: string, to: string, limit?: number): Promise<DeployCommit[]> {
   const params = new URLSearchParams({ to })
   if (from) params.set('from', from)
+  if (limit) params.set('limit', String(limit))
   const resp = await fetch(`/api/v1/deploy/commits?${params}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
