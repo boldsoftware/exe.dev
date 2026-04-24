@@ -84,6 +84,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanCategorys)
 	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanCategoryMigrate)
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
+	mux.HandleFunc("GET /debug/entitlements", s.handleDebugEntitlements)
 	mux.HandleFunc("GET /debug/billing-jump", s.handleDebugBillingJump)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
@@ -6771,6 +6772,64 @@ func (s *Server) handleDebugPlans(w http.ResponseWriter, r *http.Request) {
 		TiersByCategory: tiersByCategory,
 	}
 	s.renderDebugTemplate(r.Context(), w, "plans.html", data)
+}
+
+func (s *Server) handleDebugEntitlements(w http.ResponseWriter, r *http.Request) {
+	allPlans := plan.AllPlans()
+	allEnts := plan.AllEntitlements()
+
+	type columnInfo struct {
+		Label    string
+		TierID   string
+		Category plan.Category
+	}
+
+	var columns []columnInfo
+	for _, p := range allPlans {
+		tiers := plan.TiersByCategory(p.Category)
+		if len(tiers) > 1 {
+			for _, t := range tiers {
+				columns = append(columns, columnInfo{
+					Label:    p.Name + " " + t.Name,
+					TierID:   t.ID,
+					Category: p.Category,
+				})
+			}
+		} else {
+			tierID := p.DefaultTier
+			if tierID == "" {
+				tierID = p.ID
+			}
+			columns = append(columns, columnInfo{
+				Label:    p.Name,
+				TierID:   tierID,
+				Category: p.Category,
+			})
+		}
+	}
+
+	// Build the matrix: rows=entitlements, cols=plan/tier columns.
+	type cell struct {
+		Granted bool
+	}
+	matrix := make([][]cell, len(allEnts))
+	for i, ent := range allEnts {
+		matrix[i] = make([]cell, len(columns))
+		for j, col := range columns {
+			matrix[i][j] = cell{Granted: plan.Grants(col.TierID, ent)}
+		}
+	}
+
+	data := struct {
+		Entitlements []plan.Entitlement
+		Columns      []columnInfo
+		Matrix       [][]cell
+	}{
+		Entitlements: allEnts,
+		Columns:      columns,
+		Matrix:       matrix,
+	}
+	s.renderDebugTemplate(r.Context(), w, "entitlements.html", data)
 }
 
 func (s *Server) handleDebugBillingHealth(w http.ResponseWriter, r *http.Request) {

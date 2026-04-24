@@ -1,0 +1,76 @@
+<!doctype html>
+<html><head><title>Entitlements</title>
+{{template "base-head"}}
+<style>
+.ent-matrix {
+    border-collapse: collapse;
+    font-size: 12px;
+    margin: 16px 0;
+}
+.ent-matrix th, .ent-matrix td {
+    border: 1px solid #ddd;
+    padding: 4px 8px;
+    text-align: center;
+}
+.ent-matrix thead th {
+    background: #f5f5f5;
+    font-weight: 600;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.ent-matrix thead th.col-rotate {
+    vertical-align: bottom;
+    height: 100px;
+}
+.ent-matrix thead th.col-rotate > div {
+    transform: rotate(-45deg);
+    transform-origin: bottom left;
+    white-space: nowrap;
+    width: 1.5em;
+    margin-bottom: 4px;
+}
+.ent-matrix tbody th {
+    text-align: left;
+    font-weight: normal;
+    font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    background: #fafafa;
+    white-space: nowrap;
+}
+.ent-matrix td.granted {
+    color: #28a745;
+    font-weight: bold;
+}
+.ent-matrix td.denied {
+    color: #ddd;
+}
+.ent-matrix tbody tr:hover {
+    background: #f0f7ff;
+}
+.ent-matrix tbody tr:hover th {
+    background: #e8f0fe;
+}
+</style>
+</head><body>
+<h1>Entitlements</h1>
+<p><a href="/debug">/debug</a> &gt; billing &gt; entitlements</p>
+
+<table class="ent-matrix">
+<thead>
+<tr>
+    <th></th>
+    {{range .Columns}}<th class="col-rotate"><div>{{.Label}}</div></th>{{end}}
+</tr>
+</thead>
+<tbody>
+{{range $i, $ent := .Entitlements}}
+<tr>
+    <th>{{$ent.DisplayName}}<br><span style="color:#888;font-size:10px">{{$ent.ID}}</span></th>
+    {{range index $.Matrix $i}}
+    {{if .Granted}}<td class="granted">✓</td>{{else}}<td class="denied">✗</td>{{end}}
+    {{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+
+</body></html>
