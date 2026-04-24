@@ -72,7 +72,6 @@ func TestSubscribeNewThenActive(t *testing.T) {
 	}
 }
 
-
 func TestSubscriptionLookupKey(t *testing.T) {
 	tests := []struct {
 		name string
@@ -296,7 +295,6 @@ func TestOpenPortalValidation(t *testing.T) {
 	}
 }
 
-
 func TestSubscribeLookupPriceError(t *testing.T) {
 	m := newTestManager(t)
 
@@ -338,7 +336,6 @@ func TestOpenPortalLive(t *testing.T) {
 		t.Fatalf("openPortal returned unexpected link: %q", link)
 	}
 }
-
 
 func TestSyncSubscriptionsLive(t *testing.T) {
 	m := newTestManager(t)
@@ -392,4 +389,3 @@ func TestSyncSubscriptionsLive(t *testing.T) {
 		t.Fatalf("billing events order = %v, want active then canceled", events)
 	}
 }
-

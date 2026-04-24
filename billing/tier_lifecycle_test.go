@@ -109,5 +109,3 @@ func TestTierLifecycle_SubscribeUpgradeDowngrade(t *testing.T) {
 		t.Fatalf("newest history ended_at = %v, want nil (active)", newest.EndedAt)
 	}
 }
-
-

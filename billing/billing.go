@@ -1081,4 +1081,3 @@ func (m *Manager) MigratePlan(ctx context.Context, fromPlanID, toPlanID string) 
 
 	return len(accountIDs), nil
 }
-

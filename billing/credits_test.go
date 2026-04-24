@@ -441,7 +441,6 @@ func TestListGiftsEmpty(t *testing.T) {
 	}
 }
 
-
 func TestBuyCreditsAmountValidation(t *testing.T) {
 	m := &Manager{}
 
@@ -541,7 +540,6 @@ func TestLookupPriceIDCachedLive(t *testing.T) {
 	}
 }
 
-
 func TestBuyCreditsLive(t *testing.T) {
 	m := newTestManager(t)
 	clock := m.startClock(t)
@@ -639,4 +637,3 @@ func TestUseCreditsAndExecQueryErrorPaths(t *testing.T) {
 		t.Fatal("UseCredits error = nil, want non-nil")
 	}
 }
-
