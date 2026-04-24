@@ -48,7 +48,7 @@
     </div>
 
     <!-- Usage View -->
-    <UsageView v-if="!loading && !loadError && viewMode === 'usage' && boxes.length > 0" :boxes="boxes" />
+    <UsageView v-if="!loading && !loadError && viewMode === 'usage' && boxes.length > 0" :boxes="boxes" :filter="searchQuery" />
 
     <!-- VM List -->
     <template v-if="!loading && !loadError && viewMode === 'list' && sortedBoxes.length > 0">
