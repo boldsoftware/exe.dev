@@ -419,3 +419,147 @@ func promQueryRange(ctx context.Context, _ *slog.Logger, query string, window, s
 	}
 	return out, nil
 }
+
+// promAggregateQueryRange runs a range query that returns aggregate data
+// (e.g. sum() queries with no instance label). It merges all returned
+// series by summing values at each timestamp.
+func promAggregateQueryRange(ctx context.Context, log *slog.Logger, query string, window, step time.Duration) ([][2]float64, error) {
+	now := time.Now()
+	params := url.Values{
+		"query": {query},
+		"start": {fmt.Sprintf("%d", now.Add(-window).Unix())},
+		"end":   {fmt.Sprintf("%d", now.Unix())},
+		"step":  {fmt.Sprintf("%d", int(step.Seconds()))},
+	}
+	u := prometheusBaseURL + "/api/v1/query_range?" + params.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("prometheus returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string    `json:"metric"`
+				Values [][2]json.RawMessage `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if result.Status != "success" {
+		return nil, fmt.Errorf("prometheus query status: %s", result.Status)
+	}
+
+	// Merge all series by summing values at each timestamp position.
+	var merged [][2]float64
+	for _, r := range result.Data.Result {
+		points := make([][2]float64, 0, len(r.Values))
+		for _, v := range r.Values {
+			var ts float64
+			if err := json.Unmarshal(v[0], &ts); err != nil {
+				continue
+			}
+			var valStr string
+			if err := json.Unmarshal(v[1], &valStr); err != nil {
+				continue
+			}
+			var val float64
+			if _, err := fmt.Sscanf(valStr, "%f", &val); err != nil {
+				continue
+			}
+			points = append(points, [2]float64{ts, val})
+		}
+		if len(merged) == 0 {
+			merged = points
+		} else {
+			for i := range merged {
+				if i < len(points) {
+					merged[i][1] += points[i][1]
+				}
+			}
+		}
+	}
+	return merged, nil
+}
+
+// promAggregateQuery runs an instant query and returns the summed scalar
+// value across all returned series. Returns nil if no data was returned.
+func promAggregateQuery(ctx context.Context, _ *slog.Logger, query string) (*float64, error) {
+	u := prometheusBaseURL + "/api/v1/query?query=" + url.QueryEscape(query)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("prometheus returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string  `json:"metric"`
+				Value  [2]json.RawMessage `json:"value"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if result.Status != "success" {
+		return nil, fmt.Errorf("prometheus query status: %s", result.Status)
+	}
+
+	var total float64
+	var found bool
+	for _, r := range result.Data.Result {
+		var valStr string
+		if err := json.Unmarshal(r.Value[1], &valStr); err != nil {
+			continue
+		}
+		var val float64
+		if _, err := fmt.Sscanf(valStr, "%f", &val); err != nil {
+			continue
+		}
+		total += val
+		found = true
+	}
+	if !found {
+		return nil, nil
+	}
+	return &total, nil
+}

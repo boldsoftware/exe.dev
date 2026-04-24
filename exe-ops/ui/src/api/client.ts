@@ -270,3 +270,41 @@ export async function resumeRollout(id: string): Promise<RolloutStatus> {
   }
   return resp.json()
 }
+
+// Daemon health types
+export interface DaemonMetric {
+  name: string
+  description: string
+  sparkline?: [number, number][]
+  current: number | null
+  floor_value: number | null
+  unit: string
+}
+
+export interface DaemonHealth {
+  daemon: string
+  metrics: DaemonMetric[]
+}
+
+export async function fetchDaemonHealth(signal?: AbortSignal): Promise<DaemonHealth[]> {
+  const resp = await fetch('/api/v1/daemons/health', { signal })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export interface DaemonMetricSummary {
+  name: string
+  current: number | null
+  unit: string
+}
+
+export interface DaemonSummary {
+  daemon: string
+  metrics: DaemonMetricSummary[]
+}
+
+export async function fetchDaemonSummary(): Promise<DaemonSummary[]> {
+  const resp = await fetch('/api/v1/daemons/summary')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}

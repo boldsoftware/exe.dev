@@ -41,6 +41,10 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 	authed.HandleFunc("/api/v1/hosts", h.HandleHosts)
 	authed.HandleFunc("/api/v1/hosts/sparklines", h.HandleHostSparklines)
 
+	// Daemon health metrics (sparklines + floor evaluation).
+	authed.HandleFunc("/api/v1/daemons/health", h.HandleDaemonHealth)
+	authed.HandleFunc("/api/v1/daemons/summary", h.HandleDaemonHealthSummary)
+
 	// Server version.
 	authed.HandleFunc("/api/v1/version", h.HandleServerVersion)
 

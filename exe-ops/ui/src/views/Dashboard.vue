@@ -121,6 +121,45 @@
         </div>
       </div>
 
+      <!-- Daemon Health Sparklines -->
+      <div class="section">
+        <div class="section-header">
+          <h2 class="section-title">Daemon Health</h2>
+        </div>
+        <div v-if="daemonLoading" class="loading-state">
+          <i class="pi pi-spin pi-spinner"></i>
+          <span>Loading metrics...</span>
+        </div>
+        <div v-else-if="daemonError" class="message-banner message-error">
+          <i class="pi pi-exclamation-triangle"></i>
+          <span>{{ daemonError }}</span>
+        </div>
+        <div v-else class="daemon-grid">
+          <div v-for="d in daemons" :key="d.daemon" class="daemon-card">
+            <div class="daemon-header">
+              <span class="daemon-name">{{ d.daemon }}</span>
+            </div>
+            <div class="daemon-metrics">
+              <div v-for="m in d.metrics" :key="m.name" class="daemon-metric-row">
+                <div class="dm-top">
+                  <span class="dm-label" :title="m.description">{{ m.name }}</span>
+                  <span class="dm-value" :class="m.current == null ? 'metric-unknown' : 'metric-ok'">
+                    {{ formatMetric(m.current, m.unit) }}
+                  </span>
+                </div>
+                <div class="dm-sparkline-row">
+                  <svg v-if="m.sparkline?.length" class="dm-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none">
+                    <path :d="sparklinePath(m.sparkline)"
+                          stroke="var(--primary-color)"
+                          fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Process Summary by Stage -->
       <div v-if="inventory" class="section">
         <div class="section-header">
@@ -142,13 +181,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { fetchDeployInventory, fetchDeploys, fetchDeployCommits, type DeployInventory, type DeployStatus, type DeployCommit } from '../api/client'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { fetchDeployInventory, fetchDeploys, fetchDeployCommits, fetchDaemonHealth, type DeployInventory, type DeployStatus, type DeployCommit, type DaemonHealth } from '../api/client'
 
 const loading = ref(true)
 const error = ref('')
 const inventory = ref<DeployInventory | null>(null)
 const deploys = ref<DeployStatus[]>([])
+
+// Daemon health state
+const daemons = ref<DaemonHealth[]>([])
+const daemonLoading = ref(true)
+const daemonError = ref('')
+let daemonTimer: ReturnType<typeof setInterval> | null = null
+let daemonAbort: AbortController | null = null
+
+async function loadDaemonHealth() {
+  // Cancel any in-flight request.
+  if (daemonAbort) daemonAbort.abort()
+  daemonAbort = new AbortController()
+  try {
+    daemons.value = await fetchDaemonHealth(daemonAbort.signal)
+    daemonError.value = ''
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') return
+    daemonError.value = (e instanceof Error ? e.message : String(e)) || 'Failed to load daemon metrics'
+  } finally {
+    daemonLoading.value = false
+  }
+}
 
 onMounted(async () => {
   try {
@@ -163,6 +224,14 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  // Load daemon health in parallel (non-blocking for main dashboard).
+  loadDaemonHealth()
+  daemonTimer = setInterval(loadDaemonHealth, 60_000)
+})
+
+onUnmounted(() => {
+  if (daemonTimer) clearInterval(daemonTimer)
+  if (daemonAbort) daemonAbort.abort()
 })
 
 const showCommitLog = ref(false)
@@ -212,6 +281,47 @@ const stageRoleSummary = computed(() => {
   }
   return Array.from(map.entries()).map(([stage, roles]) => [stage, Array.from(roles.entries())] as const)
 })
+
+function formatMetric(v: number | null, unit: string): string {
+  if (v == null) return '-'
+  switch (unit) {
+    case 'bytes/s':
+      if (v >= 1e9) return (v / 1e9).toFixed(1) + ' GB/s'
+      if (v >= 1e6) return (v / 1e6).toFixed(1) + ' MB/s'
+      if (v >= 1e3) return (v / 1e3).toFixed(1) + ' KB/s'
+      return v.toFixed(0) + ' B/s'
+    case 'req/s': case 'conn/s': case 'rows/s': case 'ops/s':
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k'
+      return v.toFixed(2)
+    case 'seconds':
+      if (v >= 1) return v.toFixed(2) + 's'
+      return (v * 1000).toFixed(0) + 'ms'
+    case 'cores':
+      return v.toFixed(2)
+    case 'count':
+      return v.toFixed(0)
+    default:
+      return v.toFixed(2)
+  }
+}
+
+function sparklinePath(points: [number, number][] | undefined): string {
+  if (!points || points.length < 2) return ''
+  const tMin = points[0][0]
+  const tMax = points[points.length - 1][0]
+  const tRange = tMax - tMin || 1
+  let vMax = 0
+  for (const p of points) {
+    if (p[1] > vMax) vMax = p[1]
+  }
+  if (vMax === 0) vMax = 1
+  const w = 100, h = 24
+  return points.map((p, i) => {
+    const x = ((p[0] - tMin) / tRange) * w
+    const y = h - (p[1] / vMax) * h
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+}
 
 function formatRelative(dateStr: string): string {
   if (!dateStr) return ''
@@ -628,4 +738,88 @@ function formatRelative(dateStr: string): string {
   font-weight: 600;
   color: var(--text-color);
 }
+/* Daemon Health */
+.daemon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.daemon-card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s;
+}
+
+.daemon-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.daemon-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-color);
+}
+
+.daemon-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.daemon-metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dm-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dm-label {
+  font-size: 0.7rem;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dm-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dm-value.metric-ok {
+  color: var(--text-color);
+}
+
+.dm-value.metric-unknown {
+  color: var(--text-color-muted);
+}
+
+.dm-sparkline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dm-sparkline {
+  width: 100%;
+  height: 24px;
+  flex: 1;
+}
+
 </style>
