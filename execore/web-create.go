@@ -415,11 +415,12 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			effectiveLimits, _ := s.GetEffectiveLimits(r.Context(), userID)
 			team, _ := s.GetTeamForUser(r.Context(), userID)
+			tierMaxUserVMs, tierMaxTeamVMs := s.planVMCaps(r.Context(), userID)
 			var maxBoxes int
 			if team != nil {
-				maxBoxes = GetMaxTeamBoxes(effectiveLimits)
+				maxBoxes = GetMaxTeamBoxes(effectiveLimits, tierMaxTeamVMs)
 			} else {
-				maxBoxes = GetMaxBoxes(effectiveLimits)
+				maxBoxes = GetMaxBoxes(effectiveLimits, tierMaxUserVMs)
 			}
 			if int(boxCount) >= maxBoxes {
 				redirectURL := "/new?name=" + url.QueryEscape(hostname) + "&error=vm_limit"

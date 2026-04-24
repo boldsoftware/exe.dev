@@ -5917,11 +5917,12 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxBoxes = limits.MaxBoxes
 			}
-			effMaxBoxes := GetMaxBoxes(limits)
+			effMaxBoxes := GetMaxBoxes(limits, planMaxUserVMs)
 			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), fmt.Sprintf("%d", planMaxUserVMs), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
 			// Max VMs (team)
 			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", fmt.Sprintf("%d", planMaxTeamVMs), "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			effMaxTeamBoxes := GetMaxTeamBoxes(nil, planMaxTeamVMs)
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", fmt.Sprintf("%d", planMaxTeamVMs), "\u2014", fmt.Sprintf("%d", effMaxTeamBoxes)})
 			// Max Disk
 			planMaxDisk := planTier.Quotas.MaxDisk
 			userMaxDisk := uint64(0)
@@ -6570,11 +6571,12 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxBoxes = limits.MaxBoxes
 			}
-			effMaxBoxes := GetMaxBoxes(limits)
+			effMaxBoxes := GetMaxBoxes(limits, planMaxUserVMs)
 			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (user)", fmt.Sprintf("%d", planMaxUserVMs), fmt.Sprintf("%d", stage.DefaultMaxBoxes), fmtIntOrDash(userMaxBoxes), "\u2014", fmt.Sprintf("%d", effMaxBoxes)})
 			// Max VMs (team)
 			planMaxTeamVMs := planTier.Quotas.MaxTeamVMs
-			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", planMaxTeamVMs), fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", "\u2014", fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes)})
+			effMaxTeamBoxes := GetMaxTeamBoxes(nil, planMaxTeamVMs)
+			data.Quotas = append(data.Quotas, quotaRow{"Max VMs (team)", fmt.Sprintf("%d", planMaxTeamVMs), fmt.Sprintf("%d", stage.DefaultMaxTeamBoxes), "\u2014", "\u2014", fmt.Sprintf("%d", effMaxTeamBoxes)})
 			// Max Disk
 			planMaxDisk := planTier.Quotas.MaxDisk
 			userMaxDisk := uint64(0)
@@ -8108,11 +8110,15 @@ func (s *Server) handleDebugTeams(w http.ResponseWriter, r *http.Request) {
 				MemberCount: t.MemberCount,
 				Members:     []memberInfo{},
 			}
-			// Fetch limits and auth_provider from full team record
+			// Fetch limits and auth_provider from full team record.
+			// This listing doesn't resolve the team's billing owner, so plan-tier
+			// caps aren't consulted here; pass tier=0 for the default fallback.
+			// TODO: once any tier sets MaxTeamVMs > 0, resolve the billing
+			// owner here so this listing reports the correct cap.
 			if team, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeam, t.TeamID); err == nil {
 				ti.Limits = ptrStr(team.Limits)
 				ti.AuthProvider = ptrStr(team.AuthProvider)
-				ti.MaxBoxes = GetMaxTeamBoxes(ParseUserLimitsFromJSON(ptrStr(team.Limits)))
+				ti.MaxBoxes = GetMaxTeamBoxes(ParseUserLimitsFromJSON(ptrStr(team.Limits)), 0)
 			} else {
 				ti.MaxBoxes = stage.DefaultMaxTeamBoxes
 			}

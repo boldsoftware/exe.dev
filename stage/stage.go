@@ -22,9 +22,13 @@ const (
 	SupportMaxDisk   = 128 * 1024 * 1024 * 1024 // 128 GiB max disk for support
 	SupportMaxCPUs   = 8                        // 8 CPUs max for support
 
-	// DefaultMaxBoxes is the default maximum number of VMs per user.
-	DefaultMaxBoxes = 25
-	// DefaultMaxTeamBoxes is the default maximum number of VMs per team.
+	// DefaultMaxBoxes is the default maximum number of VMs per user,
+	// used as a fallback when neither the user's limits override nor the
+	// plan tier's MaxUserVMs is set.
+	DefaultMaxBoxes = 50
+	// DefaultMaxTeamBoxes is the default maximum number of VMs per team,
+	// used as a fallback when neither the team's limits override nor the
+	// plan tier's MaxTeamVMs is set.
 	DefaultMaxTeamBoxes = 100
 )
 
@@ -230,7 +234,7 @@ func Local() Env {
 		SlackPageChannel:     "",
 		HoneycombEnv:         "",
 
-		NumShards:  25,
+		NumShards:  50,
 		ProxyPorts: []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999},
 
 		ListenOnTailscaleOnly: false,
@@ -300,7 +304,7 @@ func Test() Env {
 		SlackPageChannel:     "",
 		HoneycombEnv:         "",
 
-		NumShards:  25,
+		NumShards:  50,
 		ProxyPorts: nil, // no proxy ports in tests to avoid conflicts
 
 		ListenOnTailscaleOnly: false,

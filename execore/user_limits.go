@@ -44,19 +44,27 @@ func ParseUserLimitsFromJSON(limitsJSON string) *UserLimits {
 }
 
 // GetMaxBoxes returns the effective max number of VMs for a user.
-// Uses user-specific limit if set, otherwise falls back to DefaultMaxBoxes.
-func GetMaxBoxes(userLimits *UserLimits) int {
+// Resolution order: user-specific override > plan tier cap > stage default.
+// Pass tierMaxUserVMs=0 when no plan/tier context is available.
+func GetMaxBoxes(userLimits *UserLimits, tierMaxUserVMs int) int {
 	if userLimits != nil && userLimits.MaxBoxes > 0 {
 		return userLimits.MaxBoxes
+	}
+	if tierMaxUserVMs > 0 {
+		return tierMaxUserVMs
 	}
 	return stage.DefaultMaxBoxes
 }
 
 // GetMaxTeamBoxes returns the effective max number of VMs for a team.
-// Uses team-specific limit if set, otherwise falls back to DefaultMaxTeamBoxes.
-func GetMaxTeamBoxes(teamLimits *UserLimits) int {
+// Resolution order: team-specific override > plan tier cap > stage default.
+// Pass tierMaxTeamVMs=0 when no plan/tier context is available.
+func GetMaxTeamBoxes(teamLimits *UserLimits, tierMaxTeamVMs int) int {
 	if teamLimits != nil && teamLimits.MaxBoxes > 0 {
 		return teamLimits.MaxBoxes
+	}
+	if tierMaxTeamVMs > 0 {
+		return tierMaxTeamVMs
 	}
 	return stage.DefaultMaxTeamBoxes
 }

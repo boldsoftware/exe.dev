@@ -121,6 +121,18 @@ func (s *Server) GetEffectiveLimits(ctx context.Context, userID string) (*UserLi
 	return ParseUserLimits(&user), nil
 }
 
+// planVMCaps returns the plan-tier per-user and per-team VM caps for a user.
+// Returns (0, 0) if the plan cannot be resolved or the tier leaves the caps
+// unset; in that case callers fall back to stage defaults via
+// GetMaxBoxes / GetMaxTeamBoxes.
+func (s *Server) planVMCaps(ctx context.Context, userID string) (userCap, teamCap int) {
+	planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID)
+	if err != nil {
+		return 0, 0
+	}
+	return plan.MaxUserVMsForPlan(planRow.PlanID), plan.MaxTeamVMsForPlan(planRow.PlanID)
+}
+
 // CountBoxesForLimitCheck returns the box count to use for limit checking.
 // If user is in a team, returns total team boxes. Otherwise returns user's boxes.
 func (s *Server) CountBoxesForLimitCheck(ctx context.Context, userID string) (int64, error) {

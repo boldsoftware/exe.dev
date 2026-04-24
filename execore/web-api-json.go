@@ -21,7 +21,6 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/region"
-	"exe.dev/stage"
 )
 
 // JSON API types for the Vue dashboard
@@ -925,10 +924,11 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		if boxCount, err := withRxRes1(s, r.Context(), (*exedb.Queries).CountTeamBoxes, userID); err == nil {
 			ti.BoxCount = boxCount
 		}
+		_, tierMaxTeamVMs := s.planVMCaps(r.Context(), userID)
 		if limits, err := s.GetEffectiveLimits(r.Context(), userID); err == nil {
-			ti.MaxBoxes = GetMaxTeamBoxes(limits)
+			ti.MaxBoxes = GetMaxTeamBoxes(limits, tierMaxTeamVMs)
 		} else {
-			ti.MaxBoxes = stage.DefaultMaxTeamBoxes
+			ti.MaxBoxes = GetMaxTeamBoxes(nil, tierMaxTeamVMs)
 		}
 		if members, err := withRxRes1(s, r.Context(), (*exedb.Queries).GetTeamMembers, team.TeamID); err == nil {
 			ti.OnlyMember = len(members) == 1

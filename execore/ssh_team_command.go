@@ -382,7 +382,8 @@ func (ss *SSHServer) handleTeamCommand(ctx context.Context, cc *exemenu.CommandC
 	if err != nil {
 		return err
 	}
-	maxBoxes := GetMaxTeamBoxes(limits)
+	_, tierMaxTeamVMs := ss.server.planVMCaps(ctx, cc.User.ID)
+	maxBoxes := GetMaxTeamBoxes(limits, tierMaxTeamVMs)
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{

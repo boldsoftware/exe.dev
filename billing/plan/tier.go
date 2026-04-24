@@ -128,6 +128,28 @@ func MaxCPUsForPlan(planID string) uint64 {
 	return tier.Quotas.MaxCPUs
 }
 
+// MaxUserVMsForPlan returns the per-user VM cap for a plan.
+// Returns 0 if the plan is unknown or the tier leaves the cap unset
+// (in which case callers should fall back to stage.DefaultMaxBoxes).
+func MaxUserVMsForPlan(planID string) int {
+	tier, err := getTierByID(planID)
+	if err != nil {
+		return 0
+	}
+	return tier.Quotas.MaxUserVMs
+}
+
+// MaxTeamVMsForPlan returns the per-team VM cap for a plan.
+// Returns 0 if the plan is unknown or the tier leaves the cap unset
+// (in which case callers should fall back to stage.DefaultMaxTeamBoxes).
+func MaxTeamVMsForPlan(planID string) int {
+	tier, err := getTierByID(planID)
+	if err != nil {
+		return 0
+	}
+	return tier.Quotas.MaxTeamVMs
+}
+
 // MaxMemoryForPlan returns the memory pool limit (in bytes) for a plan.
 // Returns 0 if the plan is unknown or has no memory pool quota.
 func MaxMemoryForPlan(planID string) uint64 {
@@ -269,7 +291,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,
@@ -284,7 +306,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,
@@ -299,7 +321,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,
@@ -314,7 +336,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,
@@ -329,7 +351,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,
@@ -344,7 +366,7 @@ var tiers = map[string]Tier{
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
-			MaxUserVMs:       0,
+			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
 			MaxDisk:          75 * gb,

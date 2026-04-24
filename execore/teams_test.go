@@ -300,10 +300,11 @@ func TestAllocateIPShardReusesShardForTeamsOverLimit(t *testing.T) {
 	server := newTestServer(t)
 	ctx := context.Background()
 
-	// Test env has NumShards=25. Create a team with max_boxes=30.
+	// Create a team with max_boxes greater than NumShards so overflow
+	// forces shard reuse.
 	userID := createTestUser(t, server, "overflow@shard-reuse.example")
 	teamID := "tm_shardreuse"
-	limits := `{"max_boxes":30}`
+	limits := fmt.Sprintf(`{"max_boxes":%d}`, server.env.NumShards+5)
 	err := withTx1(server, ctx, (*exedb.Queries).InsertTeam, exedb.InsertTeamParams{
 		TeamID: teamID, DisplayName: "ShardReuse", Limits: &limits,
 	})
@@ -365,7 +366,7 @@ func TestAllocateIPShardFailsForNonTeamUser(t *testing.T) {
 	// Individual user with max_boxes > NumShards should still fail
 	// when all shards are exhausted (no reuse for non-team users).
 	userID := createTestUser(t, server, "solo@shard-fail.example")
-	userLimits := `{"max_boxes":30}`
+	userLimits := fmt.Sprintf(`{"max_boxes":%d}`, server.env.NumShards+5)
 	err := withTx1(server, ctx, (*exedb.Queries).SetUserLimits, exedb.SetUserLimitsParams{
 		Limits: &userLimits,
 		UserID: userID,

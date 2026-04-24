@@ -2402,11 +2402,19 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 			limits = ParseUserLimits(&user)
 		}
 	}
+	// Resolve the user's active plan so plan-tier caps participate
+	// in the max-boxes decision. Failures fall back to tier cap = 0,
+	// which means "use stage default".
+	var tierMaxUserVMs, tierMaxTeamVMs int
+	if planRow, err := queries.GetActivePlanForUser(ctx, userID); err == nil {
+		tierMaxUserVMs = plan.MaxUserVMsForPlan(planRow.PlanID)
+		tierMaxTeamVMs = plan.MaxTeamVMsForPlan(planRow.PlanID)
+	}
 	var maxBoxes int
 	if inTeam {
-		maxBoxes = GetMaxTeamBoxes(limits)
+		maxBoxes = GetMaxTeamBoxes(limits, tierMaxTeamVMs)
 	} else {
-		maxBoxes = GetMaxBoxes(limits)
+		maxBoxes = GetMaxBoxes(limits, tierMaxUserVMs)
 	}
 
 	var shards []int64

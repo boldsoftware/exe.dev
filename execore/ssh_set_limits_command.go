@@ -56,12 +56,13 @@ func (ss *SSHServer) handleSetLimitsCommand(ctx context.Context, cc *exemenu.Com
 		if team != nil && team.Limits != nil {
 			effectiveLimits = ParseUserLimitsFromJSON(*team.Limits)
 		}
+		tierMaxUserVMs, tierMaxTeamVMs := ss.server.planVMCaps(ctx, user.UserID)
 		var effectiveMaxBoxes int
 		if team != nil {
-			effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits)
+			effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits, tierMaxTeamVMs)
 			cc.Writeln("Effective max VMs: %d (team: %s)", effectiveMaxBoxes, team.TeamID)
 		} else {
-			effectiveMaxBoxes = GetMaxBoxes(effectiveLimits)
+			effectiveMaxBoxes = GetMaxBoxes(effectiveLimits, tierMaxUserVMs)
 			cc.Writeln("Effective max VMs: %d (default)", effectiveMaxBoxes)
 		}
 		return nil
@@ -146,11 +147,12 @@ func (ss *SSHServer) showUserLimits(ctx context.Context, cc *exemenu.CommandCont
 	if team != nil && team.Limits != nil {
 		effectiveLimits = ParseUserLimitsFromJSON(*team.Limits)
 	}
+	tierMaxUserVMs, tierMaxTeamVMs := ss.server.planVMCaps(ctx, user.UserID)
 	var effectiveMaxBoxes int
 	if team != nil {
-		effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits)
+		effectiveMaxBoxes = GetMaxTeamBoxes(effectiveLimits, tierMaxTeamVMs)
 	} else {
-		effectiveMaxBoxes = GetMaxBoxes(effectiveLimits)
+		effectiveMaxBoxes = GetMaxBoxes(effectiveLimits, tierMaxUserVMs)
 	}
 	if cc.WantJSON() {
 		result := map[string]any{
