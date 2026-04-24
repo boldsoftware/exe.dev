@@ -585,6 +585,7 @@ type User struct {
 	NewsletterSubscribed   bool       `db:"newsletter_subscribed" json:"newsletter_subscribed"`
 	AuthProvider           *string    `db:"auth_provider" json:"auth_provider"`
 	AuthProviderID         *string    `db:"auth_provider_id" json:"auth_provider_id"`
+	LockoutNote            *string    `db:"lockout_note" json:"lockout_note"`
 }
 
 type UserDailyEmailCount struct {

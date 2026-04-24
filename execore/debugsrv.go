@@ -2170,8 +2170,17 @@ func (s *Server) handleDebugToggleLockout(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Record a note on lock so we remember why; clear it on unlock.
+	var notePtr *string
+	if lockout {
+		if note := strings.TrimSpace(r.FormValue("note")); note != "" {
+			notePtr = &note
+		}
+	}
+
 	err := withTx1(s, ctx, (*exedb.Queries).SetUserIsLockedOut, exedb.SetUserIsLockedOutParams{
 		IsLockedOut: lockout,
+		LockoutNote: notePtr,
 		UserID:      userID,
 	})
 	if err != nil {
@@ -5715,6 +5724,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Region string
 		}
 		IsLockedOut         bool
+		LockoutNote         string
 		Limits              string
 		CanGrantTrial       bool
 		TrialExpiresAt      string // RFC3339, empty if no trial
@@ -5742,6 +5752,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		RootSupport:              user.RootSupport == 1,
 		VMCreationDisabled:       user.NewVmCreationDisabled,
 		IsLockedOut:              user.IsLockedOut,
+		LockoutNote:              ptrStr(user.LockoutNote),
 		Limits:                   ptrStr(user.Limits),
 		DiscordID:                ptrStr(user.DiscordID),
 		DiscordUsername:          ptrStr(user.DiscordUsername),

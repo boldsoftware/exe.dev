@@ -35,9 +35,11 @@ func TestIsUserLockedOut(t *testing.T) {
 		t.Error("User should not be locked out initially")
 	}
 
-	// Lock out the user
+	// Lock out the user with a note
+	note := "abuse report #1234"
 	err = withTx1(server, t.Context(), (*exedb.Queries).SetUserIsLockedOut, exedb.SetUserIsLockedOutParams{
 		IsLockedOut: true,
+		LockoutNote: &note,
 		UserID:      user.UserID,
 	})
 	if err != nil {
@@ -53,7 +55,16 @@ func TestIsUserLockedOut(t *testing.T) {
 		t.Error("User should be locked out after SetUserIsLockedOut")
 	}
 
-	// Unlock the user
+	// Note should round-trip
+	u, err := withRxRes1(server, t.Context(), (*exedb.Queries).GetUserWithDetails, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to fetch user: %v", err)
+	}
+	if u.LockoutNote == nil || *u.LockoutNote != note {
+		t.Errorf("LockoutNote = %v, want %q", u.LockoutNote, note)
+	}
+
+	// Unlock the user (note should be cleared)
 	err = withTx1(server, t.Context(), (*exedb.Queries).SetUserIsLockedOut, exedb.SetUserIsLockedOutParams{
 		IsLockedOut: false,
 		UserID:      user.UserID,
@@ -69,6 +80,13 @@ func TestIsUserLockedOut(t *testing.T) {
 	}
 	if isLockedOut {
 		t.Error("User should not be locked out after being unlocked")
+	}
+	u, err = withRxRes1(server, t.Context(), (*exedb.Queries).GetUserWithDetails, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to fetch user: %v", err)
+	}
+	if u.LockoutNote != nil {
+		t.Errorf("LockoutNote should be cleared on unlock, got %q", *u.LockoutNote)
 	}
 }
 
@@ -213,9 +231,11 @@ func TestLockoutStopsUserBoxes(t *testing.T) {
 	}
 
 	// Lock out the user via the debug toggle endpoint
+	wantNote := "suspected fraud"
 	form := url.Values{}
 	form.Set("user_id", user.UserID)
 	form.Set("lockout", "1")
+	form.Set("note", wantNote)
 	req := httptest.NewRequest("POST", "/debug/users/toggle-lockout", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
@@ -223,6 +243,15 @@ func TestLockoutStopsUserBoxes(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200 from toggle-lockout, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Note should be persisted.
+	u, err := withRxRes1(server, ctx, (*exedb.Queries).GetUserWithDetails, user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to fetch user: %v", err)
+	}
+	if u.LockoutNote == nil || *u.LockoutNote != wantNote {
+		t.Errorf("LockoutNote = %v, want %q", u.LockoutNote, wantNote)
 	}
 
 	// Verify all boxes are now stopped

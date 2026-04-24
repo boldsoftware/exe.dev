@@ -157,7 +157,7 @@ func (q *Queries) GetUserAuthProvider(ctx context.Context, userID string) (GetUs
 }
 
 const getUserByDiscordUsername = `-- name: GetUserByDiscordUsername :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE discord_username = ?
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id, lockout_note FROM users WHERE discord_username = ?
 `
 
 func (q *Queries) GetUserByDiscordUsername(ctx context.Context, discordUsername *string) (User, error) {
@@ -182,12 +182,13 @@ func (q *Queries) GetUserByDiscordUsername(ctx context.Context, discordUsername 
 		&i.NewsletterSubscribed,
 		&i.AuthProvider,
 		&i.AuthProviderID,
+		&i.LockoutNote,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id, lockout_note
 FROM users
 WHERE canonical_email = ?
 `
@@ -214,6 +215,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, canonicalEmail *string) (U
 		&i.NewsletterSubscribed,
 		&i.AuthProvider,
 		&i.AuthProviderID,
+		&i.LockoutNote,
 	)
 	return i, err
 }
@@ -263,7 +265,7 @@ func (q *Queries) GetUserRootSupport(ctx context.Context, userID string) (int64,
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id, lockout_note
 FROM users
 WHERE user_id = ?
 `
@@ -290,6 +292,7 @@ func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, 
 		&i.NewsletterSubscribed,
 		&i.AuthProvider,
 		&i.AuthProviderID,
+		&i.LockoutNote,
 	)
 	return i, err
 }
@@ -318,7 +321,7 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listAllUsers = `-- name: ListAllUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users ORDER BY created_at DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id, lockout_note FROM users ORDER BY created_at DESC
 `
 
 func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
@@ -349,6 +352,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 			&i.NewsletterSubscribed,
 			&i.AuthProvider,
 			&i.AuthProviderID,
+			&i.LockoutNote,
 		); err != nil {
 			return nil, err
 		}
@@ -364,7 +368,7 @@ func (q *Queries) ListAllUsers(ctx context.Context) ([]User, error) {
 }
 
 const listPDXUsers = `-- name: ListPDXUsers :many
-SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id FROM users WHERE region = 'pdx' ORDER BY created_at DESC, user_id DESC
+SELECT user_id, email, created_at, root_support, created_for_login_with_exe, new_vm_creation_disabled, discord_id, discord_username, signed_up_with_invite_id, next_ssh_key_number, region, canonical_email, is_locked_out, limits, cgroup_overrides, newsletter_subscribed, auth_provider, auth_provider_id, lockout_note FROM users WHERE region = 'pdx' ORDER BY created_at DESC, user_id DESC
 `
 
 func (q *Queries) ListPDXUsers(ctx context.Context) ([]User, error) {
@@ -395,6 +399,7 @@ func (q *Queries) ListPDXUsers(ctx context.Context) ([]User, error) {
 			&i.NewsletterSubscribed,
 			&i.AuthProvider,
 			&i.AuthProviderID,
+			&i.LockoutNote,
 		); err != nil {
 			return nil, err
 		}
@@ -454,16 +459,17 @@ func (q *Queries) SetUserDiscord(ctx context.Context, arg SetUserDiscordParams) 
 }
 
 const setUserIsLockedOut = `-- name: SetUserIsLockedOut :exec
-UPDATE users SET is_locked_out = ? WHERE user_id = ?
+UPDATE users SET is_locked_out = ?, lockout_note = ? WHERE user_id = ?
 `
 
 type SetUserIsLockedOutParams struct {
-	IsLockedOut bool   `db:"is_locked_out" json:"is_locked_out"`
-	UserID      string `db:"user_id" json:"user_id"`
+	IsLockedOut bool    `db:"is_locked_out" json:"is_locked_out"`
+	LockoutNote *string `db:"lockout_note" json:"lockout_note"`
+	UserID      string  `db:"user_id" json:"user_id"`
 }
 
 func (q *Queries) SetUserIsLockedOut(ctx context.Context, arg SetUserIsLockedOutParams) error {
-	_, err := q.exec(ctx, q.setUserIsLockedOutStmt, setUserIsLockedOut, arg.IsLockedOut, arg.UserID)
+	_, err := q.exec(ctx, q.setUserIsLockedOutStmt, setUserIsLockedOut, arg.IsLockedOut, arg.LockoutNote, arg.UserID)
 	return err
 }
 

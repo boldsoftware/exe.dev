@@ -35,7 +35,7 @@ data-enabled="{{.RootSupport}}">{{if .RootSupport}}Disable{{else}}Enable{{end}}<
 <button class="toggle-btn vm-toggle-btn {{if .VMCreationDisabled}}disabled{{else}}enabled{{end}}"
 data-disabled="{{.VMCreationDisabled}}">{{if .VMCreationDisabled}}Enable{{else}}Disable{{end}}</button>
 </td></tr>
-<tr><th>Locked Out</th><td>{{if .IsLockedOut}}Yes{{else}}No{{end}}
+<tr><th>Locked Out</th><td>{{if .IsLockedOut}}Yes{{if .LockoutNote}} — <em>{{.LockoutNote}}</em>{{end}}{{else}}No{{end}}
 <button class="toggle-btn lockout-toggle-btn {{if .IsLockedOut}}disabled{{else}}enabled{{end}}"
 data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</button>
 </td></tr>
@@ -716,10 +716,15 @@ document.querySelector('.vm-toggle-btn').addEventListener('click', function() {
 // Lockout toggle
 document.querySelector('.lockout-toggle-btn').addEventListener('click', function() {
     var currentlyLocked = this.dataset.locked === 'true';
-    if (!currentlyLocked && !confirm('Lock out this user? This will also stop all their running VMs.')) return;
+    var note = '';
+    if (!currentlyLocked) {
+        note = prompt('Lock out this user? This will also stop all their running VMs.\n\nWhy are we locking them out? (note will be saved on the account)');
+        if (note === null) return;
+    }
     var body = new URLSearchParams();
     body.append('user_id', '{{.UserID}}');
     body.append('lockout', currentlyLocked ? '0' : '1');
+    body.append('note', note);
     fetch('/debug/users/toggle-lockout', {
         method: 'POST',
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},

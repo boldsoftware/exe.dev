@@ -54,7 +54,7 @@ RETURNING next_ssh_key_number - 1 AS key_number;
 SELECT is_locked_out FROM users WHERE user_id = ?;
 
 -- name: SetUserIsLockedOut :exec
-UPDATE users SET is_locked_out = ? WHERE user_id = ?;
+UPDATE users SET is_locked_out = ?, lockout_note = ? WHERE user_id = ?;
 
 -- name: SetUserLimits :exec
 UPDATE users SET limits = ? WHERE user_id = ?;
