@@ -23,6 +23,11 @@ func (s *Service) RenameInstance(ctx context.Context, req *api.RenameInstanceReq
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
+	// Serialize against concurrent lifecycle ops (Delete in particular) so a
+	// rename cannot write a config file into a directory that is being removed.
+	unlock := s.lockInstance(req.ID)
+	defer unlock()
+
 	// Load instance config
 	inst, err := s.loadInstanceConfig(req.ID)
 	if errors.Is(err, api.ErrNotFound) {

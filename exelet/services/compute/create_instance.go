@@ -159,6 +159,13 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) (instance *api.Instance, err error) {
 	instanceID := req.ID
 
+	// Serialize with other lifecycle operations (Delete, Stop, Start, etc.)
+	// so a concurrent DeleteInstance for the same ID blocks until creation
+	// completes instead of racing with in-flight setup (network alloc, image
+	// pull, storage clone, config writes) and leaving a zombie instance.
+	unlock := s.lockInstance(instanceID)
+	defer unlock()
+
 	// Re-check existence inside singleflight (in case concurrent request created it before we entered)
 	if existingInstance, err := s.getInstance(ctx, instanceID); err == nil {
 		if existingInstance.State == api.VMState_CREATING {
