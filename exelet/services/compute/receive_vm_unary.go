@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -105,8 +106,35 @@ func (s *Service) initReceiveVMSession(ctx context.Context, sess *receiveVMSessi
 		}
 	}
 
-	if _, err := s.loadInstanceConfig(instanceID); err == nil {
-		return nil, status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+	if existing, err := s.loadInstanceConfig(instanceID); err == nil {
+		if existing.State == api.VMState_CREATING {
+			// Stale CREATING config from a previous crashed migration
+			// attempt (we now persist a CREATING placeholder below to hold
+			// the IPAM lease during transfer). Clean it up and continue so
+			// the retry can proceed. Mirrors the stale-CREATING path in
+			// create_instance.go:165–189.
+			s.log.WarnContext(ctx, "found stale CREATING migration target, cleaning up", "id", instanceID)
+			instanceDir := s.getInstanceDir(instanceID)
+			if rmErr := os.RemoveAll(instanceDir); rmErr != nil {
+				s.log.ErrorContext(ctx, "failed to clean up stale migration dir", "id", instanceID, "error", rmErr)
+			}
+			staleIP := ""
+			staleMAC := ""
+			if existing.VMConfig != nil && existing.VMConfig.NetworkInterface != nil {
+				ni := existing.VMConfig.NetworkInterface
+				staleMAC = ni.MACAddress
+				if ni.IP != nil {
+					if ipAddr, _, perr := net.ParseCIDR(ni.IP.IPV4); perr == nil {
+						staleIP = ipAddr.String()
+					}
+				}
+			}
+			if delErr := s.context.NetworkManager.DeleteInterface(ctx, instanceID, staleIP, staleMAC); delErr != nil {
+				s.log.DebugContext(ctx, "no network interface to clean up for stale migration", "id", instanceID)
+			}
+		} else {
+			return nil, status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+		}
 	} else if !errors.Is(err, api.ErrNotFound) {
 		return nil, status.Errorf(codes.Internal, "failed to check instance existence: %v", err)
 	}
@@ -149,6 +177,23 @@ func (s *Service) initReceiveVMSession(ctx context.Context, sess *receiveVMSessi
 			return nil, status.Errorf(codes.Internal, "failed to allocate network interface: %v", err)
 		}
 		sess.rollback.targetNetwork = sess.targetNetwork
+
+		// Persist a CREATING-state placeholder so the IPAM reconciler keeps
+		// this migration's lease alive through the minutes-long transfer
+		// phase. Without this, the reconciler builds validIPs from on-disk
+		// configs (listInstances) — the migration's lease isn't in any
+		// config yet, so it looks like an orphan and gets released. The
+		// allocation cursor makes immediate reassignment unlikely, but on a
+		// pool wrap the IP could be handed to a new VM while the migrated
+		// one still holds it, producing a delayed duplicate-IP conflict.
+		// Persisting a CREATING config both puts the IP into validIPs and
+		// trips the CREATING-state abort in reconcileIPLeasesFromInstances.
+		// saveInstanceConfig creates the parent dir, so we mark
+		// instanceDirCreated here so rollback tears the dir down on failure.
+		sess.rollback.instanceDirCreated = true
+		if err := s.persistMigrationPlaceholder(instanceID, sess.targetNetwork); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to persist migration placeholder: %v", err)
+		}
 	}
 
 	if err := os.MkdirAll(s.getInstanceDir(instanceID), 0o770); err != nil {
@@ -396,4 +441,29 @@ func (s *Service) AbortReceiveVM(ctx context.Context, req *api.AbortReceiveVMReq
 
 	s.receiveVMSessions.remove(sess.id)
 	return &api.AbortReceiveVMResponse{}, nil
+}
+
+// persistMigrationPlaceholder writes a CREATING-state instance config for an
+// in-flight live migration target. The placeholder serves two purposes
+// during the transfer phase (which can take minutes):
+//
+//  1. listInstances includes the placeholder, so the allocated IP appears in
+//     reconcileIPLeasesFromInstances' validIPs set instead of looking like
+//     an orphan lease.
+//  2. State=CREATING trips the transient-state abort in the reconciler, so
+//     even broken in-flight migrations won't have their leases released.
+//
+// finalizeLiveReceive and completeReceiveVMSession overwrite this config
+// with the final RUNNING/STOPPED version on completion. On crash, the
+// stale-CREATING cleanup in InitReceiveVM clears it on the next retry.
+func (s *Service) persistMigrationPlaceholder(instanceID string, iface *api.NetworkInterface) error {
+	now := time.Now().UnixNano()
+	return s.saveInstanceConfig(&api.Instance{
+		ID:        instanceID,
+		State:     api.VMState_CREATING,
+		Node:      s.config.Name,
+		CreatedAt: now,
+		UpdatedAt: now,
+		VMConfig:  &api.VMConfig{NetworkInterface: iface},
+	})
 }

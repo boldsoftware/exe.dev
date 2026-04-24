@@ -425,14 +425,13 @@ func (r *receiveVMRollback) Rollback() {
 	// Base images are shared resources that may be used by other VMs and are
 	// expensive to re-transfer. Leaving them around doesn't cause problems.
 
-	// Remove instance directory (includes snapshot dir)
-	if r.instanceDirCreated || r.snapshotDirCreated {
-		if err := os.RemoveAll(r.instanceDir); err != nil {
-			r.log.WarnContext(ctx, "failed to remove instance dir during rollback", "instance", r.instanceID, "error", err)
-		}
-	}
-
-	// Clean up network interface allocated for live migration
+	// Release the IPAM lease BEFORE removing the instance directory so that
+	// there is no window in which the on-disk config (claiming this IP) has
+	// been torn down while the lease is still held. Without this ordering,
+	// a racing reconciler would see the lease as orphaned (no instance
+	// config references it) and could release it itself, briefly creating
+	// competing owners; the rolling cursor keeps that from producing an
+	// immediate duplicate, but this is the cleaner invariant.
 	if r.targetNetwork != nil {
 		ip := ""
 		if r.targetNetwork.IP != nil {
@@ -443,6 +442,13 @@ func (r *receiveVMRollback) Rollback() {
 		}
 		if err := r.networkManager.DeleteInterface(ctx, r.instanceID, ip, r.targetNetwork.MACAddress); err != nil {
 			r.log.WarnContext(ctx, "failed to delete network interface during rollback", "instance", r.instanceID, "error", err)
+		}
+	}
+
+	// Remove instance directory (includes snapshot dir)
+	if r.instanceDirCreated || r.snapshotDirCreated {
+		if err := os.RemoveAll(r.instanceDir); err != nil {
+			r.log.WarnContext(ctx, "failed to remove instance dir during rollback", "instance", r.instanceID, "error", err)
 		}
 	}
 

@@ -237,6 +237,77 @@ func TestRollbackClosesMultipleWriters(t *testing.T) {
 	}
 }
 
+// TestPersistMigrationPlaceholderProtectsLeaseFromReconciler verifies the
+// migration-path fix for the duplicate-IP class of bugs: during a live
+// migration's transfer phase, the target-allocated IP must not be seen as
+// an orphan lease by the reconciler. The placeholder written by
+// persistMigrationPlaceholder accomplishes this two ways — it puts the IP
+// into validIPs via listInstances, and its State=CREATING trips the
+// transient-state abort. This test asserts both halves end-to-end.
+func TestPersistMigrationPlaceholderProtectsLeaseFromReconciler(t *testing.T) {
+	t.Parallel()
+	svc, nm := newTestService(t)
+
+	const (
+		instanceID = "vm999999-migrating"
+		ipCIDR     = "10.42.7.42/16"
+		mac        = "02:11:22:33:44:55"
+	)
+	iface := &api.NetworkInterface{
+		IP:         &api.IPAddress{IPV4: ipCIDR},
+		MACAddress: mac,
+	}
+	if err := svc.persistMigrationPlaceholder(instanceID, iface); err != nil {
+		t.Fatalf("persistMigrationPlaceholder: %v", err)
+	}
+
+	// Placeholder must land on disk with State=CREATING and the IP/MAC
+	// populated, so listInstances and the reconciler see it.
+	loaded, err := svc.loadInstanceConfig(instanceID)
+	if err != nil {
+		t.Fatalf("loadInstanceConfig after placeholder save: %v", err)
+	}
+	if loaded.State != api.VMState_CREATING {
+		t.Fatalf("placeholder state = %v, want CREATING", loaded.State)
+	}
+	if loaded.VMConfig == nil || loaded.VMConfig.NetworkInterface == nil || loaded.VMConfig.NetworkInterface.IP == nil {
+		t.Fatalf("placeholder missing network interface: %+v", loaded.VMConfig)
+	}
+	if got := loaded.VMConfig.NetworkInterface.IP.IPV4; got != ipCIDR {
+		t.Errorf("placeholder IP = %q, want %q", got, ipCIDR)
+	}
+	if got := loaded.VMConfig.NetworkInterface.MACAddress; got != mac {
+		t.Errorf("placeholder MAC = %q, want %q", got, mac)
+	}
+
+	// listInstances must surface the placeholder — this is the input the
+	// reconciler sees. Drive it through reconcileIPLeasesFromInstances and
+	// confirm the CREATING state aborts the reconcile (0 calls to
+	// NAT.ReconcileLeases) so the in-flight migration lease cannot be
+	// wrongly released.
+	instances, err := svc.listInstances(t.Context())
+	if err != nil {
+		t.Fatalf("listInstances: %v", err)
+	}
+	found := false
+	for _, inst := range instances {
+		if inst.ID == instanceID {
+			found = true
+			if inst.State != api.VMState_CREATING {
+				t.Errorf("listed placeholder state = %v, want CREATING", inst.State)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("listInstances did not include placeholder %s", instanceID)
+	}
+
+	svc.reconcileIPLeasesFromInstances(t.Context(), instances)
+	if n := nm.callCount(); n != 0 {
+		t.Fatalf("reconciler should abort on CREATING migration placeholder; got %d ReconcileLeases calls", n)
+	}
+}
+
 func TestSameVMIP(t *testing.T) {
 	mkInstance := func(ipv4 string) *api.Instance {
 		if ipv4 == "" {
