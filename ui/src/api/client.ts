@@ -405,6 +405,28 @@ export async function fetchVMsPool(): Promise<VMsPoolResponse> {
   return fetchJSON('/api/vms/pool')
 }
 
+// --- Usage History ---
+
+export interface UsageDataPoint {
+  timestamp: string
+  cpu_cores: number
+  cpu_nominal: number
+  memory_rss_gb: number
+  memory_nominal_gb: number
+  disk_used_gb: number
+  disk_size_gb: number
+  io_read_mbps: number
+  io_write_mbps: number
+  network_tx_mbps: number
+  network_rx_mbps: number
+}
+
+export type UsageHistoryResponse = Record<string, UsageDataPoint[]>
+
+export async function fetchUsageHistory(hours: number = 24): Promise<UsageHistoryResponse> {
+  return fetchJSON(`/api/vms/usage/history?hours=${hours}`)
+}
+
 export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {
   const data = await fetchDashboard()
   const box = data.boxes.find(b => b.name === name) ?? null

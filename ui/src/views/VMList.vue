@@ -18,7 +18,11 @@
         <button class="new-btn" @click="promptModalOpen = true">✨ Prompt</button>
       </div>
       <div class="section-right">
-        <ViewPopover v-model="viewOptions" />
+        <div class="view-toggle">
+          <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">List</button>
+          <button :class="{ active: viewMode === 'usage' }" @click="viewMode = 'usage'">Usage</button>
+        </div>
+        <ViewPopover v-if="viewMode === 'list'" v-model="viewOptions" />
         <div class="search-box">
           <i class="pi pi-search search-icon"></i>
           <input
@@ -43,8 +47,11 @@
       <button class="new-btn" @click="loadDashboard">Retry</button>
     </div>
 
+    <!-- Usage View -->
+    <UsageView v-if="!loading && !loadError && viewMode === 'usage' && boxes.length > 0" :boxes="boxes" />
+
     <!-- VM List -->
-    <template v-if="!loading && !loadError && sortedBoxes.length > 0">
+    <template v-if="!loading && !loadError && viewMode === 'list' && sortedBoxes.length > 0">
       <!-- Ungrouped -->
       <template v-if="viewOptions.group === 'none'">
         <div class="boxes-list">
@@ -292,6 +299,7 @@ import CommandModal from '../components/CommandModal.vue'
 import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import ViewPopover from '../components/ViewPopover.vue'
 import TrialBanner from '../components/TrialBanner.vue'
+import UsageView from '../components/UsageView.vue'
 import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
 
 const route = useRoute()
@@ -308,6 +316,7 @@ const searchQuery = ref((route.query.filter as string) || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
+const viewMode = ref<'list' | 'usage'>('list')
 
 // View options (sort, order, group) — persisted to localStorage
 const STORAGE_KEY = 'exe-vm-view-options'
@@ -954,6 +963,28 @@ async function submitPrompt() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.view-toggle button {
+  padding: 4px 12px;
+  background: var(--surface-card);
+  border: none;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-color-secondary);
+  border-right: 1px solid var(--surface-border);
+}
+.view-toggle button:last-child { border-right: none; }
+.view-toggle button.active {
+  background: var(--text-color);
+  color: var(--surface-card);
 }
 
 .search-box {
