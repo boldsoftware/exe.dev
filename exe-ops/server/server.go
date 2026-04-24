@@ -16,37 +16,40 @@ import (
 // the label for the environment this exe-ops serves (e.g. "prod",
 // "staging"); it is returned from /api/v1/version for UI display. Empty
 // means unset.
-func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager) http.Handler {
+//
+// If requireHumanAuth is true, every route except /health and /metrics
+// is wrapped with RequireHumanTailscaleUser, so only human Tailscale
+// users (not tagged devices or non-Tailscale peers) can reach them.
+// Production deployments must set this to true; it should be disabled
+// only for local development where tailscaled is not available.
+func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager, requireHumanAuth bool) http.Handler {
 	h := NewHandlers(log, environment, inv, deployer)
-	mux := http.NewServeMux()
+
+	// Authenticated routes: the UI and every API endpoint. These are
+	// gated behind Tailscale peer identity in production.
+	authed := http.NewServeMux()
 
 	// Deploy inventory and deploy management.
-	mux.HandleFunc("/api/v1/deploy/inventory", h.HandleDeployInventory)
-	mux.HandleFunc("/api/v1/deploy/commits", h.HandleDeployCommits)
-	mux.HandleFunc("/api/v1/deploys", h.HandleDeploys)
-	mux.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
-	mux.HandleFunc("/api/v1/rollouts", h.HandleRollouts)
-	mux.HandleFunc("/api/v1/rollouts/", h.HandleRolloutByID)
+	authed.HandleFunc("/api/v1/deploy/inventory", h.HandleDeployInventory)
+	authed.HandleFunc("/api/v1/deploy/commits", h.HandleDeployCommits)
+	authed.HandleFunc("/api/v1/deploys", h.HandleDeploys)
+	authed.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
+	authed.HandleFunc("/api/v1/rollouts", h.HandleRollouts)
+	authed.HandleFunc("/api/v1/rollouts/", h.HandleRolloutByID)
 
 	// Host metrics from Prometheus.
-	mux.HandleFunc("/api/v1/hosts", h.HandleHosts)
-	mux.HandleFunc("/api/v1/hosts/sparklines", h.HandleHostSparklines)
+	authed.HandleFunc("/api/v1/hosts", h.HandleHosts)
+	authed.HandleFunc("/api/v1/hosts/sparklines", h.HandleHostSparklines)
 
 	// Server version.
-	mux.HandleFunc("/api/v1/version", h.HandleServerVersion)
+	authed.HandleFunc("/api/v1/version", h.HandleServerVersion)
 
-	mux.HandleFunc("/health", h.HandleHealth)
-	mux.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
-
-	// Prometheus metrics for process uptime discovery.
-	metricsRegistry := prometheus.NewRegistry()
-	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	mux.Handle("/metrics", promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{}))
+	authed.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
 
 	// SPA fallback: serve static files, fall back to index.html.
 	if uiFS != nil {
 		fileServer := http.FileServer(http.FS(uiFS))
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		authed.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			// Try to serve the file directly.
 			path := r.URL.Path
 			if path == "/" {
@@ -64,6 +67,22 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 			fileServer.ServeHTTP(w, r)
 		})
 	}
+
+	// Outer mux: /health and /metrics stay open for liveness probes and
+	// Prometheus scrapers (tagged devices); everything else goes through
+	// the auth gate.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", h.HandleHealth)
+
+	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	mux.Handle("/metrics", promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{}))
+
+	var gated http.Handler = authed
+	if requireHumanAuth {
+		gated = RequireHumanTailscaleUser(log)(authed)
+	}
+	mux.Handle("/", gated)
 
 	return RequestLogger(log)(mux)
 }

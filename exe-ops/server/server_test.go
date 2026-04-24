@@ -11,7 +11,7 @@ import (
 func testServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	log := slog.Default()
-	handler := New(nil, log, "", nil, nil)
+	handler := New(nil, log, "", nil, nil, false)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
 	return ts

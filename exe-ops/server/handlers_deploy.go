@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,19 +10,6 @@ import (
 
 	"exe.dev/exe-ops/server/deploy"
 )
-
-// whoisTimeout bounds how long the handler will wait for a Tailscale whois
-// lookup. This is best-effort — if it fails, we just record an empty
-// InitiatedBy and proceed rather than hanging the request.
-const whoisTimeout = 3 * time.Second
-
-// tailscaleWhoIsBounded wraps TailscaleWhoIs with whoisTimeout so a stuck
-// tailscale daemon can't block a deploy/rollout request.
-func tailscaleWhoIsBounded(parent context.Context, remoteAddr string) (string, error) {
-	ctx, cancel := context.WithTimeout(parent, whoisTimeout)
-	defer cancel()
-	return TailscaleWhoIs(ctx, remoteAddr)
-}
 
 // HandleDeployInventory handles GET /api/v1/deploy/inventory.
 func (h *Handlers) HandleDeployInventory(w http.ResponseWriter, r *http.Request) {
@@ -116,11 +102,10 @@ func (h *Handlers) HandleDeploys(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "process, host, and sha are required", http.StatusBadRequest)
 			return
 		}
-		// Identify who initiated the deploy via Tailscale peer identity.
-		if identity, err := tailscaleWhoIsBounded(r.Context(), r.RemoteAddr); err != nil {
-			h.log.Warn("tailscale whois failed", "remote_addr", r.RemoteAddr, "error", err)
-		} else {
-			req.InitiatedBy = identity
+		// The auth middleware has already verified the caller is a human
+		// Tailscale user; attribute the deploy to them.
+		if u, ok := UserFromContext(r.Context()); ok {
+			req.InitiatedBy = u.LoginName
 		}
 		status, err := h.deployer.Start(req)
 		if err != nil {
@@ -167,10 +152,8 @@ func (h *Handlers) HandleRollouts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		if identity, err := tailscaleWhoIsBounded(r.Context(), r.RemoteAddr); err != nil {
-			h.log.Warn("tailscale whois failed", "remote_addr", r.RemoteAddr, "error", err)
-		} else {
-			req.InitiatedBy = identity
+		if u, ok := UserFromContext(r.Context()); ok {
+			req.InitiatedBy = u.LoginName
 		}
 		status, err := h.deployer.StartRollout(req)
 		if err != nil {

@@ -103,7 +103,10 @@ func main() {
 				deployer.Prebuild(ctx, sha, []string{"exed"})
 			})
 
-			handler := server.New(uiFS, log, environment, inv, deployer)
+			// When TLS is on we're serving over Tailscale, which is also
+			// the only way we can identify the peer. Require human-user
+			// auth iff TLS is on; local dev (--tls=false) stays open.
+			handler := server.New(uiFS, log, environment, inv, deployer, useTLS)
 
 			srv := &http.Server{
 				Addr:        c.String("addr"),
