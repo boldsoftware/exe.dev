@@ -97,6 +97,7 @@ func (s *Server) handleUsage2Page(w http.ResponseWriter, r *http.Request, userID
 }
 
 // handleUsageAPI returns metrics data for the authenticated user's VMs only.
+// Served at /api/vms/usage/history.
 func (s *Server) handleUsageAPI(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
 

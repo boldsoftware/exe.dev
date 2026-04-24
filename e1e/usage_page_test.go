@@ -62,9 +62,9 @@ func TestUsagePage(t *testing.T) {
 	t.Run("unauthenticated_api_401", func(t *testing.T) {
 		noGolden(t)
 
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/usage-api?vm_names=fake&hours=24", Env.HTTPPort()))
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/api/vms/usage/history?vm_names=fake&hours=24", Env.HTTPPort()))
 		if err != nil {
-			t.Fatalf("GET /usage-api failed: %v", err)
+			t.Fatalf("GET /api/vms/usage/history failed: %v", err)
 		}
 		defer resp.Body.Close()
 
@@ -105,9 +105,9 @@ func TestUsagePage(t *testing.T) {
 		noGolden(t)
 
 		client := newClientWithCookies(t, cookies)
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/usage-api?vm_names=%s&hours=24", Env.HTTPPort(), boxName))
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%d/api/vms/usage/history?vm_names=%s&hours=24", Env.HTTPPort(), boxName))
 		if err != nil {
-			t.Fatalf("GET /usage-api failed: %v", err)
+			t.Fatalf("GET /api/vms/usage/history failed: %v", err)
 		}
 		defer resp.Body.Close()
 
@@ -152,11 +152,11 @@ func TestUsagePage(t *testing.T) {
 		ptyB, cookiesB, _, _ := registerForExeDev(t)
 		ptyB.Disconnect()
 
-		// User B queries user A's box via /usage-api.
+		// User B queries user A's box via /api/vms/usage/history.
 		clientB := newClientWithCookies(t, cookiesB)
-		resp, err := clientB.Get(fmt.Sprintf("http://localhost:%d/usage-api?vm_names=%s&hours=24", Env.HTTPPort(), boxName))
+		resp, err := clientB.Get(fmt.Sprintf("http://localhost:%d/api/vms/usage/history?vm_names=%s&hours=24", Env.HTTPPort(), boxName))
 		if err != nil {
-			t.Fatalf("GET /usage-api as user B failed: %v", err)
+			t.Fatalf("GET /api/vms/usage/history as user B failed: %v", err)
 		}
 		defer resp.Body.Close()
 

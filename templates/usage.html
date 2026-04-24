@@ -123,7 +123,7 @@
                 chartsEl.innerHTML = '<div class="usage-empty">Select one or more VMs to view usage.</div>';
                 return;
             }
-            renderUsageCharts(chartsEl, '/usage-api', names, currentOpts);
+            renderUsageCharts(chartsEl, '/api/vms/usage/history', names, currentOpts);
         }
 
         pills.forEach(function(p) {

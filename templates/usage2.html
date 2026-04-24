@@ -34,7 +34,7 @@
         var vmStatuses = { {{range .VMs}}'{{.Name}}': '{{.Status}}',{{end}} };
         renderUsageTable(
             document.getElementById('usage-table-container'),
-            '/usage-api',
+            '/api/vms/usage/history',
             vmNames,
             vmStatuses,
             {hours: 24}
