@@ -76,6 +76,8 @@ function makeProfile(overrides: Partial<ProfileData> = {}): ProfileData {
     canRequestInvites: false,
     boxes: [{ name: 'my-vm', status: 'running' }],
     availableRegions: [],
+    billingPeriodStart: '2024-01-01T00:00:00Z',
+    billingPeriodEnd: '2024-02-01T00:00:00Z',
     ...overrides,
   }
 }
