@@ -42,7 +42,7 @@ import (
 type WebProxy struct {
 	proxy *Proxy
 
-	env *stage.Env // prod, staging, etc.
+	env stage.Env // prod, staging, etc.
 
 	exedHTTPPort  int
 	exedHTTPSPort int
@@ -120,7 +120,7 @@ func (wp *WebProxy) prepareLLMGateway() http.Handler {
 			Fireworks: fireworksAPIKey,
 			OpenAI:    openaiAPIKey,
 		},
-		*wp.env,
+		wp.env,
 	)
 	return llmg
 }

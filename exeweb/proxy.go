@@ -68,7 +68,7 @@ func stripSetCookieDomain(host, boxHost string, resp *http.Response) {
 type ProxyServer struct {
 	Data           ProxyData
 	Lg             *slog.Logger
-	Env            *stage.Env
+	Env            stage.Env
 	ProxyHTTPPort  int // proxy HTTP port; zero if not serving HTTP
 	ProxyHTTPSPort int // proxy HTTPS port; zero if not serving HTTPS
 	ExedHTTPPort   int // exed HTTP port; zero if not serving HTTP
@@ -422,7 +422,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 		if isOwner {
 			// Render owner-facing help page
 			data := struct {
-				*stage.Env
+				stage.Env
 				BoxName         string
 				BoxDest         func(string) string
 				SSHCommand      string

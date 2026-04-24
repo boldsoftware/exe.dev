@@ -33,7 +33,7 @@ import (
 
 // ProxyConfig is the exeprox configuration details.
 type ProxyConfig struct {
-	Env             *stage.Env
+	Env             stage.Env
 	Logger          *slog.Logger
 	ExedHTTPPort    int           // exed HTTP port, 0 if none
 	ExedHTTPSPort   int           // exed HTTPS port, 0 if none

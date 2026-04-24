@@ -77,7 +77,7 @@ func run() error {
 	cfg := exepipe.PipeConfig{
 		UnixAddr:        unixAddr,
 		HTTPPort:        *httpPort,
-		Env:             &env,
+		Env:             env,
 		Logger:          lg,
 		MetricsRegistry: metricsRegistry,
 	}

@@ -28,7 +28,7 @@ import (
 type PipeConfig struct {
 	UnixAddr        *net.UnixAddr // where to listen for commands
 	HTTPPort        string        // for metrics; "" for none, "0" for any
-	Env             *stage.Env
+	Env             stage.Env
 	Logger          *slog.Logger
 	MetricsRegistry *prometheus.Registry
 	DialFunc        DialFunc // optional: custom dialer (e.g. netns-aware); nil for default

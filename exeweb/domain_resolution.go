@@ -25,7 +25,7 @@ var ErrHostIsIPAddress = errors.New("host is an IP address, not a domain")
 // DomainResolver resolves custom domains.
 type DomainResolver struct {
 	Lg        *slog.Logger
-	Env       *stage.Env
+	Env       stage.Env
 	LobbyIP   netip.Addr
 	PublicIPs map[netip.Addr]publicips.PublicIP
 

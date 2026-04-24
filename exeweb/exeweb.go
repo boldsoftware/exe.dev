@@ -71,7 +71,7 @@ func RequestHost(r *http.Request) string {
 // nor does it consider cases where the URL should be handled locally.
 // It returns the redirect target,
 // or the empty string in the normal case that no redirection is needed.
-func NonProxyRedirect(env *stage.Env, r *http.Request) string {
+func NonProxyRedirect(env stage.Env, r *http.Request) string {
 	isKnownHostsRequest := r.URL.Path == SSHKnownHostsPath
 	hostname := domz.Canonicalize(domz.StripPort(RequestHost(r)))
 
@@ -137,7 +137,7 @@ func NonProxyRedirect(env *stage.Env, r *http.Request) string {
 // IsProxyRequest reports whether an HTTP request to host should be proxied.
 // We proxy requests to VMs, which are single subdomains of the box domain.
 // tsDomain is the Tailscale domain.
-func IsProxyRequest(env *stage.Env, tsDomain, host string) bool {
+func IsProxyRequest(env stage.Env, tsDomain, host string) bool {
 	// DANGER ZONE: This function is load-bearing and empirically bug-prone.
 	// Please take extra care when working on it.
 
@@ -192,7 +192,7 @@ func IsProxyRequest(env *stage.Env, tsDomain, host string) bool {
 
 // IsShelleyRequest determines if a request is for a Shelley subdomain
 // (vm.shelley.exe.xyz).
-func IsShelleyRequest(env *stage.Env, host string) bool {
+func IsShelleyRequest(env stage.Env, host string) bool {
 	host = domz.Canonicalize(domz.StripPort(host))
 	// Check if host ends with .shelley.{BoxHost}
 	// (e.g., vm.shelley.exe.xyz).
@@ -244,14 +244,14 @@ func IsValidRedirectURL(redirectURL string) bool {
 }
 
 // IsTerminalRequest reports whether a request is for a terminal subdomain.
-func IsTerminalRequest(env *stage.Env, host string) bool {
+func IsTerminalRequest(env stage.Env, host string) bool {
 	_, err := ParseTerminalHostname(env, host)
 	return err == nil
 }
 
 // ParseTerminalHostname returns the box name from a terminal hostname.
 // It returns an error if the argument is not a terminal hostname.
-func ParseTerminalHostname(env *stage.Env, host string) (string, error) {
+func ParseTerminalHostname(env stage.Env, host string) (string, error) {
 	host = domz.Canonicalize(domz.StripPort(host))
 	if box, ok := terminalBoxForBase(env, host); ok {
 		return box, nil
@@ -261,7 +261,7 @@ func ParseTerminalHostname(env *stage.Env, host string) (string, error) {
 
 // terminalBoxForBase returns the box name for a terminal hostname.
 // The second result reports whether this is a valid terminal hostname.
-func terminalBoxForBase(env *stage.Env, host string) (string, bool) {
+func terminalBoxForBase(env stage.Env, host string) (string, bool) {
 	if host == "" {
 		return "", false
 	}

@@ -59,7 +59,7 @@ func TestValidateVMTokenLockedOutUser(t *testing.T) {
 	ps := &ProxyServer{
 		Data:            mock,
 		Lg:              tslog.Slogger(t),
-		Env:             &testEnv,
+		Env:             testEnv,
 		ProxyHTTPSPort:  443,
 		CookieUsesCache: new(CookieUsesCache),
 	}

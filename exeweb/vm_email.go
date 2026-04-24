@@ -119,7 +119,7 @@ func (ps *ProxyServer) HandleVMEmailSend(w http.ResponseWriter, r *http.Request)
 // This handles POST /_/gateway/email/send from the metadata proxy.
 // The bool result reports whether it is OK to continue with the send;
 // if it is false an error has been written to w.
-func PrepareVMEmailSend(env *stage.Env, w http.ResponseWriter, r *http.Request) (req VMEmailRequest, boxName string, ok bool) {
+func PrepareVMEmailSend(env stage.Env, w http.ResponseWriter, r *http.Request) (req VMEmailRequest, boxName string, ok bool) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Security: only accept requests from Tailscale IPs (internal network).

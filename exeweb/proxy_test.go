@@ -358,7 +358,7 @@ func TestNonProxyRedirect(t *testing.T) {
 			t.Errorf("http.NewRequest(%q) failed: %v", tc.url, err)
 			continue
 		}
-		target := NonProxyRedirect(&testEnv, r)
+		target := NonProxyRedirect(testEnv, r)
 		if target != tc.expect {
 			t.Errorf(`%s: NonProxyRedirect("test", %q) = %q, want %q`, tc.name, tc.url, target, tc.expect)
 		}
@@ -537,7 +537,7 @@ func TestIsProxyRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := IsProxyRequest(&tc.env, "", tc.host)
+			result := IsProxyRequest(tc.env, "", tc.host)
 			if result != tc.expected {
 				t.Errorf("IsProxyRequest(%q, %q, %q) = %t, want %t\nComment %s", tc.env.String(), "", tc.host, result, tc.expected, tc.comment)
 			} else {
@@ -834,7 +834,7 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 	ps := &ProxyServer{
 		Data:            mock,
 		Lg:              slog.Default(),
-		Env:             &testEnv,
+		Env:             testEnv,
 		ProxyHTTPSPort:  443,
 		CookieUsesCache: new(CookieUsesCache),
 	}
@@ -913,7 +913,7 @@ func TestGetProxyAuth_AppTokenInCookie(t *testing.T) {
 		psWithCookie := &ProxyServer{
 			Data:            mockWithCookie,
 			Lg:              slog.Default(),
-			Env:             &testEnvCookie,
+			Env:             testEnvCookie,
 			ProxyHTTPSPort:  443,
 			CookieUsesCache: new(CookieUsesCache),
 		}
@@ -1090,7 +1090,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 	ps := &ProxyServer{
 		Data:            &mock,
 		Lg:              tslog.Slogger(t),
-		Env:             new(testEnv),
+		Env:             testEnv,
 		ProxyHTTPSPort:  443,
 		LookupCNAMEFunc: lookupCNAMEFunc,
 	}
@@ -1155,7 +1155,7 @@ func TestMagicAuthOpenRedirect(t *testing.T) {
 	ps := &ProxyServer{
 		Data:           &mock,
 		Lg:             tslog.Slogger(t),
-		Env:            new(testEnv),
+		Env:            testEnv,
 		ProxyHTTPSPort: 443,
 	}
 
@@ -1211,7 +1211,7 @@ func TestProxyLoginOpenRedirect(t *testing.T) {
 	ps := &ProxyServer{
 		Data:           &mock,
 		Lg:             tslog.Slogger(t),
-		Env:            new(testEnv),
+		Env:            testEnv,
 		ProxyHTTPSPort: 443,
 	}
 
@@ -1273,7 +1273,7 @@ func TestRenderAccessRequiredRedirect(t *testing.T) {
 	ps := &ProxyServer{
 		Data:            &mock,
 		Lg:              tslog.Slogger(t),
-		Env:             new(testEnv),
+		Env:             testEnv,
 		ProxyHTTPSPort:  443,
 		CookieUsesCache: new(CookieUsesCache),
 		Templates:       tmpls,

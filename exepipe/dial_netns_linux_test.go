@@ -309,7 +309,7 @@ func TestListenWithNetns(t *testing.T) {
 	// Create an exepipe with netns-aware dialing.
 	addr := testUnixAddr(t)
 	pc := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",
@@ -379,7 +379,7 @@ func TestListenWithNetnsPreservedInListeners(t *testing.T) {
 
 	addr := testUnixAddr(t)
 	pc := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",
@@ -448,7 +448,7 @@ func TestNetnsPreservedAcrossTransfer(t *testing.T) {
 
 	addr := testUnixAddr(t)
 	pc1 := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",
@@ -489,7 +489,7 @@ func TestNetnsPreservedAcrossTransfer(t *testing.T) {
 
 	// Start a new exepipe on the same address (triggers transfer).
 	pc2 := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",

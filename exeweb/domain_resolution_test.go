@@ -107,7 +107,7 @@ func TestIsWildcardCNAME(t *testing.T) {
 			t.Parallel()
 			dr := &DomainResolver{
 				Lg:  tslog.Slogger(t),
-				Env: ptrTo(stage.Prod()),
+				Env: stage.Prod(),
 				LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
 					if target, ok := tt.explicit[host]; ok {
 						return target, nil
@@ -134,7 +134,7 @@ func TestIsWildcardCNAMEFromHost(t *testing.T) {
 
 	dr := &DomainResolver{
 		Lg:  tslog.Slogger(t),
-		Env: ptrTo(stage.Prod()),
+		Env: stage.Prod(),
 		LookupCNAMEFunc: func(_ context.Context, host string) (string, error) {
 			// Every name under attacker.com resolves to the same target —
 			// this is a wildcard CNAME (*.attacker.com).
@@ -161,7 +161,7 @@ func TestResolveCustomDomainBoxNameNoWildcardCheck(t *testing.T) {
 
 	dr := &DomainResolver{
 		Lg:  lg,
-		Env: ptrTo(stage.Prod()),
+		Env: stage.Prod(),
 		PublicIPs: map[netip.Addr]publicips.PublicIP{
 			netip.MustParseAddr("10.0.0.5"): {
 				IP:     netip.MustParseAddr("203.0.113.10"),
@@ -192,8 +192,4 @@ func TestResolveCustomDomainBoxNameNoWildcardCheck(t *testing.T) {
 	if strings.Contains(logged, "probable wildcard CNAME detected") {
 		t.Errorf("ResolveCustomDomainBoxName should not check for wildcard CNAMEs, got: %q", logged)
 	}
-}
-
-func ptrTo[T any](v T) *T {
-	return &v
 }

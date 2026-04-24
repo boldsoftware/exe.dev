@@ -105,7 +105,7 @@ func TestTransfer(t *testing.T) {
 	// which should take over from the existing one.
 
 	pc := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",

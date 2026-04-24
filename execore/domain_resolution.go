@@ -46,7 +46,7 @@ func (s *Server) validateHostForTLSCertWithBoxName(ctx context.Context, host str
 func (s *Server) domainResolver() *exeweb.DomainResolver {
 	return &exeweb.DomainResolver{
 		Lg:              s.slog(),
-		Env:             &s.env,
+		Env:             s.env,
 		LobbyIP:         s.LobbyIP,
 		PublicIPs:       s.PublicIPs,
 		LookupCNAMEFunc: s.lookupCNAMEFunc,

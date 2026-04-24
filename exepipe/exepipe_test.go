@@ -21,7 +21,7 @@ func testPipeInstance(t *testing.T) (*PipeInstance, *net.UnixAddr) {
 	}
 
 	pc := &PipeConfig{
-		Env:             new(stage.Test()),
+		Env:             stage.Test(),
 		Logger:          tslog.Slogger(t),
 		UnixAddr:        addr,
 		HTTPPort:        "0",

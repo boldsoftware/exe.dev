@@ -25,7 +25,7 @@ func TestIsTerminalRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsTerminalRequest(&testEnv, tt.host)
+			result := IsTerminalRequest(testEnv, tt.host)
 			if result != tt.expected {
 				t.Errorf("IsTerminalRequest(%q) = %t, want %t", tt.host, result, tt.expected)
 			}

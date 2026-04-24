@@ -109,7 +109,7 @@ func run() error {
 	}
 
 	cfg := exeprox.ProxyConfig{
-		Env:             &env,
+		Env:             env,
 		Logger:          slog.Default(),
 		ExedHTTPPort:    *exedHTTPPort,
 		ExedHTTPSPort:   *exedHTTPSPort,

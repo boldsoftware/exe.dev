@@ -21,7 +21,7 @@ import (
 // Note: if you make any changes here, look at
 // exeweb.(*ProxyServer).HandleVMEmailSend.
 func (s *Server) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
-	req, boxName, ok := exeweb.PrepareVMEmailSend(&s.env, w, r)
+	req, boxName, ok := exeweb.PrepareVMEmailSend(s.env, w, r)
 	if !ok {
 		return
 	}

@@ -66,7 +66,7 @@ func (s *Server) forwardToExeprox(w http.ResponseWriter, r *http.Request) {
 // The proxy handles requests to VMs, which are can single subdomains of the box domain,
 // or third party domains pointing here.
 func (s *Server) isProxyRequest(host string) bool {
-	return exeweb.IsProxyRequest(&s.env, s.tsDomain, host)
+	return exeweb.IsProxyRequest(s.env, s.tsDomain, host)
 }
 
 func (s *Server) webBaseURLNoRequest() string {
@@ -267,7 +267,7 @@ func (s *Server) proxyServer() *exeweb.ProxyServer {
 	ps := &exeweb.ProxyServer{
 		Data:            s.proxyData(),
 		Lg:              s.slog(),
-		Env:             &s.env,
+		Env:             s.env,
 		PiperdPort:      s.piperdPort,
 		SSHPool:         s.sshPool,
 		Transports:      s.transportCache,

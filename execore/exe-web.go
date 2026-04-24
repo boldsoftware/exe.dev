@@ -486,7 +486,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if target := exeweb.NonProxyRedirect(&s.env, r); target != "" {
+	if target := exeweb.NonProxyRedirect(s.env, r); target != "" {
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}
