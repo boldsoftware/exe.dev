@@ -1017,8 +1017,10 @@ type InvoiceInfo struct {
 	PeriodStart      time.Time // billing period start
 	PeriodEnd        time.Time // billing period end
 	Date             time.Time
-	AmountPaid       int64  // cents
-	Subtotal         int64  // cents — invoice total before credits
+	AmountPaid       int64  // cents — what was actually charged
+	Subtotal         int64  // cents — sum of line items before discounts/credits
+	Total            int64  // cents — after discounts, before credits
+	DiscountAmount   int64  // cents — total discount applied (subtotal - total)
 	CreditApplied    int64  // cents — how much existing credit was used to pay (positive)
 	CreditGenerated  int64  // cents — how much new credit was generated (e.g. downgrade proration)
 	Currency         string // e.g. "usd"
@@ -1056,13 +1058,16 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 
 		planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
-		// Credit applied = subtotal - amountPaid (when credit covers part/all of invoice).
+		// Compute discount from TotalDiscountAmounts (explicit discount line items).
+		// Credit applied = (subtotal - discount) - amountPaid.
 		// Credit generated = negative subtotal (downgrade prorations credit the customer).
-		creditApplied := int64(0)
-		creditGenerated := int64(0)
-		if inv.Subtotal > inv.AmountPaid {
-			creditApplied = inv.Subtotal - inv.AmountPaid
+		var discountAmount int64
+		for _, da := range inv.TotalDiscountAmounts {
+			discountAmount += da.Amount
 		}
+		afterDiscount := inv.Subtotal - discountAmount
+		creditApplied := max(afterDiscount-inv.AmountPaid, 0)
+		creditGenerated := int64(0)
 		if inv.Subtotal < 0 {
 			creditGenerated = -inv.Subtotal
 		}
@@ -1075,6 +1080,8 @@ func (m *Manager) ListInvoices(ctx context.Context, customerID string) ([]Invoic
 			Date:             time.Unix(inv.Created, 0).UTC(),
 			AmountPaid:       inv.AmountPaid,
 			Subtotal:         inv.Subtotal,
+			Total:            inv.Total,
+			DiscountAmount:   discountAmount,
 			CreditApplied:    creditApplied,
 			CreditGenerated:  creditGenerated,
 			Currency:         string(inv.Currency),
@@ -1107,11 +1114,13 @@ func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*Invo
 
 	planName, periodStart, periodEnd := invoiceLineInfo(inv.Lines, inv.PeriodStart, inv.PeriodEnd)
 
-	creditApplied := int64(0)
-	creditGenerated := int64(0)
-	if inv.Subtotal > inv.AmountDue {
-		creditApplied = inv.Subtotal - inv.AmountDue
+	var discountAmount int64
+	for _, da := range inv.TotalDiscountAmounts {
+		discountAmount += da.Amount
 	}
+	afterDiscount := inv.Subtotal - discountAmount
+	creditApplied := max(afterDiscount-inv.AmountDue, 0)
+	creditGenerated := int64(0)
 	if inv.Subtotal < 0 {
 		creditGenerated = -inv.Subtotal
 	}
@@ -1124,6 +1133,8 @@ func (m *Manager) UpcomingInvoice(ctx context.Context, customerID string) (*Invo
 		Date:            time.Unix(inv.Created, 0).UTC(),
 		AmountPaid:      inv.AmountDue,
 		Subtotal:        inv.Subtotal,
+		Total:           inv.Total,
+		DiscountAmount:  discountAmount,
 		CreditApplied:   creditApplied,
 		CreditGenerated: creditGenerated,
 		Currency:        string(inv.Currency),
@@ -1145,6 +1156,43 @@ func (m *Manager) CustomerCreditBalance(ctx context.Context, customerID string) 
 		return -customer.Balance, nil
 	}
 	return 0, nil
+}
+
+// DiscountInfo holds display-safe details about a discount applied to a Stripe customer.
+type DiscountInfo struct {
+	CouponID         string  // Stripe coupon ID
+	Name             string  // Display name of the coupon
+	PercentOff       float64 // e.g. 50.0 for 50% off (0 if amount-based)
+	AmountOffCents   int64   // e.g. 500 for $5.00 off (0 if percent-based)
+	Duration         string  // "forever", "once", or "repeating"
+	DurationInMonths int64   // Only set when Duration is "repeating"
+}
+
+// CustomerDiscount returns the active discount on a Stripe customer, if any.
+// Returns (nil, nil) if the customer has no discount or doesn't exist.
+func (m *Manager) CustomerDiscount(ctx context.Context, customerID string) (*DiscountInfo, error) {
+	c := m.client()
+	params := &stripe.CustomerRetrieveParams{}
+	params.AddExpand("discount.source.coupon")
+	customer, err := c.V1Customers.Retrieve(ctx, customerID, params)
+	if err != nil {
+		if isNotExists(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("retrieve customer for discount: %w", err)
+	}
+	if customer.Discount == nil || customer.Discount.Source == nil || customer.Discount.Source.Coupon == nil {
+		return nil, nil
+	}
+	coupon := customer.Discount.Source.Coupon
+	return &DiscountInfo{
+		CouponID:         coupon.ID,
+		Name:             coupon.Name,
+		PercentOff:       coupon.PercentOff,
+		AmountOffCents:   coupon.AmountOff,
+		Duration:         string(coupon.Duration),
+		DurationInMonths: coupon.DurationInMonths,
+	}, nil
 }
 
 // invoiceLineInfo picks the best line item from an invoice for display.

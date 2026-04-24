@@ -185,7 +185,7 @@ export interface CreditInfo {
   ledgerBalanceUSD: number
   purchases: { amount: string; date: string; receiptURL: string }[]
   gifts: { amount: string; reason: string; date: string }[]
-  invoices: { description: string; planName: string; periodStart: string; periodEnd: string; date: string; amount: string; subtotal: string; creditApplied: string; creditGenerated: string; status: string; hostedInvoiceURL: string; invoicePDF: string }[]
+  invoices: { description: string; planName: string; periodStart: string; periodEnd: string; date: string; amount: string; subtotal: string; discountAmount: string; creditApplied: string; creditGenerated: string; status: string; hostedInvoiceURL: string; invoicePDF: string }[]
   creditBalanceUSD: number
   paymentMethod: PaymentMethodInfo | null
   paymentMethodManagedByTeam: boolean
@@ -267,6 +267,7 @@ export interface ProfileData {
   billingPeriodStart: string
   billingPeriodEnd: string
   trial?: TrialInfo
+  discount?: { name: string; percentOff?: number; amountOffCents?: number; duration: string; durationInMonths?: number }
 }
 
 export interface IntegrationsData {

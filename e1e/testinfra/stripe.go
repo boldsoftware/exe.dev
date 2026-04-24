@@ -92,6 +92,12 @@ func StartStripeProxy(cassettePath string) (*StripeProxy, error) {
 		if customer := q.Get("customer"); strings.HasPrefix(customer, "exe_") {
 			q.Set("customer", "exe_TEST")
 		}
+		// Strip expand params so recordings match with or without expansions.
+		for key := range q {
+			if strings.HasPrefix(key, "expand") {
+				q.Del(key)
+			}
+		}
 		r.URL.RawQuery = q.Encode()
 
 		// Strip non-deterministic headers.

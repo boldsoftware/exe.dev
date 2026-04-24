@@ -294,7 +294,8 @@ type jsonInvoiceRow struct {
 	PeriodEnd        string `json:"periodEnd"`
 	Date             string `json:"date"`
 	Amount           string `json:"amount"`          // formatted e.g. "20.00" — what was actually paid/due
-	Subtotal         string `json:"subtotal"`        // formatted — invoice total before credits
+	Subtotal         string `json:"subtotal"`        // formatted — invoice total before discounts/credits
+	DiscountAmount   string `json:"discountAmount"`  // formatted — how much discount was applied
 	CreditApplied    string `json:"creditApplied"`   // formatted — how much existing credit was used
 	CreditGenerated  string `json:"creditGenerated"` // formatted — how much new credit was generated (downgrade)
 	Status           string `json:"status"`          // "paid", "open", etc.
@@ -328,6 +329,15 @@ type jsonProfileData struct {
 	BillingPeriodStart time.Time           `json:"billingPeriodStart"`
 	BillingPeriodEnd   time.Time           `json:"billingPeriodEnd"`
 	Trial              *jsonTrialInfo      `json:"trial,omitempty"`
+	Discount           *jsonDiscount       `json:"discount,omitempty"`
+}
+
+type jsonDiscount struct {
+	Name             string  `json:"name"`
+	PercentOff       float64 `json:"percentOff,omitempty"`
+	AmountOffCents   int64   `json:"amountOffCents,omitempty"`
+	Duration         string  `json:"duration"`
+	DurationInMonths int64   `json:"durationInMonths,omitempty"`
 }
 
 type jsonIntegrationInfo struct {
@@ -868,6 +878,22 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		}
 	}
 
+	// Discount — fetch customer-level coupon for self-serve billing users.
+	var discount *jsonDiscount
+	if selfServeBilling && account.ID != "" {
+		if di, err := s.billing.CustomerDiscount(r.Context(), account.ID); err != nil {
+			s.slog().WarnContext(r.Context(), "failed to get customer discount", "error", err, "account_id", account.ID)
+		} else if di != nil {
+			discount = &jsonDiscount{
+				Name:             di.Name,
+				PercentOff:       di.PercentOff,
+				AmountOffCents:   di.AmountOffCents,
+				Duration:         di.Duration,
+				DurationInMonths: di.DurationInMonths,
+			}
+		}
+	}
+
 	showIntegrations := s.showIntegrationsNav(r.Context(), userID)
 	inviteCount, _ := withRxRes1(s, r.Context(), (*exedb.Queries).CountUnusedInviteCodesForUser, &user.UserID)
 	canRequestInvites := s.UserHasEntitlement(r.Context(), plan.SourceWeb, plan.InviteRequest, userID)
@@ -919,6 +945,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			PaymentMethod:              paymentMethod,
 			PaymentMethodManagedByTeam: paymentMethodManagedByTeam,
 		},
+		Discount: discount,
 	}
 
 	// Team info
@@ -987,6 +1014,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				Date:             inv.Date.Format("02 Jan 2006"),
 				Amount:           fmt.Sprintf("%.2f", float64(inv.AmountPaid)/100),
 				Subtotal:         fmt.Sprintf("%.2f", float64(inv.Subtotal)/100),
+				DiscountAmount:   fmt.Sprintf("%.2f", float64(inv.DiscountAmount)/100),
 				CreditApplied:    fmt.Sprintf("%.2f", float64(inv.CreditApplied)/100),
 				CreditGenerated:  fmt.Sprintf("%.2f", float64(inv.CreditGenerated)/100),
 				Status:           inv.Status,

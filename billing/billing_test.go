@@ -1113,3 +1113,102 @@ func TestCustomerCreditBalance(t *testing.T) {
 		}
 	})
 }
+
+func TestCustomerDiscount(t *testing.T) {
+	t.Run("percent off coupon", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test","object":"customer","discount":{"id":"di_1","object":"discount","source":{"type":"coupon","coupon":{"id":"HALF_OFF","object":"coupon","name":"50% Off","percent_off":50,"duration":"forever"}}}}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		di, err := m.CustomerDiscount(t.Context(), "cus_test")
+		if err != nil {
+			t.Fatalf("CustomerDiscount: %v", err)
+		}
+		if di == nil {
+			t.Fatal("expected discount, got nil")
+		}
+		if di.CouponID != "HALF_OFF" {
+			t.Errorf("CouponID = %q, want %q", di.CouponID, "HALF_OFF")
+		}
+		if di.Name != "50% Off" {
+			t.Errorf("Name = %q, want %q", di.Name, "50% Off")
+		}
+		if di.PercentOff != 50 {
+			t.Errorf("PercentOff = %v, want 50", di.PercentOff)
+		}
+		if di.Duration != "forever" {
+			t.Errorf("Duration = %q, want %q", di.Duration, "forever")
+		}
+	})
+
+	t.Run("amount off coupon", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test","object":"customer","discount":{"id":"di_2","object":"discount","source":{"type":"coupon","coupon":{"id":"FIVE_BUCKS","object":"coupon","name":"$5 Off","amount_off":500,"currency":"usd","duration":"repeating","duration_in_months":3}}}}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		di, err := m.CustomerDiscount(t.Context(), "cus_test")
+		if err != nil {
+			t.Fatalf("CustomerDiscount: %v", err)
+		}
+		if di == nil {
+			t.Fatal("expected discount, got nil")
+		}
+		if di.CouponID != "FIVE_BUCKS" {
+			t.Errorf("CouponID = %q, want %q", di.CouponID, "FIVE_BUCKS")
+		}
+		if di.AmountOffCents != 500 {
+			t.Errorf("AmountOffCents = %d, want 500", di.AmountOffCents)
+		}
+		if di.Duration != "repeating" {
+			t.Errorf("Duration = %q, want %q", di.Duration, "repeating")
+		}
+		if di.DurationInMonths != 3 {
+			t.Errorf("DurationInMonths = %d, want 3", di.DurationInMonths)
+		}
+	})
+
+	t.Run("no discount", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"id":"cus_test","object":"customer"}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		di, err := m.CustomerDiscount(t.Context(), "cus_test")
+		if err != nil {
+			t.Fatalf("CustomerDiscount: %v", err)
+		}
+		if di != nil {
+			t.Errorf("expected nil discount, got %+v", di)
+		}
+	})
+
+	t.Run("customer not found", func(t *testing.T) {
+		m := &Manager{
+			Client: stripetest.Client(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(404)
+				fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"resource_missing","message":"No such customer"}}`)
+			}),
+			Logger: tslog.Slogger(t),
+		}
+
+		di, err := m.CustomerDiscount(t.Context(), "cus_missing")
+		if err != nil {
+			t.Fatalf("CustomerDiscount: %v", err)
+		}
+		if di != nil {
+			t.Errorf("expected nil discount, got %+v", di)
+		}
+	})
+}

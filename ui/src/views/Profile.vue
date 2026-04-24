@@ -132,12 +132,21 @@
               </div>
             </div>
 
+            <!-- Discount Section -->
+            <div v-if="data.discount" class="billing-divider-section">
+              <div class="billing-section-header">Discount</div>
+              <div class="discount-callout">
+                <span class="discount-label">{{ discountDescription(data.discount) }}</span>
+                <span class="discount-badge">Active</span>
+              </div>
+            </div>
+
             <!-- Credit Balance Section -->
             <div v-if="data.credits.creditBalanceUSD > 0" class="billing-divider-section">
               <div class="credit-balance-line">
                 <div>
                   <span class="credit-balance-label">Credit Balance</span>
-                  <span class="credit-balance-sub">Will be applied on your next invoice</span>
+                  <span class="credit-balance-sub">{{ data.discount && data.discount.percentOff === 100 ? 'Will be applied if your discount is removed' : 'Will be applied on your next invoice' }}</span>
                 </div>
                 <span class="credit-balance-amount">${{ data.credits.creditBalanceUSD.toFixed(2) }}</span>
               </div>
@@ -156,16 +165,20 @@
                     <span class="invoice-period">{{ inv.periodStart }} – {{ inv.periodEnd }}</span>
                   </div>
                   <div class="invoice-right">
-                    <template v-if="inv.status !== 'upcoming' && parseFloat(inv.creditGenerated) > 0">
+                    <template v-if="inv.status !== 'upcoming' && parseFloat(inv.creditGenerated) > 0 && !(data.discount && data.discount.percentOff === 100)">
                       <span class="invoice-amount invoice-amount-zero">${{ inv.amount }}</span>
                       <span class="invoice-credit-generated">+${{ inv.creditGenerated }} credit</span>
                     </template>
-                    <template v-else-if="inv.status !== 'upcoming' && parseFloat(inv.creditApplied) > 0">
+                    <template v-else-if="parseFloat(inv.discountAmount) > 0 && parseFloat(inv.amount) > 0">
+                      <span class="invoice-amount">${{ inv.amount }}</span>
+                      <span class="invoice-discount">−${{ inv.discountAmount }} discount</span>
+                    </template>
+                    <template v-else-if="parseFloat(inv.creditApplied) > 0">
                       <span class="invoice-amount">${{ inv.amount }}</span>
                       <span class="invoice-credit">−${{ inv.creditApplied }} credit applied</span>
                     </template>
                     <template v-else>
-                      <span class="invoice-amount">${{ inv.status === 'upcoming' ? inv.subtotal : inv.amount }}</span>
+                      <span class="invoice-amount">${{ inv.amount }}</span>
                     </template>
                   </div>
                   <div class="invoice-status-col">
@@ -1097,6 +1110,22 @@ function paymentIconUrl(pm: { type: string; brand?: string }): string {
   return `${base}/default.svg`
 }
 
+function discountDescription(d: { name?: string; percentOff?: number; amountOffCents?: number; duration: string; durationInMonths?: number }): string {
+  const parts: string[] = []
+  if (d.name) parts.push(d.name)
+  if (d.percentOff) {
+    parts.push(`${d.percentOff}% off`)
+  } else if (d.amountOffCents) {
+    parts.push(`$${(d.amountOffCents / 100).toFixed(2)} off`)
+  }
+  if (d.duration === 'repeating' && d.durationInMonths) {
+    parts.push(`for ${d.durationInMonths} month${d.durationInMonths === 1 ? '' : 's'}`)
+  } else if (d.duration === 'once') {
+    parts.push('(one-time)')
+  }
+  return parts.join(' · ')
+}
+
 function formatExpiry(iso: string | undefined): string {
   if (!iso) return 'Never'
   const d = new Date(iso)
@@ -1767,6 +1796,27 @@ async function toggleNewsletter(event: Event) {
   white-space: nowrap;
 }
 
+/* Discount callout */
+.discount-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.discount-label {
+  font-size: 14px;
+  color: var(--text-color);
+}
+.discount-badge {
+  font-size: 12px;
+  color: var(--green-600, #16a34a);
+  background: var(--green-50, #f0fdf4);
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 /* Credit Cards Grid — always side-by-side */
 .credits-grid {
   display: grid;
@@ -1968,6 +2018,13 @@ async function toggleNewsletter(event: Event) {
   display: block;
   font-size: 12px;
   color: var(--text-color-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.invoice-discount {
+  display: block;
+  font-size: 12px;
+  color: var(--green-600, #16a34a);
   font-weight: 500;
   white-space: nowrap;
 }
