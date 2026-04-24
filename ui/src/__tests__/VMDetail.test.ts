@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import VMDetail from '../views/VMDetail.vue'
-import type { BoxInfo, DashboardData, VMUsageEntry, ProfileData, BoxLLMUsageResponse } from '../api/client'
+import type { BoxInfo, DashboardData, ProfileData, BoxLLMUsageResponse } from '../api/client'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -58,33 +58,6 @@ function makeDashboard(overrides: Partial<DashboardData> = {}): DashboardData {
   }
 }
 
-function makeUsageEntry(overrides: Partial<VMUsageEntry> = {}): VMUsageEntry {
-  return {
-    vm_id: 'vm-123',
-    vm_name: 'my-vm',
-    disk_provisioned_bytes: 21474836480, // 20 GiB
-    disk_avg_bytes: 10737418240,
-    bandwidth_bytes: 1073741824, // 1 GiB
-    cpu_seconds: 3600,
-    io_read_bytes: 524288000,
-    io_write_bytes: 524288000,
-    days_with_data: 15,
-    included_disk_bytes: 10737418240,
-    included_bandwidth_bytes: 0,
-    overage_disk_bytes: 0,
-    overage_bandwidth_bytes: 0,
-    display: {
-      disk_provisioned: '20 GB',
-      bandwidth: '1 GB',
-      included_disk: '10 GB',
-      included_bandwidth: '0 B',
-      overage_disk: '',
-      overage_bandwidth: '',
-    },
-    ...overrides,
-  }
-}
-
 function makeProfile(overrides: Partial<ProfileData> = {}): ProfileData {
   return {
     user: { email: 'test@example.com', region: 'us-west', regionDisplay: 'US West', newsletterSubscribed: false },
@@ -103,8 +76,6 @@ function makeProfile(overrides: Partial<ProfileData> = {}): ProfileData {
     canRequestInvites: false,
     boxes: [{ name: 'my-vm', status: 'running' }],
     availableRegions: [],
-    billingPeriodStart: '2026-04-01T00:00:00Z',
-    billingPeriodEnd: '2026-05-01T00:00:00Z',
     ...overrides,
   }
 }
@@ -131,7 +102,6 @@ vi.mock('../api/client', async (importOriginal) => {
   return {
     ...actual,
     fetchDashboard: vi.fn(),
-    fetchVMUsage: vi.fn(),
     fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
     fetchVMLiveMetrics: vi.fn(),
@@ -139,9 +109,8 @@ vi.mock('../api/client', async (importOriginal) => {
   }
 })
 
-import { fetchDashboard, fetchVMUsage, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive } from '../api/client'
+import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
-const mockFetchVMUsage = vi.mocked(fetchVMUsage)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
 const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
@@ -177,8 +146,7 @@ describe('VMDetail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
-    // Default: usage and profile never resolve (test loading states separately)
-    mockFetchVMUsage.mockReturnValue(new Promise(() => {}))
+    // Default: LLM usage and profile never resolve (test loading states separately)
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
     mockFetchVMsLive.mockResolvedValue({ vms: [], pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 } })
@@ -358,7 +326,6 @@ describe('VMDetail', () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard({
       billing: { periodStart: '2024-03-15', periodEnd: '2024-04-15' },
     }))
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-03-15', period_end: '2024-04-15', metrics: [] })
     mockFetchProfile.mockResolvedValue(makeProfile())
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({
       periodStart: '2024-04-01T00:00:00Z',
@@ -377,7 +344,6 @@ describe('VMDetail', () => {
 
   it('hides LLM usage section when there is no usage', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
     mockFetchProfile.mockResolvedValue(makeProfile())
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     const wrapper = await mountVMDetail()
@@ -387,7 +353,6 @@ describe('VMDetail', () => {
   it('logs when VM LLM usage fetch fails', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMUsage.mockResolvedValue({ period_start: '2024-01-01', period_end: '2024-02-01', metrics: [] })
     mockFetchProfile.mockResolvedValue(makeProfile())
     mockFetchBoxLLMUsage.mockRejectedValue(new Error('llm down'))
     await mountVMDetail()
@@ -670,19 +635,12 @@ describe('VMDetail', () => {
       net_rx_bytes: 0,
       net_tx_bytes: 0,
     })
-    mockFetchVMUsage.mockResolvedValue({
-      period_start: '2024-01-01',
-      period_end: '2024-02-01',
-      metrics: [makeUsageEntry({ included_disk_bytes: 30 * 1024 * 1024 * 1024 })],
-    })
     mockFetchProfile.mockResolvedValue(makeProfile())
     const wrapper = await mountVMDetail()
     const perVm = wrapper.find('.per-vm-section')
     expect(perVm.exists()).toBe(true)
     const labels = perVm.findAll('.pool-label').map(l => l.text())
     expect(labels).toContain('Disk')
-    const diskRow = perVm.findAll('.pool-row').find(r => r.find('.pool-label').text() === 'Disk')!
-    expect(diskRow.find('.pool-values').text()).toContain('included')
   })
 
   it('shows transfer bar in per-VM section when included_bandwidth data available', async () => {
@@ -701,22 +659,12 @@ describe('VMDetail', () => {
       net_rx_bytes: 0,
       net_tx_bytes: 0,
     })
-    mockFetchVMUsage.mockResolvedValue({
-      period_start: '2024-01-01',
-      period_end: '2024-02-01',
-      metrics: [makeUsageEntry({
-        included_bandwidth_bytes: 100 * 1024 * 1024 * 1024,
-        bandwidth_bytes: 25 * 1024 * 1024 * 1024,
-      })],
-    })
     mockFetchProfile.mockResolvedValue(makeProfile())
     const wrapper = await mountVMDetail()
     const perVm = wrapper.find('.per-vm-section')
     expect(perVm.exists()).toBe(true)
     const labels = perVm.findAll('.pool-label').map(l => l.text())
     expect(labels).toContain('Transfer')
-    const transferRow = perVm.findAll('.pool-row').find(r => r.find('.pool-label').text() === 'Transfer')!
-    expect(transferRow.find('.pool-values').text()).toContain('included')
   })
 
   it('hides per-VM section when liveMetrics is null (stopped VM)', async () => {

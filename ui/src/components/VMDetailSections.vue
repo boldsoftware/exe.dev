@@ -45,19 +45,6 @@
       </div>
     </div>
 
-    <!-- Usage panel (optional) -->
-    <div v-if="showUsagePanel && usage?.display" class="usage-panel">
-      <div class="usage-panel-title">USAGE THIS PERIOD<template v-if="formatPeriod(billingPeriodStart, billingPeriodEnd)"> · {{ formatPeriod(billingPeriodStart, billingPeriodEnd) }}</template></div>
-      <div class="usage-panel-row" :class="{ 'usage-panel-extra-row': usage.display.overage_disk }">
-        <span>Disk</span>
-        <span>{{ usage.display.disk_provisioned }}<template v-if="usage.display.overage_disk"> ({{ usage.display.overage_disk }} extra)</template></span>
-      </div>
-      <div class="usage-panel-row" :class="{ 'usage-panel-overage-row': usage.display.overage_bandwidth }">
-        <span>Bandwidth</span>
-        <span>{{ usage.display.bandwidth }} / {{ usage.display.included_bandwidth }}<template v-if="usage.display.overage_bandwidth"> ({{ usage.display.overage_bandwidth }} extra)</template></span>
-      </div>
-    </div>
-
     <!-- Tags -->
     <div class="detail-row">
       <span class="detail-label">Tags:</span>
@@ -133,30 +120,19 @@
 </template>
 
 <script setup lang="ts">
-import type { BoxInfo, VMUsageEntry } from '../api/client'
+import type { BoxInfo } from '../api/client'
 import CopyButton from './CopyButton.vue'
 import CoolS from './CoolS.vue'
 
-withDefaults(defineProps<{
+defineProps<{
   box: BoxInfo
   hasTeam: boolean
-  usage?: VMUsageEntry
-  billingPeriodStart?: string
-  billingPeriodEnd?: string
-  showUsagePanel?: boolean
-}>(), {
-  showUsagePanel: true,
-})
+}>()
 
 defineEmits<{
   (e: 'action', action: { type: string; boxName: string; extra?: any }): void
 }>()
 
-function formatPeriod(start?: string, end?: string): string {
-  if (!start || !end) return ''
-  const fmt = (s: string) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  return `${fmt(start)} – ${fmt(end)}`
-}
 </script>
 
 <style scoped>
@@ -340,46 +316,6 @@ function formatPeriod(start?: string, end?: string): string {
 
 .action-btn-expanded i {
   font-size: 11px;
-}
-
-/* Usage panel */
-.usage-panel {
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin-top: 12px;
-  font-size: 12px;
-}
-
-.usage-panel-title {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.usage-panel-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 2px 0;
-  color: var(--text-primary);
-}
-
-.usage-panel-row span:first-child {
-  color: var(--text-secondary);
-}
-
-.usage-panel-row span:last-child {
-  font-weight: 600;
-}
-
-.usage-panel-overage-row span {
-  color: var(--danger-color);
-}
-
-.usage-panel-extra-row span {
-  color: var(--warning-color, #e6a817);
 }
 
 @media (max-width: 768px) {

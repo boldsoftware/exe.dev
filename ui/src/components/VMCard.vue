@@ -53,9 +53,6 @@
       class="expanded-sections"
       :box="box"
       :has-team="hasTeam"
-      :usage="usage"
-      :billing-period-start="billingPeriodStart"
-      :billing-period-end="billingPeriodEnd"
       @action="(a) => $emit('action', a)"
     />
   </div>
@@ -63,7 +60,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { BoxInfo, VMUsageEntry } from '../api/client'
+import type { BoxInfo } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CoolS from './CoolS.vue'
 import EmojiPicker from './EmojiPicker.vue'
@@ -81,9 +78,6 @@ const props = defineProps<{
   box: BoxInfo
   expanded: boolean
   hasTeam: boolean
-  usage?: VMUsageEntry
-  billingPeriodStart?: string
-  billingPeriodEnd?: string
   recentEmojis?: string[]
 }>()
 

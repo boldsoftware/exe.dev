@@ -810,7 +810,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { fetchProfile, fetchLLMUsage, fetchVMsLive, fetchVMUsage, runCommand, shellQuote, type ProfileData, type LLMUsageResponse, type VMsLiveResponse, type VMUsageEntry } from '../api/client'
+import { fetchProfile, fetchLLMUsage, fetchVMsLive, runCommand, shellQuote, type ProfileData, type LLMUsageResponse, type VMsLiveResponse } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
@@ -825,7 +825,6 @@ const data = ref<ProfileData | null>(null)
 const llmUsage = ref<LLMUsageResponse | null>(null)
 const llmLoading = ref(false)
 const liveMetrics = ref<VMsLiveResponse | null>(null)
-const billingUsage = ref<VMUsageEntry[]>([])
 let liveMetricsTimer: ReturnType<typeof setInterval> | null = null
 const expandedDays = ref<Set<string>>(new Set())
 const passkeyName = ref('')
@@ -1298,10 +1297,9 @@ async function loadProfile() {
   loadError.value = ''
   try {
     data.value = await fetchProfile()
-    // Fetch LLM usage and billing usage non-blocking.
+    // Fetch LLM usage non-blocking.
     if (data.value.billingPeriodStart && data.value.billingPeriodEnd) {
       loadLLMUsage()
-      loadBillingUsage()
     }
     // Start live metrics polling.
     loadLiveMetrics()
@@ -1321,19 +1319,12 @@ async function loadLiveMetrics() {
   }
 }
 
-async function loadBillingUsage() {
-  if (!data.value?.billingPeriodStart || !data.value?.billingPeriodEnd) return
-  try {
-    const resp = await fetchVMUsage(data.value.billingPeriodStart, data.value.billingPeriodEnd)
-    billingUsage.value = resp.metrics || []
-  } catch {
-    // Silently ignore.
-  }
-}
+// TODO: totalBandwidthBytes and vmBandwidth will be replaced by live metrics in a separate change.
+const totalBandwidthBytes = computed(() => 0)
 
-const totalBandwidthBytes = computed(() => {
-  return billingUsage.value.reduce((sum, vm) => sum + vm.bandwidth_bytes, 0)
-})
+function vmBandwidth(_vmName: string): number {
+  return 0
+}
 
 const totalDiskProvisionedBytes = computed(() => {
   if (!liveMetrics.value) return 0
@@ -1345,11 +1336,6 @@ const totalDiskIncludedBytes = computed(() => {
   const vmCount = liveMetrics.value.vms.length || 1
   return data.value.planCapacity.defaultDiskGB * 1024 * 1024 * 1024 * vmCount
 })
-
-function vmBandwidth(vmName: string): number {
-  const entry = billingUsage.value.find(e => e.vm_name === vmName)
-  return entry ? entry.bandwidth_bytes : 0
-}
 
 function startLiveMetricsPolling() {
   if (liveMetricsTimer) return
