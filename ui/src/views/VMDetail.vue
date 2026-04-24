@@ -191,10 +191,12 @@ import {
   fetchBoxLLMUsage,
   fetchVMLiveMetrics,
   fetchVMsLive,
+  fetchVMsPool,
   type BoxInfo,
   type BoxLLMUsageResponse,
   type VMLiveMetrics,
   type VMsLiveResponse,
+  type VMsPoolResponse,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
@@ -255,7 +257,7 @@ const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Provisioned specs (fetched once from live metrics endpoint)
 const liveMetrics = ref<VMLiveMetrics | null>(null)
-const poolData = ref<VMsLiveResponse | null>(null)
+const poolData = ref<{ live: VMsLiveResponse; pool: VMsPoolResponse } | null>(null)
 
 
 // Creation log
@@ -309,7 +311,8 @@ async function fetchProvisionedSpecs() {
     // Silently ignore — provisioned bar just won't show
   }
   try {
-    poolData.value = await fetchVMsLive()
+    const [live, pool] = await Promise.all([fetchVMsLive(), fetchVMsPool()])
+    poolData.value = { live, pool }
   } catch {
     // Silently ignore — pool section just won't show
   }
@@ -318,24 +321,31 @@ async function fetchProvisionedSpecs() {
 // Pool context computations for this VM
 const thisVMPool = computed(() => {
   if (!poolData.value || !liveMetrics.value) return null
-  const thisVM = poolData.value.vms.find(v => v.name === vmName.value)
+  const { live, pool } = poolData.value
+  const thisVM = live.vms.find(v => v.name === vmName.value)
   if (!thisVM) return null
-  const pool = poolData.value.pool
   if (pool.cpu_max === 0) return null // unlimited plan, no pool bar
 
   const thisCPU = thisVM.cpu_percent / 100
-  const otherCPU = Math.max(0, pool.cpu_used - thisCPU)
+  // Sum cpu usage across all running VMs from the live response.
+  let totalCPU = 0
+  let totalMem = 0
+  for (const vm of live.vms) {
+    totalCPU += vm.cpu_percent / 100
+    totalMem += vm.mem_bytes
+  }
+  const otherCPU = Math.max(0, totalCPU - thisCPU)
   const thisMem = thisVM.mem_bytes
-  const otherMem = Math.max(0, pool.mem_used_bytes - thisMem)
+  const otherMem = Math.max(0, totalMem - thisMem)
 
   return {
     thisCPU,
     otherCPU,
-    totalCPU: pool.cpu_used,
+    totalCPU,
     maxCPU: pool.cpu_max,
     thisMem,
     otherMem,
-    totalMem: pool.mem_used_bytes,
+    totalMem,
     maxMem: pool.mem_max_bytes,
     vmName: thisVM.name,
   }

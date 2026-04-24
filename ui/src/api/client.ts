@@ -383,20 +383,26 @@ export interface VMsLiveVM {
   net_tx_bytes: number
 }
 
-export interface VMsLivePool {
-  cpu_used: number
-  cpu_max: number
-  mem_used_bytes: number
-  mem_max_bytes: number
-}
-
 export interface VMsLiveResponse {
   vms: VMsLiveVM[]
-  pool: VMsLivePool
 }
 
 export async function fetchVMsLive(): Promise<VMsLiveResponse> {
   return fetchJSON('/api/vms/usage/live')
+}
+
+export interface VMsPoolResponse {
+  plan_name: string
+  tier_name: string
+  cpu_max: number
+  mem_max_bytes: number
+  max_vms: number
+  vms_total: number
+  vms_running: number
+}
+
+export async function fetchVMsPool(): Promise<VMsPoolResponse> {
+  return fetchJSON('/api/vms/pool')
 }
 
 export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {

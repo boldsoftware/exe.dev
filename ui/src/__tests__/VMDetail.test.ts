@@ -108,15 +108,17 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchProfile: vi.fn(),
     fetchVMLiveMetrics: vi.fn(),
     fetchVMsLive: vi.fn(),
+    fetchVMsPool: vi.fn(),
   }
 })
 
-import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive } from '../api/client'
+import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive, fetchVMsPool } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
 const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
 const mockFetchVMsLive = vi.mocked(fetchVMsLive)
+const mockFetchVMsPool = vi.mocked(fetchVMsPool)
 
 // ---------------------------------------------------------------------------
 // Mount helper
@@ -151,7 +153,8 @@ describe('VMDetail', () => {
     // Default: LLM usage and profile never resolve (test loading states separately)
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
-    mockFetchVMsLive.mockResolvedValue({ vms: [], pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 } })
+    mockFetchVMsLive.mockResolvedValue({ vms: [] })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: '', tier_name: '', cpu_max: 0, mem_max_bytes: 0, max_vms: 0, vms_total: 0, vms_running: 0 })
   })
 
   afterEach(() => {
@@ -435,8 +438,8 @@ describe('VMDetail', () => {
         { name: 'my-vm', status: 'running', cpu_percent: 42.5, cpus: 2, mem_bytes: 1073741824, mem_capacity_bytes: 8 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
         { name: 'other-vm', status: 'running', cpu_percent: 100, cpus: 4, mem_bytes: 0, mem_capacity_bytes: 16 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
-      pool: { cpu_used: 1.425, cpu_max: 8, mem_used_bytes: 24 * 1024 * 1024 * 1024, mem_max_bytes: 32 * 1024 * 1024 * 1024 },
     })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Large', cpu_max: 8, mem_max_bytes: 32 * 1024 * 1024 * 1024, max_vms: 50, vms_total: 2, vms_running: 2 })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
     expect(poolSection.exists()).toBe(true)
@@ -466,8 +469,8 @@ describe('VMDetail', () => {
       vms: [
         { name: 'my-vm', status: 'running', cpu_percent: 150, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
-      pool: { cpu_used: 1.5, cpu_max: 8, mem_used_bytes: 0, mem_max_bytes: 0 },
     })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Large', cpu_max: 8, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
     expect(poolSection.exists()).toBe(true)
@@ -498,8 +501,8 @@ describe('VMDetail', () => {
       vms: [
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
-      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 16 * 1024 * 1024 * 1024 },
     })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 16 * 1024 * 1024 * 1024, max_vms: 50, vms_total: 1, vms_running: 1 })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
     const labels = poolSection.findAll('.pool-label').map(l => l.text())
@@ -526,8 +529,8 @@ describe('VMDetail', () => {
       vms: [
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
-      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 4 * 1024 * 1024 * 1024, mem_max_bytes: 0 },
     })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
     const wrapper = await mountVMDetail()
     const poolSection = wrapper.find('.pool-section')
     const labels = poolSection.findAll('.pool-label').map(l => l.text())
@@ -555,8 +558,8 @@ describe('VMDetail', () => {
       vms: [
         { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
       ],
-      pool: { cpu_used: 0.5, cpu_max: 4, mem_used_bytes: 0, mem_max_bytes: 0 },
     })
+    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
     const wrapper = await mountVMDetail()
     const legend = wrapper.find('.pool-legend')
     expect(legend.exists()).toBe(true)
@@ -564,7 +567,7 @@ describe('VMDetail', () => {
     expect(legend.text()).toContain('other VMs')
   })
 
-  it('hides pool section when fetchVMsLive returns cpu_max = 0 (unlimited plan)', async () => {
+  it('hides pool section when fetchVMsPool returns cpu_max = 0 (unlimited plan)', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
     mockFetchVMLiveMetrics.mockResolvedValue({
       name: 'my-vm',
@@ -611,10 +614,7 @@ describe('VMDetail', () => {
       net_rx_bytes: 0,
       net_tx_bytes: 0,
     })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [],
-      pool: { cpu_used: 0, cpu_max: 0, mem_used_bytes: 0, mem_max_bytes: 0 },
-    })
+    mockFetchVMsLive.mockResolvedValue({ vms: [] })
     const wrapper = await mountVMDetail()
     expect(wrapper.find('.pool-section').exists()).toBe(false)
   })

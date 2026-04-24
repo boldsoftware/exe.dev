@@ -3,9 +3,6 @@ package execore
 import (
 	"encoding/json"
 	"net/http"
-
-	"exe.dev/billing/plan"
-	"exe.dev/exedb"
 )
 
 // vmsLiveVM is a single VM's live metrics in the /api/vms/usage/live response.
@@ -23,22 +20,13 @@ type vmsLiveVM struct {
 	NetTxBytes        uint64  `json:"net_tx_bytes"`
 }
 
-// vmsLivePool is the pre-computed pool summary in the /api/vms/usage/live response.
-type vmsLivePool struct {
-	CPUUsed      float64 `json:"cpu_used"`       // sum of cpu_percent/100 across running VMs
-	CPUMax       uint64  `json:"cpu_max"`        // plan MaxCPUs (0 = unlimited)
-	MemUsedBytes uint64  `json:"mem_used_bytes"` // sum of mem_bytes (actual usage) across running VMs
-	MemMaxBytes  uint64  `json:"mem_max_bytes"`  // plan MaxMemory (0 = unlimited)
-}
-
 // vmsLiveResponse is the JSON response for GET /api/vms/usage/live.
 type vmsLiveResponse struct {
-	VMs  []vmsLiveVM `json:"vms"`
-	Pool vmsLivePool `json:"pool"`
+	VMs []vmsLiveVM `json:"vms"`
 }
 
 // HandleAPIVMsLive handles GET /api/vms/usage/live.
-// Returns live metrics for all VMs owned by the user, plus a pool summary.
+// Returns live metrics for all VMs owned by the user.
 // Returns empty vms when EnforcePlanCPUMax is off (metrics not yet validated).
 func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
@@ -53,9 +41,6 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID)
 
 	vms := make([]vmsLiveVM, 0, len(usageRows))
-	var cpuUsed float64
-	var memUsed uint64
-
 	if err == nil {
 		for _, row := range usageRows {
 			vms = append(vms, vmsLiveVM{
@@ -71,32 +56,9 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 				NetRxBytes:        row.NetRx,
 				NetTxBytes:        row.NetTx,
 			})
-			if row.Status == "running" {
-				cpuUsed += row.CPUPercent / 100.0
-				memUsed += row.MemBytes
-			}
 		}
-	}
-	// If fetchVMUsageForUser fails (exelet unreachable), return empty VMs
-	// with pool limits from the plan. The frontend can show "metrics unavailable".
-
-	// Look up plan limits.
-	var cpuMax uint64
-	var memMax uint64
-	planRow, planErr := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID)
-	if planErr == nil {
-		cpuMax = plan.MaxCPUsForPlan(planRow.PlanID)
-		memMax = plan.MaxMemoryForPlan(planRow.PlanID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(vmsLiveResponse{
-		VMs: vms,
-		Pool: vmsLivePool{
-			CPUUsed:      cpuUsed,
-			CPUMax:       cpuMax,
-			MemUsedBytes: memUsed,
-			MemMaxBytes:  memMax,
-		},
-	})
+	json.NewEncoder(w).Encode(vmsLiveResponse{VMs: vms})
 }

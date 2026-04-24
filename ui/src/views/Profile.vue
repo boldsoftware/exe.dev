@@ -125,29 +125,29 @@
                       <div class="meter-bar">
                         <div
                           class="meter-fill"
-                          :class="meterColor(liveMetrics.pool.cpu_max > 0 ? (liveMetrics.pool.cpu_used / liveMetrics.pool.cpu_max) * 100 : 0)"
-                          :style="{ width: liveMetrics.pool.cpu_max > 0 ? Math.min((liveMetrics.pool.cpu_used / liveMetrics.pool.cpu_max) * 100, 100) + '%' : '0%' }"
+                          :class="meterColor(poolCpuMax > 0 ? (poolCpuUsed / poolCpuMax) * 100 : 0)"
+                          :style="{ width: poolCpuMax > 0 ? Math.min((poolCpuUsed / poolCpuMax) * 100, 100) + '%' : '0%' }"
                         ></div>
                       </div>
                       <div class="meter-values">
-                        <span class="meter-used">{{ Math.min(liveMetrics.pool.cpu_used, liveMetrics.pool.cpu_max).toFixed(1) }} cores</span>
-                        <span>{{ liveMetrics.pool.cpu_max }} cores</span>
+                        <span class="meter-used">{{ Math.min(poolCpuUsed, poolCpuMax).toFixed(1) }} cores</span>
+                        <span>{{ poolCpuMax }} cores</span>
                       </div>
                     </div>
                   </div>
-                  <div v-if="liveMetrics.pool.mem_max_bytes > 0" class="resource-meter">
+                  <div v-if="poolMemMaxBytes > 0" class="resource-meter">
                     <span class="meter-label">Memory</span>
                     <div class="meter-bar-wrap">
                       <div class="meter-bar">
                         <div
                           class="meter-fill"
-                          :class="meterColor((liveMetrics.pool.mem_used_bytes / liveMetrics.pool.mem_max_bytes) * 100)"
-                          :style="{ width: Math.min((liveMetrics.pool.mem_used_bytes / liveMetrics.pool.mem_max_bytes) * 100, 100) + '%' }"
+                          :class="meterColor((poolMemUsedBytes / poolMemMaxBytes) * 100)"
+                          :style="{ width: Math.min((poolMemUsedBytes / poolMemMaxBytes) * 100, 100) + '%' }"
                         ></div>
                       </div>
                       <div class="meter-values">
-                        <span class="meter-used">{{ formatBytes(Math.min(liveMetrics.pool.mem_used_bytes, liveMetrics.pool.mem_max_bytes)) }}</span>
-                        <span>{{ formatBytes(liveMetrics.pool.mem_max_bytes) }}</span>
+                        <span class="meter-used">{{ formatBytes(Math.min(poolMemUsedBytes, poolMemMaxBytes)) }}</span>
+                        <span>{{ formatBytes(poolMemMaxBytes) }}</span>
                       </div>
                     </div>
                   </div>
@@ -210,9 +210,9 @@
                         <td>
                           <template v-if="vm.status === 'running'">
                             <div class="cpu-cell">
-                              {{ Math.min(vm.cpu_percent / 100, liveMetrics.pool.cpu_max > 0 ? liveMetrics.pool.cpu_max : Infinity).toFixed(1) }}
+                              {{ Math.min(vm.cpu_percent / 100, poolCpuMax > 0 ? poolCpuMax : Infinity).toFixed(1) }}
                               <div class="cpu-mini-bar">
-                                <div class="cpu-mini-fill" :class="meterColor(liveMetrics.pool.cpu_max > 0 ? (vm.cpu_percent / 100 / liveMetrics.pool.cpu_max) * 100 : 0)" :style="{ width: cpuMiniWidth(vm.cpu_percent, liveMetrics.pool.cpu_max) }"></div>
+                                <div class="cpu-mini-fill" :class="meterColor(poolCpuMax > 0 ? (vm.cpu_percent / 100 / poolCpuMax) * 100 : 0)" :style="{ width: cpuMiniWidth(vm.cpu_percent, poolCpuMax) }"></div>
                               </div>
                             </div>
                           </template>
@@ -227,8 +227,8 @@
                       </tr>
                       <tr v-if="liveMetrics.vms.length > 1" class="totals-row">
                         <td>Total</td>
-                        <td>{{ Math.min(liveMetrics.pool.cpu_used, liveMetrics.pool.cpu_max).toFixed(1) }} / {{ liveMetrics.pool.cpu_max }}</td>
-                        <td>{{ formatBytes(Math.min(liveMetrics.pool.mem_used_bytes, liveMetrics.pool.mem_max_bytes)) }} / {{ formatBytes(liveMetrics.pool.mem_max_bytes) }}</td>
+                        <td>{{ Math.min(poolCpuUsed, poolCpuMax).toFixed(1) }} / {{ poolCpuMax }}</td>
+                        <td>{{ formatBytes(Math.min(poolMemUsedBytes, poolMemMaxBytes)) }} / {{ formatBytes(poolMemMaxBytes) }}</td>
                         <td>{{ formatBytes(totalDiskProvisionedBytes) }}</td>
                         <td>{{ formatBytes(totalBandwidthBytes) }}</td>
                       </tr>
@@ -810,7 +810,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { fetchProfile, fetchLLMUsage, fetchVMsLive, runCommand, shellQuote, type ProfileData, type LLMUsageResponse, type VMsLiveResponse } from '../api/client'
+import { fetchProfile, fetchLLMUsage, fetchVMsLive, fetchVMsPool, runCommand, shellQuote, type ProfileData, type LLMUsageResponse, type VMsLiveResponse, type VMsPoolResponse } from '../api/client'
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 import Tag from 'primevue/tag'
@@ -825,7 +825,20 @@ const data = ref<ProfileData | null>(null)
 const llmUsage = ref<LLMUsageResponse | null>(null)
 const llmLoading = ref(false)
 const liveMetrics = ref<VMsLiveResponse | null>(null)
+const poolInfo = ref<VMsPoolResponse | null>(null)
 let liveMetricsTimer: ReturnType<typeof setInterval> | null = null
+
+// Derived pool aggregates from live VM data.
+const poolCpuUsed = computed(() => {
+  if (!liveMetrics.value) return 0
+  return liveMetrics.value.vms.reduce((sum, vm) => sum + vm.cpu_percent / 100, 0)
+})
+const poolMemUsedBytes = computed(() => {
+  if (!liveMetrics.value) return 0
+  return liveMetrics.value.vms.reduce((sum, vm) => sum + vm.mem_bytes, 0)
+})
+const poolCpuMax = computed(() => poolInfo.value?.cpu_max ?? 0)
+const poolMemMaxBytes = computed(() => poolInfo.value?.mem_max_bytes ?? 0)
 const expandedDays = ref<Set<string>>(new Set())
 const passkeyName = ref('')
 const deletingPasskeys = ref<Set<number>>(new Set())
@@ -1313,7 +1326,9 @@ async function loadProfile() {
 
 async function loadLiveMetrics() {
   try {
-    liveMetrics.value = await fetchVMsLive()
+    const [live, pool] = await Promise.all([fetchVMsLive(), fetchVMsPool()])
+    liveMetrics.value = live
+    poolInfo.value = pool
   } catch {
     // Silently ignore — metrics are best-effort.
   }
