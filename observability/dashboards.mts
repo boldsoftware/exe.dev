@@ -1511,12 +1511,59 @@ function makeDevExeDashboard() {
   );
 
   addTimeseriesChart(
+    "Exelet CPU Pressure",
+    `rate(node_pressure_cpu_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0),
+      gridPos: { w: 6, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alertQueryOverride: `rate(node_pressure_cpu_waiting_seconds_total{role="exelet",stage="production"}[5m]) * 100`,
+      alert: {
+        threshold: 10,
+        condition: "gt",
+        forDuration: "2m",
+        summary: "Exelet CPU pressure is high",
+        description: "CPU pressure (PSI some) has exceeded 10% for 2+ minutes, indicating tasks are waiting for CPU time.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  addTimeseriesChart(
     "Exelet Memory Pressure",
     `rate(node_pressure_memory_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
     {
       panelCustomization: (x) => x.unit("percent").min(0),
       gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alertQueryOverride: `rate(node_pressure_memory_waiting_seconds_total{role="exelet",stage="production"}[5m]) * 100`,
+      alert: {
+        threshold: 10,
+        condition: "gt",
+        forDuration: "2m",
+        summary: "Exelet memory pressure is high",
+        description: "Memory pressure (PSI some) has exceeded 10% for 2+ minutes, indicating tasks are waiting for memory.",
+        labels: { channel: "buzz" },
+      },
+    }
+  );
+
+  addTimeseriesChart(
+    "Exelet IO Pressure",
+    `rate(node_pressure_io_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
+    {
+      panelCustomization: (x) => x.unit("percent").min(0),
+      gridPos: { w: 6, h: 6 },
+      queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alertQueryOverride: `rate(node_pressure_io_waiting_seconds_total{role="exelet",stage="production"}[5m]) * 100`,
+      alert: {
+        threshold: 10,
+        condition: "gt",
+        forDuration: "2m",
+        summary: "Exelet IO pressure is high",
+        description: "IO pressure (PSI some) has exceeded 10% for 2+ minutes, indicating tasks are waiting for IO.",
+        labels: { channel: "buzz" },
+      },
     }
   );
 
