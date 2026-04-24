@@ -73,6 +73,81 @@ func TestCursorWrapsAtSubnetEnd(t *testing.T) {
 		"wrap-around must reuse the only free address")
 }
 
+// TestCursorWrapsAndFindsFreedIPAtBeginning verifies the full lifecycle: once
+// the allocator has walked through the pool and wrapped the cursor back to
+// the beginning, it correctly locates a freed IP sitting at the start of the
+// range. This is the property the rolling cursor ultimately trades on — a
+// released IP does eventually get reused, just not until the cursor has
+// cycled past the rest of the pool.
+func TestCursorWrapsAndFindsFreedIPAtBeginning(t *testing.T) {
+	// /29: FirstAddress=.1 (server), LastAddress=.6 → .2..6 usable (5 IPs).
+	m := newTestManager(t, "192.168.64.0/29")
+
+	// Fill the whole pool. After the last allocation the cursor has
+	// advanced past .6 and wrapped to .1 (FirstAddress).
+	macs := []string{
+		"02:00:00:00:00:02",
+		"02:00:00:00:00:03",
+		"02:00:00:00:00:04",
+		"02:00:00:00:00:05",
+		"02:00:00:00:00:06",
+	}
+	wantIPs := []string{"192.168.64.2", "192.168.64.3", "192.168.64.4", "192.168.64.5", "192.168.64.6"}
+	for i, mac := range macs {
+		ip, err := m.Reserve(mac)
+		require.NoError(t, err)
+		assert.Equal(t, wantIPs[i], ip.String())
+	}
+	// Cursor should have wrapped to the first host address (server IP); the
+	// allocator will skip over the server on the next Reserve.
+	assert.Equal(t, "192.168.64.1", m.ds.db.NextIP,
+		"cursor should wrap to FirstAddress after allocating the last host")
+
+	// Free a mid-pool IP.
+	require.NoError(t, m.Release("02:00:00:00:00:04", "192.168.64.4"))
+
+	// Next Reserve must wrap past server (.1), skip held .2 / .3, and return
+	// the freed .4 — proving the wrap-around scan correctly locates free
+	// slots at the beginning of the pool.
+	ip, err := m.Reserve("02:00:00:00:00:99")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.4", ip.String())
+
+	// Cursor now advances past .4 to .5.
+	assert.Equal(t, "192.168.64.5", m.ds.db.NextIP)
+}
+
+// TestCursorWrapsAndFindsFreedIPNearEnd covers the complementary case: after
+// a wrap, if every low-range IP is still held, the scan must keep walking
+// and find a freed IP later in the range rather than erroring.
+func TestCursorWrapsAndFindsFreedIPNearEnd(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/29")
+
+	macs := []string{
+		"02:00:00:00:00:02",
+		"02:00:00:00:00:03",
+		"02:00:00:00:00:04",
+		"02:00:00:00:00:05",
+		"02:00:00:00:00:06",
+	}
+	for _, mac := range macs {
+		_, err := m.Reserve(mac)
+		require.NoError(t, err)
+	}
+	require.Equal(t, "192.168.64.1", m.ds.db.NextIP)
+
+	// Free only the highest IP in the range.
+	require.NoError(t, m.Release("02:00:00:00:00:06", "192.168.64.6"))
+
+	ip, err := m.Reserve("02:00:00:00:00:99")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.6", ip.String(),
+		"wrap-around scan must walk all the way to the last freed IP")
+
+	// Cursor advances past .6 and wraps back to .1 (FirstAddress).
+	assert.Equal(t, "192.168.64.1", m.ds.db.NextIP)
+}
+
 // TestCursorPoolExhausted verifies that Reserve returns an error when all
 // addresses in the subnet are held.
 func TestCursorPoolExhausted(t *testing.T) {
