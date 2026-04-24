@@ -18,8 +18,9 @@ Installs Tailscale, sets up NVMe drives, and runs the exelet standalone setup.
 Arguments:
   hostname     Target hostname (e.g. exe-prod-01)
   ip           Public IP address for initial SSH access
-  environment  Either "staging" or "prod"; controls the Tailscale tag
-               applied to the host (tag:staging or tag:prod)
+  environment  Either "staging" or "prod"; controls the Tailscale stage
+               tag applied to the host (tag:staging or tag:prod). The
+               host also gets tag:exelet.
 
 For servers with multiple NVMe drives larger than 1TB:
   - Creates a 2TB swap partition on each drive
@@ -65,7 +66,8 @@ staging | prod) ;;
     ;;
 esac
 
-TAILSCALE_TAG="tag:$ENVIRONMENT"
+TAILSCALE_ENV_TAG="tag:$ENVIRONMENT"
+TAILSCALE_ROLE_TAG="tag:exelet"
 
 if [ -z "${ROOT_PASSWORD:-}" ]; then
     echo "ERROR: ROOT_PASSWORD environment variable not set" >&2
@@ -124,7 +126,8 @@ copy_to_remote() {
 setup_tailscale() {
     local target="$1"
     local hostname="$2"
-    local tailscale_tag="$3"
+    local env_tag="$3"
+    local role_tag="$4"
 
     echo "Installing Tailscale..."
     ssh $DIRECT_SSH_OPTS "$target" 'sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y binutils curl jq net-tools pv'
@@ -137,7 +140,9 @@ setup_tailscale() {
 set -euo pipefail
 
 HOSTNAME="$hostname"
-TAILSCALE_TAG="$tailscale_tag"
+ENV_TAG="$env_tag"
+ROLE_TAG="$role_tag"
+ADVERTISE_TAGS="$env_tag,$role_tag"
 TS_OAUTH_CLIENT_ID="$TS_OAUTH_CLIENT_ID"
 TS_OAUTH_CLIENT_SECRET="$TS_OAUTH_CLIENT_SECRET"
 
@@ -176,7 +181,7 @@ KEY_RESPONSE=\$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" -
                 "create": {
                     "reusable": false,
                     "ephemeral": false,
-                    "tags": ["'"\$TAILSCALE_TAG"'"]
+                    "tags": ["'"\$ENV_TAG"'", "'"\$ROLE_TAG"'"]
                 }
             }
         },
@@ -201,7 +206,7 @@ if [ -z "\$AUTH_KEY" ] || [ "\$AUTH_KEY" = "null" ]; then
     exit 1
 fi
 echo "Starting Tailscale with hostname: \${HOSTNAME}"
-sudo tailscale up --authkey="\$AUTH_KEY" --advertise-tags="\$TAILSCALE_TAG" --ssh --hostname="\${HOSTNAME}"
+sudo tailscale up --authkey="\$AUTH_KEY" --advertise-tags="\$ADVERTISE_TAGS" --ssh --hostname="\${HOSTNAME}"
 echo "Tailscale up completed"
 sleep 5
 sudo tailscale status
@@ -546,7 +551,7 @@ else
     # Setup Tailscale via direct SSH
     echo ""
     echo "=== Setting up Tailscale ==="
-    setup_tailscale "ubuntu@$PUBLIC_IP" "$HOSTNAME" "$TAILSCALE_TAG"
+    setup_tailscale "ubuntu@$PUBLIC_IP" "$HOSTNAME" "$TAILSCALE_ENV_TAG" "$TAILSCALE_ROLE_TAG"
 
     # Wait for Tailscale SSH to be available (proves tailscale setup succeeded)
     echo ""

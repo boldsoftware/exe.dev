@@ -35,6 +35,16 @@ fi
 ROLE="exelet"
 echo "Machine role: ${ROLE}, stage: ${STAGE}"
 
+# Tailscale tags applied to the host: tag:exelet for role, plus a
+# stage tag matching prod/staging.
+if [ "$STAGE" = "production" ]; then
+    TS_STAGE_TAG="tag:prod"
+else
+    TS_STAGE_TAG="tag:staging"
+fi
+TS_ROLE_TAG="tag:exelet"
+TS_ADVERTISE_TAGS="${TS_ROLE_TAG},${TS_STAGE_TAG}"
+
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -399,7 +409,7 @@ runcmd:
             "create": {
               "reusable": false,
               "ephemeral": false,
-              "tags": ["tag:server"]
+              "tags": ["${TS_ROLE_TAG}", "${TS_STAGE_TAG}"]
             }
           }
         },
@@ -424,7 +434,7 @@ runcmd:
 
     echo "Auth key generated successfully (first 10 chars): \$(echo "\$AUTH_KEY" | cut -c1-10)..."
     echo "Starting Tailscale with hostname: ${MACHINE_NAME}"
-    tailscale up --authkey=\$AUTH_KEY --advertise-tags=tag:server --ssh --hostname=${MACHINE_NAME} 2>&1
+    tailscale up --authkey=\$AUTH_KEY --advertise-tags=${TS_ADVERTISE_TAGS} --ssh --hostname=${MACHINE_NAME} 2>&1
     echo "Tailscale up command completed with exit code: \$?"
     sleep 5
     tailscale status 2>&1
