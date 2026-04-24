@@ -93,23 +93,7 @@
         </div>
       </div>
 
-      <!-- Per-VM resources (not pooled) -->
-      <div v-if="liveMetrics" class="per-vm-section">
-        <div v-if="liveMetrics.disk_capacity_bytes > 0 && vmUsage && vmUsage.included_disk_bytes > 0" class="pool-row">
-          <span class="pool-label">Disk</span>
-          <div class="pool-track">
-            <div class="pool-seg pool-seg-this" style="left: 0" :style="{ width: poolPct(liveMetrics.disk_capacity_bytes, vmUsage.included_disk_bytes) }"></div>
-          </div>
-          <span class="pool-values">{{ poolFmtGB(liveMetrics.disk_capacity_bytes) }} of {{ poolFmtGB(vmUsage.included_disk_bytes) }} included</span>
-        </div>
-        <div v-if="vmUsage && vmUsage.included_bandwidth_bytes > 0" class="pool-row">
-          <span class="pool-label">Transfer</span>
-          <div class="pool-track">
-            <div class="pool-seg pool-seg-this" style="left: 0" :style="{ width: poolPct(vmUsage.bandwidth_bytes, vmUsage.included_bandwidth_bytes) }"></div>
-          </div>
-          <span class="pool-values">{{ poolFmtGB(vmUsage.bandwidth_bytes) }} of {{ poolFmtGB(vmUsage.included_bandwidth_bytes) }} included</span>
-        </div>
-      </div>
+
 
       <div class="section-divider"></div>
 
@@ -196,12 +180,10 @@ import { ref, computed, onMounted, onBeforeUnmount, reactive, defineAsyncCompone
 import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDashboard,
-  fetchVMUsage,
   fetchBoxLLMUsage,
   fetchVMLiveMetrics,
   fetchVMsLive,
   type BoxInfo,
-  type VMUsageEntry,
   type BoxLLMUsageResponse,
   type VMLiveMetrics,
   type VMsLiveResponse,
@@ -258,9 +240,6 @@ async function onEmojiPick(emoji: string) {
     emojiError.value = result.output || result.error || 'Failed to update emoji'
   }
 }
-
-// Billing / usage
-const vmUsage = ref<VMUsageEntry | null>(null)
 
 // LLM usage
 const llmUsage = ref<BoxLLMUsageResponse | null>(null)
@@ -376,15 +355,7 @@ async function load() {
     hasTeam.value = data.hasTeam || false
 
     if (found) {
-      // Load usage and profile in parallel, non-blocking
-      fetchVMUsage(
-        data.billing.periodStart as unknown as string,
-        data.billing.periodEnd as unknown as string,
-      ).then(usageResp => {
-        const entry = usageResp.metrics?.find(m => m.vm_name === vmName.value) ?? null
-        vmUsage.value = entry
-      }).catch(() => {})
-
+      // Load LLM usage and profile in parallel, non-blocking
       fetchBoxLLMUsage(vmName.value).then(u => {
         llmUsage.value = u
       }).catch(err => {
@@ -998,9 +969,6 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   font-weight: 500;
   white-space: nowrap;
-}
-.per-vm-section {
-  margin-top: 12px;
 }
 .pool-legend {
   display: flex;
