@@ -55,6 +55,18 @@ type Server struct {
 	lastBatchMu   sync.RWMutex
 	lastBatchTime time.Time
 	lastBatchSize int
+
+	// Optional async ClickHouse mirror (nil if not configured).
+	clickhouse *ClickHouseSync
+}
+
+// SetClickHouse attaches an optional ClickHouse mirror that receives each
+// successfully-inserted batch. Pass nil to disable. Calling SetClickHouse
+// replaces any existing mirror. Safe to call concurrently with writes.
+func (s *Server) SetClickHouse(ch *ClickHouseSync) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clickhouse = ch
 }
 
 // NewServer creates a new metrics server with the given DuckDB connector and database.
@@ -382,14 +394,19 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 		return err
 	}
 
+	// Normalize timestamps up-front so the DuckDB and ClickHouse sinks
+	// see identical values. Zero timestamps are backfilled with now().
+	now := time.Now()
+	for i := range metrics {
+		if metrics[i].Timestamp.IsZero() {
+			metrics[i].Timestamp = now
+		}
+		metrics[i].Timestamp = metrics[i].Timestamp.UTC()
+	}
+
 	for _, m := range metrics {
 		rowStart := time.Now()
 		ts := m.Timestamp
-		if ts.IsZero() {
-			ts = time.Now()
-		}
-		// Store as UTC
-		ts = ts.UTC()
 		// Column order must match the physical table layout.
 		// resource_group is added by migration 002, io_read/write_bytes by migration 003,
 		// and vm_id by migration 006 (ALTER TABLE) — it appears last physically.
@@ -414,6 +431,12 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 	}
 
 	s.rowsInsertedTotal.Add(float64(len(metrics)))
+
+	// Mirror to ClickHouse if configured. Enqueue is non-blocking and
+	// drops batches if the mirror queue is full.
+	if s.clickhouse != nil {
+		s.clickhouse.Enqueue(metrics)
+	}
 	return nil
 }
 

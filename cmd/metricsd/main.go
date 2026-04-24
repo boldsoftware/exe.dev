@@ -72,6 +72,23 @@ func run() error {
 	srv := metricsd.NewServer(connector, db, env.ListenOnTailscaleOnly)
 	defer srv.Close()
 
+	// Optional ClickHouse mirror: every batch written to DuckDB is also
+	// streamed into a ClickHouse vm_metrics table. Controlled by
+	// CLICKHOUSE_METRICS_DSN; no-op when unset.
+	if dsn := os.Getenv("CLICKHOUSE_METRICS_DSN"); dsn != "" {
+		chSync, err := metricsd.StartClickHouseSync(ctx, metricsd.ClickHouseConfig{
+			DSN:    dsn,
+			Logger: slog.Default(),
+		})
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to start clickhouse mirror", "error", err)
+		} else {
+			srv.SetClickHouse(chSync)
+			defer chSync.Close()
+			slog.InfoContext(ctx, "metricsd: clickhouse mirror enabled")
+		}
+	}
+
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)

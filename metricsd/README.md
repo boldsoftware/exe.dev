@@ -149,6 +149,23 @@ The exelet:
 | nominal_cpus | VM config | Configured CPU count |
 | nominal_memory_bytes | VM config | Configured memory limit |
 
+## ClickHouse Mirror (optional)
+
+Set `CLICKHOUSE_METRICS_DSN` to a clickhouse-go DSN (e.g.
+`clickhouse://user:pass@host:9440/default?secure=true`) to asynchronously
+mirror every batch written to DuckDB into a ClickHouse `vm_metrics` table.
+The schema mirrors the DuckDB columns one-to-one (see `clickhouse.go`).
+
+The mirror is best-effort: if ClickHouse is slow or unreachable, the
+bounded in-memory queue (64 batches) is drained FIFO and overflow batches
+are dropped and counted via `metricsd_clickhouse_dropped_batches_total`.
+
+Run the integration test locally with docker:
+
+```bash
+EXE_CLICKHOUSE_TEST=1 go test -count=1 -v -run TestClickHouse ./metricsd/
+```
+
 ## Storage
 
 Uses DuckDB with the Appender API for efficient bulk inserts. Data is stored in

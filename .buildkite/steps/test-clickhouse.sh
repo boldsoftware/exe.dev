@@ -9,5 +9,8 @@ export PATH="/usr/local/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH"
 echo "--- :docker: docker version"
 docker version --format 'client: {{.Client.Version}} server: {{.Server.Version}}' || true
 
-echo "--- :clickhouse: Run ClickHouse integration test"
+echo "--- :clickhouse: Run ClickHouse integration test (exechsync)"
 EXE_CLICKHOUSE_TEST=1 go test -count=1 -v -timeout 5m ./exechsync/
+
+echo "--- :clickhouse: Run ClickHouse integration test (metricsd)"
+EXE_CLICKHOUSE_TEST=1 go test -count=1 -v -timeout 5m -run TestClickHouse ./metricsd/
