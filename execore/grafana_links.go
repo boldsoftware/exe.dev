@@ -20,9 +20,12 @@ import (
 // The datasource UID below is the Prometheus datasource in crocodile-vector.
 func grafanaExploreURL(exprs ...string) string {
 	const (
-		host          = "https://grafana.crocodile-vector.ts.net/explore"
+		host = "https://grafana.crocodile-vector.ts.net/explore"
+		// UID of the default Prometheus datasource in crocodile-vector;
+		// mirrored by observability/dashboards.mts.
 		datasourceUID = "PBFA97CFB590B2093"
-		paneID        = "p49"
+		// Arbitrary unique key within the URL; Grafana requires only uniqueness.
+		paneID = "p49"
 	)
 
 	type datasourceRef struct {
@@ -48,6 +51,10 @@ func grafanaExploreURL(exprs ...string) string {
 		Range      timeRange `json:"range"`
 	}
 
+	if len(exprs) > 26 {
+		// We only use refIds A..Z; if this ever trips, switch to a base-26 scheme.
+		panic("grafanaExploreURL: too many queries")
+	}
 	queries := make([]query, len(exprs))
 	for i, e := range exprs {
 		queries[i] = query{
@@ -98,7 +105,7 @@ func vmGrafanaLinks(vmName string) []vmGrafanaLink {
 	}
 	return []vmGrafanaLink{
 		{
-			Label: "CPU (rate of cpu_seconds_total)",
+			Label: "CPU seconds/sec",
 			URL:   grafanaExploreURL(rate("exelet_vm_cpu_seconds_total")),
 		},
 		{
@@ -127,12 +134,11 @@ func vmGrafanaLinks(vmName string) []vmGrafanaLink {
 			URL:   grafanaExploreURL(gauge("exelet_vm_disk_used_bytes")),
 		},
 		{
-			Label: "LLM tokens/sec (by token_type, model)",
-			URL:   grafanaExploreURL(fmt.Sprintf(`sum by (token_type, model) (rate(llm_tokens_total%s[$__rate_interval]))`, sel)),
-		},
-		{
-			Label: "LLM cost USD/sec (by model)",
-			URL:   grafanaExploreURL(fmt.Sprintf(`sum by (model) (rate(llm_cost_usd_total%s[$__rate_interval]))`, sel)),
+			Label: "LLM tokens/sec + cost USD/sec",
+			URL: grafanaExploreURL(
+				fmt.Sprintf(`sum by (token_type, model) (rate(llm_tokens_total%s[$__rate_interval]))`, sel),
+				fmt.Sprintf(`sum by (model) (rate(llm_cost_usd_total%s[$__rate_interval]))`, sel),
+			),
 		},
 	}
 }
