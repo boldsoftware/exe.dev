@@ -2,10 +2,12 @@ package ipam
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -382,6 +384,145 @@ func TestCursorAdvancesAcrossMultipleReserves(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, want, ip.String())
 	}
+}
+
+// TestCursorConcurrentReservesAdvanceMonotonically verifies that under
+// concurrent Reserve calls the cursor is not corrupted: all goroutines
+// receive distinct IPs from a contiguous range starting at the pre-test
+// cursor position, and the final persisted cursor equals
+// start + N (where N is the number of Reserves), proving each advancement
+// is serialized through the datastore mutex.
+func TestCursorConcurrentReservesAdvanceMonotonically(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	const n = 50
+
+	type result struct {
+		mac string
+		ip  string
+		err error
+	}
+	results := make(chan result, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mac := fmt.Sprintf("02:00:00:00:%02x:%02x", byte(i>>8), byte(i))
+			ip, err := m.Reserve(mac)
+			if err != nil {
+				results <- result{mac: mac, err: err}
+				return
+			}
+			results <- result{mac: mac, ip: ip.String()}
+		}(i)
+	}
+	wg.Wait()
+	close(results)
+
+	seen := map[string]string{}
+	for r := range results {
+		require.NoError(t, r.err, "Reserve failed for %s", r.mac)
+		if prev, dup := seen[r.ip]; dup {
+			t.Fatalf("duplicate IP %s handed to %s and %s", r.ip, prev, r.mac)
+		}
+		seen[r.ip] = r.mac
+	}
+	require.Len(t, seen, n)
+
+	// The allocated IPs must form the exact contiguous block .2..(n+1) — no
+	// gaps, no reuse — which is the property the cursor mutex guards.
+	for i := range n {
+		want := fmt.Sprintf("192.168.64.%d", i+2)
+		if _, ok := seen[want]; !ok {
+			t.Errorf("expected %s to have been allocated; gap in cursor advancement", want)
+		}
+	}
+
+	// Cursor must reflect the next candidate past the final allocation.
+	assert.Equal(t, fmt.Sprintf("192.168.64.%d", n+2), m.ds.db.NextIP,
+		"cursor should advance by exactly N under concurrent Reserves")
+}
+
+// TestCursorConcurrentReservesAndReleases layers concurrent Releases on top
+// of concurrent Reserves and verifies: (a) no duplicate IPs are ever issued
+// while the churn runs, and (b) the cursor continues to advance past any
+// in-flight releases rather than rewinding to reuse them. This is the
+// closest analog in-test to the production pattern that triggered the
+// incident (rapid create/delete of VMs under the same user).
+func TestCursorConcurrentReservesAndReleases(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	// Pre-allocate a batch so there are leases to release concurrently.
+	const preN = 20
+	preMACs := make([]string, preN)
+	preIPs := make([]string, preN)
+	for i := range preN {
+		mac := fmt.Sprintf("02:aa:00:00:00:%02x", i)
+		ip, err := m.Reserve(mac)
+		require.NoError(t, err)
+		preMACs[i] = mac
+		preIPs[i] = ip.String()
+	}
+	cursorBefore := m.ds.db.NextIP
+	require.Equal(t, "192.168.64.22", cursorBefore)
+
+	// Churn: release the pre-allocated leases while new Reserves run.
+	const newN = 30
+	var wg sync.WaitGroup
+	newResults := make(chan string, newN)
+	newErrs := make(chan error, newN)
+
+	for i := range preN {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = m.Release(preMACs[i], preIPs[i])
+		}(i)
+	}
+	for i := range newN {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mac := fmt.Sprintf("02:bb:00:00:00:%02x", i)
+			ip, err := m.Reserve(mac)
+			if err != nil {
+				newErrs <- err
+				return
+			}
+			newResults <- ip.String()
+		}(i)
+	}
+	wg.Wait()
+	close(newResults)
+	close(newErrs)
+
+	for err := range newErrs {
+		t.Fatalf("concurrent Reserve failed: %v", err)
+	}
+
+	// Collect allocated-during-churn IPs. They must all be distinct and
+	// none of them may overlap with the IPs that were just released — that
+	// would mean the cursor rewound under concurrent release.
+	releasedSet := make(map[string]struct{}, preN)
+	for _, ip := range preIPs {
+		releasedSet[ip] = struct{}{}
+	}
+	newSet := make(map[string]struct{}, newN)
+	for ip := range newResults {
+		if _, dup := newSet[ip]; dup {
+			t.Fatalf("duplicate IP %s handed out during concurrent churn", ip)
+		}
+		newSet[ip] = struct{}{}
+		if _, reused := releasedSet[ip]; reused {
+			t.Fatalf("cursor handed out just-released IP %s under concurrent churn", ip)
+		}
+	}
+	require.Len(t, newSet, newN)
+
+	// Cursor advanced by exactly newN regardless of the interleaved releases.
+	assert.Equal(t, fmt.Sprintf("192.168.64.%d", 22+newN), m.ds.db.NextIP,
+		"cursor must advance past N new Reserves even with concurrent Releases")
 }
 
 func macFromByte(b byte) string {
