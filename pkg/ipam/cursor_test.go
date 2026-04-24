@@ -1,0 +1,322 @@
+package ipam
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func newTestManager(t *testing.T, network string) *Manager {
+	t.Helper()
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{
+		DataDir: t.TempDir(),
+		Network: network,
+	}, log)
+	require.NoError(t, err)
+	return m
+}
+
+// TestCursorFreshHostStartsAtFirstHost verifies that a host with no existing
+// leases and no persisted cursor hands out the first host address after the
+// server IP, matching the previous allocator's behavior.
+func TestCursorFreshHostStartsAtFirstHost(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	ip, err := m.Reserve("00:11:22:33:44:55")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip.String())
+}
+
+// TestCursorDoesNotReuseJustReleasedIP is the headline property: releasing a
+// lease must NOT cause the next Reserve to hand out the same IP. This is the
+// behavior change that mitigates the rapid-duplicate-IP incident.
+func TestCursorDoesNotReuseJustReleasedIP(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	ip1, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+
+	require.NoError(t, m.Release("00:11:22:33:44:01", ip1.String()))
+
+	ip2, err := m.Reserve("00:11:22:33:44:02")
+	require.NoError(t, err)
+	assert.NotEqual(t, ip1.String(), ip2.String(),
+		"cursor must not hand out a just-released IP on the next Reserve")
+}
+
+// TestCursorWrapsAtSubnetEnd verifies that after exhausting the forward range,
+// the allocator wraps and consumes previously-released IPs — so a lease CAN
+// be reused eventually, just not immediately. Uses a /30 (2 usable addresses)
+// so the test runs fast.
+func TestCursorWrapsAtSubnetEnd(t *testing.T) {
+	// 192.168.64.0/30: network .0, server .1, usable .2, broadcast .3.
+	// FirstAddress=.1 (server), LastAddress=.2.
+	m := newTestManager(t, "192.168.64.0/30")
+
+	ip1, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip1.String())
+
+	// Only address .2 exists; releasing and re-reserving should wrap back to it.
+	require.NoError(t, m.Release("00:11:22:33:44:01", ip1.String()))
+
+	ip2, err := m.Reserve("00:11:22:33:44:02")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip2.String(),
+		"wrap-around must reuse the only free address")
+}
+
+// TestCursorPoolExhausted verifies that Reserve returns an error when all
+// addresses in the subnet are held.
+func TestCursorPoolExhausted(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/30")
+
+	_, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+
+	_, err = m.Reserve("00:11:22:33:44:02")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no IPs available")
+}
+
+// TestCursorSurvivesReopen verifies that the persisted cursor is loaded from
+// disk and resumed: re-opening the datastore must not rewind the cursor and
+// cause a just-released IP to be re-handed on the first post-restart Reserve.
+func TestCursorSurvivesReopen(t *testing.T) {
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	m1, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip1, err := m1.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+
+	// Release before reopening so the IP is eligible again by the old
+	// allocator's rules — the cursor is what should keep it out of reach.
+	require.NoError(t, m1.Release("00:11:22:33:44:01", ip1.String()))
+
+	m2, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip2, err := m2.Reserve("00:11:22:33:44:02")
+	require.NoError(t, err)
+	assert.NotEqual(t, ip1.String(), ip2.String(),
+		"cursor must persist across restart so a just-released IP is not re-handed")
+}
+
+// TestCursorSeedMigratesExistingLeases verifies the upgrade path: a
+// pre-existing leases.json with populated IPs but no cursor must trigger the
+// migration in NewManager, seeding the cursor past the highest existing
+// lease. Otherwise the first post-upgrade Reserve would walk from the subnet
+// base and hand out whatever IP sits in the lowest gap — exactly the
+// "just-released IP" case the cursor is meant to prevent.
+func TestCursorSeedMigratesExistingLeases(t *testing.T) {
+	dir := t.TempDir()
+	// Synthesize a legacy lease DB: three leases with a gap at .4.
+	legacy := &LeaseDB{
+		Hosts: map[string]*Lease{
+			"aa:aa:aa:aa:aa:02": {IP: "192.168.64.2", MACAddress: "aa:aa:aa:aa:aa:02"},
+			"aa:aa:aa:aa:aa:03": {IP: "192.168.64.3", MACAddress: "aa:aa:aa:aa:aa:03"},
+			"aa:aa:aa:aa:aa:05": {IP: "192.168.64.5", MACAddress: "aa:aa:aa:aa:aa:05"},
+		},
+		IPs: map[string]*Lease{
+			"192.168.64.2": {IP: "192.168.64.2", MACAddress: "aa:aa:aa:aa:aa:02"},
+			"192.168.64.3": {IP: "192.168.64.3", MACAddress: "aa:aa:aa:aa:aa:03"},
+			"192.168.64.5": {IP: "192.168.64.5", MACAddress: "aa:aa:aa:aa:aa:05"},
+		},
+	}
+	writeLegacyDB(t, dir, legacy)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	// The seed must have advanced the cursor past .5. First Reserve should
+	// NOT hand out .4 (the tempting gap) — it should land at .6 or later.
+	ip, err := m.Reserve("bb:bb:bb:bb:bb:01")
+	require.NoError(t, err)
+	assert.NotEqual(t, "192.168.64.4", ip.String(),
+		"seeded cursor must not hand out the gap that looks like a just-released IP")
+	assert.Equal(t, "192.168.64.6", ip.String())
+}
+
+// TestCursorSeedWrapsWhenMaxIsLastAddress verifies that if the highest
+// existing lease is at the subnet's last host address, the seed wraps the
+// cursor back to the first host. The next allocation then walks forward
+// from there, skipping over existing leases.
+func TestCursorSeedWrapsWhenMaxIsLastAddress(t *testing.T) {
+	dir := t.TempDir()
+	// /30: FirstAddress=.1 (server), LastAddress=.2. Max existing at .2
+	// means the seeded cursor should wrap to .1 (server), and the allocator
+	// will skip server on first Reserve.
+	legacy := &LeaseDB{
+		Hosts: map[string]*Lease{
+			"aa:aa:aa:aa:aa:02": {IP: "192.168.64.2", MACAddress: "aa:aa:aa:aa:aa:02"},
+		},
+		IPs: map[string]*Lease{
+			"192.168.64.2": {IP: "192.168.64.2", MACAddress: "aa:aa:aa:aa:aa:02"},
+		},
+	}
+	writeLegacyDB(t, dir, legacy)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/30"}, log)
+	require.NoError(t, err)
+
+	// Only .2 exists and it's taken. Next Reserve must fail cleanly.
+	_, err = m.Reserve("bb:bb:bb:bb:bb:01")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no IPs available")
+
+	// Releasing .2 should free it; the wrapped cursor finds it.
+	require.NoError(t, m.Release("aa:aa:aa:aa:aa:02", "192.168.64.2"))
+	ip, err := m.Reserve("bb:bb:bb:bb:bb:01")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip.String())
+}
+
+// TestCursorOutsideSubnetResets verifies that a stale cursor pointing at an
+// IP outside the currently-configured subnet (e.g. operator changed the
+// CIDR) falls back to the subnet base rather than erroring or looping.
+func TestCursorOutsideSubnetResets(t *testing.T) {
+	dir := t.TempDir()
+	stale := &LeaseDB{
+		Hosts:  map[string]*Lease{},
+		IPs:    map[string]*Lease{},
+		NextIP: "10.200.0.50", // not inside 192.168.64.0/24
+	}
+	writeLegacyDB(t, dir, stale)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip.String(),
+		"stale out-of-subnet cursor must reset to the subnet base")
+}
+
+// TestCursorUnparseableCursorResets verifies that a persisted cursor string
+// that fails to parse as an IP is treated as missing and the allocator falls
+// back to the subnet base rather than erroring.
+func TestCursorUnparseableCursorResets(t *testing.T) {
+	dir := t.TempDir()
+	stale := &LeaseDB{
+		Hosts:  map[string]*Lease{},
+		IPs:    map[string]*Lease{},
+		NextIP: "not-an-ip",
+	}
+	writeLegacyDB(t, dir, stale)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.2", ip.String(),
+		"unparseable cursor must reset to the subnet base")
+}
+
+// TestCursorSeedTolleratesUnparseableLeaseIP verifies that a corrupt lease
+// entry (unparseable IP in the map) does not abort the seed — the other
+// leases should still contribute to the computed cursor.
+func TestCursorSeedTolleratesUnparseableLeaseIP(t *testing.T) {
+	dir := t.TempDir()
+	legacy := &LeaseDB{
+		Hosts: map[string]*Lease{
+			"aa:aa:aa:aa:aa:07": {IP: "192.168.64.7", MACAddress: "aa:aa:aa:aa:aa:07"},
+		},
+		IPs: map[string]*Lease{
+			"192.168.64.7": {IP: "192.168.64.7", MACAddress: "aa:aa:aa:aa:aa:07"},
+			"garbage":      {IP: "garbage", MACAddress: "aa:aa:aa:aa:aa:99"},
+		},
+	}
+	writeLegacyDB(t, dir, legacy)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip, err := m.Reserve("bb:bb:bb:bb:bb:01")
+	require.NoError(t, err)
+	assert.Equal(t, "192.168.64.8", ip.String(),
+		"seed should still land past .7 even with a corrupt entry in IPs")
+}
+
+// TestCursorSeedIgnoresLeasesOutsideSubnet verifies that lease entries
+// outside the configured subnet (e.g. after a CIDR change) do not influence
+// the seeded cursor — only in-subnet entries matter.
+func TestCursorSeedIgnoresLeasesOutsideSubnet(t *testing.T) {
+	dir := t.TempDir()
+	legacy := &LeaseDB{
+		Hosts: map[string]*Lease{
+			"aa:aa:aa:aa:aa:01": {IP: "10.10.10.10", MACAddress: "aa:aa:aa:aa:aa:01"},
+			"aa:aa:aa:aa:aa:05": {IP: "192.168.64.5", MACAddress: "aa:aa:aa:aa:aa:05"},
+		},
+		IPs: map[string]*Lease{
+			"10.10.10.10":  {IP: "10.10.10.10", MACAddress: "aa:aa:aa:aa:aa:01"},
+			"192.168.64.5": {IP: "192.168.64.5", MACAddress: "aa:aa:aa:aa:aa:05"},
+		},
+	}
+	writeLegacyDB(t, dir, legacy)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	m, err := NewManager(&Config{DataDir: dir, Network: "192.168.64.0/24"}, log)
+	require.NoError(t, err)
+
+	ip, err := m.Reserve("bb:bb:bb:bb:bb:01")
+	require.NoError(t, err)
+	// Seed picks max in-subnet IP (.5) and advances to .6.
+	assert.Equal(t, "192.168.64.6", ip.String())
+}
+
+// TestCursorFreshHostNoSeed verifies that a host with no existing leases does
+// not have a cursor persisted after startup — the default start behavior
+// (cursor starts at subnet first host) applies.
+func TestCursorFreshHostNoSeed(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	// On a fresh host, no seed should have been written.
+	assert.Empty(t, m.ds.db.NextIP, "fresh host should not have a seeded cursor")
+
+	// After a Reserve, the cursor advances past the allocation.
+	ip, err := m.Reserve("00:11:22:33:44:01")
+	require.NoError(t, err)
+	require.Equal(t, "192.168.64.2", ip.String())
+	assert.Equal(t, "192.168.64.3", m.ds.db.NextIP)
+}
+
+// TestCursorAdvancesAcrossMultipleReserves sanity-checks that the cursor
+// advances monotonically and each Reserve returns the next sequential IP.
+func TestCursorAdvancesAcrossMultipleReserves(t *testing.T) {
+	m := newTestManager(t, "192.168.64.0/24")
+
+	wantIPs := []string{"192.168.64.2", "192.168.64.3", "192.168.64.4", "192.168.64.5"}
+	for i, want := range wantIPs {
+		ip, err := m.Reserve(macFromByte(byte(i + 1)))
+		require.NoError(t, err)
+		assert.Equal(t, want, ip.String())
+	}
+}
+
+func macFromByte(b byte) string {
+	mac := net.HardwareAddr{0x02, 0x00, 0x00, 0x00, 0x00, b}
+	return mac.String()
+}
+
+func writeLegacyDB(t *testing.T, dir string, db *LeaseDB) {
+	t.Helper()
+	data, err := json.Marshal(db)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, configName), data, 0o600))
+}

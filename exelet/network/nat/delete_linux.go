@@ -4,6 +4,8 @@ package nat
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
@@ -11,6 +13,14 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+// DeleteInterface tears down the per-VM network resources and releases the
+// IPAM lease. It walks every step best-effort even if an earlier step
+// fails: returning early on a TAP-delete error (the previous behavior) left
+// the IPAM lease stranded, which is exactly the orphan-lease state the
+// reconciler then confuses for a legitimate release and hands the IP to
+// another VM — causing duplicate-IP conflicts. The MAC-scoped release is
+// safe on a stale/reassigned IP (see ipam.Datastore.Release), so attempting
+// it on the failure path is strictly better than leaving it unreleased.
 func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 	tapName := getTapID(id)
 
@@ -22,12 +32,21 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 		n.log.WarnContext(ctx, "failed to remove bandwidth limit", "tap", tapName, "error", err)
 	}
 
+	var errs []error
+	tapDeleted := true
 	if err := n.deleteTapInterface(tapName); err != nil {
-		return err
+		// Don't abort: we still need to release the IPAM lease and other
+		// per-VM state, or we strand an orphan that the reconciler will
+		// later mis-handle.
+		n.log.WarnContext(ctx, "failed to delete TAP interface; continuing cleanup to release lease",
+			"tap", tapName, "error", err)
+		errs = append(errs, fmt.Errorf("delete tap %s: %w", tapName, err))
+		tapDeleted = false
 	}
 
-	// Decrement port count for the bridge
-	if bridgeName != "" {
+	// Only decrement the bridge port count if the TAP was actually removed;
+	// otherwise the counter would drift below the real port count.
+	if tapDeleted && bridgeName != "" {
 		n.decrementBridgePort(bridgeName)
 	}
 
@@ -55,7 +74,7 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip, mac string) error {
 			"tap", tapName, "ip", ip, "instance", id)
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // ReconcileLeases releases any IPAM leases whose IPs are not associated with
@@ -119,6 +138,11 @@ func (n *NAT) ReconcileLeases(ctx context.Context, instances []*api.Instance) ([
 				n.log.WarnContext(ctx, "failed to release orphaned IP lease", "ip", lease.IP, "mac", lease.MACAddress, "error", err)
 				continue
 			}
+			// Explicit per-lease success log so post-deploy we can count
+			// how often the reconciler actually releases leases (vs.
+			// identifies candidates) and correlate by mac/ip with
+			// duplicate-IP incidents.
+			n.log.InfoContext(ctx, "reconciler released orphaned IP lease", "ip", lease.IP, "mac", lease.MACAddress)
 			released = append(released, lease.IP)
 		}
 	}

@@ -26,6 +26,13 @@ type Query struct {
 type LeaseDB struct {
 	Hosts map[string]*Lease `json:"hosts,omitempty"`
 	IPs   map[string]*Lease `json:"ips,omitempty"`
+	// NextIP is the monotonic cursor into the subnet used by the allocator.
+	// Reserving an IP advances the cursor past it; the cursor wraps at the
+	// subnet's last host address. Keeping the cursor past recently-released
+	// IPs is what prevents a just-freed IP from being immediately reassigned
+	// — giving any concurrent cleanup (reconciler, delete paths, desired-state
+	// sync) time to converge before the IP is eligible again.
+	NextIP string `json:"nextIP,omitempty"`
 }
 
 func newLeaseDB() *LeaseDB {
