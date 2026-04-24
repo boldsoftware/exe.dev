@@ -628,7 +628,7 @@ function App() {
       setCurrentConversationId(newConversationId);
     } catch (err) {
       console.error("Failed to send first message:", err);
-      setError("Failed to send message");
+      setError(err instanceof Error ? err.message : "Failed to send message");
       throw err;
     }
   };

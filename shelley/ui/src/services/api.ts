@@ -10,6 +10,22 @@ import {
   CommitInfo,
 } from "../types";
 
+// Extract a useful error message from a failed fetch response. Prefers the
+// response body (which may contain a server-side detail like a hook error),
+// falls back to statusText, then to the numeric status.
+async function responseError(response: Response, prefix: string): Promise<Error> {
+  let detail = "";
+  try {
+    detail = (await response.text()).trim();
+  } catch {
+    // ignore
+  }
+  if (!detail) {
+    detail = response.statusText || `HTTP ${response.status}`;
+  }
+  return new Error(`${prefix}: ${detail}`);
+}
+
 class ApiService {
   private baseUrl = "/api";
 
@@ -60,7 +76,7 @@ class ApiService {
       body: JSON.stringify(request),
     });
     if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+      throw await responseError(response, "Failed to start conversation");
     }
     return response.json();
   }
@@ -169,7 +185,7 @@ class ApiService {
       body: JSON.stringify(request),
     });
     if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.statusText}`);
+      throw await responseError(response, "Failed to send message");
     }
   }
 
