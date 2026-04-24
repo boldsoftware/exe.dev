@@ -2236,7 +2236,12 @@ function ChatInterface({
             </button>
             {showAdvancedSettings && (
               <div className="advanced-settings-popover">
-                <div className="advanced-settings-header">Tools</div>
+                <div className="advanced-settings-header">
+                  Tools
+                  <span className="advanced-settings-hint">
+                    Outline = default. Click the active choice to reset.
+                  </span>
+                </div>
                 <div className="tool-override-list">
                   {[
                     {
@@ -2247,7 +2252,8 @@ function ChatInterface({
                     ...availableTools,
                   ].map((tool) => {
                     const override = toolOverrides[tool.name];
-                    const current: "default" | "on" | "off" = override || "default";
+                    const effectiveOn = override ? override === "on" : tool.default_on;
+                    const isDefault = !override;
                     return (
                       <React.Fragment key={tool.name}>
                         <div className="tool-override-row">
@@ -2258,28 +2264,40 @@ function ChatInterface({
                             )}
                             <span className="tool-override-summary">{tool.summary}</span>
                           </div>
-                          <div className="tool-override-choices" role="radiogroup">
-                            {(
-                              [
-                                ["default", `Default (${tool.default_on ? "on" : "off"})`],
-                                ["on", "On"],
-                                ["off", "Off"],
-                              ] as const
-                            ).map(([val, label]) => (
-                              <button
-                                key={val}
-                                type="button"
-                                role="radio"
-                                aria-checked={current === val}
-                                className={`tool-override-choice${
-                                  current === val ? " active" : ""
-                                }`}
-                                onClick={() => setToolOverride(tool.name, val)}
-                                disabled={sending}
-                              >
-                                {label}
-                              </button>
-                            ))}
+                          <div
+                            className={`tool-override-choices${isDefault ? " is-default" : ""}`}
+                            role="radiogroup"
+                          >
+                            {(["on", "off"] as const).map((val) => {
+                              const active = effectiveOn === (val === "on");
+                              return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={active}
+                                  className={`tool-override-choice${active ? " active" : ""}`}
+                                  onClick={() => {
+                                    // Toggle: clicking the currently-active button clears the
+                                    // override back to default; clicking the other sets it.
+                                    if (active) setToolOverride(tool.name, "default");
+                                    else setToolOverride(tool.name, val);
+                                  }}
+                                  disabled={sending}
+                                  title={
+                                    active && isDefault
+                                      ? `default (${val})`
+                                      : active
+                                        ? `overridden to ${val} (click to reset to default: ${
+                                            tool.default_on ? "on" : "off"
+                                          })`
+                                        : `set to ${val}`
+                                  }
+                                >
+                                  {val === "on" ? "On" : "Off"}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                         {tool.name === "orchestrator" && toolOverrides["orchestrator"] === "on" && (
