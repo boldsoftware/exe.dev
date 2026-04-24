@@ -1020,27 +1020,55 @@ def create_vm() -> Path:
                 "-o", "UserKnownHostsFile=/dev/null",
                 "-o", "LogLevel=ERROR"]
     dns_server = f"{BRIDGE_PFX}.1"
+    # Importing the 'tank' zpool is the critical step — tests fail
+    # immediately with "no such pool 'tank'" if it's not imported. We
+    # boot with systemd-udev-settle masked, so /dev/vdb may not be
+    # enumerated yet when we ssh in. Retry the import with udevadm
+    # settle between attempts, and fail loudly if it never succeeds
+    # rather than silently letting the test harness hit the error.
     setup_cmds = (
+        "set -e; "
+        # modprobe is best-effort: the product kernel may have zfs built-in,
+        # in which case there's no loadable module.
         "sudo modprobe zfs 2>/dev/null || true; "
-        "sudo zpool import -f -N tank 2>/dev/null || true; "
-        "HP=$(awk '/MemTotal/{print int($2/4096)}' /proc/meminfo) && "
+        "if ! sudo zpool list tank >/dev/null 2>&1; then "
+        "  for i in 1 2 3 4 5; do "
+        "    sudo udevadm trigger --subsystem-match=block || true; "
+        "    sudo udevadm settle --timeout=5 || true; "
+        "    if sudo zpool import -f -N tank; then break; fi; "
+        "    echo \"zpool import attempt $i failed, retrying...\" >&2; "
+        "    sleep 1; "
+        "  done; "
+        "fi; "
+        "if ! sudo zpool list tank >/dev/null 2>&1; then "
+        "  echo '=== zpool import diagnostics ===' >&2; "
+        "  sudo lsblk >&2 || true; "
+        "  sudo zpool import >&2 || true; "
+        "  ls -l /dev/disk/by-id/ >&2 || true; "
+        "  exit 1; "
+        "fi; "
+
+        "HP=$(awk '/MemTotal/{print int($2/4096)}' /proc/meminfo); "
         "echo $HP | sudo tee /proc/sys/vm/nr_hugepages >/dev/null; "
         f"sudo mkdir -p /etc/systemd/resolved.conf.d && "
-        f"echo -e '[Resolve]\\nDNS={dns_server}' | "
+        f"printf '[Resolve]\\nDNS={dns_server}\\n' | "
         f"sudo tee /etc/systemd/resolved.conf.d/ci.conf >/dev/null && "
-        f"sudo resolvectl dns eth0 {dns_server} 2>/dev/null || "
-        f"sudo resolvectl dns ens4 {dns_server} 2>/dev/null || "
-        f"sudo systemctl restart systemd-resolved"
+        f"(sudo resolvectl dns eth0 {dns_server} 2>/dev/null || "
+        f" sudo resolvectl dns ens4 {dns_server} 2>/dev/null || "
+        f" sudo systemctl restart systemd-resolved)"
     )
     r = subprocess.run(
         ["ssh", *ssh_opts, f"{USER_NAME}@{ip}", setup_cmds],
         capture_output=True, text=True, timeout=60)
     if r.returncode != 0:
-        print(f"Post-boot setup warning (exit {r.returncode}):", flush=True)
+        print(f"Post-boot setup FAILED (exit {r.returncode}):", flush=True)
         if r.stdout.strip():
             print(r.stdout.strip(), flush=True)
         if r.stderr.strip():
             print(r.stderr.strip(), flush=True)
+        raise RuntimeError(
+            f"post-boot setup failed for {NAME}: "
+            "zpool 'tank' could not be imported or other critical setup step failed")
 
     elapsed = time.monotonic() - t0
     print(f"══════ VM ready in {elapsed:.1f}s  NAME={NAME}  IP={ip} ══════", flush=True)
