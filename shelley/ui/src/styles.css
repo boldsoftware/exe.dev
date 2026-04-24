@@ -7646,3 +7646,30 @@ kbd {
   font-size: 0.875rem;
   font-family: monospace;
 }
+
+/* Floating toolbar shown above/below a text selection inside a commentable
+ * message. Portaled to document.body so it sits above everything and doesn't
+ * participate in the selection itself. */
+.message-selection-toolbar {
+  position: fixed;
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  /* Avoid participating in selection or capturing the selection accidentally. */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.message-selection-toolbar:hover {
+  background: var(--bg-tertiary);
+}

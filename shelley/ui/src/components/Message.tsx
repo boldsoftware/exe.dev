@@ -462,6 +462,7 @@ const Message = React.memo(function Message({
   const messageText = getMessageText();
   const hasCopyAction = !!messageText;
   const hasUsageAction = message.type === "agent" && !!usage;
+  const isCommentable = !isUser && !isError && !isTool;
 
   // Build a map of tool use IDs to their inputs for linking tool_result back to tool_use
   const toolUseMap: Record<string, { name: string; input: unknown }> = {};
@@ -1175,6 +1176,8 @@ const Message = React.memo(function Message({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         data-testid="message"
+        data-message-id={message.message_id}
+        data-commentable={isCommentable ? "true" : undefined}
         role="article"
       >
         {actionBarVisible && (hasCopyAction || hasUsageAction) && (

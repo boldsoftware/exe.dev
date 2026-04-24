@@ -25,6 +25,8 @@ import {
 import MessageComponent from "./Message";
 import MessageInput from "./MessageInput";
 import DiffViewer from "./DiffViewer";
+import MessageSelectionToolbar from "./MessageSelectionToolbar";
+import { buildMessageQuote } from "../utils/messageQuote";
 import AgentsMdEditorModal from "./AgentsMdEditorModal";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
@@ -791,6 +793,12 @@ function ChatInterface({
   );
   const [diffViewerCwd, setDiffViewerCwd] = useState<string | undefined>(undefined);
   const [diffCommentText, setDiffCommentText] = useState("");
+
+  // Inject a markdown comment block referencing a chat message into the composer.
+  // Uses a multi-line blockquote so the full selection is preserved.
+  const handleMessageComment = useCallback((messageId: string, snippet: string) => {
+    setDiffCommentText(buildMessageQuote(messageId, snippet));
+  }, []);
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -2781,6 +2789,8 @@ function ChatInterface({
         }}
         initialPath={selectedCwd}
       />
+
+      <MessageSelectionToolbar onComment={handleMessageComment} />
 
       {/* Diff Viewer */}
       <DiffViewer
