@@ -11,21 +11,9 @@ import (
 
 	"exe.dev/billing/stripetest"
 	"exe.dev/billing/tender"
-	exesqlite "exe.dev/sqlite"
 	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v85"
 )
-
-func newEmptyTestDB(t *testing.T) *exesqlite.DB {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "billing_empty.db")
-	db, err := exesqlite.New(dbPath, 1)
-	if err != nil {
-		t.Fatalf("exesqlite.New: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
 
 func TestMakeCustomerDashboardURL(t *testing.T) {
 	const billingID = "cus_123"

@@ -1,7 +1,6 @@
 package billing
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,35 +14,6 @@ import (
 	"exe.dev/tslog"
 	"github.com/stripe/stripe-go/v85"
 )
-
-// stripeSubscribe is a helper function that creates a subscription for the given
-// customer ID and price lookup key using the Stripe API directly to simulate checkout/portal subscription creation.
-func stripeSubscribe(ctx context.Context, m *Manager, customerID, paymentMethodID, priceLookupKey string) error {
-	c := m.client()
-	priceID, err := m.lookupPriceID(ctx, priceLookupKey)
-	if err != nil {
-		return err
-	}
-
-	// Attach payment method to customer
-	pm, err := c.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{
-		Customer: &customerID,
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = c.V1Subscriptions.Create(ctx, &stripe.SubscriptionCreateParams{
-		DefaultPaymentMethod: &pm.ID,
-		Customer:             &customerID,
-		Items: []*stripe.SubscriptionCreateItemParams{
-			{
-				Price: &priceID,
-			},
-		},
-	})
-	return err
-}
 
 func TestSubscribeNewThenActive(t *testing.T) {
 	m := newTestManager(t)
@@ -234,34 +204,6 @@ func TestSpendCreditsRejectsNegativeUnitPrice(t *testing.T) {
 	if balance != tender.Zero() {
 		t.Fatalf("balance after rejected spend = %v, want %v", balance, tender.Zero())
 	}
-}
-
-// stripeCompleteCreditPurchase simulates a completed credit purchase by creating
-// and confirming a PaymentIntent with credit_purchase metadata. This generates the
-// payment_intent.succeeded event that SyncCredits processes.
-// cents is the amount in cents (1/100 USD), matching what BuyCredits sends to Stripe.
-func stripeCompleteCreditPurchase(ctx context.Context, m *Manager, customerID, paymentMethodID string, amount tender.Value) error {
-	c := m.client()
-
-	pm, err := c.V1PaymentMethods.Attach(ctx, paymentMethodID, &stripe.PaymentMethodAttachParams{
-		Customer: &customerID,
-	})
-	if err != nil {
-		return err
-	}
-
-	p := &stripe.PaymentIntentCreateParams{
-		Amount:             new(amount.Cents()),
-		Currency:           stripe.String("usd"),
-		Customer:           &customerID,
-		PaymentMethod:      &pm.ID,
-		PaymentMethodTypes: []*string{stripe.String("card")},
-		Confirm:            new(true),
-	}
-	p.AddMetadata("type", "credit_purchase")
-
-	_, err = c.V1PaymentIntents.Create(ctx, p)
-	return err
 }
 
 func TestGiftCredits(t *testing.T) {

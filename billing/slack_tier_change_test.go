@@ -117,5 +117,3 @@ func TestSyncAccountPlan_SlackTierChangeNotification(t *testing.T) {
 	// With nil Slack client, the calls are logged (verified by log output in test).
 	t.Log("Slack notifications fired correctly (logged, no real Slack client)")
 }
-
-func stringPtr(s string) *string { return &s }

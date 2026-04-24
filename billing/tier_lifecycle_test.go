@@ -1,80 +1,12 @@
 package billing
 
 import (
-	"context"
-	"database/sql"
-	"errors"
 	"testing"
-	"time"
 
 	"exe.dev/billing/plan"
 	"exe.dev/exedb"
-	exesqlite "exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v85"
 )
-
-// stripeChangeTier updates an existing subscription to a new price.
-// It finds the subscription's current non-metered item and swaps its price,
-// using immediate proration (matching Stripe portal default behavior).
-func stripeChangeTier(ctx context.Context, m *Manager, customerID, newPriceLookupKey string) (*stripe.Subscription, error) {
-	c := m.client()
-
-	newPriceID, err := m.lookupPriceID(ctx, newPriceLookupKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// Find the active subscription and its non-metered item.
-	var subID, itemID string
-	for sub, err := range c.V1Subscriptions.List(ctx, &stripe.SubscriptionListParams{
-		Customer: &customerID,
-		Status:   stripe.String(string(stripe.SubscriptionStatusActive)),
-	}).All(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		subID = sub.ID
-		for _, item := range sub.Items.Data {
-			if item.Price != nil && item.Price.Recurring != nil &&
-				item.Price.Recurring.UsageType != stripe.PriceRecurringUsageTypeMetered {
-				itemID = item.ID
-				break
-			}
-		}
-		break
-	}
-	if subID == "" {
-		return nil, errors.New("no active subscription found")
-	}
-	if itemID == "" {
-		return nil, errors.New("no non-metered subscription item found")
-	}
-
-	proration := "create_prorations"
-	return c.V1Subscriptions.Update(ctx, subID, &stripe.SubscriptionUpdateParams{
-		ProrationBehavior: &proration,
-		Items: []*stripe.SubscriptionUpdateItemParams{
-			{
-				ID:    &itemID,
-				Price: &newPriceID,
-			},
-		},
-	})
-}
-
-// getActiveSubscription returns the active subscription for a customer.
-func getActiveSubscription(ctx context.Context, m *Manager, customerID string) (*stripe.Subscription, error) {
-	for sub, err := range m.client().V1Subscriptions.List(ctx, &stripe.SubscriptionListParams{
-		Customer: &customerID,
-		Status:   stripe.String(string(stripe.SubscriptionStatusActive)),
-	}).All(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		return sub, nil
-	}
-	return nil, errors.New("no active subscription")
-}
 
 // TestTierLifecycle_SubscribeUpgradeDowngrade exercises the full billing
 // lifecycle: basic → individual (small) → upgrade to medium → downgrade
@@ -178,86 +110,4 @@ func TestTierLifecycle_SubscribeUpgradeDowngrade(t *testing.T) {
 	}
 }
 
-// testEventClock is a simple monotonic clock for generating event timestamps
-// in tests. Each call to next() returns a timestamp 1 second later than the
-// previous, ensuring syncAccountPlan's stale-event check never skips events
-// regardless of wall-clock speed (important for cassette replay).
-type testEventClock struct {
-	now time.Time
-}
 
-func newTestEventClock() *testEventClock {
-	return &testEventClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-}
-
-func (c *testEventClock) next() time.Time {
-	c.now = c.now.Add(time.Second)
-	return c.now
-}
-
-// syncSub simulates what SyncSubscriptions does for a single subscription event:
-// derives the event type from the subscription status, then calls syncAccountPlan.
-func syncSub(t *testing.T, m *Manager, ctx context.Context, accountID string, sub *stripe.Subscription, eventAt time.Time) {
-	t.Helper()
-	eventType, ok := subscriptionEventType("customer.subscription.updated", sub.Status)
-	if !ok {
-		t.Fatalf("subscriptionEventType: no event type for status %q", sub.Status)
-	}
-	if err := m.syncAccountPlan(ctx, accountID, eventType, eventAt, nil, sub); err != nil {
-		t.Fatalf("syncAccountPlan: %v", err)
-	}
-}
-
-// setBasicPlan inserts a basic plan for the account.
-func setBasicPlan(t *testing.T, db *exesqlite.DB, accountID string) {
-	t.Helper()
-	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
-		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
-			AccountID: accountID,
-			PlanID:    plan.ID(plan.CategoryBasic),
-			StartedAt: time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC),
-		})
-	})
-	if err != nil {
-		t.Fatalf("setBasicPlan: %v", err)
-	}
-}
-
-// assertActivePlanCategory checks that the active plan for the account
-// matches the expected category.
-func assertActivePlanCategory(t *testing.T, db *exesqlite.DB, accountID string, wantCategory plan.Category) {
-	t.Helper()
-	ap, err := exedb.WithRxRes1(db, context.Background(), (*exedb.Queries).GetActiveAccountPlan, accountID)
-	if err != nil {
-		t.Fatalf("GetActiveAccountPlan: %v", err)
-	}
-	gotCategory := plan.Base(ap.PlanID)
-	if gotCategory != wantCategory {
-		t.Fatalf("active plan category = %q, want %q (plan_id=%q)", gotCategory, wantCategory, ap.PlanID)
-	}
-}
-
-// assertActivePlanID checks that the active plan_id matches exactly.
-func assertActivePlanID(t *testing.T, db *exesqlite.DB, accountID, wantPlanID string) {
-	t.Helper()
-	ap, err := exedb.WithRxRes1(db, context.Background(), (*exedb.Queries).GetActiveAccountPlan, accountID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			t.Fatalf("no active plan found, want %q", wantPlanID)
-		}
-		t.Fatalf("GetActiveAccountPlan: %v", err)
-	}
-	if ap.PlanID != wantPlanID {
-		t.Fatalf("active plan_id = %q, want %q", ap.PlanID, wantPlanID)
-	}
-}
-
-// assertSubscriptionPrice verifies that the subscription's non-metered item
-// uses the expected price lookup key.
-func assertSubscriptionPrice(t *testing.T, sub *stripe.Subscription, wantLookupKey string) {
-	t.Helper()
-	got := subscriptionLookupKey(sub)
-	if got != wantLookupKey {
-		t.Fatalf("subscription price lookup key = %q, want %q", got, wantLookupKey)
-	}
-}

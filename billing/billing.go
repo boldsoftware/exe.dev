@@ -217,7 +217,7 @@ type Manager struct {
 
 	// testClockID is the ID of the Stripe test clock to use for requests
 	// that need to be associated with the clock. This field is primarily
-	// for testing and owned by test_test.go
+	// for testing and owned by helpers_test.go
 	testClockID string
 }
 
