@@ -8,7 +8,7 @@ import (
 	"exe.dev/exedb"
 )
 
-// vmsLiveVM is a single VM's live metrics in the /api/vms/live response.
+// vmsLiveVM is a single VM's live metrics in the /api/vms/usage/live response.
 type vmsLiveVM struct {
 	Name              string  `json:"name"`
 	Status            string  `json:"status"`
@@ -23,7 +23,7 @@ type vmsLiveVM struct {
 	NetTxBytes        uint64  `json:"net_tx_bytes"`
 }
 
-// vmsLivePool is the pre-computed pool summary in the /api/vms/live response.
+// vmsLivePool is the pre-computed pool summary in the /api/vms/usage/live response.
 type vmsLivePool struct {
 	CPUUsed      float64 `json:"cpu_used"`       // sum of cpu_percent/100 across running VMs
 	CPUMax       uint64  `json:"cpu_max"`        // plan MaxCPUs (0 = unlimited)
@@ -31,13 +31,13 @@ type vmsLivePool struct {
 	MemMaxBytes  uint64  `json:"mem_max_bytes"`  // plan MaxMemory (0 = unlimited)
 }
 
-// vmsLiveResponse is the JSON response for GET /api/vms/live.
+// vmsLiveResponse is the JSON response for GET /api/vms/usage/live.
 type vmsLiveResponse struct {
 	VMs  []vmsLiveVM `json:"vms"`
 	Pool vmsLivePool `json:"pool"`
 }
 
-// HandleAPIVMsLive handles GET /api/vms/live.
+// HandleAPIVMsLive handles GET /api/vms/usage/live.
 // Returns live metrics for all VMs owned by the user, plus a pool summary.
 // Returns empty vms when EnforcePlanCPUMax is off (metrics not yet validated).
 func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID string) {

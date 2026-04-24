@@ -432,7 +432,7 @@ export interface VMsLiveResponse {
 }
 
 export async function fetchVMsLive(): Promise<VMsLiveResponse> {
-  return fetchJSON('/api/vms/live')
+  return fetchJSON('/api/vms/usage/live')
 }
 
 export async function fetchVMDetails(name: string): Promise<{ box: BoxInfo; billing: DashboardData['billing'] } | null> {

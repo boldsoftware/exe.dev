@@ -672,14 +672,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleUsage2Page(w, r, userID)
 		return
-	case "/usage-api":
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "authentication required", http.StatusUnauthorized)
-			return
-		}
-		s.handleUsageAPI(w, r, userID)
-		return
+
 	case "/invite":
 		// Invite allocation page - require authentication, POST to allocate
 		userID, err := s.validateAuthCookie(r)
@@ -978,19 +971,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/ideas/submit":
 		s.handleTemplateSubmitAPI(w, r)
 		return
-	case "/api/billing/usage/vms":
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		userID, err := s.validateAuthCookie(r)
-		if err != nil {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-			return
-		}
-		s.handleAPIBillingUsageVMs(w, r, userID)
-		return
-	case "/api/vms/live":
+
+	case "/api/vms/usage/live":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -1001,6 +983,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.HandleAPIVMsLive(w, r, userID)
+		return
+	case "/api/vms/usage/history":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		s.handleUsageAPI(w, r, userID)
 		return
 	case "/api/llm-usage":
 		if r.Method != http.MethodGet {

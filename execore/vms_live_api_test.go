@@ -11,7 +11,7 @@ func TestAPIVMsLive_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/vms/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vms/usage/live", nil)
 	req.Host = s.env.WebHost
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
@@ -34,7 +34,7 @@ func TestAPIVMsLive_MethodNotAllowed(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/vms/live", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vms/usage/live", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -58,7 +58,7 @@ func TestAPIVMsLive_EmptyResponse(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/vms/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vms/usage/live", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
