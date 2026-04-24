@@ -44,7 +44,7 @@ jobs:
         if: matrix.platform == 'linux/arm64'
         run: |
           ./bin/retry.sh sudo apt-get update
-          ./bin/retry.sh sudo apt-get install -y ca-certificates curl make
+          ./bin/retry.sh sudo apt-get install -y ca-certificates curl jq make
           sudo install -m 0755 -d /etc/apt/keyrings
           # curl --retry instead of retry.sh: single download, curl handles retries natively
           sudo curl -fsSL --retry 5 --retry-all-errors https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -71,6 +71,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Resolve pi-mono latest release
+        id: pi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(./bin/retry.sh curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/badlogic/pi-mono/releases/latest | jq -r .tag_name)
+          test -n "$version" && test "$version" != "null"
+          echo "Latest pi-mono release: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -79,6 +92,8 @@ jobs:
           file: ./exeuntu/Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PI_VERSION=${{ steps.pi.outputs.version }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.ref == 'refs/heads/main' }}
           cache-from: |
             type=registry,ref=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:cache-${{ env.PLATFORM_PAIR }}
