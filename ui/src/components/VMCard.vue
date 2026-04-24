@@ -20,7 +20,7 @@
         @close="closeEmojiPicker"
         @pick="onEmojiPick"
       />
-      <router-link :to="`/vm/${box.name}`" class="box-name" @click.stop>{{ box.name }} <i class="pi pi-angle-right box-name-arrow"></i></router-link>
+      <router-link :to="`/vm/${box.name}`" class="box-name" @click.stop>{{ box.name }}</router-link>
       <span v-if="box.totalShareCount > 0" class="share-badge" :title="`Shared with ${box.sharedUserCount} user(s) and ${box.shareLinkCount} link(s)`">
         👥 {{ box.totalShareCount }}
       </span>
@@ -148,26 +148,11 @@ function onRowClick(event: MouseEvent) {
   font-size: 13px;
   color: var(--text-color);
   text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.box-name-arrow {
-  font-size: 12px;
-  color: var(--text-color-muted);
-  opacity: 0.4;
-  transition: opacity 0.15s, transform 0.15s;
 }
 
 .box-name:hover {
   text-decoration: underline;
   color: var(--primary-color, var(--text-color));
-}
-
-.box-name:hover .box-name-arrow {
-  opacity: 0.8;
-  transform: translateX(1px);
 }
 
 .share-badge {
@@ -269,6 +254,13 @@ function onRowClick(event: MouseEvent) {
   }
   .box-main {
     gap: 8px;
+    flex-wrap: wrap;
+  }
+  /* Push tags onto a second row on mobile. Actions stay on the first row via margin-left: auto. */
+  .box-tags {
+    order: 10;
+    flex-basis: 100%;
+    margin-left: 36px; /* align under name, past emoji */
   }
 }
 </style>
