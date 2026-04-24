@@ -191,6 +191,86 @@ FORMAT PrettyCompact
 - The `remaining_credit_usd` decreases over time; the latest value is the most recent balance
 - Subquery approach works well to alias the verbose `LogAttributes['...']` keys
 
+## Prod Database Snapshots
+
+On a daily basis, `exechsync` (see `exechsync/` in the repo) copies a small
+subset of exed's SQLite production data into the `prod` database in
+ClickHouse. Each row is tagged with an `extract_date Date` column, and the
+tables use `ReplacingMergeTree` keyed on `(extract_date, <pk>)` — so you
+get one copy per day.
+
+Sync runs once per 24h (and immediately on exed startup if today's snapshot
+is missing). Monitor via `clickhouse_sync_rows{table=...}` and
+`clickhouse_sync_failures_total{table=...}`.
+
+### Tables
+
+| Table | Primary key columns | Other columns |
+|-------|--------------------|----------------|
+| `prod.users` | `user_id` | `email` |
+| `prod.teams` | `team_id` | `display_name` |
+| `prod.team_members` | `team_id`, `user_id` | `role` |
+| `prod.accounts` | `id` | `created_by`, `parent_id` |
+| `prod.account_plans` | `account_id`, `started_at` | `plan_id`, `ended_at`, `trial_expires_at` |
+| `prod.boxes` | `name` | `created_by_user_id`, `status`, `region` |
+
+All tables also have an `extract_date Date` column.
+
+### `_latest` views
+
+For each base table there is a companion `*_latest` view that returns only
+rows from the most recent `extract_date`. Prefer these for ad-hoc queries
+so you don't accidentally read every day's snapshot:
+
+- `prod.users_latest`
+- `prod.teams_latest`
+- `prod.team_members_latest`
+- `prod.accounts_latest`
+- `prod.account_plans_latest`
+- `prod.boxes_latest`
+
+Each view is defined as roughly:
+
+```sql
+SELECT * FROM prod.<table>
+WHERE extract_date = (SELECT max(extract_date) FROM prod.<table>)
+```
+
+### Examples
+
+Count currently-running boxes by region:
+
+```sql
+SELECT region, count() AS n
+FROM prod.boxes_latest
+WHERE status = 'running'
+GROUP BY region
+ORDER BY n DESC
+FORMAT PrettyCompact
+```
+
+Join log events to user emails (using today's snapshot):
+
+```sql
+SELECT
+    u.email AS email,
+    count() AS requests
+FROM otel_logs AS l
+LEFT JOIN prod.users_latest AS u ON u.user_id = l.LogAttributes['user_id']
+WHERE l.LogAttributes['cost_usd'] != ''
+  AND l.Timestamp >= today()
+GROUP BY email
+ORDER BY requests DESC
+LIMIT 20
+FORMAT PrettyCompact
+```
+
+Backfill a historical snapshot (pick a specific `extract_date`):
+
+```sql
+SELECT count() FROM prod.boxes WHERE extract_date = '2026-04-20'
+```
+
 ## Querying from an exe.dev VM
 
 ```bash

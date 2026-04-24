@@ -26,6 +26,24 @@ export CLICKHOUSE_USER="yourname-ro"
 export CLICKHOUSE_PASSWORD="yourpassword"
 ```
 
+## Prod Database Snapshots
+
+In addition to logs and metrics, `exechsync` copies a small subset of exed's
+SQLite production data into the `prod` database once per day. Tables are
+tagged with `extract_date` and use `ReplacingMergeTree`; each has a
+`*_latest` view that returns only the most recent snapshot — prefer those
+for ad-hoc queries.
+
+Tables: `prod.users`, `prod.teams`, `prod.team_members`, `prod.accounts`,
+`prod.account_plans`, `prod.boxes` (plus matching `*_latest` views).
+
+```sql
+SELECT region, count() FROM prod.boxes_latest
+WHERE status = 'running' GROUP BY region FORMAT PrettyCompact
+```
+
+See `clickhouse/clickhouse.md` for the full schema and more examples.
+
 ## OTel Logs Schema
 
 **Table**: `otel_logs`
