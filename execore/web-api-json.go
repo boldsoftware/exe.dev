@@ -94,6 +94,7 @@ type jsonDashboardData struct {
 	ShowIntegrations  bool                 `json:"showIntegrations"`
 	Billing           jsonDashboardBilling `json:"billing"`
 	Trial             *jsonTrialInfo       `json:"trial,omitempty"`
+	HasUsage          bool                 `json:"hasUsage"`
 }
 
 type jsonTrialInfo struct {
@@ -607,7 +608,8 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			PeriodStart: periodStart,
 			PeriodEnd:   periodEnd,
 		},
-		Trial: trialInfo,
+		Trial:    trialInfo,
+		HasUsage: s.env.EnforcePlanCPUMax,
 	})
 }
 

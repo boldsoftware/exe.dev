@@ -222,6 +222,7 @@ export interface DashboardData {
     periodEnd: string
   }
   trial?: TrialInfo
+  hasUsage: boolean
 }
 
 export interface RegionOption {

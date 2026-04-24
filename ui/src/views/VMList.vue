@@ -18,7 +18,7 @@
         <button class="new-btn" @click="promptModalOpen = true">✨ Prompt</button>
       </div>
       <div class="section-right">
-        <div class="view-toggle">
+        <div v-if="hasUsage" class="view-toggle">
           <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">List</button>
           <button :class="{ active: viewMode === 'usage' }" @click="viewMode = 'usage'">Usage</button>
         </div>
@@ -318,6 +318,7 @@ const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
 const viewMode = ref<'list' | 'usage'>('list')
 const usageHours = ref(24)
+const hasUsage = ref(false)
 
 // View options (sort, order, group) — persisted to localStorage
 const STORAGE_KEY = 'exe-vm-view-options'
@@ -585,6 +586,7 @@ async function loadDashboard() {
     teamSharedBoxes.value = data.teamSharedBoxes || []
     teamBoxes.value = data.teamBoxes
     hasTeam.value = data.hasTeam || false
+    hasUsage.value = data.hasUsage || false
     sshCommand.value = data.sshCommand
     trialInfo.value = data.trial || null
     // Default prompt VM to first shelley-enabled box
@@ -841,6 +843,7 @@ async function onModalSuccess() {
     teamSharedBoxes.value = data.teamSharedBoxes || []
     teamBoxes.value = data.teamBoxes
     hasTeam.value = data.hasTeam || false
+    hasUsage.value = data.hasUsage || false
   } catch (err) {
     console.error('Failed to reload dashboard:', err)
   }
