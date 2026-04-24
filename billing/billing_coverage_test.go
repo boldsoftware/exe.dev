@@ -363,10 +363,10 @@ func TestSyncCreditsLive(t *testing.T) {
 	}
 
 	since := clock.Now().Add(-1 * time.Minute)
-	if err := m.SyncCredits(ctx, since); err != nil {
+	if err := m.SyncCredits(ctx, billingID, since); err != nil {
 		t.Fatalf("SyncCredits first pass: %v", err)
 	}
-	if err := m.SyncCredits(ctx, since); err != nil {
+	if err := m.SyncCredits(ctx, billingID, since); err != nil {
 		t.Fatalf("SyncCredits idempotent pass: %v", err)
 	}
 
@@ -394,7 +394,7 @@ func TestSyncCreditsInsertErrorLive(t *testing.T) {
 	}
 
 	m.DB = newEmptyTestDB(t)
-	err := m.SyncCredits(ctx, clock.Now().Add(-1*time.Minute))
+	err := m.SyncCredits(ctx, billingID, clock.Now().Add(-1*time.Minute))
 	if err == nil {
 		t.Fatal("SyncCredits insert error = nil, want non-nil")
 	}

@@ -229,11 +229,13 @@ func (m *Manager) BuyCredits(ctx context.Context, billingID string, p *BuyCredit
 }
 
 // SyncCredits polls Stripe for completed credit-purchase payments
-// and records them in the database. Each event is processed idempotently.
-func (m *Manager) SyncCredits(ctx context.Context, since time.Time) error {
+// belonging to a specific customer and records them in the database.
+// Each event is processed idempotently.
+func (m *Manager) SyncCredits(ctx context.Context, customerID string, since time.Time) error {
 	c := m.client()
 
 	params := &stripe.PaymentIntentListParams{
+		Customer: &customerID,
 		CreatedRange: &stripe.RangeQueryParams{
 			GreaterThan: since.Unix(),
 		},

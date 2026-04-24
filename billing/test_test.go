@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,6 +59,16 @@ func newTestManager(t *testing.T) *Manager {
 		q := r.URL.Query()
 		if q.Get("created[gte]") != "" {
 			q.Set("created[gte]", "0")
+			r.URL.RawQuery = q.Encode()
+		}
+		if q.Get("created[gt]") != "" {
+			q.Set("created[gt]", "0")
+			r.URL.RawQuery = q.Encode()
+		}
+		// Normalize customer param only for payment_intents listing
+		// to keep SyncCredits recordings stable across test clock IDs.
+		if strings.Contains(r.URL.Path, "/v1/payment_intents") && r.Method == "GET" && q.Get("customer") != "" {
+			q.Set("customer", "cus_normalized")
 			r.URL.RawQuery = q.Encode()
 		}
 

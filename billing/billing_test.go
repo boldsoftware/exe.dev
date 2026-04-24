@@ -166,7 +166,7 @@ func TestSyncCredits(t *testing.T) {
 	// SyncCredits has not been called yet, so balance should still be 0.
 	checkBalance(aliceID, tender.Zero())
 
-	err = m.SyncCredits(t.Context(), clock.Now())
+	err = m.SyncCredits(t.Context(), aliceID, clock.Now())
 	check(err, nil)
 
 	// Check that the credits were added to the ledger.
