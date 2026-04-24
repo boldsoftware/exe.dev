@@ -5,6 +5,7 @@ package exepipe
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
