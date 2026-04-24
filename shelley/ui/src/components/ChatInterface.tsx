@@ -457,17 +457,31 @@ const CoalescedToolCall = React.memo(function CoalescedToolCall({
   );
 });
 
-// Animated "Agent working..." with letter-by-letter bold animation
+// Animated "Agent working..." with letter-by-letter bold animation.
+// On narrow viewports drop the "Agent " prefix so it fits on one line.
 function AnimatedWorkingStatus() {
-  const text = "Agent working...";
+  const [isNarrow, setIsNarrow] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 600px)").matches : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 600px)");
+    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  const text = isNarrow ? "working..." : "Agent working...";
   const [boldIndex, setBoldIndex] = useState(0);
 
   useEffect(() => {
+    setBoldIndex(0);
     const interval = setInterval(() => {
       setBoldIndex((prev) => (prev + 1) % text.length);
     }, 100); // 100ms per letter
     return () => clearInterval(interval);
-  }, []);
+  }, [text]);
 
   return (
     <span className="status-message animated-working">
