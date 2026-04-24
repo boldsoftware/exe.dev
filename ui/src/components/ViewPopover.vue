@@ -8,21 +8,34 @@
     <Teleport to="body">
       <div v-if="open" class="view-backdrop" @click="open = false"></div>
       <div v-if="open" class="view-popover" ref="popoverRef" :style="popoverStyle">
-        <div class="view-section">
-          <div class="view-section-label">Sort by</div>
-          <label class="view-radio" v-for="opt in sortOptions" :key="opt.value">
-            <input type="radio" :value="opt.value" v-model="localSort" @change="emitChange" />
-            <span>{{ opt.label }}</span>
-          </label>
-        </div>
-        <div class="view-divider"></div>
-        <div class="view-section">
-          <div class="view-section-label">Group by</div>
-          <label class="view-radio" v-for="opt in groupOptions" :key="opt.value">
-            <input type="radio" :value="opt.value" v-model="localGroup" @change="emitChange" />
-            <span>{{ opt.label }}</span>
-          </label>
-        </div>
+        <!-- List mode options -->
+        <template v-if="mode === 'list'">
+          <div class="view-section">
+            <div class="view-section-label">Sort by</div>
+            <label class="view-radio" v-for="opt in sortOptions" :key="opt.value">
+              <input type="radio" :value="opt.value" v-model="localSort" @change="emitChange" />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+          <div class="view-divider"></div>
+          <div class="view-section">
+            <div class="view-section-label">Group by</div>
+            <label class="view-radio" v-for="opt in groupOptions" :key="opt.value">
+              <input type="radio" :value="opt.value" v-model="localGroup" @change="emitChange" />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+        </template>
+        <!-- Usage mode options -->
+        <template v-else>
+          <div class="view-section">
+            <div class="view-section-label">Time Range</div>
+            <label class="view-radio" v-for="opt in rangeOptions" :key="opt.value">
+              <input type="radio" :value="opt.value" v-model="localRange" @change="emitRangeChange" />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+        </template>
       </div>
     </Teleport>
   </div>
@@ -41,10 +54,13 @@ export interface ViewOptions {
 
 const props = defineProps<{
   modelValue: ViewOptions
+  mode: 'list' | 'usage'
+  hours?: number
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ViewOptions): void
+  (e: 'update:hours', value: number): void
 }>()
 
 const open = ref(false)
@@ -54,10 +70,15 @@ const popoverStyle = ref<Record<string, string>>({})
 
 const localSort = ref<SortField>(props.modelValue.sort)
 const localGroup = ref<GroupField>(props.modelValue.group)
+const localRange = ref(props.hours ?? 24)
 
 watch(() => props.modelValue, (v) => {
   localSort.value = v.sort
   localGroup.value = v.group
+})
+
+watch(() => props.hours, (v) => {
+  if (v !== undefined) localRange.value = v
 })
 
 const sortOptions: { value: SortField; label: string }[] = [
@@ -69,6 +90,12 @@ const sortOptions: { value: SortField; label: string }[] = [
 const groupOptions: { value: GroupField; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'tag', label: 'Tag' },
+]
+
+const rangeOptions: { value: number; label: string }[] = [
+  { value: 24, label: '24 hours' },
+  { value: 168, label: '7 days' },
+  { value: 720, label: '30 days' },
 ]
 
 function toggle() {
@@ -98,6 +125,10 @@ function emitChange() {
     sort: localSort.value,
     group: localGroup.value,
   })
+}
+
+function emitRangeChange() {
+  emit('update:hours', localRange.value)
 }
 </script>
 

@@ -22,7 +22,7 @@
           <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">List</button>
           <button :class="{ active: viewMode === 'usage' }" @click="viewMode = 'usage'">Usage</button>
         </div>
-        <ViewPopover v-if="viewMode === 'list'" v-model="viewOptions" />
+        <ViewPopover v-model="viewOptions" :mode="viewMode" :hours="usageHours" @update:hours="usageHours = $event" />
         <div class="search-box">
           <i class="pi pi-search search-icon"></i>
           <input
@@ -48,7 +48,7 @@
     </div>
 
     <!-- Usage View -->
-    <UsageView v-if="!loading && !loadError && viewMode === 'usage' && boxes.length > 0" :boxes="boxes" :filter="searchQuery" />
+    <UsageView v-if="!loading && !loadError && viewMode === 'usage' && boxes.length > 0" :boxes="boxes" :filter="searchQuery" :hours="usageHours" />
 
     <!-- VM List -->
     <template v-if="!loading && !loadError && viewMode === 'list' && sortedBoxes.length > 0">
@@ -317,6 +317,7 @@ const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
 const viewMode = ref<'list' | 'usage'>('list')
+const usageHours = ref(24)
 
 // View options (sort, order, group) — persisted to localStorage
 const STORAGE_KEY = 'exe-vm-view-options'

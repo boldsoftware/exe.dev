@@ -2,12 +2,7 @@
   <div class="usage-view">
     <!-- Pool Summary -->
     <div v-if="pool && pool.cpu_max > 0" class="pool-section">
-      <div class="pool-section-header">
-        <div class="pool-heading">Resource Pool</div>
-        <div class="usage-controls">
-          <button v-for="r in ranges" :key="r.hours" class="range-btn" :class="{ active: hours === r.hours }" @click="setRange(r.hours)">{{ r.label }}</button>
-        </div>
-      </div>
+      <div class="pool-heading">Resource Pool</div>
       <div class="pool-summary">
         <div class="pool-metric">
           <div class="pool-label">CPU <span class="pool-value">{{ peakCpu.toFixed(1) }} / {{ pool.cpu_max }} cores</span> <span class="pool-peak">peak, {{ rangeLabel }}</span></div>
@@ -28,19 +23,15 @@
       </div>
     </div>
 
-    <!-- Range controls when no pool -->
-    <div v-else class="usage-controls">
-      <span class="range-label">Range:</span>
-      <button v-for="r in ranges" :key="r.hours" class="range-btn" :class="{ active: hours === r.hours }" @click="setRange(r.hours)">{{ r.label }}</button>
-    </div>
-
     <!-- Loading -->
     <div v-if="historyLoading" class="usage-loading">
       <i class="pi pi-spin pi-spinner"></i> Loading usage data...
     </div>
 
     <!-- Usage Table -->
-    <div v-else-if="filteredRows.length > 0" class="boxes-list">
+    <template v-else-if="filteredRows.length > 0">
+    <div class="table-heading">Per-VM Metrics <span class="table-heading-range">{{ rangeLabel }}</span></div>
+    <div class="boxes-list">
       <div class="usage-header">
         <button class="col-btn" @click="toggleSort('name')">VM <i :class="sortIcon('name')" class="sort-icon"></i></button>
         <button class="col-btn col-right" @click="toggleSort('cpu')">CPU <i :class="sortIcon('cpu')" class="sort-icon"></i></button>
@@ -79,6 +70,7 @@
         </div>
       </div>
     </div>
+    </template>
 
     <!-- No data -->
     <div v-else-if="!historyLoading" class="usage-empty">
@@ -104,23 +96,19 @@ const GB = 1024 * 1024 * 1024
 const props = defineProps<{
   boxes: BoxInfo[]
   filter: string
+  hours: number
 }>()
 
 const pool = ref<VMsPoolResponse | null>(null)
 const history = ref<UsageHistoryResponse>({})
 const historyLoading = ref(false)
-const hours = ref(24)
 const ranges = [
   { hours: 24, label: '24h' },
   { hours: 168, label: '7d' },
   { hours: 720, label: '30d' },
 ]
 
-const rangeLabel = computed(() => ranges.find((r) => r.hours === hours.value)?.label ?? '')
-
-function setRange(h: number) {
-  hours.value = h
-}
+const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.label ?? '')
 
 // Sorting.
 type SortCol = 'name' | 'cpu' | 'mem' | 'disk' | 'io'
@@ -147,7 +135,7 @@ async function loadData() {
   try {
     const [poolRes, historyRes] = await Promise.all([
       pool.value ? Promise.resolve(pool.value) : fetchVMsPool(),
-      fetchUsageHistory(hours.value),
+      fetchUsageHistory(props.hours),
     ])
     pool.value = poolRes
     history.value = historyRes
@@ -159,10 +147,10 @@ async function loadData() {
 }
 
 onMounted(loadData)
-watch(hours, async () => {
+watch(() => props.hours, async () => {
   historyLoading.value = true
   try {
-    history.value = await fetchUsageHistory(hours.value)
+    history.value = await fetchUsageHistory(props.hours)
   } catch {
     /* ignore */
   } finally {
@@ -362,11 +350,6 @@ const filteredRows = computed(() => {
   flex-direction: column;
   gap: 6px;
 }
-.pool-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 .pool-heading {
   font-size: 11px;
   font-weight: 600;
@@ -447,31 +430,22 @@ const filteredRows = computed(() => {
   color: var(--text-color-secondary);
 }
 
-/* Range controls */
-.usage-controls {
+/* Table heading */
+.table-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-color-muted);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
-.range-label {
-  font-size: 12px;
-  color: var(--text-color-muted);
-  font-weight: 600;
-}
-.range-btn {
-  font-size: 12px;
-  padding: 3px 10px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-card);
-  border-radius: 4px;
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--text-color-secondary);
-}
-.range-btn.active {
-  background: var(--text-color);
-  color: var(--surface-card);
-  border-color: var(--text-color);
+.table-heading-range {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
 }
 
 /* Table — matches .boxes-list from VMList.vue */
