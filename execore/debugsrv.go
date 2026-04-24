@@ -7198,11 +7198,30 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 
 	writeProgress("User %s, target region: %s", user.Email, user.Region)
 
-	// Find a target exelet in the user's region.
+	// Load private exelet rules so we don't migrate onto a private server
+	// the user isn't entitled to.
+	privateExelets := make(map[string]bool)
+	if privAddrs, err := withRxRes0[[]string](s, ctx, (*exedb.Queries).ListPrivateExelets); err == nil {
+		for _, addr := range privAddrs {
+			privateExelets[addr] = true
+		}
+	}
+	var teamExeletAddrs map[string]bool
+	team, teamErr := withRxRes1(s, ctx, (*exedb.Queries).GetTeamForUser, userID)
+	if teamErr == nil {
+		if addrs, err := withRxRes1(s, ctx, (*exedb.Queries).ListTeamExeletsForTeam, team.TeamID); err == nil {
+			teamExeletAddrs = make(map[string]bool, len(addrs))
+			for _, addr := range addrs {
+				teamExeletAddrs[addr] = true
+			}
+		}
+	}
+
+	// Find a target exelet in the user's region, respecting private exelet access.
 	var targetAddr string
 	var targetClient *exeletClient
 	for addr, ec := range s.exeletClients {
-		if ec.region.Code == user.Region && ec.up.Load() {
+		if ec.region.Code == user.Region && ec.up.Load() && exeletAllowsUser(addr, privateExelets, teamExeletAddrs) {
 			if targetClient == nil || ec.count.Load() < targetClient.count.Load() {
 				targetAddr = addr
 				targetClient = ec

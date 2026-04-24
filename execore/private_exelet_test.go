@@ -455,6 +455,114 @@ func TestPrivateExelet(t *testing.T) {
 		}
 	})
 
+	t.Run("migration skips private exelet for normal user", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		pubExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		privExelet := makeExelet("tcp://exelet-lax2-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			pubExelet.addr:  pubExelet,
+			privExelet.addr: privExelet,
+		}
+
+		markPrivate(t, server, privExelet.addr)
+
+		userID := createTestUser(t, server, "migrate-normal@example.com")
+
+		var logs []string
+		writeProgress := func(format string, args ...any) {
+			logs = append(logs, fmt.Sprintf(format, args...))
+		}
+
+		server.migrateUserVMs(ctx, userID, writeProgress)
+
+		// The target exelet logged should be the public one, not the private one.
+		targetLine := fmt.Sprintf("Target exelet: %s", pubExelet.addr)
+		privTargetLine := fmt.Sprintf("Target exelet: %s", privExelet.addr)
+		var foundTarget bool
+		for _, line := range logs {
+			if line == privTargetLine {
+				t.Fatalf("migration targeted private exelet %s for normal user", privExelet.addr)
+			}
+			if line == targetLine {
+				foundTarget = true
+			}
+		}
+		if !foundTarget {
+			t.Fatalf("expected target %s in logs, got: %v", pubExelet.addr, logs)
+		}
+	})
+
+	t.Run("migration allows private exelet for team member", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		privExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			privExelet.addr: privExelet,
+		}
+
+		userID := createTestUser(t, server, "migrate-team@example.com")
+		createTeam(t, server, "team-migrate", "Team Migrate", userID)
+
+		markPrivate(t, server, privExelet.addr)
+		assignTeamExelet(t, server, "team-migrate", privExelet.addr)
+
+		var logs []string
+		writeProgress := func(format string, args ...any) {
+			logs = append(logs, fmt.Sprintf(format, args...))
+		}
+
+		server.migrateUserVMs(ctx, userID, writeProgress)
+
+		targetLine := fmt.Sprintf("Target exelet: %s", privExelet.addr)
+		var foundTarget bool
+		for _, line := range logs {
+			if line == targetLine {
+				foundTarget = true
+			}
+		}
+		if !foundTarget {
+			t.Fatalf("expected team member to target private exelet %s, got: %v", privExelet.addr, logs)
+		}
+	})
+
+	t.Run("migration fails when only private exelets and no team", func(t *testing.T) {
+		t.Parallel()
+		server := newTestServer(t)
+		ctx := context.Background()
+
+		privExelet := makeExelet("tcp://exelet-lax1-prod-01:9080")
+		server.exeletClients = map[string]*exeletClient{
+			privExelet.addr: privExelet,
+		}
+
+		markPrivate(t, server, privExelet.addr)
+
+		userID := createTestUser(t, server, "migrate-blocked@example.com")
+
+		var logs []string
+		writeProgress := func(format string, args ...any) {
+			logs = append(logs, fmt.Sprintf(format, args...))
+		}
+
+		server.migrateUserVMs(ctx, userID, writeProgress)
+
+		// Should get an error about no available exelet.
+		var foundError bool
+		for _, line := range logs {
+			if line == fmt.Sprintf("ERROR: no available exelet in region %s", "lax") {
+				foundError = true
+			}
+		}
+		if !foundError {
+			t.Fatalf("expected 'no available exelet' error, got: %v", logs)
+		}
+	})
+
 	t.Run("exeletAllowsUser unit tests", func(t *testing.T) {
 		t.Parallel()
 
