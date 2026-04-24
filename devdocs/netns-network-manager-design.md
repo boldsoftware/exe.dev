@@ -959,7 +959,7 @@ var nsName string
 if epm.netnsFunc != nil {
     nsName = epm.netnsFunc(instanceID)
 }
-if err := cli.Listen(ctx, instanceID, ln, targetIP, 22, "ssh", nsName); err != nil {
+if err := cli.Listen(ctx, instanceID, ln, nsName, targetIP, 22, "ssh"); err != nil {
 ```
 
 **Update `StopProxy`** with similar retry logic.

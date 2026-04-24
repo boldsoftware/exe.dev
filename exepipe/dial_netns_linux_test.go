@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,10 @@ func skipUnlessRoot(t *testing.T) {
 // createTestNetns creates a network namespace with loopback up and
 // the given IP assigned to the loopback interface.
 func createTestNetns(t *testing.T, nsName, ip string, port int) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("skipping test that uses network namespaces on %s", runtime.GOOS)
+	}
+
 	t.Helper()
 
 	// Clean up any stale namespace from a previous run.
@@ -104,11 +109,11 @@ func TestNetnsDialFunc_EntersNamespace(t *testing.T) {
 	createTestNetns(t, testNsName, testIP, testPort)
 	startListenerInNetns(t, testNsName, testIP, testPort)
 
-	dialFn := NetnsDialFunc()
 	ctx := t.Context()
+	lg := tslog.Slogger(t)
 
 	// Dial through the namespace — should succeed.
-	conn, err := dialFn(ctx, testIP, testPort, testNsName, 2*time.Second)
+	conn, err := dialNetns(ctx, lg, testNsName, testIP, testPort, 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial in netns failed: %v", err)
 	}
@@ -145,11 +150,11 @@ func TestNetnsDialFunc_RootNamespaceUnreachable(t *testing.T) {
 	createTestNetns(t, testNsName, testIP, testPort)
 	startListenerInNetns(t, testNsName, testIP, testPort)
 
-	dialFn := NetnsDialFunc()
 	ctx := t.Context()
+	lg := tslog.Slogger(t)
 
 	// Dial WITHOUT namespace — should fail (10.42.0.42 has no route in root ns).
-	conn, err := dialFn(ctx, testIP, testPort, "", 500*time.Millisecond)
+	conn, err := dialNetns(ctx, lg, "", testIP, testPort, 500*time.Millisecond)
 	if err == nil {
 		conn.Close()
 		t.Fatal("expected dial to 10.42.0.42 in root namespace to fail, but it succeeded")
@@ -162,10 +167,10 @@ func TestNetnsDialFunc_RootNamespaceUnreachable(t *testing.T) {
 func TestNetnsDialFunc_NonexistentNamespace(t *testing.T) {
 	skipUnlessRoot(t)
 
-	dialFn := NetnsDialFunc()
 	ctx := t.Context()
+	lg := tslog.Slogger(t)
 
-	_, err := dialFn(ctx, "10.42.0.42", 22, "nonexistent-ns-12345", 500*time.Millisecond)
+	_, err := dialNetns(ctx, lg, "nonexistent-ns-12345", "10.42.0.42", 22, 500*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected error for nonexistent namespace")
 	}
@@ -199,8 +204,7 @@ func TestNetnsDialFunc_EmptyNsName(t *testing.T) {
 		}
 	}()
 
-	dialFn := NetnsDialFunc()
-	conn, err := dialFn(t.Context(), "127.0.0.1", addr.Port, "", time.Second)
+	conn, err := dialNetns(t.Context(), tslog.Slogger(t), "", "127.0.0.1", addr.Port, time.Second)
 	if err != nil {
 		t.Fatalf("dial with empty nsName: %v", err)
 	}
@@ -227,10 +231,8 @@ func TestNetnsDialFunc_RestoredAfterDial(t *testing.T) {
 	}
 	defer origNS.Close()
 
-	dialFn := NetnsDialFunc()
-
 	// Dial in the namespace.
-	conn, err := dialFn(t.Context(), testIP, testPort, testNsName, 2*time.Second)
+	conn, err := dialNetns(t.Context(), tslog.Slogger(t), testNsName, testIP, testPort, 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -258,15 +260,15 @@ func TestNetnsDialFunc_ConcurrentDials(t *testing.T) {
 	createTestNetns(t, testNsName, testIP, testPort)
 	startListenerInNetns(t, testNsName, testIP, testPort)
 
-	dialFn := NetnsDialFunc()
 	ctx := t.Context()
+	lg := tslog.Slogger(t)
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 20)
 
 	for i := range 20 {
 		wg.Go(func() {
-			conn, err := dialFn(ctx, testIP, testPort, testNsName, 5*time.Second)
+			conn, err := dialNetns(ctx, lg, testNsName, testIP, testPort, 5*time.Second)
 			if err != nil {
 				errs <- fmt.Errorf("goroutine %d: %w", i, err)
 				return
@@ -314,7 +316,6 @@ func TestListenWithNetns(t *testing.T) {
 		UnixAddr:        addr,
 		HTTPPort:        "0",
 		MetricsRegistry: prometheus.NewRegistry(),
-		DialFunc:        NetnsDialFunc(),
 	}
 
 	pi, err := NewPipe(pc)
@@ -345,7 +346,7 @@ func TestListenWithNetns(t *testing.T) {
 	}
 	defer cli.Close()
 
-	if err := cli.Listen(t.Context(), "ns-test", externalListener, testIP, testPort, "ssh", testNsName); err != nil {
+	if err := cli.Listen(t.Context(), "ns-test", externalListener, testNsName, testIP, testPort, "ssh"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -384,7 +385,6 @@ func TestListenWithNetnsPreservedInListeners(t *testing.T) {
 		UnixAddr:        addr,
 		HTTPPort:        "0",
 		MetricsRegistry: prometheus.NewRegistry(),
-		DialFunc:        NetnsDialFunc(),
 	}
 
 	pi, err := NewPipe(pc)
@@ -413,7 +413,7 @@ func TestListenWithNetnsPreservedInListeners(t *testing.T) {
 	}
 	defer cli.Close()
 
-	if err := cli.Listen(t.Context(), "ns-key", externalListener, "10.42.0.42", 22, "ssh", "exe-vm000001"); err != nil {
+	if err := cli.Listen(t.Context(), "ns-key", externalListener, "exe-vm000001", "10.42.0.42", 22, "ssh"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -453,7 +453,6 @@ func TestNetnsPreservedAcrossTransfer(t *testing.T) {
 		UnixAddr:        addr,
 		HTTPPort:        "0",
 		MetricsRegistry: prometheus.NewRegistry(),
-		DialFunc:        NetnsDialFunc(),
 	}
 
 	pi1, err := NewPipe(pc1)
@@ -483,7 +482,7 @@ func TestNetnsPreservedAcrossTransfer(t *testing.T) {
 	}
 	defer cli.Close()
 
-	if err := cli.Listen(t.Context(), "transfer-key", externalListener, "10.42.0.42", 22, "ssh", "exe-vm000099"); err != nil {
+	if err := cli.Listen(t.Context(), "transfer-key", externalListener, "exe-vm000099", "10.42.0.42", 22, "ssh"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -494,7 +493,6 @@ func TestNetnsPreservedAcrossTransfer(t *testing.T) {
 		UnixAddr:        addr,
 		HTTPPort:        "0",
 		MetricsRegistry: prometheus.NewRegistry(),
-		DialFunc:        NetnsDialFunc(),
 	}
 
 	pi2, err := NewPipe(pc2)

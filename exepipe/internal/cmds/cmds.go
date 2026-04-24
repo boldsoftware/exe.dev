@@ -18,10 +18,10 @@ import (
 type cmd struct {
 	Action string `json:"action"`          // what to do
 	Key    string `json:"key,omitempty"`   // for lookups
+	Netns  string `json:"netns,omitempty"` // network namespace for outbound dial
 	Host   string `json:"host,omitempty"`  // connection host
 	Port   int    `json:"port,omitempty"`  // connection port
 	Type   string `json:"type,omitempty"`  // connection type
-	Netns  string `json:"netns,omitempty"` // network namespace for outbound dial
 }
 
 // response is a response to a copy or listen command.
@@ -86,7 +86,8 @@ func CopyCmd(c1, c2 net.Conn, typ string) (data, oob []byte, err error) {
 }
 
 // ListenCmd returns a marshalled command to listen on a
-// network connection and connect it to a given host:port.
+// network connection and connect it to a given host:port
+// in the given network namespace (the default namespace for "").
 // Then it will copy between the two.
 //
 // This is called by an exepipe client when sending a listen command.
@@ -98,16 +99,14 @@ func CopyCmd(c1, c2 net.Conn, typ string) (data, oob []byte, err error) {
 //
 // The typ argument is for metrics;
 // it is expected to be something like "http" or "ssh".
-func ListenCmd(key string, listener net.Listener, host string, port int, typ string, netns ...string) (data, oob []byte, err error) {
+func ListenCmd(key string, listener net.Listener, netns, host string, port int, typ string) (data, oob []byte, err error) {
 	c := cmd{
 		Action: "listen",
 		Key:    key,
+		Netns:  netns,
 		Host:   host,
 		Port:   port,
 		Type:   typ,
-	}
-	if len(netns) > 0 {
-		c.Netns = netns[0]
 	}
 
 	data, err = json.Marshal(c)
@@ -210,7 +209,7 @@ func TransferredCmd() (data []byte, err error) {
 var ErrDispatchFailed = errors.New("exepipe command failure")
 
 // Action is a function to call for a particular command.
-type Action func(ctx context.Context, key string, fds []int, host string, port int, typ, netns string) error
+type Action func(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error
 
 // Actions maps from a command to the action.
 type Actions map[string]Action
@@ -248,7 +247,7 @@ func Dispatch(ctx context.Context, lg *slog.Logger, actions Actions, data, oob [
 		}
 	}
 
-	return action(ctx, c.Key, fds, c.Host, c.Port, c.Type, c.Netns)
+	return action(ctx, c.Key, fds, c.Netns, c.Host, c.Port, c.Type)
 }
 
 // MarshalResponse returns a marshalled response to a command.
@@ -290,10 +289,10 @@ func UnmarshalResponse(ctx context.Context, lg *slog.Logger, data, oob []byte) (
 // Listener describes a single listener.
 type Listener struct {
 	Key   string `json:"key"`
+	Netns string `json:"netns,omitempty"`
 	Host  string `json:"host"`
 	Port  int    `json:"port"`
 	Type  string `json:"type"`
-	Netns string `json:"netns,omitempty"`
 }
 
 // MarshalListenersResponse returns a stream of marshalled responses

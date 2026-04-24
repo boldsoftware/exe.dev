@@ -70,7 +70,7 @@ func TestListen(t *testing.T) {
 	defer cli.Close()
 
 	tcpAddr := vmListener.Addr().(*net.TCPAddr)
-	if err := cli.Listen(t.Context(), "key", externalListener, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
+	if err := cli.Listen(t.Context(), "key", externalListener, "", tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +191,7 @@ func TestListeners(t *testing.T) {
 			}
 			defer listener.Close()
 
-			if err := cli.Listen(t.Context(), fmt.Sprintf("key%d", i), listener, fmt.Sprintf("host%d", i), i+1, "test"); err != nil {
+			if err := cli.Listen(t.Context(), fmt.Sprintf("key%d", i), listener, "", fmt.Sprintf("host%d", i), i+1, "test"); err != nil {
 				t.Fatal(err)
 			}
 			i++

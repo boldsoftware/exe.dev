@@ -142,7 +142,7 @@ func (epm *exepipeManager) startProxy(ctx context.Context, cli *client.Client, i
 	}
 
 	// The target port is always port 22, for ssh.
-	if err := cli.Listen(ctx, instanceID, ln, targetIP, 22, "ssh", nsName); err != nil {
+	if err := cli.Listen(ctx, instanceID, ln, nsName, targetIP, 22, "ssh"); err != nil {
 		ln.Close()
 		return fmt.Errorf("failed to start ssh proxy: %v", err)
 	}

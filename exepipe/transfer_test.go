@@ -54,7 +54,7 @@ func TestTransfer(t *testing.T) {
 	defer cli.Close()
 
 	tcpAddr := vmListener1.Addr().(*net.TCPAddr)
-	if err := cli.Listen(t.Context(), "key1", externalListener1, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
+	if err := cli.Listen(t.Context(), "key1", externalListener1, "", tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,7 +155,7 @@ func TestTransfer(t *testing.T) {
 	defer vmListener2.Close()
 
 	tcpAddr = vmListener2.Addr().(*net.TCPAddr)
-	if err := cli.Listen(t.Context(), "key2", externalListener2, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
+	if err := cli.Listen(t.Context(), "key2", externalListener2, "", tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
 		t.Fatal(err)
 	}
 

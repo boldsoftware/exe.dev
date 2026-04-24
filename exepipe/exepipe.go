@@ -31,7 +31,6 @@ type PipeConfig struct {
 	Env             stage.Env
 	Logger          *slog.Logger
 	MetricsRegistry *prometheus.Registry
-	DialFunc        DialFunc // optional: custom dialer (e.g. netns-aware); nil for default
 }
 
 // PipeInstance is the running exepipe instance.

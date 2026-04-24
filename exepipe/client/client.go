@@ -86,18 +86,19 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 // to the specified network destination, and copy data between
 // the two connections.
 // The key may be used to stop the listener, and is returned by Listeners.
-// The network destination is host:port
+// If netns is not the empty string, it is the network namespace to use.
+// The network destination is host:port.
 // The typ argument is purely descriptive, something like "http" or "ssh".
 // On success, this command will take ownership of the listener.
 // This will return an error if there is some problem contacting exepipe.
 // Errors while listening or copying will be logged by exepipe
 // and will not be returned to the caller.
-func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, host string, port int, typ string, netns ...string) error {
+func (c *Client) Listen(ctx context.Context, key string, listener net.Listener, netns, host string, port int, typ string) error {
 	if c.uc == nil {
 		return os.ErrClosed
 	}
 
-	data, oob, err := cmds.ListenCmd(key, listener, host, port, typ, netns...)
+	data, oob, err := cmds.ListenCmd(key, listener, netns, host, port, typ)
 	if err != nil {
 		return err
 	}
@@ -196,10 +197,10 @@ func (c *Client) readResponse(ctx context.Context) error {
 // These are taken from the values passed to [Client.Listen].
 type Listener struct {
 	Key   string // key
+	Netns string // network namespace (optional)
 	Host  string // connection host
 	Port  int    // connection port
 	Type  string // type
-	Netns string // network namespace (optional)
 }
 
 // Listeners asks exepipe for all current listeners.
@@ -213,10 +214,10 @@ func (c *Client) Listeners(ctx context.Context) iter.Seq2[Listener, error] {
 		for ln, err := range c.listeners(ctx) {
 			cln := Listener{
 				Key:   ln.Key,
+				Netns: ln.Netns,
 				Host:  ln.Host,
 				Port:  ln.Port,
 				Type:  ln.Type,
-				Netns: ln.Netns,
 			}
 			if !yield(cln, err) {
 				break

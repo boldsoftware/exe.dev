@@ -161,12 +161,12 @@ type cmdActor struct {
 
 // copyAction implements the copy command.
 // This copies data between two file descriptors.
-func (ca *cmdActor) copyAction(ctx context.Context, key string, fds []int, host string, port int, typ, _ string) error {
+func (ca *cmdActor) copyAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
 	if key != "" {
 		return fmt.Errorf("unexpected key to copy command: %q", key)
 	}
-	if host != "" || port != 0 {
-		return fmt.Errorf("unexpected destination to copy command: %q %d", host, port)
+	if netns != "" || host != "" || port != 0 {
+		return fmt.Errorf("unexpected destination to copy command: %q %q %d", netns, host, port)
 	}
 	if len(fds) != 2 {
 		return fmt.Errorf("copy command received %d file descriptors, expected 2", len(fds))
@@ -181,7 +181,7 @@ func (ca *cmdActor) copyAction(ctx context.Context, key string, fds []int, host 
 // This listens on a socket. When a connection arrives,
 // this opens a connection to the destination and then
 // copies all between the two file descriptors.
-func (ca *cmdActor) listenAction(ctx context.Context, key string, fds []int, host string, port int, typ, netns string) error {
+func (ca *cmdActor) listenAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
 	if key == "" {
 		return errors.New("missing key to listen command")
 	}
@@ -192,18 +192,18 @@ func (ca *cmdActor) listenAction(ctx context.Context, key string, fds []int, hos
 		return fmt.Errorf("listen command received %d file descriptors, expected 1", len(fds))
 	}
 
-	ca.pipeInstance.piping.Listen(ctx, key, fds[0], host, port, typ, netns)
+	ca.pipeInstance.piping.Listen(ctx, key, fds[0], netns, host, port, typ)
 
 	return nil
 }
 
 // unlistenAction implements the unlisten command.
 // This disables an existing listener.
-func (ca *cmdActor) unlistenAction(ctx context.Context, key string, fds []int, host string, port int, typ, _ string) error {
+func (ca *cmdActor) unlistenAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
 	if key == "" {
 		return errors.New("missing key to unlisten command")
 	}
-	if len(fds) > 0 || host != "" || port != 0 || typ != "" {
+	if len(fds) > 0 || netns != "" || host != "" || port != 0 || typ != "" {
 		return errors.New("unexpected arguments to unlisten command")
 	}
 	return ca.pipeInstance.piping.Unlisten(ctx, key)
@@ -211,8 +211,8 @@ func (ca *cmdActor) unlistenAction(ctx context.Context, key string, fds []int, h
 
 // listenersAction implements the listeners command.
 // This sends all the current listeners on the socket.
-func (ca *cmdActor) listenersAction(ctx context.Context, key string, fds []int, host string, port int, typ, _ string) error {
-	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+func (ca *cmdActor) listenersAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || netns != "" || host != "" || port != 0 || typ != "" {
 		return errors.New("unexpected arguments to listeners command")
 	}
 
@@ -243,8 +243,8 @@ func (ca *cmdActor) listenersAction(ctx context.Context, key string, fds []int, 
 // In the normal case this method will send one response with the listener,
 // and then another response indicating command success.
 // This follows the pattern of other commands.
-func (ca *cmdActor) transferAction(ctx context.Context, key string, fds []int, host string, port int, typ, _ string) error {
-	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+func (ca *cmdActor) transferAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || netns != "" || host != "" || port != 0 || typ != "" {
 		return errors.New("unexpected arguments to transfer command")
 	}
 
@@ -290,8 +290,8 @@ func (ca *cmdActor) transferAction(ctx context.Context, key string, fds []int, h
 // transferredAction handles the transferred command,
 // which just lets the new exepipe know that all listeners
 // have been sent over.
-func (ca *cmdActor) transferredAction(ctx context.Context, key string, fds []int, host string, port int, typ, _ string) error {
-	if key != "" || len(fds) > 0 || host != "" || port != 0 || typ != "" {
+func (ca *cmdActor) transferredAction(ctx context.Context, key string, fds []int, netns, host string, port int, typ string) error {
+	if key != "" || len(fds) > 0 || netns != "" || host != "" || port != 0 || typ != "" {
 		return errors.New("unexpected arguments to transferred command")
 	}
 	ca.pipeInstance.transferringNew.Store(false)

@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-// NetnsDialFunc returns a DialFunc that ignores the netns argument
-// on non-Linux platforms (netns is not supported).
-func NetnsDialFunc() DialFunc {
-	return func(_ context.Context, host string, port int, nsName string, timeout time.Duration) (net.Conn, error) {
-		if nsName != "" {
-			return nil, fmt.Errorf("network namespaces not supported on this platform")
-		}
-		d := net.Dialer{Timeout: timeout}
-		return d.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+// dial opens a connection to host/port.
+// This is the non-Linux version that issues an error
+// if a namespace is specified.
+func dialNetns(ctx context.Context, lg *slog.Logger, nsName, host string, port int, timeout time.Duration) (net.Conn, error) {
+	if nsName != "" {
+		return nil, fmt.Errorf("network namespaces not supported on this platform")
 	}
+
+	d := net.Dialer{Timeout: timeout}
+	return d.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 }

@@ -18,9 +18,6 @@ import (
 	"exe.dev/exepipe/internal/cmds"
 )
 
-// DialFunc dials a TCP connection, optionally from a network namespace.
-type DialFunc func(ctx context.Context, host string, port int, netns string, timeout time.Duration) (net.Conn, error)
-
 var dialTimeouts = [...]time.Duration{
 	500 * time.Millisecond,
 	1 * time.Second,
@@ -31,7 +28,6 @@ var dialTimeouts = [...]time.Duration{
 // piping manages piping data between file descriptors.
 type piping struct {
 	pipeInstance *PipeInstance
-	dialFunc     DialFunc
 
 	connsMu sync.Mutex
 	conns   map[net.Conn]struct{}
@@ -51,7 +47,6 @@ type listener struct {
 func setupPiping(cfg *PipeConfig, pi *PipeInstance) (*piping, error) {
 	ret := &piping{
 		pipeInstance: pi,
-		dialFunc:     cfg.DialFunc,
 		conns:        make(map[net.Conn]struct{}),
 		listeners:    make(map[string]listener),
 	}
@@ -245,7 +240,7 @@ func (p *piping) sockname(ctx context.Context, fd int) string {
 // Listen takes a socket file descriptor and starts goroutines
 // to listen on that socket and start copying between the
 // accepted socket and the TCP address.
-func (p *piping) Listen(ctx context.Context, key string, fd int, host string, port int, typ string, netns ...string) {
+func (p *piping) Listen(ctx context.Context, key string, fd int, netns, host string, port int, typ string) {
 	f := os.NewFile(uintptr(fd), p.sockname(ctx, fd))
 	ln, err := net.FileListener(f)
 	f.Close()
@@ -254,20 +249,15 @@ func (p *piping) Listen(ctx context.Context, key string, fd int, host string, po
 		return
 	}
 
-	var ns string
-	if len(netns) > 0 {
-		ns = netns[0]
-	}
+	p.pipeInstance.lg.DebugContext(ctx, "exepipe listening", "key", key, "port", port, "netns", netns, "host", host, "type", typ)
 
-	p.pipeInstance.lg.DebugContext(ctx, "exepipe listening", "key", key, "port", port, "host", host, "type", typ, "netns", ns)
+	p.addListener(ctx, key, ln, netns, host, port, typ)
 
-	p.addListener(ctx, key, ln, host, port, typ, ns)
-
-	go p.doListen(ctx, key, ln, host, port, typ, ns)
+	go p.doListen(ctx, key, ln, netns, host, port, typ)
 }
 
 // doListen implements Listen, running in a separate goroutine.
-func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, host string, port int, typ, netns string) {
+func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, netns, host string, port int, typ string) {
 	p.pipeInstance.metrics.listenersTotal.WithLabelValues(typ).Inc()
 	p.pipeInstance.metrics.listenersActive.WithLabelValues(typ).Inc()
 	defer p.pipeInstance.metrics.listenersActive.WithLabelValues(typ).Dec()
@@ -284,7 +274,7 @@ func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, host
 			return
 		}
 
-		go p.connect(ctx, conn, key, host, port, typ, netns)
+		go p.connect(ctx, conn, key, netns, host, port, typ)
 	}
 }
 
@@ -311,17 +301,12 @@ func (p *piping) Unlisten(ctx context.Context, key string) error {
 
 // connect opens a connection to host/port, and starts copying from conn.
 // This runs in a separate goroutine.
-func (p *piping) connect(ctx context.Context, conn1 net.Conn, key, host string, port int, typ, netns string) {
+func (p *piping) connect(ctx context.Context, conn1 net.Conn, key, netns, host string, port int, typ string) {
 	var conn2 net.Conn
 	var err error
 
 	for _, timeout := range dialTimeouts {
-		if p.dialFunc != nil {
-			conn2, err = p.dialFunc(ctx, host, port, netns, timeout)
-		} else {
-			d := net.Dialer{Timeout: timeout}
-			conn2, err = d.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
-		}
+		conn2, err = dialNetns(ctx, p.pipeInstance.lg, netns, host, port, timeout)
 		if err == nil {
 			break
 		}
@@ -339,7 +324,7 @@ func (p *piping) connect(ctx context.Context, conn1 net.Conn, key, host string, 
 			level = slog.LevelWarn
 		}
 
-		p.pipeInstance.lg.Log(ctx, level, "exepipe failed to connect", "key", key, "host", host, "port", port, "type", typ, "netns", netns, "error", err)
+		p.pipeInstance.lg.Log(ctx, level, "exepipe failed to connect", "key", key, "netns", netns, "host", host, "port", port, "type", typ, "error", err)
 		return
 	}
 
@@ -347,7 +332,7 @@ func (p *piping) connect(ctx context.Context, conn1 net.Conn, key, host string, 
 }
 
 // addListener records a new listener.
-func (p *piping) addListener(ctx context.Context, key string, ln net.Listener, host string, port int, typ, netns string) {
+func (p *piping) addListener(ctx context.Context, key string, ln net.Listener, netns, host string, port int, typ string) {
 	p.listenersMu.Lock()
 	defer p.listenersMu.Unlock()
 
@@ -360,10 +345,10 @@ func (p *piping) addListener(ctx context.Context, key string, ln net.Listener, h
 	lnInfo := listener{
 		info: cmds.Listener{
 			Key:   key,
+			Netns: netns,
 			Host:  host,
 			Port:  port,
 			Type:  typ,
-			Netns: netns,
 		},
 		ln:    ln,
 		netns: netns,
@@ -410,7 +395,7 @@ func (p *piping) transferListeners(ctx context.Context, lg *slog.Logger, uc *net
 	defer p.listenersMu.Unlock()
 
 	for _, ln := range p.listeners {
-		data, oob, err := cmds.ListenCmd(ln.info.Key, ln.ln, ln.info.Host, ln.info.Port, ln.info.Type, ln.info.Netns)
+		data, oob, err := cmds.ListenCmd(ln.info.Key, ln.ln, ln.info.Netns, ln.info.Host, ln.info.Port, ln.info.Type)
 		if err != nil {
 			lg.ErrorContext(ctx, "ListenCmd failure while transferring", "key", ln.info.Key, "error", err)
 			continue

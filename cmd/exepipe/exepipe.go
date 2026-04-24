@@ -34,8 +34,10 @@ func run() error {
 	addr := flag.String("addr", "@exepipe", "Unix domain address on which to listen for commands")
 	httpPort := flag.String("http-port", "30304", "HTTP port for metrics, empty for none")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
-	netnsMode := flag.Bool("netns", false, "enable network namespace-aware dialing")
 	controller := flag.Bool("controller", false, "run as a controller exepipe")
+
+	// Old flag, ignore for now, can be removed later.
+	flag.Bool("netns", false, "enable network namespace-aware dialing")
 
 	flag.Parse()
 
@@ -80,9 +82,6 @@ func run() error {
 		Env:             env,
 		Logger:          lg,
 		MetricsRegistry: metricsRegistry,
-	}
-	if *netnsMode {
-		cfg.DialFunc = exepipe.NetnsDialFunc()
 	}
 
 	pi, err := exepipe.NewPipe(&cfg)

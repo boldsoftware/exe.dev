@@ -88,7 +88,7 @@ func main() {
 	}
 
 	tcpAddr := internalListener.Addr().(*net.TCPAddr)
-	if err := client.Listen(ctx, "key", externalListener, tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
+	if err := client.Listen(ctx, "key", externalListener, "", tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
 		die("client.Listen failed", err)
 	}
 
