@@ -111,7 +111,7 @@ func TestTierLifecycle_SubscribeUpgradeDowngrade(t *testing.T) {
 
 	// Simulate what SyncSubscriptions does: derive the event type and sync the plan.
 	syncSub(t, m, ctx, billingID, sub, ec.next())
-	assertActivePlanID(t, m.DB, billingID, "individual:small:monthly:20260601")
+	assertActivePlanID(t, m.DB, billingID, "individual:small:monthly:20260106")
 
 	// ---- Step 2: upgrade to medium ----
 	updatedSub, err := stripeChangeTier(ctx, m, billingID, "individual:medium:monthly:20160102")
@@ -121,7 +121,7 @@ func TestTierLifecycle_SubscribeUpgradeDowngrade(t *testing.T) {
 	assertSubscriptionPrice(t, updatedSub, "individual:medium:monthly:20160102")
 
 	syncSub(t, m, ctx, billingID, updatedSub, ec.next())
-	assertActivePlanID(t, m.DB, billingID, "individual:medium:monthly:20260601")
+	assertActivePlanID(t, m.DB, billingID, "individual:medium:monthly:20260106")
 
 	// ---- Step 3: downgrade back to small ----
 	updatedSub, err = stripeChangeTier(ctx, m, billingID, "individual")
@@ -131,7 +131,7 @@ func TestTierLifecycle_SubscribeUpgradeDowngrade(t *testing.T) {
 	assertSubscriptionPrice(t, updatedSub, "individual")
 
 	syncSub(t, m, ctx, billingID, updatedSub, ec.next())
-	assertActivePlanID(t, m.DB, billingID, "individual:small:monthly:20260601")
+	assertActivePlanID(t, m.DB, billingID, "individual:small:monthly:20260106")
 
 	// ---- Step 4: cancel subscription → should revert to basic ----
 	sub, err = getActiveSubscription(ctx, m, billingID)

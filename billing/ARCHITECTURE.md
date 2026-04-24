@@ -25,7 +25,7 @@ Only Individual gets `TeamCreate`. Only VIP gets the `All` wildcard.
 Plan IDs use a colon-separated format:
 - **Bare category:** `individual`, `friend`, `vip`
 - **3-part legacy:** `individual:monthly:20260106`
-- **4-part tier:** `individual:medium:monthly:20260601`
+- **4-part tier:** `individual:medium:monthly:20260106`
 
 `ParseID()` extracts `(category, interval, version)`. `Base()` extracts just the category.
 

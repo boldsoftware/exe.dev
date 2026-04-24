@@ -23,27 +23,27 @@ func TestParseTierID(t *testing.T) {
 	}{
 		{
 			name:         "4-part individual small",
-			input:        "individual:small:monthly:20260601",
+			input:        "individual:small:monthly:20260106",
 			wantCategory: CategoryIndividual,
 			wantTier:     "small",
 			wantInterval: "monthly",
-			wantVersion:  "20260601",
+			wantVersion:  "20260106",
 		},
 		{
 			name:         "4-part individual xlarge",
-			input:        "individual:xlarge:monthly:20260601",
+			input:        "individual:xlarge:monthly:20260106",
 			wantCategory: CategoryIndividual,
 			wantTier:     "xlarge",
 			wantInterval: "monthly",
-			wantVersion:  "20260601",
+			wantVersion:  "20260106",
 		},
 		{
 			name:         "4-part vip default",
-			input:        "vip:default:monthly:20260601",
+			input:        "vip:default:monthly:20260106",
 			wantCategory: CategoryVIP,
 			wantTier:     "default",
 			wantInterval: "monthly",
-			wantVersion:  "20260601",
+			wantVersion:  "20260106",
 		},
 		{
 			name:         "3-part legacy individual",
@@ -91,29 +91,29 @@ func TestGetTierByID(t *testing.T) {
 	}{
 		{
 			name:     "individual small",
-			id:       "individual:small:monthly:20260601",
-			wantID:   "individual:small:monthly:20260601",
+			id:       "individual:small:monthly:20260106",
+			wantID:   "individual:small:monthly:20260106",
 			wantName: "Small",
 			wantCat:  CategoryIndividual,
 		},
 		{
 			name:     "individual medium",
-			id:       "individual:medium:monthly:20260601",
-			wantID:   "individual:medium:monthly:20260601",
+			id:       "individual:medium:monthly:20260106",
+			wantID:   "individual:medium:monthly:20260106",
 			wantName: "Medium",
 			wantCat:  CategoryIndividual,
 		},
 		{
 			name:     "individual large",
-			id:       "individual:large:monthly:20260601",
-			wantID:   "individual:large:monthly:20260601",
+			id:       "individual:large:monthly:20260106",
+			wantID:   "individual:large:monthly:20260106",
 			wantName: "Large",
 			wantCat:  CategoryIndividual,
 		},
 		{
 			name:     "individual xlarge",
-			id:       "individual:xlarge:monthly:20260601",
-			wantID:   "individual:xlarge:monthly:20260601",
+			id:       "individual:xlarge:monthly:20260106",
+			wantID:   "individual:xlarge:monthly:20260106",
 			wantName: "XLarge",
 			wantCat:  CategoryIndividual,
 		},
@@ -121,23 +121,23 @@ func TestGetTierByID(t *testing.T) {
 			// Legacy 3-part individual IDs map to the Small tier.
 			name:     "legacy individual monthly",
 			id:       "individual:monthly:20260106",
-			wantID:   "individual:small:monthly:20260601",
+			wantID:   "individual:small:monthly:20260106",
 			wantName: "Small",
 			wantCat:  CategoryIndividual,
 		},
 		{
 			name:     "vip default",
-			id:       "vip:default:monthly:20260601",
-			wantID:   "vip:default:monthly:20260601",
-			wantName: "Default",
+			id:       "vip:default:monthly:20260106",
+			wantID:   "vip:default:monthly:20260106",
+			wantName: "Standard",
 			wantCat:  CategoryVIP,
 		},
 		{
 			// Legacy bare vip ID maps to default vip tier.
 			name:     "bare vip",
 			id:       "vip",
-			wantID:   "vip:default:monthly:20260601",
-			wantName: "Default",
+			wantID:   "vip:default:monthly:20260106",
+			wantName: "Standard",
 			wantCat:  CategoryVIP,
 		},
 		{
@@ -145,7 +145,7 @@ func TestGetTierByID(t *testing.T) {
 			// to the plan's DefaultTier (small).
 			name:     "bare individual",
 			id:       "individual",
-			wantID:   "individual:small:monthly:20260601",
+			wantID:   "individual:small:monthly:20260106",
 			wantName: "Small",
 			wantCat:  CategoryIndividual,
 		},
@@ -153,16 +153,16 @@ func TestGetTierByID(t *testing.T) {
 			// Bare "basic" maps to the basic default tier.
 			name:     "bare basic",
 			id:       "basic",
-			wantID:   "basic:default:monthly:20260601",
-			wantName: "Default",
+			wantID:   "basic:default:monthly:20260106",
+			wantName: "Standard",
 			wantCat:  CategoryBasic,
 		},
 		{
 			// Bare "friend" maps to the friend default tier.
 			name:     "bare friend",
 			id:       "friend",
-			wantID:   "friend:default:monthly:20260601",
-			wantName: "Default",
+			wantID:   "friend:default:monthly:20260106",
+			wantName: "Standard",
 			wantCat:  CategoryFriend,
 		},
 	}
@@ -200,7 +200,7 @@ func TestGrantsUnknownPlanID(t *testing.T) {
 
 func TestTierGrantsInheritance(t *testing.T) {
 	// nil Entitlements → inherit from plan.
-	small := mustgetTierByID(t, "individual:small:monthly:20260601")
+	small := mustgetTierByID(t, "individual:small:monthly:20260106")
 	if small.Entitlements != nil {
 		t.Fatal("small tier should have nil Entitlements (inherit from plan)")
 	}
@@ -214,7 +214,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 	// Non-nil Entitlements → use override (ignores plan entitlements).
 	override := map[Entitlement]bool{DiskResize: true}
 	tierWithOverride := Tier{
-		ID:           "test:custom:monthly:20260601",
+		ID:           "test:custom:monthly:20260106",
 		Category:     CategoryIndividual,
 		Name:         "Custom",
 		StripePrices: map[string]stripePriceInfo{},
@@ -233,7 +233,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 }
 
 func TestTierGrants(t *testing.T) {
-	small := mustgetTierByID(t, "individual:small:monthly:20260601")
+	small := mustgetTierByID(t, "individual:small:monthly:20260106")
 	if !tierGrants(small, VMCreate) {
 		t.Error("individual:small should grant VMCreate")
 	}
@@ -241,7 +241,7 @@ func TestTierGrants(t *testing.T) {
 		t.Error("individual:small should grant LLMUse")
 	}
 
-	vip := mustgetTierByID(t, "vip:default:monthly:20260601")
+	vip := mustgetTierByID(t, "vip:default:monthly:20260106")
 	if !tierGrants(vip, VMCreate) {
 		t.Error("vip:default should grant VMCreate")
 	}
@@ -252,10 +252,10 @@ func TestTierGrants(t *testing.T) {
 
 func TestGrants(t *testing.T) {
 	// 4-part individual tier ID
-	if !Grants("individual:small:monthly:20260601", VMCreate) {
+	if !Grants("individual:small:monthly:20260106", VMCreate) {
 		t.Error("individual:small should grant VMCreate")
 	}
-	if !Grants("individual:xlarge:monthly:20260601", TeamCreate) {
+	if !Grants("individual:xlarge:monthly:20260106", TeamCreate) {
 		t.Error("individual:xlarge should grant TeamCreate (inherited from plan)")
 	}
 
@@ -270,12 +270,12 @@ func TestGrants(t *testing.T) {
 	}
 
 	// VIP explicit entitlements (no wildcard)
-	if Grants("vip:default:monthly:20260601", Entitlement{"anything:new", "New"}) {
+	if Grants("vip:default:monthly:20260106", Entitlement{"anything:new", "New"}) {
 		t.Error("vip should not grant unknown entitlements")
 	}
 
 	// Basic plan should not grant VMCreate
-	if Grants("basic:default:monthly:20260601", VMCreate) {
+	if Grants("basic:default:monthly:20260106", VMCreate) {
 		t.Error("basic plan should not grant VMCreate")
 	}
 
@@ -294,10 +294,10 @@ func TestIndividualTierQuotas(t *testing.T) {
 		maxDisk     uint64
 		maxVMs      int
 	}{
-		{"individual:small:monthly:20260601", 2, 8 * gb, 25 * gb, 75 * gb, 50},
-		{"individual:medium:monthly:20260601", 4, 16 * gb, 25 * gb, 75 * gb, 50},
-		{"individual:large:monthly:20260601", 8, 32 * gb, 25 * gb, 75 * gb, 50},
-		{"individual:xlarge:monthly:20260601", 16, 64 * gb, 25 * gb, 75 * gb, 50},
+		{"individual:small:monthly:20260106", 2, 8 * gb, 25 * gb, 75 * gb, 50},
+		{"individual:medium:monthly:20260106", 4, 16 * gb, 25 * gb, 75 * gb, 50},
+		{"individual:large:monthly:20260106", 8, 32 * gb, 25 * gb, 75 * gb, 50},
+		{"individual:xlarge:monthly:20260106", 16, 64 * gb, 25 * gb, 75 * gb, 50},
 	}
 	for _, e := range expected {
 		t.Run(e.id, func(t *testing.T) {
@@ -346,12 +346,12 @@ func TestTierIDFromStripePriceKey(t *testing.T) {
 		wantID string
 	}{
 		// "individual" lookup key maps to small tier (the current Stripe price).
-		{"individual", "individual:small:monthly:20260601"},
-		{"individual:medium:monthly:20160102", "individual:medium:monthly:20260601"},
-		{"individual:large:monthly:20160102", "individual:large:monthly:20260601"},
-		{"individual:xlarge:monthly:20160102", "individual:xlarge:monthly:20260601"},
+		{"individual", "individual:small:monthly:20260106"},
+		{"individual:medium:monthly:20160102", "individual:medium:monthly:20260106"},
+		{"individual:large:monthly:20160102", "individual:large:monthly:20260106"},
+		{"individual:xlarge:monthly:20160102", "individual:xlarge:monthly:20260106"},
 		// Unknown key → small tier fallback.
-		{"unknown_key", "individual:small:monthly:20260601"},
+		{"unknown_key", "individual:small:monthly:20260106"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
@@ -369,10 +369,10 @@ func TestBasePlanHandles4PartTierID(t *testing.T) {
 		id   string
 		want Category
 	}{
-		{"individual:small:monthly:20260601", CategoryIndividual},
-		{"individual:xlarge:monthly:20260601", CategoryIndividual},
-		{"vip:default:monthly:20260601", CategoryVIP},
-		{"team:default:monthly:20260601", CategoryTeam},
+		{"individual:small:monthly:20260106", CategoryIndividual},
+		{"individual:xlarge:monthly:20260106", CategoryIndividual},
+		{"vip:default:monthly:20260106", CategoryVIP},
+		{"team:default:monthly:20260106", CategoryTeam},
 	}
 	for _, tt := range tests {
 		got := Base(tt.id)
@@ -391,25 +391,25 @@ func TestRemainingDiskQuota_Legacy(t *testing.T) {
 	}{
 		{
 			name:        "individual small at default",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			currentDisk: 25 * gb,
 			want:        50 * gb, // 75 - 25 = 50 GB headroom
 		},
 		{
 			name:        "individual small at max",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			currentDisk: 75 * gb,
 			want:        0,
 		},
 		{
 			name:        "individual small over max",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			currentDisk: 80 * gb,
 			want:        0,
 		},
 		{
 			name:        "individual small at 10GB",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			currentDisk: 10 * gb,
 			want:        65 * gb,
 		},
@@ -449,7 +449,7 @@ func TestRemainingDiskQuota_Legacy(t *testing.T) {
 }
 
 func TestMaxDiskForPlan(t *testing.T) {
-	if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*gb {
+	if got := MaxDiskForPlan("individual:small:monthly:20260106"); got != 75*gb {
 		t.Errorf("MaxDiskForPlan(individual:small) = %d, want %d", got, 75*gb)
 	}
 	if got := MaxDiskForPlan("basic"); got != 0 {
@@ -470,13 +470,13 @@ func TestIncludedDisk(t *testing.T) {
 		// Prod/staging: env.DefaultDisk=0 → defer to tier.
 		{
 			name:       "individual small prod",
-			tierID:     "individual:small:monthly:20260601",
+			tierID:     "individual:small:monthly:20260106",
 			envDefault: 0,
 			want:       25 * gb,
 		},
 		{
 			name:       "individual xlarge prod",
-			tierID:     "individual:xlarge:monthly:20260601",
+			tierID:     "individual:xlarge:monthly:20260106",
 			envDefault: 0,
 			want:       25 * gb,
 		},
@@ -501,7 +501,7 @@ func TestIncludedDisk(t *testing.T) {
 		// Local: env.DefaultDisk=10GB < tier → use env.
 		{
 			name:       "individual small local",
-			tierID:     "individual:small:monthly:20260601",
+			tierID:     "individual:small:monthly:20260106",
 			envDefault: 10 * gb,
 			want:       10 * gb,
 		},
@@ -514,7 +514,7 @@ func TestIncludedDisk(t *testing.T) {
 		// Test: env.DefaultDisk=11GB < tier → use env.
 		{
 			name:       "individual small test",
-			tierID:     "individual:small:monthly:20260601",
+			tierID:     "individual:small:monthly:20260106",
 			envDefault: 11 * gb,
 			want:       11 * gb,
 		},
@@ -556,8 +556,8 @@ func TestMaxDiskForPlanWithEnv(t *testing.T) {
 		tierID string
 		want   uint64
 	}{
-		{"individual small", "individual:small:monthly:20260601", 75 * gb},
-		{"individual xlarge", "individual:xlarge:monthly:20260601", 75 * gb},
+		{"individual small", "individual:small:monthly:20260106", 75 * gb},
+		{"individual xlarge", "individual:xlarge:monthly:20260106", 75 * gb},
 		{"trial", "trial", 75 * gb},
 		{"vip", "vip", 75 * gb},
 		{"friend", "friend", 75 * gb},
@@ -585,28 +585,28 @@ func TestRemainingDiskQuota(t *testing.T) {
 		// Started at 20GB (prod default), can grow to 75GB.
 		{
 			name:        "individual small from 20GB",
-			tierID:      "individual:small:monthly:20260601",
+			tierID:      "individual:small:monthly:20260106",
 			currentDisk: 20 * gb,
 			want:        55 * gb,
 		},
 		// Started at 25GB (tier included), can grow to 75GB.
 		{
 			name:        "individual small from 25GB",
-			tierID:      "individual:small:monthly:20260601",
+			tierID:      "individual:small:monthly:20260106",
 			currentDisk: 25 * gb,
 			want:        50 * gb,
 		},
 		// Already at max.
 		{
 			name:        "individual small at max",
-			tierID:      "individual:small:monthly:20260601",
+			tierID:      "individual:small:monthly:20260106",
 			currentDisk: 75 * gb,
 			want:        0,
 		},
 		// Over max.
 		{
 			name:        "individual small over max",
-			tierID:      "individual:small:monthly:20260601",
+			tierID:      "individual:small:monthly:20260106",
 			currentDisk: 80 * gb,
 			want:        0,
 		},
@@ -653,30 +653,30 @@ func TestEffectiveMaxDisk(t *testing.T) {
 		// --- Prod (envDefaultDisk=0): tier catalog is authoritative ---
 		{
 			name:   "individual prod no override",
-			planID: "individual:small:monthly:20260601",
+			planID: "individual:small:monthly:20260106",
 			want:   75 * gb,
 		},
 		{
 			name:        "support granted 200GB prod",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			userMaxDisk: 200 * gb,
 			want:        200 * gb,
 		},
 		{
 			name:        "support set same as plan prod",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			userMaxDisk: 75 * gb,
 			want:        75 * gb,
 		},
 		{
 			name:        "support set below plan prod",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			userMaxDisk: 30 * gb,
 			want:        30 * gb,
 		},
 		{
 			name:        "support override above plan max prod",
-			planID:      "individual:small:monthly:20260601",
+			planID:      "individual:small:monthly:20260106",
 			userMaxDisk: 80 * gb,
 			want:        80 * gb,
 		},
@@ -723,7 +723,7 @@ func TestEffectiveMaxDisk(t *testing.T) {
 		// --- Test env (envDefaultDisk=11GB): env caps the tier ceiling ---
 		{
 			name:           "individual test no override",
-			planID:         "individual:small:monthly:20260601",
+			planID:         "individual:small:monthly:20260106",
 			envDefaultDisk: 11 * gb,
 			want:           11 * gb,
 		},
@@ -742,7 +742,7 @@ func TestEffectiveMaxDisk(t *testing.T) {
 		// Support override still wins over env cap.
 		{
 			name:           "individual test with support override",
-			planID:         "individual:small:monthly:20260601",
+			planID:         "individual:small:monthly:20260106",
 			userMaxDisk:    30 * gb,
 			envDefaultDisk: 11 * gb,
 			want:           30 * gb,
@@ -751,7 +751,7 @@ func TestEffectiveMaxDisk(t *testing.T) {
 		// --- Local (envDefaultDisk=10GB) ---
 		{
 			name:           "individual local no override",
-			planID:         "individual:small:monthly:20260601",
+			planID:         "individual:small:monthly:20260106",
 			envDefaultDisk: 10 * gb,
 			want:           10 * gb,
 		},
@@ -778,7 +778,7 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 	// Their 25GB disk is untouched. They just can't resize anymore.
 	t.Run("downgrade individual to basic", func(t *testing.T) {
 		// At creation on Individual: 25GB included.
-		creationDisk := IncludedDisk("individual:small:monthly:20260601", envDefault)
+		creationDisk := IncludedDisk("individual:small:monthly:20260106", envDefault)
 		if creationDisk != 25*gb {
 			t.Fatalf("IncludedDisk(individual) = %d, want %d", creationDisk, 25*gb)
 		}
@@ -803,10 +803,10 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 		}
 
 		// After upgrade: Individual allows resize up to 75GB.
-		if got := MaxDiskForPlan("individual:small:monthly:20260601"); got != 75*gb {
+		if got := MaxDiskForPlan("individual:small:monthly:20260106"); got != 75*gb {
 			t.Errorf("MaxDiskForPlan(individual) = %d, want %d", got, 75*gb)
 		}
-		if got := RemainingDiskQuota("individual:small:monthly:20260601", creationDisk); got != 50*gb {
+		if got := RemainingDiskQuota("individual:small:monthly:20260106", creationDisk); got != 50*gb {
 			t.Errorf("RemainingDiskQuota(individual, %d) = %d, want %d", creationDisk, got, 50*gb)
 		}
 	})
@@ -814,14 +814,14 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 	// Scenario 3: User on Individual Small upgrades to XLarge.
 	// Same disk quotas — tier size affects compute, not disk.
 	t.Run("upgrade individual small to xlarge", func(t *testing.T) {
-		smallDisk := IncludedDisk("individual:small:monthly:20260601", envDefault)
-		xlargeDisk := IncludedDisk("individual:xlarge:monthly:20260601", envDefault)
+		smallDisk := IncludedDisk("individual:small:monthly:20260106", envDefault)
+		xlargeDisk := IncludedDisk("individual:xlarge:monthly:20260106", envDefault)
 		if smallDisk != xlargeDisk {
 			t.Errorf("IncludedDisk small=%d vs xlarge=%d — should be equal", smallDisk, xlargeDisk)
 		}
 
-		smallMax := MaxDiskForPlan("individual:small:monthly:20260601")
-		xlargeMax := MaxDiskForPlan("individual:xlarge:monthly:20260601")
+		smallMax := MaxDiskForPlan("individual:small:monthly:20260106")
+		xlargeMax := MaxDiskForPlan("individual:xlarge:monthly:20260106")
 		if smallMax != xlargeMax {
 			t.Errorf("MaxDiskForPlan small=%d vs xlarge=%d — should be equal", smallMax, xlargeMax)
 		}
@@ -833,7 +833,7 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 		var supportMaxDisk uint64 = 80 * gb
 
 		// On Individual with override.
-		if got := EffectiveMaxDisk("individual:small:monthly:20260601", supportMaxDisk, 0); got != 80*gb {
+		if got := EffectiveMaxDisk("individual:small:monthly:20260106", supportMaxDisk, 0); got != 80*gb {
 			t.Errorf("EffectiveMaxDisk(individual, 80GB) = %d, want %d", got, 80*gb)
 		}
 		// Downgrade to Basic — override still wins.
@@ -845,25 +845,25 @@ func TestDiskQuotasPlanTransitions(t *testing.T) {
 
 func TestIncludedBandwidth(t *testing.T) {
 	t.Run("individual tier has 100GB", func(t *testing.T) {
-		if got := IncludedBandwidth("individual:small:monthly:20260601"); got != 100*gb {
+		if got := IncludedBandwidth("individual:small:monthly:20260106"); got != 100*gb {
 			t.Errorf("IncludedBandwidth(individual:small) = %d, want %d", got, 100*gb)
 		}
 	})
 
 	t.Run("team tier has 100GB", func(t *testing.T) {
-		if got := IncludedBandwidth("team:default:monthly:20260601"); got != 100*gb {
+		if got := IncludedBandwidth("team:default:monthly:20260106"); got != 100*gb {
 			t.Errorf("IncludedBandwidth(team) = %d, want %d", got, 100*gb)
 		}
 	})
 
 	t.Run("trial tier has 100GB", func(t *testing.T) {
-		if got := IncludedBandwidth("trial:default:monthly:20260601"); got != 100*gb {
+		if got := IncludedBandwidth("trial:default:monthly:20260106"); got != 100*gb {
 			t.Errorf("IncludedBandwidth(trial) = %d, want %d", got, 100*gb)
 		}
 	})
 
 	t.Run("restricted tier has no bandwidth quota", func(t *testing.T) {
-		if got := IncludedBandwidth("restricted:default:monthly:20260601"); got != 0 {
+		if got := IncludedBandwidth("restricted:default:monthly:20260106"); got != 0 {
 			t.Errorf("IncludedBandwidth(restricted) = %d, want 0", got)
 		}
 	})
@@ -877,7 +877,7 @@ func TestIncludedBandwidth(t *testing.T) {
 
 func TestNextTier(t *testing.T) {
 	t.Run("small has medium as next", func(t *testing.T) {
-		next := NextTier("individual:small:monthly:20260601")
+		next := NextTier("individual:small:monthly:20260106")
 		if next == nil {
 			t.Fatal("expected next tier, got nil")
 		}
@@ -890,7 +890,7 @@ func TestNextTier(t *testing.T) {
 	})
 
 	t.Run("medium has large as next", func(t *testing.T) {
-		next := NextTier("individual:medium:monthly:20260601")
+		next := NextTier("individual:medium:monthly:20260106")
 		if next == nil {
 			t.Fatal("expected next tier, got nil")
 		}
@@ -900,7 +900,7 @@ func TestNextTier(t *testing.T) {
 	})
 
 	t.Run("large has xlarge as next", func(t *testing.T) {
-		next := NextTier("individual:large:monthly:20260601")
+		next := NextTier("individual:large:monthly:20260106")
 		if next == nil {
 			t.Fatal("expected next tier, got nil")
 		}
@@ -910,14 +910,14 @@ func TestNextTier(t *testing.T) {
 	})
 
 	t.Run("xlarge has no next tier", func(t *testing.T) {
-		next := NextTier("individual:xlarge:monthly:20260601")
+		next := NextTier("individual:xlarge:monthly:20260106")
 		if next != nil {
 			t.Errorf("expected nil for largest tier, got %q", next.Name)
 		}
 	})
 
 	t.Run("single-tier plan has no next", func(t *testing.T) {
-		next := NextTier("team:default:monthly:20260601")
+		next := NextTier("team:default:monthly:20260106")
 		if next != nil {
 			t.Errorf("expected nil for single-tier plan, got %q", next.Name)
 		}
@@ -936,11 +936,11 @@ func TestTierMonthlyPriceCents(t *testing.T) {
 		tierID string
 		want   int
 	}{
-		{"individual:small:monthly:20260601", 2000},
-		{"individual:medium:monthly:20260601", 4000},
-		{"individual:large:monthly:20260601", 8000},
-		{"individual:xlarge:monthly:20260601", 16000},
-		{"team:default:monthly:20260601", 0},
+		{"individual:small:monthly:20260106", 2000},
+		{"individual:medium:monthly:20260106", 4000},
+		{"individual:large:monthly:20260106", 8000},
+		{"individual:xlarge:monthly:20260106", 16000},
+		{"team:default:monthly:20260106", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tierID, func(t *testing.T) {

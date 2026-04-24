@@ -136,7 +136,7 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 
 	// Human-readable output
 	cc.Writeln("")
-	if tierErr == nil && tier.Name != "Default" {
+	if tierErr == nil && tier.Name != "Standard" {
 		cc.Writeln("  \033[1m%s Plan (%s)\033[0m", planName, tier.Name)
 	} else {
 		cc.Writeln("  \033[1m%s Plan\033[0m", planName)

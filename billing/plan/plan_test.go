@@ -179,10 +179,10 @@ func TestParsePlanID(t *testing.T) {
 		},
 		{
 			name:     "versioned team yearly",
-			input:    "team:yearly:20260601",
+			input:    "team:yearly:20260106",
 			wantPlan: CategoryTeam,
 			wantInt:  "yearly",
-			wantVer:  "20260601",
+			wantVer:  "20260106",
 		},
 		{
 			name:     "bare individual",
@@ -292,7 +292,7 @@ func TestGetPlanByIDVersioned(t *testing.T) {
 
 func TestID(t *testing.T) {
 	got := ID(CategoryIndividual)
-	want := "individual:small:monthly:20260601"
+	want := "individual:small:monthly:20260106"
 	if got != want {
 		t.Errorf("ID(CategoryIndividual) = %q, want %q", got, want)
 	}
@@ -502,7 +502,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 		// Individual Small tier
 		{
 			name:          "individual small monthly",
-			tierID:        "individual:small:monthly:20260601",
+			tierID:        "individual:small:monthly:20260106",
 			billingOption: "monthly",
 			want: stripePriceInfo{
 				LookupKey: "individual",
@@ -512,7 +512,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 		},
 		{
 			name:          "individual medium monthly",
-			tierID:        "individual:medium:monthly:20260601",
+			tierID:        "individual:medium:monthly:20260106",
 			billingOption: "monthly",
 			want: stripePriceInfo{
 				LookupKey: "individual:medium:monthly:20160102",
@@ -522,7 +522,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 		},
 		{
 			name:          "individual large monthly",
-			tierID:        "individual:large:monthly:20260601",
+			tierID:        "individual:large:monthly:20260106",
 			billingOption: "monthly",
 			want: stripePriceInfo{
 				LookupKey: "individual:large:monthly:20160102",
@@ -532,7 +532,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 		},
 		{
 			name:          "individual xlarge monthly",
-			tierID:        "individual:xlarge:monthly:20260601",
+			tierID:        "individual:xlarge:monthly:20260106",
 			billingOption: "monthly",
 			want: stripePriceInfo{
 				LookupKey: "individual:xlarge:monthly:20160102",
@@ -543,7 +543,7 @@ func TestTierStripePriceInfo(t *testing.T) {
 		// Unknown billing option
 		{
 			name:          "unknown billing option",
-			tierID:        "individual:small:monthly:20260601",
+			tierID:        "individual:small:monthly:20260106",
 			billingOption: "nonexistent",
 			want:          stripePriceInfo{},
 		},

@@ -105,16 +105,16 @@ func TestIncludedDiskIntegration(t *testing.T) {
 		want       uint64
 	}{
 		// Prod: env.DefaultDisk=0 → tier value (25GB).
-		{"individual prod", "individual:small:monthly:20260601", 0, 25 * gb},
+		{"individual prod", "individual:small:monthly:20260106", 0, 25 * gb},
 		{"trial prod", "trial", 0, 25 * gb},
 		{"basic prod", "basic", 0, 25 * gb},
 
 		// Local: env.DefaultDisk=10GB → capped.
-		{"individual local", "individual:small:monthly:20260601", 10 * gb, 10 * gb},
+		{"individual local", "individual:small:monthly:20260106", 10 * gb, 10 * gb},
 		{"trial local", "trial", 10 * gb, 10 * gb},
 
 		// Test: env.DefaultDisk=11GB → capped.
-		{"individual test", "individual:small:monthly:20260601", 11 * gb, 11 * gb},
+		{"individual test", "individual:small:monthly:20260106", 11 * gb, 11 * gb},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

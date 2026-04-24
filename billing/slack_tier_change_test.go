@@ -33,7 +33,7 @@ func TestSyncAccountPlan_SlackTierChangeNotification(t *testing.T) {
 	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
 		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    "individual:small:monthly:20260601",
+			PlanID:    "individual:small:monthly:20260106",
 			StartedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 			ChangedBy: stringPtr("stripe:event"),
 		})
@@ -65,8 +65,8 @@ func TestSyncAccountPlan_SlackTierChangeNotification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if activePlan.PlanID != "individual:medium:monthly:20260601" {
-		t.Fatalf("active plan = %q, want individual:medium:monthly:20260601", activePlan.PlanID)
+	if activePlan.PlanID != "individual:medium:monthly:20260106" {
+		t.Fatalf("active plan = %q, want individual:medium:monthly:20260106", activePlan.PlanID)
 	}
 
 	// Downgrade back to Small.
@@ -91,8 +91,8 @@ func TestSyncAccountPlan_SlackTierChangeNotification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActiveAccountPlan: %v", err)
 	}
-	if activePlan.PlanID != "individual:small:monthly:20260601" {
-		t.Fatalf("active plan = %q, want individual:small:monthly:20260601", activePlan.PlanID)
+	if activePlan.PlanID != "individual:small:monthly:20260106" {
+		t.Fatalf("active plan = %q, want individual:small:monthly:20260106", activePlan.PlanID)
 	}
 
 	// Verify no notification when plan doesn't change (same subscription replayed).

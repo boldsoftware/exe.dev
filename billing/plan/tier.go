@@ -9,11 +9,11 @@ import (
 // Tiers own quotas, Stripe prices, and optional per-tier entitlement overrides.
 type Tier struct {
 	// ID uses the 4-part format: "{category}:{tier}:{interval}:{version}"
-	// e.g. "individual:medium:monthly:20260601"
+	// e.g. "individual:medium:monthly:20260106"
 	ID string
 
 	Category Category
-	Name     string // "Small", "Medium", "Default", etc.
+	Name     string // "Small", "Medium", "Standard", etc.
 
 	StripePrices      map[string]stripePriceInfo
 	Quotas            tierQuotas
@@ -201,8 +201,8 @@ type tierQuotas struct {
 // tiers is the canonical tier catalog, keyed by tier ID (4-part format).
 var tiers = map[string]Tier{
 	// --- Individual tiers ---
-	"individual:small:monthly:20260601": {
-		ID:       "individual:small:monthly:20260601",
+	"individual:small:monthly:20260106": {
+		ID:       "individual:small:monthly:20260106",
 		Category: CategoryIndividual,
 		Name:     "Small",
 		StripePrices: map[string]stripePriceInfo{
@@ -221,8 +221,8 @@ var tiers = map[string]Tier{
 		MonthlyPriceCents: 2000,
 		Entitlements:      nil,
 	},
-	"individual:medium:monthly:20260601": {
-		ID:       "individual:medium:monthly:20260601",
+	"individual:medium:monthly:20260106": {
+		ID:       "individual:medium:monthly:20260106",
 		Category: CategoryIndividual,
 		Name:     "Medium",
 		StripePrices: map[string]stripePriceInfo{
@@ -241,8 +241,8 @@ var tiers = map[string]Tier{
 		MonthlyPriceCents: 4000,
 		Entitlements:      nil,
 	},
-	"individual:large:monthly:20260601": {
-		ID:       "individual:large:monthly:20260601",
+	"individual:large:monthly:20260106": {
+		ID:       "individual:large:monthly:20260106",
 		Category: CategoryIndividual,
 		Name:     "Large",
 		StripePrices: map[string]stripePriceInfo{
@@ -261,8 +261,8 @@ var tiers = map[string]Tier{
 		MonthlyPriceCents: 8000,
 		Entitlements:      nil,
 	},
-	"individual:xlarge:monthly:20260601": {
-		ID:       "individual:xlarge:monthly:20260601",
+	"individual:xlarge:monthly:20260106": {
+		ID:       "individual:xlarge:monthly:20260106",
 		Category: CategoryIndividual,
 		Name:     "XLarge",
 		StripePrices: map[string]stripePriceInfo{
@@ -284,10 +284,10 @@ var tiers = map[string]Tier{
 
 	// --- Single-tier plans: one "default" tier each ---
 
-	"vip:default:monthly:20260601": {
-		ID:           "vip:default:monthly:20260601",
+	"vip:default:monthly:20260106": {
+		ID:           "vip:default:monthly:20260106",
 		Category:     CategoryVIP,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -299,10 +299,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"enterprise:default:monthly:20260601": {
-		ID:           "enterprise:default:monthly:20260601",
+	"enterprise:default:monthly:20260106": {
+		ID:           "enterprise:default:monthly:20260106",
 		Category:     CategoryEnterprise,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -314,10 +314,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"team:default:monthly:20260601": {
-		ID:           "team:default:monthly:20260601",
+	"team:default:monthly:20260106": {
+		ID:           "team:default:monthly:20260106",
 		Category:     CategoryTeam,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -329,10 +329,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"friend:default:monthly:20260601": {
-		ID:           "friend:default:monthly:20260601",
+	"friend:default:monthly:20260106": {
+		ID:           "friend:default:monthly:20260106",
 		Category:     CategoryFriend,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -344,10 +344,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"grandfathered:default:monthly:20260601": {
-		ID:           "grandfathered:default:monthly:20260601",
+	"grandfathered:default:monthly:20260106": {
+		ID:           "grandfathered:default:monthly:20260106",
 		Category:     CategoryGrandfathered,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -359,10 +359,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"trial:default:monthly:20260601": {
-		ID:           "trial:default:monthly:20260601",
+	"trial:default:monthly:20260106": {
+		ID:           "trial:default:monthly:20260106",
 		Category:     CategoryTrial,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -374,10 +374,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"basic:default:monthly:20260601": {
-		ID:           "basic:default:monthly:20260601",
+	"basic:default:monthly:20260106": {
+		ID:           "basic:default:monthly:20260106",
 		Category:     CategoryBasic,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -389,10 +389,10 @@ var tiers = map[string]Tier{
 		},
 		Entitlements: nil,
 	},
-	"restricted:default:monthly:20260601": {
-		ID:           "restricted:default:monthly:20260601",
+	"restricted:default:monthly:20260106": {
+		ID:           "restricted:default:monthly:20260106",
 		Category:     CategoryRestricted,
-		Name:         "Default",
+		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
 			MaxCPUs: 0, MaxMemory: 0,
@@ -407,7 +407,7 @@ var tiers = map[string]Tier{
 }
 
 // GetTierByID returns the Tier for a given tier ID.
-// Handles 4-part tier IDs ("individual:medium:monthly:20260601") as well as
+// Handles 4-part tier IDs ("individual:medium:monthly:20260106") as well as
 // 3-part legacy plan IDs ("individual:monthly:20260106").
 // Returns an error for completely unknown IDs.
 func GetTierByID(id string) (Tier, error) {
@@ -433,7 +433,7 @@ func getTierByID(id string) (Tier, error) {
 }
 
 // parseTierID extracts the plan category, tier name, interval, and version
-// from a 4-part tier ID (e.g. "individual:medium:monthly:20260601").
+// from a 4-part tier ID (e.g. "individual:medium:monthly:20260106").
 // Returns empty strings for any missing fields.
 func parseTierID(id string) (category Category, tierName, interval, version string) {
 	parts := strings.SplitN(id, ":", 4)
@@ -484,5 +484,5 @@ func TierIDFromStripePriceKey(key string) string {
 			}
 		}
 	}
-	return "individual:small:monthly:20260601"
+	return "individual:small:monthly:20260106"
 }

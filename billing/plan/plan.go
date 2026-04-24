@@ -283,7 +283,7 @@ var plans = map[Category]Plan{
 		Category:            CategoryVIP,
 		Name:                "VIP",
 		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "vip:default:monthly:20260601",
+		DefaultTier:         "vip:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -301,7 +301,7 @@ var plans = map[Category]Plan{
 		Paid:                true,
 		Name:                "Enterprise",
 		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "enterprise:default:monthly:20260601",
+		DefaultTier:         "enterprise:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -318,7 +318,7 @@ var plans = map[Category]Plan{
 		Paid:                true,
 		Name:                "Team",
 		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "team:default:monthly:20260601",
+		DefaultTier:         "team:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
@@ -329,7 +329,7 @@ var plans = map[Category]Plan{
 		},
 	},
 	CategoryIndividual: {
-		ID:                   "individual:small:monthly:20260601",
+		ID:                   "individual:small:monthly:20260106",
 		Available:            true,
 		Category:             CategoryIndividual,
 		Paid:                 true,
@@ -339,7 +339,7 @@ var plans = map[Category]Plan{
 		MonthlyLLMCreditUSD:  20,
 		// Individual has multiple tiers; DefaultTier is the Small tier used for
 		// new subscribers and legacy IDs without an explicit tier component.
-		DefaultTier: "individual:small:monthly:20260601",
+		DefaultTier: "individual:small:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
 			CreditPurchase:   true,
@@ -357,7 +357,7 @@ var plans = map[Category]Plan{
 		Category:            CategoryFriend,
 		Name:                "Friend",
 		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "friend:default:monthly:20260601",
+		DefaultTier:         "friend:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:     true,
 			VMCreate:   true,
@@ -370,7 +370,7 @@ var plans = map[Category]Plan{
 		Available:   true,
 		Category:    CategoryGrandfathered,
 		Name:        "Grandfathered",
-		DefaultTier: "grandfathered:default:monthly:20260601",
+		DefaultTier: "grandfathered:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:     true,
 			VMCreate:   true,
@@ -383,7 +383,7 @@ var plans = map[Category]Plan{
 		Available:   true,
 		Category:    CategoryTrial,
 		Name:        "Trial",
-		DefaultTier: "trial:default:monthly:20260601",
+		DefaultTier: "trial:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
 			VMCreate:         true,
@@ -397,7 +397,7 @@ var plans = map[Category]Plan{
 		Available:   true,
 		Category:    CategoryBasic,
 		Name:        "Basic",
-		DefaultTier: "basic:default:monthly:20260601",
+		DefaultTier: "basic:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
 			BillingSelfServe: true,
@@ -409,7 +409,7 @@ var plans = map[Category]Plan{
 		Available:   true,
 		Category:    CategoryRestricted,
 		Name:        "Restricted",
-		DefaultTier: "restricted:default:monthly:20260601",
+		DefaultTier: "restricted:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			AccountDelete: true,
 		},

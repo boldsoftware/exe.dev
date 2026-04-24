@@ -157,7 +157,7 @@ func TestBillingPlanBareCommand(t *testing.T) {
 }
 
 // TestBillingPlanTrialUser tests that a trial user sees the Trial plan
-// without weird output (no price, no tier name like "Default").
+// without weird output (no price, no tier name like "Standard").
 func TestBillingPlanTrialUser(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
