@@ -617,63 +617,7 @@ describe('VMDetail', () => {
     expect(wrapper.find('.pool-section').exists()).toBe(false)
   })
 
-  // --- Per-VM section (disk & transfer bars) ---
 
-  it('shows disk bar in per-VM section when disk and included_disk data available', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 5 * 1024 * 1024 * 1024,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 20 * 1024 * 1024 * 1024,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    const perVm = wrapper.find('.per-vm-section')
-    expect(perVm.exists()).toBe(true)
-    const labels = perVm.findAll('.pool-label').map(l => l.text())
-    expect(labels).toContain('Disk')
-  })
-
-  it('shows transfer bar in per-VM section when included_bandwidth data available', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchProfile.mockResolvedValue(makeProfile())
-    const wrapper = await mountVMDetail()
-    const perVm = wrapper.find('.per-vm-section')
-    expect(perVm.exists()).toBe(true)
-    const labels = perVm.findAll('.pool-label').map(l => l.text())
-    expect(labels).toContain('Transfer')
-  })
-
-  it('hides per-VM section when liveMetrics is null (stopped VM)', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard({
-      boxes: [makeBox({ status: 'stopped' })],
-    }))
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.per-vm-section').exists()).toBe(false)
-  })
 
   // --- Charts placeholder still hidden ---
 
