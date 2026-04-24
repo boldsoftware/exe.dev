@@ -2,7 +2,12 @@
   <div class="usage-view">
     <!-- Pool Summary -->
     <div v-if="pool && pool.cpu_max > 0" class="pool-section">
-      <div class="pool-heading">Resource Pool</div>
+      <div class="pool-section-header">
+        <div class="pool-heading">Resource Pool</div>
+        <div class="usage-controls">
+          <button v-for="r in ranges" :key="r.hours" class="range-btn" :class="{ active: hours === r.hours }" @click="setRange(r.hours)">{{ r.label }}</button>
+        </div>
+      </div>
       <div class="pool-summary">
         <div class="pool-metric">
           <div class="pool-label">CPU <span class="pool-value">{{ peakCpu.toFixed(1) }} / {{ pool.cpu_max }} cores</span> <span class="pool-peak">peak, {{ rangeLabel }}</span></div>
@@ -23,8 +28,8 @@
       </div>
     </div>
 
-    <!-- Range Controls -->
-    <div class="usage-controls">
+    <!-- Range controls when no pool -->
+    <div v-else class="usage-controls">
       <span class="range-label">Range:</span>
       <button v-for="r in ranges" :key="r.hours" class="range-btn" :class="{ active: hours === r.hours }" @click="setRange(r.hours)">{{ r.label }}</button>
     </div>
@@ -356,6 +361,11 @@ const filteredRows = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.pool-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .pool-heading {
   font-size: 11px;
