@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-func TestAPIVMsLive_Unauthenticated(t *testing.T) {
+func TestAPIVMsPool_Unauthenticated(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/vms/usage/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vms/pool", nil)
 	req.Host = s.env.WebHost
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
@@ -21,11 +21,11 @@ func TestAPIVMsLive_Unauthenticated(t *testing.T) {
 	}
 }
 
-func TestAPIVMsLive_MethodNotAllowed(t *testing.T) {
+func TestAPIVMsPool_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "vms-live-method@example.com", "", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "vms-pool-method@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestAPIVMsLive_MethodNotAllowed(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/vms/usage/live", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vms/pool", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -45,11 +45,11 @@ func TestAPIVMsLive_MethodNotAllowed(t *testing.T) {
 	}
 }
 
-func TestAPIVMsLive_EmptyResponse(t *testing.T) {
+func TestAPIVMsPool_EmptyResponse(t *testing.T) {
 	t.Parallel()
 	s := newTestServer(t)
 
-	user, err := s.createUser(t.Context(), testSSHPubKey, "vms-live-empty@example.com", "", AllQualityChecks)
+	user, err := s.createUser(t.Context(), testSSHPubKey, "vms-pool-empty@example.com", "", AllQualityChecks)
 	if err != nil {
 		t.Fatalf("createUser: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestAPIVMsLive_EmptyResponse(t *testing.T) {
 		t.Fatalf("createAuthCookie: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/vms/usage/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/vms/pool", nil)
 	req.Host = s.env.WebHost
 	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: cookieValue})
 	w := httptest.NewRecorder()
@@ -68,16 +68,22 @@ func TestAPIVMsLive_EmptyResponse(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp vmsLiveResponse
+	var resp vmsPoolResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// User has no VMs, so vms should be empty array (not null).
-	if resp.VMs == nil {
-		t.Error("expected vms to be empty array, got null")
+	// No plan → limits should be 0.
+	if resp.CPUMax != 0 {
+		t.Errorf("expected cpu_max 0, got %d", resp.CPUMax)
 	}
-	if len(resp.VMs) != 0 {
-		t.Errorf("expected 0 vms, got %d", len(resp.VMs))
+	if resp.MemMaxBytes != 0 {
+		t.Errorf("expected mem_max_bytes 0, got %d", resp.MemMaxBytes)
+	}
+	if resp.VMsTotal != 0 {
+		t.Errorf("expected vms_total 0, got %d", resp.VMsTotal)
+	}
+	if resp.VMsRunning != 0 {
+		t.Errorf("expected vms_running 0, got %d", resp.VMsRunning)
 	}
 }
