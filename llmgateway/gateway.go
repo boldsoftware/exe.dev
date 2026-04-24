@@ -141,6 +141,10 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, userMsg s
 	case code == http.StatusBadRequest:
 		// Client sent a bad request (e.g. unsupported model). Not an error.
 		logger = m.log.InfoContext
+	case code == http.StatusForbidden:
+		// Client hit an endpoint we don't support (e.g. /v1/images/*).
+		// Not a server bug; the user gets a clear 403.
+		logger = m.log.InfoContext
 	case code == http.StatusNotFound:
 		// This is probably a user poking around the gateway.
 		// Possibly sketchy...but not necessarily an error.
@@ -593,11 +597,30 @@ func ensureOpenAIStreamOptions(body []byte) ([]byte, error) {
 }
 
 // isBlockedEndpoint reports whether path should be blocked.
-// Some endpoints (like image generation) have per-image pricing that we don't support.
+//
+// We block any endpoint we don't know how to price/bill for. Either because it
+// has per-character or per-image pricing that we don't support, or because its
+// responses don't carry the usage data we need to debit a user's account.
+//
+// For anything here the user gets a clean 403 with "endpoint not supported: ...";
+// these are client errors, not bugs, and the gateway logs them at Info level.
 func isBlockedEndpoint(path string) bool {
 	blockedPrefixes := []string{
-		"/v1/images/",      // OpenAI image generation
-		"/v1/audio/speech", // OpenAI TTS (per-character pricing)
+		// OpenAI: per-image pricing, per-character pricing, etc.
+		"/v1/images/",     // image generation / edits / variations
+		"/v1/audio/",      // TTS/STT/translations (per-second or per-character)
+		"/v1/moderations", // responses don't carry usage data
+
+		// OpenAI stateful / batch / file APIs: responses don't carry per-request
+		// usage we can bill, and some are free or billed out-of-band.
+		"/v1/assistants",
+		"/v1/threads",
+		"/v1/batches",
+		"/v1/files",
+		"/v1/uploads",
+		"/v1/vector_stores",
+		"/v1/fine_tuning",
+		"/v1/realtime",
 	}
 	for _, prefix := range blockedPrefixes {
 		if strings.HasPrefix(path, prefix) {

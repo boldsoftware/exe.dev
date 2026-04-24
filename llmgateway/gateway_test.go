@@ -696,16 +696,33 @@ func TestIsBlockedEndpoint(t *testing.T) {
 		path string
 		want bool
 	}{
-		// Blocked endpoints (per-image pricing)
+		// Blocked: per-image / per-character / unpriced endpoints
 		{"/v1/images/generations", true},
 		{"/v1/images/edits", true},
+		{"/v1/audio/speech", true},
+		{"/v1/audio/translations", true},
+		{"/v1/audio/transcriptions", true},
+		{"/v1/moderations", true},
+
+		// Blocked: stateful / batch / file APIs without per-request usage we can bill
+		{"/v1/assistants", true},
+		{"/v1/assistants/asst_123", true},
+		{"/v1/threads", true},
+		{"/v1/threads/thread_123/runs", true},
+		{"/v1/batches", true},
+		{"/v1/files", true},
+		{"/v1/uploads", true},
+		{"/v1/vector_stores", true},
+		{"/v1/fine_tuning/jobs", true},
+		{"/v1/realtime", true},
 
 		// Allowed endpoints
 		{"/v1/chat/completions", false},
 		{"/v1/completions", false},
+		{"/v1/responses", false},
 		{"/v1/models", false},
 		{"/v1/embeddings", false},
-		{"/v1/audio/transcriptions", false},
+		{"/v1/messages", false},
 		{"/inference/v1/chat/completions", false},
 		{"", false},
 	}

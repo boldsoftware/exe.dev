@@ -283,8 +283,15 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 	default:
 		// We just log this rather than return an error, so that the request still gets
 		// proxied. We just don't have a way to debit any charges based on usage data that
-		// may have been included in the response.
-		a.log.ErrorContext(ctx, "accountingTransport.modifyResponse", "unrecognized content type", contentType)
+		// may have been included in the response. This can happen for endpoints that
+		// return binary content (images, audio) that slipped past isBlockedEndpoint,
+		// so it's a warning rather than an error.
+		a.log.WarnContext(ctx, "accountingTransport.modifyResponse",
+			"unrecognized content type", contentType,
+			"path", a.incomingReq.URL.Path,
+			"box", a.boxName,
+			"user_id", a.userID,
+		)
 	}
 
 	// For non-SSE responses, signal testDebitDone immediately.

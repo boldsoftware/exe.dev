@@ -602,6 +602,11 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 				s.gatewayRequests.WithLabelValues("conn_refused").Inc()
 				// This typically happens in bursts when we restart exed. Warn only.
 				s.log.WarnContext(r.Context(), "gateway proxy conn refused", "error", err, "box", boxName)
+			case strings.Contains(err.Error(), "invalid Upgrade request header"):
+				// Client sent a bogus Upgrade header (e.g. h2c); our http2 client
+				// transport rejects it. Client-side problem, not a server bug.
+				s.gatewayRequests.WithLabelValues("bad_upgrade").Inc()
+				s.log.InfoContext(r.Context(), "gateway proxy bad upgrade header", "error", err, "box", boxName)
 			default:
 				s.gatewayRequests.WithLabelValues("unknown_error").Inc()
 				s.log.ErrorContext(r.Context(), "gateway proxy error", "error", err, "box", boxName)
