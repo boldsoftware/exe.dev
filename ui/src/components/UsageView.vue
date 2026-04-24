@@ -523,7 +523,7 @@ const filteredRows = computed(() => {
   grid-template-columns: minmax(160px, 1.5fr) 1fr 1fr 1fr 1fr;
   align-items: center;
   background: var(--surface-card);
-  padding: 10px 16px;
+  padding: 12px 16px;
   cursor: pointer;
   transition: background 0.1s;
 }
