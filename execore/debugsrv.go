@@ -81,8 +81,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/billing", s.handleDebugBilling)
 	mux.HandleFunc("GET /debug/billing-health", s.handleDebugBillingHealth)
 	mux.HandleFunc("GET /debug/billing-events", s.handleDebugBillingEvents)
-	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanCategorys)
-	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanCategoryMigrate)
+	mux.HandleFunc("GET /debug/plan-versions", s.handleDebugPlanVersions)
+	mux.HandleFunc("POST /debug/plan-versions/migrate", s.handleDebugPlanMigrate)
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
 	mux.HandleFunc("GET /debug/entitlements", s.handleDebugEntitlements)
 	mux.HandleFunc("GET /debug/billing-jump", s.handleDebugBillingJump)
@@ -6702,10 +6702,10 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleDebugPlanCategorys(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugPlanVersions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	groups, err := s.billing.ListPlanCategorys(ctx)
+	groups, err := s.billing.ListPlanVersions(ctx)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list plan versions: %v", err), http.StatusInternalServerError)
 		return
@@ -6715,7 +6715,7 @@ func (s *Server) handleDebugPlanCategorys(w http.ResponseWriter, r *http.Request
 	selectedPlanID := r.URL.Query().Get("plan_id")
 	var subscribers []string
 	if selectedPlanID != "" {
-		subscribers, err = s.billing.ListSubscribersByPlanCategory(ctx, selectedPlanID)
+		subscribers, err = s.billing.ListSubscribersByPlan(ctx, selectedPlanID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to list subscribers: %v", err), http.StatusInternalServerError)
 			return
@@ -6730,7 +6730,7 @@ func (s *Server) handleDebugPlanCategorys(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) handleDebugPlanCategoryMigrate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugPlanMigrate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	fromPlanID := r.FormValue("from")
@@ -6740,7 +6740,7 @@ func (s *Server) handleDebugPlanCategoryMigrate(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	count, err := s.billing.MigratePlanCategory(ctx, fromPlanID, toPlanID)
+	count, err := s.billing.MigratePlan(ctx, fromPlanID, toPlanID)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("migration failed: %v", err), http.StatusInternalServerError)
 		return

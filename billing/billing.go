@@ -1267,8 +1267,8 @@ func parseInvoiceLinePlanName(desc string) string {
 	return desc
 }
 
-// PlanCategoryGroup represents a group of subscribers on the same plan_id version.
-type PlanCategoryGroup struct {
+// PlanVersionGroup represents a group of subscribers on the same plan_id version.
+type PlanVersionGroup struct {
 	PlanID   string
 	BasePlan string
 	Interval string
@@ -1276,16 +1276,16 @@ type PlanCategoryGroup struct {
 	Count    int
 }
 
-// ListPlanCategorys returns all active plan versions with subscriber counts,
+// ListPlanVersions returns all active plan versions with subscriber counts,
 // grouped by the full plan_id value in account_plans.
-func (m *Manager) ListPlanCategorys(ctx context.Context) ([]PlanCategoryGroup, error) {
+func (m *Manager) ListPlanVersions(ctx context.Context) ([]PlanVersionGroup, error) {
 	rows, err := exedb.WithRxRes0(m.DB, ctx, (*exedb.Queries).ListPlanVersionCounts)
 	if err != nil {
 		return nil, fmt.Errorf("list plan versions: %w", err)
 	}
-	var groups []PlanCategoryGroup
+	var groups []PlanVersionGroup
 	for _, row := range rows {
-		g := PlanCategoryGroup{
+		g := PlanVersionGroup{
 			PlanID: row.PlanID,
 			Count:  int(row.Cnt),
 		}
@@ -1296,20 +1296,20 @@ func (m *Manager) ListPlanCategorys(ctx context.Context) ([]PlanCategoryGroup, e
 	return groups, nil
 }
 
-// ListSubscribersByPlanCategory returns all account IDs with the given plan_id.
-func (m *Manager) ListSubscribersByPlanCategory(ctx context.Context, planID string) ([]string, error) {
+// ListSubscribersByPlan returns all account IDs with the given plan_id.
+func (m *Manager) ListSubscribersByPlan(ctx context.Context, planID string) ([]string, error) {
 	return exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListActiveSubscribersByPlanID, planID)
 }
 
-// MigratePlanCategory batch-migrates all active subscribers from one plan_id
+// MigratePlan batch-migrates all active subscribers from one plan_id
 // to another, closing the old plan and inserting the new one within a single
 // transaction. Returns the number of accounts migrated.
-func (m *Manager) MigratePlanCategory(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
+func (m *Manager) MigratePlan(ctx context.Context, fromPlanID, toPlanID string) (int, error) {
 	now := time.Now()
 	changedBy := fmt.Sprintf("admin:migrate:%s->%s", fromPlanID, toPlanID)
 
 	// Collect account IDs first.
-	accountIDs, err := exedb.WithRxRes1(m.DB, ctx, (*exedb.Queries).ListActiveSubscribersByPlanID, fromPlanID)
+	accountIDs, err := m.ListSubscribersByPlan(ctx, fromPlanID)
 	if err != nil {
 		return 0, fmt.Errorf("select accounts to migrate: %w", err)
 	}
