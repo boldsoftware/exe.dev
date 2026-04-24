@@ -144,6 +144,14 @@
       </div>
     </div>
 
+    <!-- Resize Disk Modal -->
+    <ResizeDiskModal
+      :visible="resizeDiskOpen"
+      :box-name="resizeDiskBoxName"
+      @close="resizeDiskOpen = false"
+      @success="onModalSuccess"
+    />
+
     <!-- Command Modal -->
     <CommandModal
       :visible="modal.visible"
@@ -281,6 +289,7 @@ import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
+import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import ViewPopover from '../components/ViewPopover.vue'
 import TrialBanner from '../components/TrialBanner.vue'
 import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
@@ -364,6 +373,10 @@ function saveEditorChoice() {
 }
 
 // Prompt modal state
+// Resize disk modal state
+const resizeDiskOpen = ref(false)
+const resizeDiskBoxName = ref('')
+
 // Copy VM modal state
 const copyModalOpen = ref(false)
 const copySourceName = ref('')
@@ -598,6 +611,7 @@ function onEscapeKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   // Blur before hiding to prevent browser scroll jump when v-if
   // destroys the focused element.
+  if (resizeDiskOpen.value) { blurActiveElement(); resizeDiskOpen.value = false; return }
   if (copyModalOpen.value) { blurActiveElement(); copyModalOpen.value = false; return }
   if (editorModalOpen.value) { blurActiveElement(); editorModalOpen.value = false; return }
   if (promptModalOpen.value) { blurActiveElement(); promptModalOpen.value = false; return }
@@ -665,6 +679,10 @@ function handleAction(action: ActionEvent) {
       break
     case 'restart':
       openModal({ title: 'Restart VM', command: `restart ${q}`, description: 'Restart this VM.' })
+      break
+    case 'resize-disk':
+      resizeDiskBoxName.value = action.boxName
+      resizeDiskOpen.value = true
       break
     case 'delete':
       openModal({ title: 'Delete VM', command: `rm ${q}`, danger: true, description: 'Permanently delete this VM and all its data. This cannot be undone.' })

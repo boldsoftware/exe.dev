@@ -372,8 +372,12 @@ func TestPlanCapacityInProfile(t *testing.T) {
 	if cp.DefaultDiskGB != 25 {
 		t.Errorf("defaultDiskGB = %d, want 25", cp.DefaultDiskGB)
 	}
-	if cp.MaxDiskGB != 75 {
-		t.Errorf("maxDiskGB = %d, want 75", cp.MaxDiskGB)
+	// In e1e the env.DefaultDisk cap (11 GiB) is below the tier's MaxDisk
+	// (75 GiB), and EffectiveMaxDisk returns the smaller of the two. The UI
+	// shows that capped value so the Resize Disk slider doesn't offer space
+	// the host can't back.
+	if cp.MaxDiskGB != 11 {
+		t.Errorf("maxDiskGB = %d, want 11", cp.MaxDiskGB)
 	}
 	if cp.BandwidthGB != 100 {
 		t.Errorf("bandwidthGB = %d, want 100", cp.BandwidthGB)

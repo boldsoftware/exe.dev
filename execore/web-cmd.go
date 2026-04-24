@@ -20,6 +20,7 @@ var allowedCommands = map[string]bool{
 	"cp":                       true,
 	"emoji":                    true,
 	"rename":                   true,
+	"resize":                   true,
 	"restart":                  true,
 	"rm":                       true,
 	"share show":               true,

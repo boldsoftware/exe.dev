@@ -109,6 +109,9 @@
       <button class="action-btn-expanded" @click="$emit('action', { type: 'rename', boxName: box.name })">
         <i class="pi pi-pencil"></i> Rename
       </button>
+      <button class="action-btn-expanded" @click="$emit('action', { type: 'resize-disk', boxName: box.name })">
+        <i class="pi pi-database"></i> Resize Disk
+      </button>
       <button class="action-btn-expanded" @click="$emit('action', { type: 'restart', boxName: box.name })">
         <i class="pi pi-refresh"></i> Restart
       </button>

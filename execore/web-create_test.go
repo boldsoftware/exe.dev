@@ -176,6 +176,7 @@ func TestIsCommandAllowed(t *testing.T) {
 		{"cp mybox", true},
 		{"cp mybox newname", true},
 		{"cp mybox --copy-tags=false", true},
+		{"resize mybox --disk=50GiB", true},
 		{"restart mybox", true},
 		{"rm mybox", true},
 		{"share show mybox", true},

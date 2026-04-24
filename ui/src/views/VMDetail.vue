@@ -156,6 +156,14 @@
       </div>
     </div>
 
+    <!-- Resize Disk Modal -->
+    <ResizeDiskModal
+      :visible="resizeDiskOpen"
+      :box-name="box ? box.name : ''"
+      @close="resizeDiskOpen = false"
+      @success="onResizeDiskSuccess"
+    />
+
     <!-- Command Modal -->
     <CommandModal
       :visible="modal.visible"
@@ -194,6 +202,7 @@ import EmojiPicker from '../components/EmojiPicker.vue'
 import { useCommand } from '../composables/useCommand'
 import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
+import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import VMDetailSections from '../components/VMDetailSections.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
@@ -405,12 +414,25 @@ function openModal(opts: Partial<typeof modal>) {
   })
 }
 
+const resizeDiskOpen = ref(false)
+
 function onDetailAction(a: { type: string; boxName: string; extra?: any }) {
   if (a.type === 'open-editor') {
     editorModalOpen.value = true
     return
   }
+  if (a.type === 'resize-disk') {
+    resizeDiskOpen.value = true
+    return
+  }
   doAction(a.type, a.extra)
+}
+
+async function onResizeDiskSuccess() {
+  try {
+    liveMetrics.value = await fetchVMLiveMetrics(vmName.value)
+  } catch { /* ignore refresh errors */ }
+  await load()
 }
 
 function doAction(type: string, extra?: any) {

@@ -701,12 +701,19 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		paidPlan = plan.IsPaid(version)
 		if tier, err := plan.GetTierByID(planRow.PlanID); err == nil {
 			poolSize := formatPoolSize(tier.Quotas.MaxCPUs, tier.Quotas.MaxMemory/(1024*1024*1024))
+			// Honor per-user MaxDisk override (support-set) and env.DefaultDisk
+			// so the UI's Resize Disk modal reflects the effective ceiling.
+			var userMaxDisk uint64
+			if limits, _ := s.GetEffectiveLimits(r.Context(), userID); limits != nil {
+				userMaxDisk = limits.MaxDisk
+			}
+			effMaxDisk := plan.EffectiveMaxDisk(planRow.PlanID, userMaxDisk, s.env.DefaultDisk)
 			planCapacity = &jsonPlanCapacity{
 				MaxCPUs:           tier.Quotas.MaxCPUs,
 				MaxMemoryGB:       tier.Quotas.MaxMemory / (1024 * 1024 * 1024),
 				MaxVMs:            tier.Quotas.MaxUserVMs,
 				DefaultDiskGB:     tier.Quotas.DefaultDisk / (1024 * 1024 * 1024),
-				MaxDiskGB:         tier.Quotas.MaxDisk / (1024 * 1024 * 1024),
+				MaxDiskGB:         effMaxDisk / (1024 * 1024 * 1024),
 				BandwidthGB:       tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024),
 				TierName:          tier.Name,
 				PoolSize:          poolSize,
