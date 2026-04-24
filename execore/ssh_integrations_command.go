@@ -79,6 +79,7 @@ func (ss *SSHServer) integrationsCommand() *exemenu.Command {
 				Usage:             "integrations attach <name> <spec>",
 				Handler:           ss.handleIntegrationsAttach,
 				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeIntegrationAttachArgs,
 				Examples: []string{
 					"int attach my-mcp vm:dev1",
 					"int attach my-mcp tag:production",
@@ -130,6 +131,120 @@ func (ss *SSHServer) findIntegrationByName(ctx context.Context, cc *exemenu.Comm
 	}
 
 	return exedb.Integration{}, cc.Errorf("integration %q not found", name)
+}
+
+// completeIntegrationAttachArgs provides tab completion for `integrations attach <name> <spec>`.
+//
+// Position 2 (<name>) completes integration names visible to the caller (personal +
+// team). Position 3 (<spec>) enumerates concrete attachment targets — vm:<vm-name>
+// for each of the user's boxes, tag:<tag-name> for each tag in use, and auto:all —
+// then filters by the typed prefix. If the named integration is team-owned, only
+// tag:<tag-name> candidates are offered (matches parseTeamAttachmentSpec).
+func (ss *SSHServer) completeIntegrationAttachArgs(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
+	if ss == nil || ss.server == nil || cc == nil || cc.User == nil || cc.SSHSession == nil {
+		return nil
+	}
+	ctx := cc.SSHSession.Context()
+	prefix := compCtx.CurrentWord
+
+	switch compCtx.Position {
+	case 2:
+		return ss.integrationNameCompletions(ctx, cc.User.ID, prefix)
+	case 3:
+		if len(compCtx.Words) < 3 {
+			return nil
+		}
+		teamOnly := ss.integrationIsTeamOwned(ctx, cc.User.ID, compCtx.Words[2])
+		return ss.integrationAttachSpecCompletions(ctx, cc.User.ID, prefix, teamOnly)
+	default:
+		return nil
+	}
+}
+
+// integrationNameCompletions returns the user's personal and team integration
+// names that start with prefix.
+func (ss *SSHServer) integrationNameCompletions(ctx context.Context, userID, prefix string) []string {
+	integrations, err := withRxRes1(ss.server, ctx, (*exedb.Queries).ListIntegrationsByUser, userID)
+	if err != nil {
+		return nil
+	}
+	var teamIntegrations []exedb.Integration
+	if team, _ := ss.server.GetTeamForUser(ctx, userID); team != nil {
+		teamIntegrations, _ = withRxRes1(ss.server, ctx, (*exedb.Queries).ListIntegrationsByTeam, &team.TeamID)
+	}
+	var out []string
+	for _, ig := range integrations {
+		if strings.HasPrefix(ig.Name, prefix) {
+			out = append(out, ig.Name)
+		}
+	}
+	for _, ig := range teamIntegrations {
+		if strings.HasPrefix(ig.Name, prefix) {
+			out = append(out, ig.Name)
+		}
+	}
+	return out
+}
+
+// integrationIsTeamOwned reports whether the named integration is owned by the
+// caller's team rather than by the caller personally. Personal names take
+// precedence (matches findIntegrationByName).
+func (ss *SSHServer) integrationIsTeamOwned(ctx context.Context, userID, name string) bool {
+	if _, err := withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByOwnerAndName, exedb.GetIntegrationByOwnerAndNameParams{
+		OwnerUserID: userID,
+		Name:        name,
+	}); err == nil {
+		return false
+	}
+	team, err := ss.server.GetTeamForUser(ctx, userID)
+	if err != nil || team == nil {
+		return false
+	}
+	_, err = withRxRes1(ss.server, ctx, (*exedb.Queries).GetIntegrationByTeamAndName, exedb.GetIntegrationByTeamAndNameParams{
+		TeamID: &team.TeamID,
+		Name:   name,
+	})
+	return err == nil
+}
+
+// integrationAttachSpecCompletions returns concrete attachment-spec candidates
+// (e.g. "vm:dev1", "tag:prod", "auto:all") matching prefix. If teamOnly is true,
+// only tag:<name> candidates are returned.
+func (ss *SSHServer) integrationAttachSpecCompletions(ctx context.Context, userID, prefix string, teamOnly bool) []string {
+	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		return nil
+	}
+
+	var vmSpecs []string
+	tagSet := make(map[string]bool)
+	for _, b := range boxes {
+		if !teamOnly {
+			vmSpecs = append(vmSpecs, "vm:"+b.Name)
+		}
+		for _, t := range b.GetTags() {
+			tagSet[t] = true
+		}
+	}
+	tagSpecs := make([]string, 0, len(tagSet))
+	for t := range tagSet {
+		tagSpecs = append(tagSpecs, "tag:"+t)
+	}
+	sort.Strings(vmSpecs)
+	sort.Strings(tagSpecs)
+
+	candidates := append(vmSpecs, tagSpecs...)
+	if !teamOnly {
+		candidates = append(candidates, "auto:all")
+	}
+
+	var out []string
+	for _, c := range candidates {
+		if strings.HasPrefix(c, prefix) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // resolveTeamFlag checks the --team flag and returns the team ID if set.
