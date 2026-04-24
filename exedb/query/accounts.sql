@@ -462,17 +462,18 @@ SELECT EXISTS (
     WHERE account_id = ? AND (plan_id LIKE 'trial:%' OR trial_expires_at IS NOT NULL)
 ) AS had_trial;
 
--- name: NextExpiredTrialUser :one
--- NextExpiredTrialUser returns the user ID with the oldest expired
--- stripeless-signup trial (changed_by = 'system:stripeless_trial').
--- Other trial kinds (Stripe, invite) are intentionally excluded: this
--- enforcer only handles self-serve stripeless trials. Accounts that have
--- a parent_id (team members whose effective plan is resolved via the
--- billing owner's account) are also excluded -- their own-account trial
--- is inert, so enforcing it is a no-op that plan.ForUser would skip.
--- Candidates only -- the caller must verify entitlement via plan.ForUser
--- before transitioning anything. Returns sql.ErrNoRows if there are none.
-SELECT a.created_by AS user_id
+-- name: ExpiredTrialCandidates :many
+-- ExpiredTrialCandidates returns all expired stripeless-signup trial
+-- candidates in oldest-first order. account_id is included so the enforcer
+-- can transition the plan without re-querying accounts, and accounts with a
+-- parent_id are excluded to match plan.ForUser's team resolution model.
+-- This query intentionally does not join users: if an account's created_by
+-- user row is missing, the enforcer should still see and log that broken
+-- candidate instead of letting it silently block newer users.
+SELECT
+    a.id AS account_id,
+    a.created_by AS user_id,
+    ap.trial_expires_at
 FROM account_plans ap
 JOIN accounts a ON a.id = ap.account_id
 WHERE ap.ended_at IS NULL
@@ -481,8 +482,7 @@ WHERE ap.ended_at IS NULL
   AND ap.changed_by = 'system:stripeless_trial'
   AND ap.plan_id LIKE 'trial:%'
   AND a.parent_id IS NULL
-ORDER BY ap.trial_expires_at ASC
-LIMIT 1;
+ORDER BY ap.trial_expires_at ASC;
 
 -- name: NextTrialExpiry :one
 -- NextTrialExpiry returns the earliest trial_expires_at for any active
@@ -515,13 +515,14 @@ LIMIT 1;
 -- dashboard would mislead operators about enforcement behavior. Used by the
 -- debug dashboard.
 SELECT
+    a.id AS account_id,
     u.user_id,
     u.email,
     ap.plan_id,
     ap.trial_expires_at,
     ap.changed_by,
     (SELECT COUNT(*) FROM boxes b
-     WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
+	 WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
 FROM account_plans ap
 JOIN accounts a ON a.id = ap.account_id
 JOIN users u ON u.user_id = a.created_by

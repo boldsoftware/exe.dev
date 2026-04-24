@@ -332,6 +332,15 @@ type Server struct {
 	// trialExpiryNextWake is when the enforcer will next wake to check
 	// for work. Nil when the enforcer is actively running a pass.
 	trialExpiryNextWake atomic.Pointer[time.Time]
+	// trialExpiryRefreshRequested tells the enforcer to discard any cached
+	// expired-candidate queue and rescan from the database on its next pass.
+	trialExpiryRefreshRequested atomic.Bool
+
+	// trialExpirySkipMu protects the in-memory skip list for candidates that
+	// repeatedly fail or should be retried later.
+	trialExpirySkipMu sync.Mutex
+	// trialExpirySkipAccounts is keyed by account_id.
+	trialExpirySkipAccounts map[string]trialExpirySkipAccount
 
 	// IPQS email quality service
 	ipqsAPIKey string
@@ -1257,16 +1266,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		hllTracker:            hllTracker,
 		hllCollector:          hllCollector,
 
-		docs:               docsHandler,
-		security:           securityHandler,
-		templates:          tmpl,
-		dashboardUI:        cfg.DashboardUI,
-		stopChan:           make(chan struct{}),
-		trialExpiryWake:    make(chan struct{}, 1),
-		trialExpiryLimiter: rate.NewLimiter(rate.Limit(1.0/defaultTrialExpiryRateLimit.Seconds()), 1),
-		log:                slog,
-		slackFeed:          logging.NewSlackFeed(slog, cfg.Env),
-		billing:            cfg.Billing,
+		docs:                    docsHandler,
+		security:                securityHandler,
+		templates:               tmpl,
+		dashboardUI:             cfg.DashboardUI,
+		stopChan:                make(chan struct{}),
+		trialExpiryWake:         make(chan struct{}, 1),
+		trialExpiryLimiter:      rate.NewLimiter(rate.Limit(1.0/defaultTrialExpiryRateLimit.Seconds()), 1),
+		trialExpirySkipAccounts: make(map[string]trialExpirySkipAccount),
+		log:                     slog,
+		slackFeed:               logging.NewSlackFeed(slog, cfg.Env),
+		billing:                 cfg.Billing,
 		signupLimiter: &limiter.Limiter[netip.Addr]{
 			Size:           10000,           // Track up to 10k IPs
 			Max:            20,              // 20 requests max

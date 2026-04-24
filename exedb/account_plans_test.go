@@ -488,7 +488,7 @@ func TestHadTrial(t *testing.T) {
 	}
 }
 
-func TestNextExpiredTrialUser(t *testing.T) {
+func TestExpiredTrialCandidates(t *testing.T) {
 	t.Parallel()
 
 	db, queries := setupAccountTestDB(t)
@@ -550,12 +550,17 @@ func TestNextExpiredTrialUser(t *testing.T) {
 		t.Fatalf("set parent_id: %v", err)
 	}
 
-	// First call returns the oldest expired user.
-	userID, err := queries.NextExpiredTrialUser(ctx)
+	candidates, err := queries.ExpiredTrialCandidates(ctx)
 	if err != nil {
-		t.Fatalf("NextExpiredTrialUser: %v", err)
+		t.Fatalf("ExpiredTrialCandidates: %v", err)
 	}
-	if userID != "usr_exp_run" {
-		t.Fatalf("expected usr_exp_run (oldest expired), got %s", userID)
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 expired trial candidates, got %d", len(candidates))
+	}
+	if candidates[0].UserID != "usr_exp_run" || candidates[0].AccountID != "acct_exp_run" {
+		t.Fatalf("first candidate = (%s, %s), want (usr_exp_run, acct_exp_run)", candidates[0].UserID, candidates[0].AccountID)
+	}
+	if candidates[1].UserID != "usr_exp_stop" || candidates[1].AccountID != "acct_exp_stop" {
+		t.Fatalf("second candidate = (%s, %s), want (usr_exp_stop, acct_exp_stop)", candidates[1].UserID, candidates[1].AccountID)
 	}
 }

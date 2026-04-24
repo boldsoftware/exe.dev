@@ -30,13 +30,14 @@ func (q *Queries) ActivateAccount(ctx context.Context, arg ActivateAccountParams
 
 const activeTrialUsers = `-- name: ActiveTrialUsers :many
 SELECT
+    a.id AS account_id,
     u.user_id,
     u.email,
     ap.plan_id,
     ap.trial_expires_at,
     ap.changed_by,
     (SELECT COUNT(*) FROM boxes b
-     WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
+	 WHERE b.created_by_user_id = u.user_id AND b.status = 'running') AS running_box_count
 FROM account_plans ap
 JOIN accounts a ON a.id = ap.account_id
 JOIN users u ON u.user_id = a.created_by
@@ -49,6 +50,7 @@ ORDER BY ap.trial_expires_at ASC
 `
 
 type ActiveTrialUsersRow struct {
+	AccountID       string     `db:"account_id" json:"account_id"`
 	UserID          string     `db:"user_id" json:"user_id"`
 	Email           string     `db:"email" json:"email"`
 	PlanID          string     `db:"plan_id" json:"plan_id"`
@@ -76,6 +78,7 @@ func (q *Queries) ActiveTrialUsers(ctx context.Context) ([]ActiveTrialUsersRow, 
 	for rows.Next() {
 		var i ActiveTrialUsersRow
 		if err := rows.Scan(
+			&i.AccountID,
 			&i.UserID,
 			&i.Email,
 			&i.PlanID,
@@ -302,6 +305,58 @@ DELETE FROM accounts WHERE created_by = ?
 func (q *Queries) DeleteAccountsByUserID(ctx context.Context, createdBy string) error {
 	_, err := q.exec(ctx, q.deleteAccountsByUserIDStmt, deleteAccountsByUserID, createdBy)
 	return err
+}
+
+const expiredTrialCandidates = `-- name: ExpiredTrialCandidates :many
+SELECT
+    a.id AS account_id,
+    a.created_by AS user_id,
+    ap.trial_expires_at
+FROM account_plans ap
+JOIN accounts a ON a.id = ap.account_id
+WHERE ap.ended_at IS NULL
+  AND ap.trial_expires_at IS NOT NULL
+  AND ap.trial_expires_at <= datetime('now')
+  AND ap.changed_by = 'system:stripeless_trial'
+  AND ap.plan_id LIKE 'trial:%'
+  AND a.parent_id IS NULL
+ORDER BY ap.trial_expires_at ASC
+`
+
+type ExpiredTrialCandidatesRow struct {
+	AccountID      string     `db:"account_id" json:"account_id"`
+	UserID         string     `db:"user_id" json:"user_id"`
+	TrialExpiresAt *time.Time `db:"trial_expires_at" json:"trial_expires_at"`
+}
+
+// ExpiredTrialCandidates returns all expired stripeless-signup trial
+// candidates in oldest-first order. account_id is included so the enforcer
+// can transition the plan without re-querying accounts, and accounts with a
+// parent_id are excluded to match plan.ForUser's team resolution model.
+// This query intentionally does not join users: if an account's created_by
+// user row is missing, the enforcer should still see and log that broken
+// candidate instead of letting it silently block newer users.
+func (q *Queries) ExpiredTrialCandidates(ctx context.Context) ([]ExpiredTrialCandidatesRow, error) {
+	rows, err := q.query(ctx, q.expiredTrialCandidatesStmt, expiredTrialCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpiredTrialCandidatesRow{}
+	for rows.Next() {
+		var i ExpiredTrialCandidatesRow
+		if err := rows.Scan(&i.AccountID, &i.UserID, &i.TrialExpiresAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getAccount = `-- name: GetAccount :one
@@ -1030,36 +1085,6 @@ func (q *Queries) ListPlanVersionCounts(ctx context.Context) ([]ListPlanVersionC
 		return nil, err
 	}
 	return items, nil
-}
-
-const nextExpiredTrialUser = `-- name: NextExpiredTrialUser :one
-SELECT a.created_by AS user_id
-FROM account_plans ap
-JOIN accounts a ON a.id = ap.account_id
-WHERE ap.ended_at IS NULL
-  AND ap.trial_expires_at IS NOT NULL
-  AND ap.trial_expires_at <= datetime('now')
-  AND ap.changed_by = 'system:stripeless_trial'
-  AND ap.plan_id LIKE 'trial:%'
-  AND a.parent_id IS NULL
-ORDER BY ap.trial_expires_at ASC
-LIMIT 1
-`
-
-// NextExpiredTrialUser returns the user ID with the oldest expired
-// stripeless-signup trial (changed_by = 'system:stripeless_trial').
-// Other trial kinds (Stripe, invite) are intentionally excluded: this
-// enforcer only handles self-serve stripeless trials. Accounts that have
-// a parent_id (team members whose effective plan is resolved via the
-// billing owner's account) are also excluded -- their own-account trial
-// is inert, so enforcing it is a no-op that plan.ForUser would skip.
-// Candidates only -- the caller must verify entitlement via plan.ForUser
-// before transitioning anything. Returns sql.ErrNoRows if there are none.
-func (q *Queries) NextExpiredTrialUser(ctx context.Context) (string, error) {
-	row := q.queryRow(ctx, q.nextExpiredTrialUserStmt, nextExpiredTrialUser)
-	var user_id string
-	err := row.Scan(&user_id)
-	return user_id, err
 }
 
 const nextTrialExpiry = `-- name: NextTrialExpiry :one

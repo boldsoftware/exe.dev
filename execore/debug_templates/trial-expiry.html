@@ -28,8 +28,9 @@ table.trial-users tr.will-enforce { background: #f8d7da; }
 Stripe-managed trials and invite trials are <strong>not</strong> affected &mdash; only self-serve
 stripeless signup trials are considered. It sleeps until the next such trial expiry, then checks each
 expired user via the full plan resolution (so users who subscribed, joined a team, or have friend/VIP
-status are never affected). The rate limit controls how frequently VMs are stopped (e.g. one user
-every 10 minutes).
+status are never affected). Candidates that repeatedly fail validation or still have entitlements are
+temporarily skipped in memory and retried later instead of being reconsidered every pass. The rate limit
+controls how frequently VMs are stopped (e.g. one user every 10 minutes).
 </div>
 <form method="post" action="/debug/trial-expiry">
 <label class="toggle-switch">
@@ -60,6 +61,10 @@ every 10 minutes).
 <div class="value">{{.ExpiredWithBoxes}}</div>
 </div>
 <div class="stat-box">
+<div class="label">Deferred accounts</div>
+<div class="value">{{.DeferredCount}}</div>
+</div>
+<div class="stat-box">
 <div class="label">Next expiry</div>
 <div class="value">{{if .NextExpiry}}{{.NextExpiry.Format "Jan 2 15:04 UTC"}}{{else}}&mdash;{{end}}</div>
 </div>
@@ -71,6 +76,9 @@ every 10 minutes).
 <form method="post" action="/debug/trial-expiry/wake" style="margin-top: 8px;">
 <button type="submit" class="save-btn" style="font-size: 13px; padding: 6px 14px;">Wake enforcer</button>
 </form>
+<p style="margin-top: 8px; color: #6c757d;">
+Wake refreshes cached candidates and settings immediately. It does not clear deferred retry timers.
+</p>
 </div>
 
 <div class="section">
@@ -98,7 +106,8 @@ every 10 minutes).
 <td>{{.TimeLeft}}</td>
 <td>{{.RunningBoxCount}}</td>
 <td>
-{{if .WillEnforce}}<span class="badge badge-danger">will stop VMs</span>
+{{if .Deferred}}<span class="badge badge-muted">deferred{{if .DeferredUntil}} until {{.DeferredUntil}}{{end}}</span>
+{{else if .WillEnforce}}<span class="badge badge-danger">will stop VMs</span>
 {{else if .Expired}}<span class="badge badge-warning">expired</span>
 {{else}}<span class="badge badge-success">active</span>
 {{end}}
@@ -109,6 +118,38 @@ every 10 minutes).
 </table>
 {{else}}
 <p>No active trial users.</p>
+{{end}}
+</div>
+
+<div class="section">
+<h2>Deferred Accounts</h2>
+{{if .DeferredAccounts}}
+<table class="trial-users">
+<thead>
+<tr>
+<th>Account</th>
+<th>User</th>
+<th>Kind</th>
+<th>Attempts</th>
+<th>Retry At</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+{{range .DeferredAccounts}}
+<tr class="expired">
+<td>{{.AccountID}}</td>
+<td><a href="/debug/user?userId={{.UserID}}">{{.UserID}}</a></td>
+<td><span class="badge badge-muted">{{.Kind}}</span></td>
+<td>{{.AttemptCount}}</td>
+<td>{{.RetryAt}}</td>
+<td><code>{{.Detail}}</code></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No deferred trial-expiry accounts.</p>
 {{end}}
 </div>
 

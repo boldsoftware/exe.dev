@@ -4724,9 +4724,16 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, fmt.Sprintf("failed to list trial users: %v", err), http.StatusInternalServerError)
 		return
 	}
+	deferredAccounts := s.trialExpirySkipAccountsSnapshot()
 
 	now := time.Now()
+	deferredByAccountID := make(map[string]trialExpirySkipAccount, len(deferredAccounts))
+	for _, d := range deferredAccounts {
+		deferredByAccountID[d.AccountID] = d
+	}
+
 	type trialUserRow struct {
+		AccountID       string
 		UserID          string
 		Email           string
 		PlanID          string
@@ -4735,11 +4742,14 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 		Expired         bool
 		TimeLeft        string
 		WillEnforce     bool
+		Deferred        bool
+		DeferredUntil   string
 	}
 	rows := make([]trialUserRow, len(trialUsers))
 	expiredWithBoxes := 0
 	for i, u := range trialUsers {
 		row := trialUserRow{
+			AccountID:       u.AccountID,
 			UserID:          u.UserID,
 			Email:           u.Email,
 			PlanID:          u.PlanID,
@@ -4748,11 +4758,15 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 		if u.ChangedBy != nil {
 			row.Source = *u.ChangedBy
 		}
+		if d, ok := deferredByAccountID[u.AccountID]; ok {
+			row.Deferred = true
+			row.DeferredUntil = shortDuration(d.RetryAt.Sub(now)) + " from now"
+		}
 		if u.TrialExpiresAt != nil {
 			if now.After(*u.TrialExpiresAt) {
 				row.Expired = true
 				row.TimeLeft = "expired " + shortDuration(now.Sub(*u.TrialExpiresAt)) + " ago"
-				if u.RunningBoxCount > 0 {
+				if u.RunningBoxCount > 0 && !row.Deferred {
 					row.WillEnforce = true
 					expiredWithBoxes++
 				}
@@ -4761,6 +4775,27 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 		rows[i] = row
+	}
+
+	type deferredAccountRow struct {
+		AccountID    string
+		UserID       string
+		Kind         string
+		Detail       string
+		AttemptCount int
+		RetryAt      string
+	}
+	deferredRows := make([]deferredAccountRow, len(deferredAccounts))
+	for i, d := range deferredAccounts {
+		row := deferredAccountRow{
+			AccountID:    d.AccountID,
+			UserID:       d.UserID,
+			Kind:         d.Kind,
+			Detail:       d.Detail,
+			AttemptCount: d.AttemptCount,
+		}
+		row.RetryAt = d.RetryAt.Format("Jan 2 15:04 UTC")
+		deferredRows[i] = row
 	}
 
 	nextExpiry := s.nextTrialExpiry(ctx)
@@ -4774,6 +4809,8 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 		Enabled          bool
 		RateLimit        string
 		TrialUsers       []trialUserRow
+		DeferredAccounts []deferredAccountRow
+		DeferredCount    int
 		ExpiredWithBoxes int
 		NextExpiry       *time.Time
 		NextWake         string
@@ -4781,6 +4818,8 @@ func (s *Server) handleDebugTrialExpiry(w http.ResponseWriter, r *http.Request) 
 		Enabled:          enabled,
 		RateLimit:        rateLimit.String(),
 		TrialUsers:       rows,
+		DeferredAccounts: deferredRows,
+		DeferredCount:    len(deferredRows),
 		ExpiredWithBoxes: expiredWithBoxes,
 		NextExpiry:       nextExpiry,
 		NextWake:         nextWake,

@@ -360,6 +360,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.drawInviteCodeFromPoolStmt, err = db.PrepareContext(ctx, drawInviteCodeFromPool); err != nil {
 		return nil, fmt.Errorf("error preparing query DrawInviteCodeFromPool: %w", err)
 	}
+	if q.expiredTrialCandidatesStmt, err = db.PrepareContext(ctx, expiredTrialCandidates); err != nil {
+		return nil, fmt.Errorf("error preparing query ExpiredTrialCandidates: %w", err)
+	}
 	if q.extractAccountPlansForClickHouseStmt, err = db.PrepareContext(ctx, extractAccountPlansForClickHouse); err != nil {
 		return nil, fmt.Errorf("error preparing query ExtractAccountPlansForClickHouse: %w", err)
 	}
@@ -1154,9 +1157,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.markPendingTeamInviteAcceptedStmt, err = db.PrepareContext(ctx, markPendingTeamInviteAccepted); err != nil {
 		return nil, fmt.Errorf("error preparing query MarkPendingTeamInviteAccepted: %w", err)
-	}
-	if q.nextExpiredTrialUserStmt, err = db.PrepareContext(ctx, nextExpiredTrialUser); err != nil {
-		return nil, fmt.Errorf("error preparing query NextExpiredTrialUser: %w", err)
 	}
 	if q.nextTrialExpiryStmt, err = db.PrepareContext(ctx, nextTrialExpiry); err != nil {
 		return nil, fmt.Errorf("error preparing query NextTrialExpiry: %w", err)
@@ -1991,6 +1991,11 @@ func (q *Queries) Close() error {
 	if q.drawInviteCodeFromPoolStmt != nil {
 		if cerr := q.drawInviteCodeFromPoolStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing drawInviteCodeFromPoolStmt: %w", cerr)
+		}
+	}
+	if q.expiredTrialCandidatesStmt != nil {
+		if cerr := q.expiredTrialCandidatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing expiredTrialCandidatesStmt: %w", cerr)
 		}
 	}
 	if q.extractAccountPlansForClickHouseStmt != nil {
@@ -3318,11 +3323,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing markPendingTeamInviteAcceptedStmt: %w", cerr)
 		}
 	}
-	if q.nextExpiredTrialUserStmt != nil {
-		if cerr := q.nextExpiredTrialUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing nextExpiredTrialUserStmt: %w", cerr)
-		}
-	}
 	if q.nextTrialExpiryStmt != nil {
 		if cerr := q.nextTrialExpiryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing nextTrialExpiryStmt: %w", cerr)
@@ -3924,6 +3924,7 @@ type Queries struct {
 	deleteUserDefaultNewSetupScriptStmt        *sql.Stmt
 	deleteUserDefaultNewVMEmailStmt            *sql.Stmt
 	drawInviteCodeFromPoolStmt                 *sql.Stmt
+	expiredTrialCandidatesStmt                 *sql.Stmt
 	extractAccountPlansForClickHouseStmt       *sql.Stmt
 	extractAccountsForClickHouseStmt           *sql.Stmt
 	extractBoxesForClickHouseStmt              *sql.Stmt
@@ -4189,7 +4190,6 @@ type Queries struct {
 	listUserRegionMigrationsByBatchStmt        *sql.Stmt
 	listUserTemplateRatingsStmt                *sql.Stmt
 	markPendingTeamInviteAcceptedStmt          *sql.Stmt
-	nextExpiredTrialUserStmt                   *sql.Stmt
 	nextTrialExpiryStmt                        *sql.Stmt
 	recordBoxLLMUsageStmt                      *sql.Stmt
 	recordLMTPDeliveryFailureStmt              *sql.Stmt
@@ -4398,6 +4398,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteUserDefaultNewSetupScriptStmt:        q.deleteUserDefaultNewSetupScriptStmt,
 		deleteUserDefaultNewVMEmailStmt:            q.deleteUserDefaultNewVMEmailStmt,
 		drawInviteCodeFromPoolStmt:                 q.drawInviteCodeFromPoolStmt,
+		expiredTrialCandidatesStmt:                 q.expiredTrialCandidatesStmt,
 		extractAccountPlansForClickHouseStmt:       q.extractAccountPlansForClickHouseStmt,
 		extractAccountsForClickHouseStmt:           q.extractAccountsForClickHouseStmt,
 		extractBoxesForClickHouseStmt:              q.extractBoxesForClickHouseStmt,
@@ -4663,7 +4664,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUserRegionMigrationsByBatchStmt:        q.listUserRegionMigrationsByBatchStmt,
 		listUserTemplateRatingsStmt:                q.listUserTemplateRatingsStmt,
 		markPendingTeamInviteAcceptedStmt:          q.markPendingTeamInviteAcceptedStmt,
-		nextExpiredTrialUserStmt:                   q.nextExpiredTrialUserStmt,
 		nextTrialExpiryStmt:                        q.nextTrialExpiryStmt,
 		recordBoxLLMUsageStmt:                      q.recordBoxLLMUsageStmt,
 		recordLMTPDeliveryFailureStmt:              q.recordLMTPDeliveryFailureStmt,
