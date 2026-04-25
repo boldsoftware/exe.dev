@@ -717,11 +717,16 @@ export default function GitGraphViewer({ cwd, isOpen, onClose, onOpenDiff }: Git
                         {row.lines.map((ln, idx) => {
                           const x1 = colX(ln.from);
                           const x2 = colX(ln.to);
+                          // GitX convention: `from` is the column at the cell
+                          // edge (top for upper, bottom for lower), `to` is the
+                          // column at the cell's vertical midpoint (the dot row).
+                          // Drawing lower as (from,mid)->(to,bot) flips merge
+                          // diagonals and breaks lane alignment between rows.
                           const yTop = 0;
                           const yMid = ROW_H / 2;
                           const yBot = ROW_H;
-                          const y1 = ln.upper ? yTop : yMid;
-                          const y2 = ln.upper ? yMid : yBot;
+                          const y1 = ln.upper ? yTop : yBot;
+                          const y2 = yMid;
                           return (
                             <line
                               key={idx}
