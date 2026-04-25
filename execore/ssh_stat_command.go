@@ -101,33 +101,15 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	last := points[len(points)-1]
 	cpuNominal := last.CPUNominal
 
-	var peakCPUPct, peakMemGB, peakDiskGB, peakIOMBps float64
 	var avgCPUPct, avgMemGB, avgDiskGB float64
 	for _, p := range points {
 		nom := p.CPUNominal
 		if nom <= 0 {
 			nom = 1
 		}
-		cpuPct := (p.CPUCores / nom) * 100
-		if cpuPct > peakCPUPct {
-			peakCPUPct = cpuPct
-		}
-		avgCPUPct += cpuPct
-
-		if p.MemoryRSSGB > peakMemGB {
-			peakMemGB = p.MemoryRSSGB
-		}
+		avgCPUPct += (p.CPUCores / nom) * 100
 		avgMemGB += p.MemoryRSSGB
-
-		if p.DiskUsedGB > peakDiskGB {
-			peakDiskGB = p.DiskUsedGB
-		}
 		avgDiskGB += p.DiskUsedGB
-
-		io := p.IOReadMBps + p.IOWriteMBps
-		if io > peakIOMBps {
-			peakIOMBps = io
-		}
 	}
 	n := float64(len(points))
 	avgCPUPct /= n
@@ -142,12 +124,11 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	curIO := last.IOReadMBps + last.IOWriteMBps
 
 	cc.Writeln("")
-	//                  current    avg        peak
-	cc.Writeln("  \033[2m%-10s %8s %8s %8s\033[0m", "", "current", "avg", "peak")
-	cc.Writeln("  %-10s %7s%% %7s%% %7s%%", "CPU", fmtF1(curCPUPct), fmtF1(avgCPUPct), fmtF1(peakCPUPct))
-	cc.Writeln("  %-10s %8s %8s %8s", "RSS", fmtGBStat(last.MemoryRSSGB), fmtGBStat(avgMemGB), fmtGBStat(peakMemGB))
-	cc.Writeln("  %-10s %8s %8s %8s", "Disk", fmtGBStat(last.DiskUsedGB), fmtGBStat(avgDiskGB), fmtGBStat(peakDiskGB))
-	cc.Writeln("  %-10s %8s %8s %8s", "IO", fmtMBpsStat(curIO), "\033[2m-\033[0m", fmtMBpsStat(peakIOMBps))
+	cc.Writeln("  \033[2m%-10s %8s %8s\033[0m", "", "current", "avg")
+	cc.Writeln("  %-10s %7s%% %7s%%", "CPU", fmtF1(curCPUPct), fmtF1(avgCPUPct))
+	cc.Writeln("  %-10s %8s %8s", "RSS", fmtGBStat(last.MemoryRSSGB), fmtGBStat(avgMemGB))
+	cc.Writeln("  %-10s %8s %8s", "Disk", fmtGBStat(last.DiskUsedGB), fmtGBStat(avgDiskGB))
+	cc.Writeln("  %-10s %8s", "IO", fmtMBpsStat(curIO))
 	cc.Writeln("")
 
 	// Sparkline section.
