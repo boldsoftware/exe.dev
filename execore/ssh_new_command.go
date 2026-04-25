@@ -67,6 +67,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return cc.Errorf("--emoji is not valid UTF-8")
 	}
 
+	commentFlag, err := validateComment(cc.FlagSet.Lookup("comment").Value.String())
+	if err != nil {
+		return cc.Errorf("--comment %v", err)
+	}
+
 	setupScript := cc.FlagSet.Lookup("setup-script").Value.String()
 	if setupScript == "/dev/stdin" {
 		if !cc.IsSSHExec() {
@@ -719,6 +724,20 @@ done:
 	// has almost always returned; if not we fall back to a word-based or
 	// hardcoded random emoji. Run in background so we never delay user output.
 	go ss.applyResolvedEmoji(context.WithoutCancel(ctx), boxID, boxName, emojiChan)
+
+	if commentFlag != "" {
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).SetBoxComment, exedb.SetBoxCommentParams{
+			Comment: commentFlag,
+			ID:      boxID,
+		}); err != nil {
+			slog.ErrorContext(ctx, "failed to set comment on new VM", "box_id", boxID, "error", err)
+			// Non-fatal: the VM is up and otherwise fine. Tell the user the
+			// flag they passed didn't take effect so they can retry with
+			// `comment <vm> ...` rather than silently losing their note.
+			cc.Writeln("\033[33mwarning: failed to save --comment; run 'comment %s %q' to retry\033[0m",
+				boxName, commentFlag)
+		}
+	}
 
 	// Set up automatic routing based on exposed ports
 	proxyPort := 80

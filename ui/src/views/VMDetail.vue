@@ -47,7 +47,6 @@
         <span v-if="box.isTeamShared" class="badge badge-team">TEAM</span>
         <span v-if="box.proxyShare === 'public'" class="badge badge-public">PUBLIC</span>
       </div>
-
       <!-- Shared detail sections (same layout as the VM list expanded row) -->
       <VMDetailSections
         :box="box"
@@ -151,6 +150,7 @@
       :danger="modal.danger"
       :success-format="modal.successFormat"
       :suggestions="modal.suggestions"
+      :allow-empty-input="modal.allowEmptyInput"
       @close="modal.visible = false"
       @success="onModalSuccess"
     />
@@ -309,6 +309,7 @@ const modal = reactive({
   danger: false,
   successFormat: '',
   suggestions: [] as string[],
+  allowEmptyInput: false,
 })
 
 function openModal(opts: Partial<typeof modal>) {
@@ -324,6 +325,7 @@ function openModal(opts: Partial<typeof modal>) {
     danger: false,
     successFormat: '',
     suggestions: [],
+    allowEmptyInput: false,
     ...opts,
   })
 }
@@ -380,6 +382,16 @@ function doAction(type: string, extra?: any) {
       break
     case 'rename':
       openModal({ title: 'Rename VM', commandPrefix: `rename ${q}`, inputPlaceholder: 'new-name', description: 'Give this VM a new name.' })
+      break
+    case 'edit-comment':
+      openModal({
+        title: (extra as string) ? 'Edit Comment' : 'Add Comment',
+        commandPrefix: `comment ${q}`,
+        inputPlaceholder: 'short note (e.g. staging copy)',
+        defaultValue: (extra as string) || '',
+        description: 'Comments are short, plain-text notes shown next to your VM. Max 200 characters; HTML metacharacters not allowed. Submit empty to clear.',
+        allowEmptyInput: true,
+      })
       break
     case 'restart':
       openModal({ title: 'Restart VM', command: `restart ${q}`, description: 'Restart this VM.' })

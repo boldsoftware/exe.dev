@@ -14,6 +14,7 @@ Create a new VM
 ## Options
 
 - `--command`: container command: auto, none, or a custom command
+- `--comment`: short note about the VM (max 200 bytes)
 - `--disk`: disk size (e.g., 20, 20GB, 50G)
 - `--env`: environment variable in KEY=VALUE format (can be specified multiple times)
 - `--image`: container image

@@ -224,6 +224,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.Uint("cpu", 0, "[hidden] number of CPUs (default 2)")
 	fs.String("setup-script", "", "setup script to run on first boot (max 10KiB); supports \\n for newlines; use /dev/stdin to pipe from stdin")
 	fs.String("emoji", "", "[hidden] emoji to associate with the VM (auto-generated if empty)")
+	fs.String("comment", "", "short note about the VM (max 200 bytes)")
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
@@ -447,6 +448,19 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			FlagSetFunc:       jsonOnlyFlags("emoji"),
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeEmojiArgs,
+		},
+		{
+			Name:              "comment",
+			AllowTagScoped:    true,
+			Description:       "Set or clear a short comment on a VM",
+			Usage:             "comment <hostname> <text>",
+			Handler:           ss.handleCommentCommand,
+			FlagSetFunc:       jsonOnlyFlags("comment"),
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+			Examples: []string{
+				"comment my-vm staging copy",
+			},
 		},
 		ss.shareCommand(),
 		{
@@ -853,6 +867,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if tags := vm.GetTags(); len(tags) > 0 {
 				box["tags"] = tags
 			}
+			if vm.Comment != "" {
+				box["comment"] = vm.Comment
+			}
 			if vm.CreatedAt != nil {
 				box["created_at"] = vm.CreatedAt.UTC().Format(time.RFC3339)
 			}
@@ -898,6 +915,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				if vm.CreatedAt != nil {
 					box["created_at"] = vm.CreatedAt.UTC().Format(time.RFC3339)
 				}
+				if vm.Comment != "" {
+					box["comment"] = vm.Comment
+				}
 				teamVMList = append(teamVMList, box)
 			}
 			if len(teamVMList) > 0 {
@@ -928,17 +948,27 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if strings.Contains(b.Image, "exeuntu") {
 				shelleyURL = ss.server.shelleyURL(b.Name)
 			}
+			// Build the trailing tag/comment column. Tags render in cyan and
+			// the comment renders dim (after the tags). We emit the color
+			// switches inline rather than wrapping the column in a single
+			// outer ANSI pair so that the comment's `\033[2m` doesn't get
+			// fully reset by an outer `\033[0m` mid-cell.
 			tagStr := ""
 			if tags := b.GetTags(); len(tags) > 0 {
+				tagStr += "\033[36m"
 				for _, t := range tags {
 					tagStr += " #" + t
 				}
+				tagStr += "\033[0m"
+			}
+			if b.Comment != "" {
+				tagStr += "  \033[2m# " + b.Comment + "\033[22m"
 			}
 			createdAt := "-"
 			if b.CreatedAt != nil {
 				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[36m%s\033[0m\n",
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t%s\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
@@ -958,7 +988,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 			if b.CreatedAt != nil {
 				createdAt = b.CreatedAt.UTC().Format(time.RFC3339)
 			}
-			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[90m%s\033[0m\n",
+			commentSuffix := ""
+			if b.Comment != "" {
+				commentSuffix = "  \033[2m# " + b.Comment + "\033[22m"
+			}
+			fmt.Fprintf(tw, "\033[1m%s\033[0m\t%s%s\033[0m\t%s\t%s\t%s\t%s\t\033[90m%s\033[0m%s\n",
 				ss.server.env.BoxSub(b.Name),
 				statusColor(status), status,
 				b.Region,
@@ -966,6 +1000,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				shelleyURL,
 				ss.server.boxProxyAddress(b.Name),
 				b.CreatorEmail,
+				commentSuffix,
 			)
 		}
 		tw.Flush()
@@ -990,6 +1025,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				cc.Write(" \033[36m#%s\033[0m", t)
 			}
 		}
+		if b.Comment != "" {
+			cc.Write(" \033[2m# %s\033[0m", b.Comment)
+		}
 		cc.Write("\n")
 	}
 
@@ -1011,6 +1049,9 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 				}
 			}
 			cc.Write(" \033[90mby %s\033[0m", b.CreatorEmail)
+			if b.Comment != "" {
+				cc.Write(" \033[2m# %s\033[0m", b.Comment)
+			}
 			cc.Write("\n")
 		}
 	}

@@ -3,7 +3,7 @@
 title: "billing"
 description: "View and manage your billing"
 subheading: "9. CLI Reference"
-suborder: 17
+suborder: 18
 published: true
 ---
 

@@ -108,6 +108,8 @@ const props = defineProps<{
   suggestions?: string[]
   choices?: { value: string; label?: string; hint?: string; disabled?: boolean; disabledReason?: string }[]
   defaultChoice?: string
+  /** When true, allow submitting with an empty text input (for clearing-style commands like `comment`). */
+  allowEmptyInput?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -225,6 +227,7 @@ function buildCommand(placeholders: boolean): string {
     const v = inputValue.value.trim()
     if (v) parts.push(shellQuote(v))
     else if (placeholders && props.inputPlaceholder) parts.push(`<${props.inputPlaceholder}>`)
+    else if (props.allowEmptyInput) parts.push(shellQuote('')) // explicit "" arg
     else return ''
   }
   if (showChoices.value) {

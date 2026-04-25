@@ -37,7 +37,7 @@ SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
        COALESCE(m.creation_log, '') as creation_log, m.routes, m.region, m.tags,
-       m.emoji
+       m.emoji, m.comment
 FROM boxes m
 WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC;
@@ -111,6 +111,9 @@ ORDER BY b.name;
 
 -- name: SetBoxEmoji :exec
 UPDATE boxes SET emoji = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: SetBoxComment :exec
+UPDATE boxes SET comment = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
 -- name: GetBoxesWithEmptyEmoji :many
 SELECT id, name FROM boxes WHERE emoji = '' ORDER BY id LIMIT ?;

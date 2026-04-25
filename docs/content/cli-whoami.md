@@ -3,7 +3,7 @@
 title: "whoami"
 description: "Show your user information including email and all SSH keys."
 subheading: "9. CLI Reference"
-suborder: 13
+suborder: 14
 published: true
 ---
 

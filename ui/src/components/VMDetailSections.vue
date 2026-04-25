@@ -57,6 +57,16 @@
       </span>
     </div>
 
+    <!-- Comment -->
+    <div class="detail-row">
+      <span class="detail-label">Comment:</span>
+      <span class="comment-row">
+        <span v-if="box.comment" class="comment-text">{{ box.comment }}</span>
+        <span v-else class="comment-empty">—</span>
+        <button class="detail-btn" @click="$emit('action', { type: 'edit-comment', boxName: box.name, extra: box.comment })">{{ box.comment ? 'Edit' : 'Add' }}</button>
+      </span>
+    </div>
+
     <!-- Shared emails -->
     <div v-if="box.sharedEmails && box.sharedEmails.length > 0" class="detail-row">
       <span class="detail-label">Shared with:</span>
@@ -213,6 +223,24 @@ defineEmits<{
   gap: 4px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.comment-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+
+.comment-text {
+  font-style: italic;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.comment-empty {
+  color: var(--text-color-muted);
 }
 
 .tag {

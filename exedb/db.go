@@ -1176,6 +1176,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.setBoxCgroupOverridesStmt, err = db.PrepareContext(ctx, setBoxCgroupOverrides); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxCgroupOverrides: %w", err)
 	}
+	if q.setBoxCommentStmt, err = db.PrepareContext(ctx, setBoxComment); err != nil {
+		return nil, fmt.Errorf("error preparing query SetBoxComment: %w", err)
+	}
 	if q.setBoxEmailReceiveStmt, err = db.PrepareContext(ctx, setBoxEmailReceive); err != nil {
 		return nil, fmt.Errorf("error preparing query SetBoxEmailReceive: %w", err)
 	}
@@ -3350,6 +3353,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing setBoxCgroupOverridesStmt: %w", cerr)
 		}
 	}
+	if q.setBoxCommentStmt != nil {
+		if cerr := q.setBoxCommentStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setBoxCommentStmt: %w", cerr)
+		}
+	}
 	if q.setBoxEmailReceiveStmt != nil {
 		if cerr := q.setBoxEmailReceiveStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setBoxEmailReceiveStmt: %w", cerr)
@@ -4188,6 +4196,7 @@ type Queries struct {
 	recordUserEventStmt                        *sql.Stmt
 	setAccountParentIDStmt                     *sql.Stmt
 	setBoxCgroupOverridesStmt                  *sql.Stmt
+	setBoxCommentStmt                          *sql.Stmt
 	setBoxEmailReceiveStmt                     *sql.Stmt
 	setBoxEmojiStmt                            *sql.Stmt
 	setBoxLockReasonStmt                       *sql.Stmt
@@ -4661,6 +4670,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordUserEventStmt:                        q.recordUserEventStmt,
 		setAccountParentIDStmt:                     q.setAccountParentIDStmt,
 		setBoxCgroupOverridesStmt:                  q.setBoxCgroupOverridesStmt,
+		setBoxCommentStmt:                          q.setBoxCommentStmt,
 		setBoxEmailReceiveStmt:                     q.setBoxEmailReceiveStmt,
 		setBoxEmojiStmt:                            q.setBoxEmojiStmt,
 		setBoxLockReasonStmt:                       q.setBoxLockReasonStmt,

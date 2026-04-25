@@ -49,6 +49,7 @@ type jsonBoxInfo struct {
 	HasCreationLog  bool            `json:"hasCreationLog"`
 	IsTeamShared    bool            `json:"isTeamShared"`
 	Emoji           string          `json:"emoji"`
+	Comment         string          `json:"comment"`
 }
 
 type jsonShareLink struct {
@@ -69,6 +70,7 @@ type jsonTeamBox struct {
 	ProxyURL     string   `json:"proxyURL"`
 	SSHCommand   string   `json:"sshCommand"`
 	DisplayTags  []string `json:"displayTags"`
+	Comment      string   `json:"comment"`
 }
 
 type jsonTeamSharedBox struct {
@@ -519,6 +521,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			HasCreationLog:  box.CreationLog != nil && *box.CreationLog != "",
 			IsTeamShared:    teamSharedSet[int64(box.ID)],
 			Emoji:           result.Emoji,
+			Comment:         result.Comment,
 		})
 	}
 
@@ -578,6 +581,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			ProxyURL:     s.boxProxyAddress(result.Name),
 			SSHCommand:   s.boxSSHConnectionCommand(result.Name),
 			DisplayTags:  nonNil(parseTags(result.Tags)),
+			Comment:      result.Comment,
 		})
 	}
 

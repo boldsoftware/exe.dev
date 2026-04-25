@@ -102,6 +102,7 @@ type Box struct {
 	Emoji                string     `db:"emoji" json:"emoji"`
 	DiskCapacityBytes    int64      `db:"disk_capacity_bytes" json:"disk_capacity_bytes"`
 	MemoryCapacityBytes  int64      `db:"memory_capacity_bytes" json:"memory_capacity_bytes"`
+	Comment              string     `db:"comment" json:"comment"`
 }
 
 type BoxEmailCredit struct {

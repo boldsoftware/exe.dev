@@ -446,6 +446,18 @@ done:
 		}
 	}
 
+	// Carry the source's comment over to the clone. Comments are short
+	// human notes ("staging copy", etc.) that almost always make sense on
+	// the clone too. Already-validated; no need to re-run validateComment.
+	if sourceBox.Comment != "" {
+		if err := withTx1(ss.server, ctx, (*exedb.Queries).SetBoxComment, exedb.SetBoxCommentParams{
+			Comment: sourceBox.Comment,
+			ID:      boxID,
+		}); err != nil {
+			slog.WarnContext(ctx, "failed to copy comment to cloned box", "source", sourceVMName, "clone", newName, "error", err)
+		}
+	}
+
 	totalTime := time.Since(startTime)
 	ss.server.slackFeed.CreatedVM(ctx, user.ID)
 	ss.server.autoThrottleVMCreation(ctx)

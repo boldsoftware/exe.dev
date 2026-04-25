@@ -172,6 +172,7 @@
       :danger="modal.danger"
       :success-format="modal.successFormat"
       :suggestions="modal.suggestions"
+      :allow-empty-input="modal.allowEmptyInput"
       @close="closeModal"
       @success="onModalSuccess"
     />
@@ -446,6 +447,7 @@ const modal = reactive({
   danger: false,
   successFormat: '',
   suggestions: [] as string[],
+  allowEmptyInput: false,
 })
 
 // All unique tags across the user's own VMs, sorted — used for typeahead
@@ -689,6 +691,16 @@ function handleAction(action: ActionEvent) {
     case 'rename':
       openModal({ title: 'Rename VM', commandPrefix: `rename ${q}`, inputPlaceholder: 'new-name', description: 'Give this VM a new name. The SSH hostname and web URL will be updated.' })
       break
+    case 'edit-comment':
+      openModal({
+        title: (action.extra as string) ? 'Edit Comment' : 'Add Comment',
+        commandPrefix: `comment ${q}`,
+        inputPlaceholder: 'short note (e.g. staging copy)',
+        defaultValue: (action.extra as string) || '',
+        description: 'Comments are short, plain-text notes shown next to your VM. Max 200 characters; HTML metacharacters not allowed. Submit empty to clear.',
+        allowEmptyInput: true,
+      })
+      break
     case 'restart':
       openModal({ title: 'Restart VM', command: `restart ${q}`, description: 'Restart this VM.' })
       break
@@ -826,6 +838,7 @@ function openModal(opts: Partial<typeof modal>) {
     danger: false,
     successFormat: '',
     suggestions: [],
+    allowEmptyInput: false,
     ...opts,
   })
 }
