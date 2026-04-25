@@ -49,6 +49,10 @@ type dnsCheckResult struct {
 	// The resolved IP of the box (if boxName was found)
 	BoxIP string `json:"boxIP,omitempty"`
 
+	// Set when we couldn't resolve the user-supplied VM hostname.
+	// This usually means the VM name is mistyped or the VM no longer exists.
+	BoxResolveError string `json:"boxResolveError,omitempty"`
+
 	// Whether this looks like an apex domain (no CNAME, has A records)
 	IsApex bool `json:"isApex"`
 
@@ -126,11 +130,20 @@ func (s *Server) checkDNS(ctx context.Context, domain, vm string) dnsCheckResult
 		BoxName: vm,
 	}
 
-	boxFQDN := vm + "." + s.env.BoxHost
+	boxFQDN := domz.Canonicalize(vm + "." + s.env.BoxHost)
 
-	// Resolve the VM's IPs. Used for apex A-record matching.
+	// Resolve the VM's IPs. Used for apex A-record matching, and as a
+	// sanity check that the user-supplied VM name actually exists.
 	var boxIPs map[string]bool
-	if ips, err := dnsresolver.Resolver().LookupNetIP(ctx, "ip4", boxFQDN); err == nil && len(ips) > 0 {
+	if ips, err := dnsresolver.Resolver().LookupNetIP(ctx, "ip4", boxFQDN); err != nil {
+		if dnsErr, ok := err.(*net.DNSError); ok && dnsErr.IsNotFound {
+			result.BoxResolveError = "no DNS records for " + boxFQDN
+		} else {
+			result.BoxResolveError = err.Error()
+		}
+	} else if len(ips) == 0 {
+		result.BoxResolveError = "no DNS records for " + boxFQDN
+	} else {
 		boxIPs = map[string]bool{}
 		for _, ip := range ips {
 			boxIPs[ip.Unmap().String()] = true
@@ -264,6 +277,13 @@ func detectWildcardCNAME(ctx context.Context, domain, cname string) bool {
 func classifyDNSResult(r *dnsCheckResult, boxHost string) (status, message string) {
 	vmFQDN := r.BoxName + "." + boxHost
 
+	// Case -1: We couldn't resolve the VM hostname itself. Probably a
+	// mistyped VM name; without it we can't tell the user what their
+	// records should resolve to.
+	if r.BoxResolveError != "" {
+		return "error", "We couldn't resolve " + vmFQDN + " (" + r.BoxResolveError + "). Check the VM name."
+	}
+
 	// Case 0: CNAME on an apex domain is an RFC violation.
 	if r.ApexCNAME {
 		return "error", "CNAME records are not allowed on apex domains (RFC 1912 § 2.4). A CNAME on " + r.Domain + " will break MX, NS, and other records. Replace it with an A, ALIAS, ANAME, or flattened-CNAME record pointing to " + vmFQDN + "."
@@ -295,9 +315,9 @@ func classifyDNSResult(r *dnsCheckResult, boxHost string) (status, message strin
 		ips := strings.Join(r.ARecords, ", ")
 		expected := vmFQDN
 		if r.BoxIP != "" {
-			expected = r.BoxIP + " (the IP of " + vmFQDN + ")"
+			expected = r.BoxIP + ", the current IP of " + vmFQDN
 		}
-		return "error", "A record resolves to " + ips + ", but should resolve to " + expected + ". Update your A/ALIAS record."
+		return "error", "A record resolves to " + ips + ", but should resolve to " + expected + ". Update your A/ALIAS/ANAME record."
 	}
 
 	// Case 5: No records at all

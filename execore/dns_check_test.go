@@ -98,6 +98,17 @@ func TestClassifyDNSResult(t *testing.T) {
 			wantStatus: "error",
 		},
 		{
+			name: "vm name does not resolve",
+			result: dnsCheckResult{
+				Domain:           "app.example.com",
+				BoxName:          "nonexistent-vm",
+				BoxResolveError:  "no DNS records for nonexistent-vm.exe.xyz",
+				CNAME:            "nonexistent-vm.exe.xyz",
+				CNAMEPointsToExe: true,
+			},
+			wantStatus: "error",
+		},
+		{
 			name: "no records at all",
 			result: dnsCheckResult{
 				Domain:     "nonexistent.example.com",
