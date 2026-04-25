@@ -21,6 +21,7 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
+	"exe.dev/container"
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
 	"exe.dev/exelet/utils"
@@ -631,8 +632,12 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		}
 	}
 
-	// install shelley binary (override image copy if a newer version is available)
-	if info, shelleyErr := xshelley.GetShelleyInfo(ctx, runtime.GOARCH); shelleyErr != nil {
+	// install shelley binary (override image copy if a newer version is available).
+	// Only do this for exeuntu images; other images don't ship with shelley and we
+	// don't want to drop a stray binary into arbitrary user images.
+	if !container.IsExeuntuImage(req.Image) {
+		s.log.DebugContext(ctx, "skipping shelley install for non-exeuntu image", "id", instanceID, "image", req.Image)
+	} else if info, shelleyErr := xshelley.GetShelleyInfo(ctx, runtime.GOARCH); shelleyErr != nil {
 		s.log.WarnContext(ctx, "failed to get shelley binary, skipping", "id", instanceID, "error", shelleyErr)
 	} else {
 		destShelley := filepath.Join(mountpoint, "usr", "local", "bin", "shelley")

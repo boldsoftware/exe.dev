@@ -444,7 +444,7 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 				SSHCommand:      ps.boxSSHConnectionCommand(boxName),
 				Port:            route.Port,
 				TerminalURL:     ps.xtermURL(boxName, r.TLS != nil),
-				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
+				ShowWelcomeStep: container.IsExeuntuImage(box.Image) && route.Port == 8000,
 				IsShelleyPort:   route.Port == 9999,
 				ShelleyURL:      ps.shelleyURL(boxName),
 				TraceID:         tracing.TraceIDFromContext(r.Context()),

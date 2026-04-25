@@ -1218,6 +1218,17 @@ func TestStandardAlpineBox(t *testing.T) {
 	if !strings.Contains(string(out), "Alpine Linux") {
 		t.Fatalf("expected 'Alpine Linux', got: %s", string(out))
 	}
+
+	// Shelley should NOT be installed into non-exeuntu images. Alpine doesn't
+	// ship a shelley binary, and the exelet only drops one in for exeuntu.
+	out, err = boxSSHCommand(t, boxName, keyFile, "sh", "-c", "test -e /usr/local/bin/shelley && echo present || echo absent").CombinedOutput()
+	if err != nil {
+		t.Fatalf("error checking shelley presence: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "absent" {
+		t.Errorf("expected shelley to be absent on alpine box, got %q", got)
+	}
+
 	// cleanup
 	pty.deleteBox(boxName)
 	pty.Disconnect()

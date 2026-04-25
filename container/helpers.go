@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+// IsExeuntuImage reports whether the given image ref refers to an exeuntu image.
+// Matches short forms ("exeuntu", "exeuntu:latest") and full refs
+// ("ghcr.io/boldsoftware/exeuntu:latest", digest pins, etc.) via substring
+// match, consistent with how callers receive the field.
+func IsExeuntuImage(image string) bool {
+	return strings.Contains(image, "exeuntu")
+}
+
 // ValidateImageName performs basic validation on an image name before expansion.
 // This catches obvious errors early; the real validation happens when pulling.
 func ValidateImageName(image string) error {
