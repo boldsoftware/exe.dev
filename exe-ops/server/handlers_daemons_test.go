@@ -5,7 +5,7 @@ import (
 )
 
 func TestDaemonDefs(t *testing.T) {
-	defs := daemonDefs()
+	defs := daemonDefs("")
 
 	expected := map[string]int{
 		"exeprox":  3,

@@ -77,6 +77,14 @@
                 IO Pressure
                 <i v-if="sortCol === 'io_pressure'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
               </th>
+              <th class="col-metric sortable" @click="toggleSort('data_used')">
+                /data
+                <i v-if="sortCol === 'data_used'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
+              </th>
+              <th class="col-metric sortable" @click="toggleSort('swap_used')">
+                Swap
+                <i v-if="sortCol === 'swap_used'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -138,6 +146,18 @@
                 </a>
                 <span v-if="h.io_pressure != null" class="metric-value" :class="pressureClass(h.io_pressure)">
                   {{ h.io_pressure.toFixed(2) }}%
+                </span>
+                <span v-else class="metric-na">-</span>
+              </td>
+              <td class="col-metric">
+                <span v-if="h.data_used_pct != null" class="metric-value" :class="diskClass(h.data_used_pct)">
+                  {{ h.data_used_pct.toFixed(1) }}%
+                </span>
+                <span v-else class="metric-na">-</span>
+              </td>
+              <td class="col-metric">
+                <span v-if="h.swap_used_pct != null" class="metric-value" :class="diskClass(h.swap_used_pct)">
+                  {{ h.swap_used_pct.toFixed(1) }}%
                 </span>
                 <span v-else class="metric-na">-</span>
               </td>
@@ -221,6 +241,8 @@ const filteredHosts = computed(() => {
     else if (col === 'cpu_pressure') cmp = (a.cpu_pressure ?? -1) - (b.cpu_pressure ?? -1)
     else if (col === 'mem_pressure') cmp = (a.memory_pressure ?? -1) - (b.memory_pressure ?? -1)
     else if (col === 'io_pressure') cmp = (a.io_pressure ?? -1) - (b.io_pressure ?? -1)
+    else if (col === 'data_used') cmp = (a.data_used_pct ?? -1) - (b.data_used_pct ?? -1)
+    else if (col === 'swap_used') cmp = (a.swap_used_pct ?? -1) - (b.swap_used_pct ?? -1)
     return cmp * dir
   })
 })
@@ -323,6 +345,12 @@ function sparklineColor(points: [number, number][] | undefined): string {
 function pressureClass(v: number): string {
   if (v >= 10) return 'metric-critical'
   if (v >= 2) return 'metric-warning'
+  return 'metric-ok'
+}
+
+function diskClass(v: number): string {
+  if (v >= 90) return 'metric-critical'
+  if (v >= 75) return 'metric-warning'
   return 'metric-ok'
 }
 </script>

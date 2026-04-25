@@ -27,6 +27,8 @@ type HostMetrics struct {
 	CPUPressure    *float64 `json:"cpu_pressure"`    // PSI some%, nil = unknown
 	MemoryPressure *float64 `json:"memory_pressure"` // PSI some%, nil = unknown
 	IOPressure     *float64 `json:"io_pressure"`     // PSI some%, nil = unknown
+	DataUsedPct    *float64 `json:"data_used_pct"`   // /data volume usage %, nil = unknown
+	SwapUsedPct    *float64 `json:"swap_used_pct"`   // swap usage %, nil = unknown
 }
 
 // HandleHosts handles GET /api/v1/hosts — returns host-level metrics from Prometheus.
@@ -55,6 +57,8 @@ func (h *Handlers) HandleHosts(w http.ResponseWriter, r *http.Request) {
 		{"cpu_pressure", `rate(node_pressure_cpu_waiting_seconds_total{job="node"}[5m]) * 100`},
 		{"memory_pressure", `rate(node_pressure_memory_waiting_seconds_total{job="node"}[5m]) * 100`},
 		{"io_pressure", `rate(node_pressure_io_waiting_seconds_total{job="node"}[5m]) * 100`},
+		{"data_used", `100 * (1 - node_filesystem_avail_bytes{job="node",mountpoint="/data"} / node_filesystem_size_bytes{job="node",mountpoint="/data"})`},
+		{"swap_used", `100 * (1 - node_memory_SwapFree_bytes{job="node"} / node_memory_SwapTotal_bytes{job="node"})`},
 	}
 
 	results := make([]queryResult, len(queries))
@@ -121,6 +125,22 @@ func (h *Handlers) HandleHosts(w http.ResponseWriter, r *http.Request) {
 		for inst, pv := range results[4].data {
 			hm := getOrCreate(hosts, inst, pv.labels)
 			hm.IOPressure = &pv.value
+		}
+	}
+
+	// Merge /data volume usage.
+	if results[5].err == nil {
+		for inst, pv := range results[5].data {
+			hm := getOrCreate(hosts, inst, pv.labels)
+			hm.DataUsedPct = &pv.value
+		}
+	}
+
+	// Merge swap usage.
+	if results[6].err == nil {
+		for inst, pv := range results[6].data {
+			hm := getOrCreate(hosts, inst, pv.labels)
+			hm.SwapUsedPct = &pv.value
 		}
 	}
 

@@ -32,37 +32,10 @@
 
       <!-- Toolbar: filters + search -->
       <div class="toolbar-row">
-        <div class="filter-dropdown" v-if="uniqueRoles.length > 0">
-          <button class="dropdown-trigger" @click="toggleDropdown('role')" :class="{ 'has-selection': activeRoles.size > 0 }">
-            <span class="dropdown-label">Role</span>
-            <span class="dropdown-value">{{ activeRoles.size === 0 ? 'All' : [...activeRoles].join(', ') }}</span>
-            <i class="pi pi-chevron-down dropdown-chevron"></i>
-          </button>
-          <div v-if="openDropdown === 'role'" class="dropdown-menu">
-            <label v-for="r in uniqueRoles" :key="'role-' + r" class="dropdown-option">
-              <input type="checkbox" :checked="activeRoles.has(r)" @change="toggleRoleFilter(r)" />
-              <span>{{ r }}</span>
-            </label>
-            <button v-if="activeRoles.size > 0" class="dropdown-clear" @click="activeRoles.clear()">Clear</button>
-          </div>
-        </div>
-        <div class="filter-dropdown" v-if="uniqueProcesses.length > 0">
-          <button class="dropdown-trigger" @click="toggleDropdown('process')" :class="{ 'has-selection': activeProcesses.size > 0 }">
-            <span class="dropdown-label">Process</span>
-            <span class="dropdown-value">{{ activeProcesses.size === 0 ? 'All' : [...activeProcesses].join(', ') }}</span>
-            <i class="pi pi-chevron-down dropdown-chevron"></i>
-          </button>
-          <div v-if="openDropdown === 'process'" class="dropdown-menu">
-            <label v-for="p in uniqueProcesses" :key="'proc-' + p" class="dropdown-option">
-              <input type="checkbox" :checked="activeProcesses.has(p)" @change="toggleProcessFilter(p)" />
-              <span>{{ p }}</span>
-            </label>
-            <button v-if="activeProcesses.size > 0" class="dropdown-clear" @click="activeProcesses.clear()">Clear</button>
-          </div>
-        </div>
         <div class="search-box">
           <i class="pi pi-search"></i>
           <input
+            ref="searchInputEl"
             v-model="search"
             type="text"
             placeholder="Search..."
@@ -72,6 +45,24 @@
             <i class="pi pi-times"></i>
           </button>
         </div>
+      </div>
+      <div v-if="uniqueRoles.length > 0" class="filter-row">
+        <span class="filter-row-label">Role</span>
+        <label v-for="r in uniqueRoles" :key="'role-' + r" class="filter-chip" :class="{ active: activeRoles.has(r) }">
+          <input type="checkbox" :checked="activeRoles.has(r)" @change="toggleRoleFilter(r)" />
+          <span>{{ r }}</span>
+          <button class="filter-only-btn" @click.prevent="setOnly(activeRoles, r, uniqueRoles)" title="Show only this role">only</button>
+        </label>
+        <button v-if="activeRoles.size > 0" class="filter-clear-btn" @click="activeRoles.clear()">Clear</button>
+      </div>
+      <div v-if="uniqueProcesses.length > 0" class="filter-row">
+        <span class="filter-row-label">Process</span>
+        <label v-for="p in uniqueProcesses" :key="'proc-' + p" class="filter-chip" :class="{ active: activeProcesses.has(p) }">
+          <input type="checkbox" :checked="activeProcesses.has(p)" @change="toggleProcessFilter(p)" />
+          <span>{{ p }}</span>
+          <button class="filter-only-btn" @click.prevent="setOnly(activeProcesses, p, uniqueProcesses)" title="Show only this process">only</button>
+        </label>
+        <button v-if="activeProcesses.size > 0" class="filter-clear-btn" @click="activeProcesses.clear()">Clear</button>
       </div>
 
       <!-- Tabs -->
@@ -139,6 +130,7 @@
                   Uptime
                   <i v-if="sortCol === 'uptime'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
                 </th>
+                <th v-if="daemonHealth.length > 0" class="col-health-header">Health</th>
                 <th></th>
               </tr>
             </thead>
@@ -192,6 +184,17 @@
                 <td class="col-uptime">
                   <span v-if="p.uptime_secs" class="uptime-text">{{ humanizeUptime(p.uptime_secs) }}</span>
                   <span v-else class="metric-blank">&mdash;</span>
+                </td>
+                <td v-if="daemonHealth.length > 0" class="col-health">
+                  <template v-if="procHealth(p.process)">
+                    <div v-for="m in procHealth(p.process)!.metrics" :key="m.name" class="health-metric" :title="m.description + ' (' + m.unit + ')'">
+                      <svg v-if="m.sparkline?.length" class="health-spark" viewBox="0 0 80 20" preserveAspectRatio="none">
+                        <path :d="sparklinePath(m.sparkline)" stroke="var(--primary-color)" fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                      </svg>
+                      <span class="health-val">{{ formatMetricVal(m.current, m.unit) }}</span>
+                      <span class="health-unit">{{ m.name }} <span class="health-unit-label">{{ m.unit }}</span></span>
+                    </div>
+                  </template>
                 </td>
                 <td class="col-actions">
                   <button
@@ -646,7 +649,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDeployInventory,
@@ -664,9 +667,79 @@ import {
   type DeployCommit,
   type RolloutStatus,
   type RolloutTarget,
+  fetchDaemonHealth,
+  type DaemonHealth,
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops', 'exepipe'])
+
+// Daemon health state
+const daemonHealth = ref<DaemonHealth[]>([])
+let daemonHealthTimer: ReturnType<typeof setInterval> | null = null
+let daemonHealthAbort: AbortController | null = null
+
+async function loadDaemonHealth() {
+  if (daemonHealthAbort) daemonHealthAbort.abort()
+  daemonHealthAbort = new AbortController()
+  try {
+    daemonHealth.value = await fetchDaemonHealth(daemonHealthAbort.signal)
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') return
+  }
+}
+
+// Map process name (from inventory) to daemon name (from health API).
+const procToDaemon: Record<string, string> = {
+  exeprox: 'exeprox',
+  exed: 'exed',
+  exeletd: 'exelet',
+  metricsd: 'metricsd',
+}
+
+// Lookup: daemon name -> DaemonHealth
+const daemonHealthMap = computed(() => {
+  const m = new Map<string, DaemonHealth>()
+  for (const d of daemonHealth.value) m.set(d.daemon, d)
+  return m
+})
+
+function procHealth(process: string): DaemonHealth | undefined {
+  const daemon = procToDaemon[process]
+  return daemon ? daemonHealthMap.value.get(daemon) : undefined
+}
+
+function sparklinePath(points: [number, number][] | undefined): string {
+  if (!points || points.length < 2) return ''
+  const tMin = points[0][0]
+  const tMax = points[points.length - 1][0]
+  const tRange = tMax - tMin || 1
+  let vMax = 0
+  for (const p of points) { if (p[1] > vMax) vMax = p[1] }
+  if (vMax === 0) vMax = 1
+  const w = 80, h = 20
+  return points.map((p, i) => {
+    const x = ((p[0] - tMin) / tRange) * w
+    const y = h - (p[1] / vMax) * h
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+}
+
+function formatMetricVal(v: number | null, unit: string): string {
+  if (v == null) return '-'
+  switch (unit) {
+    case 'bytes/s':
+      if (v >= 1e6) return (v / 1e6).toFixed(1) + ' MB/s'
+      if (v >= 1e3) return (v / 1e3).toFixed(1) + ' KB/s'
+      return v.toFixed(0) + ' B/s'
+    case 'req/s': case 'conn/s': case 'rows/s': case 'ops/s':
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k'
+      return v.toFixed(1)
+    case 'count':
+      return v.toFixed(0)
+    default:
+      return v.toFixed(2)
+  }
+}
 
 // Multi-select state
 const selectedProcs = reactive(new Set<string>())
@@ -1037,6 +1110,7 @@ const error = ref('')
 const sortCol = ref<'hostname' | 'version' | 'uptime'>('hostname')
 const sortDir = ref<'asc' | 'desc'>('asc')
 const search = ref('')
+const searchInputEl = ref<HTMLInputElement | null>(null)
 const activeRoles = reactive(new Set<string>())
 const activeProcesses = reactive(new Set<string>())
 const route = useRoute()
@@ -1044,21 +1118,11 @@ const router = useRouter()
 const validTabs = new Set(['fleet', 'versions', 'history'])
 const initialTab = validTabs.has(route.query.tab as string) ? (route.query.tab as 'fleet' | 'versions' | 'history') : 'fleet'
 const activeTab = ref<'fleet' | 'versions' | 'history'>(initialTab)
-const openDropdown = ref<'role' | 'process' | null>(null)
 
-function toggleDropdown(name: 'role' | 'process') {
-  openDropdown.value = openDropdown.value === name ? null : name
+function setOnly(set: Set<string>, value: string, all: string[]) {
+  set.clear()
+  set.add(value)
 }
-
-function onClickOutside(e: MouseEvent) {
-  if (openDropdown.value && !(e.target as Element)?.closest('.filter-dropdown')) {
-    openDropdown.value = null
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', onClickOutside, true)
-})
 const deploysCollapsed = ref(false)
 const deployTimeFilter = ref<'10m' | '24h' | 'all'>('all')
 const justCopied = ref('')
@@ -1285,7 +1349,7 @@ function isDeploying(p: DeployProcess): boolean {
 }
 
 const deployableStages = new Set(['staging', 'prod', 'global'])
-const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed', 'exeprox', 'exepipe'])
+const prodAllowedProcesses = new Set(['metricsd', 'cgtop', 'exeletd', 'exed', 'exeprox', 'exepipe', 'exe-ops'])
 
 function canDeploy(p: DeployProcess): boolean {
   if (!deployableStages.has(p.stage)) return false
@@ -1560,6 +1624,9 @@ onMounted(async () => {
   await Promise.all([load(), loadDeploys()])
   pollTimer = setInterval(load, 30000)
   startDeployPolling()
+  loadDaemonHealth()
+  daemonHealthTimer = setInterval(loadDaemonHealth, 60_000)
+  nextTick(() => searchInputEl.value?.focus())
 
   // Auto-trigger exed deploy when navigated from dashboard
   if (route.query.action === 'deploy-exed') {
@@ -1581,9 +1648,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (daemonHealthTimer) clearInterval(daemonHealthTimer)
+  if (daemonHealthAbort) daemonHealthAbort.abort()
   stopDeployPolling()
   stopActiveRolloutPolling()
-  document.removeEventListener('click', onClickOutside, true)
 })
 </script>
 
@@ -2025,140 +2093,112 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-/* -- Filter dropdowns -- */
-.filter-dropdown {
-  position: relative;
+/* -- Inline filter rows -- */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.dropdown-trigger {
+.filter-row-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-color-muted);
+  min-width: 50px;
+}
+
+.filter-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.35rem 0.6rem;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
-  font-family: inherit;
   background: var(--surface-card);
   border: 1px solid var(--surface-border);
-  border-radius: 6px;
+  border-radius: 4px;
   color: var(--text-color-secondary);
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
 }
 
-.dropdown-trigger:hover {
+.filter-chip:hover {
   border-color: var(--surface-border-bright);
   color: var(--text-color);
 }
 
-.dropdown-trigger.has-selection {
+.filter-chip.active {
   border-color: var(--primary-color);
   color: var(--primary-color);
   background: var(--primary-50);
 }
 
-.dropdown-label {
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-color-muted);
-}
-
-.dropdown-trigger.has-selection .dropdown-label {
-  color: var(--primary-color);
-  opacity: 0.7;
-}
-
-.dropdown-value {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dropdown-chevron {
-  font-size: 0.55rem;
-  opacity: 0.6;
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 200;
-  min-width: 160px;
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  padding: 0.375rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
-.dropdown-option {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-color-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.dropdown-option:hover {
-  background: var(--surface-hover);
-  color: var(--text-color);
-}
-
-.dropdown-option input[type="checkbox"] {
+.filter-chip input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 1px solid var(--surface-border-bright);
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--surface-ground);
   cursor: pointer;
   position: relative;
   flex-shrink: 0;
 }
 
-.dropdown-option input[type="checkbox"]:checked {
+.filter-chip input[type="checkbox"]:checked {
   background: var(--primary-color);
   border-color: var(--primary-color);
 }
 
-.dropdown-option input[type="checkbox"]:checked::after {
+.filter-chip input[type="checkbox"]:checked::after {
   content: '';
   position: absolute;
-  left: 3.5px;
-  top: 1px;
-  width: 4px;
-  height: 8px;
+  left: 3px;
+  top: 0.5px;
+  width: 3.5px;
+  height: 7px;
   border: solid var(--primary-color-text);
-  border-width: 0 2px 2px 0;
+  border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
 }
 
-.dropdown-clear {
-  margin-top: 0.25rem;
-  padding: 0.25rem 0.5rem;
+.filter-only-btn {
+  display: none;
+  padding: 0 0.25rem;
+  font-size: 0.6rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  color: var(--text-color-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.filter-chip:hover .filter-only-btn {
+  display: inline;
+}
+
+.filter-only-btn:hover {
+  color: var(--primary-color);
+}
+
+.filter-clear-btn {
+  padding: 0.2rem 0.4rem;
   font-size: 0.65rem;
   font-family: inherit;
   background: none;
   border: none;
-  border-top: 1px solid var(--surface-border);
   color: var(--text-color-muted);
   cursor: pointer;
-  text-align: left;
-  padding-top: 0.375rem;
 }
 
-.dropdown-clear:hover {
+.filter-clear-btn:hover {
   color: var(--primary-color);
 }
 
@@ -3427,5 +3467,47 @@ a.version-sha:hover {
 .rollout-wave-chip.wave-state-skipped {
   opacity: 0.5;
   border-style: dashed;
+}
+
+/* Daemon Health inline cells */
+.col-health-header {
+  white-space: nowrap;
+}
+
+.col-health {
+  min-width: 180px;
+}
+
+.health-metric {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.health-spark {
+  width: 50px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.health-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.health-unit {
+  color: var(--text-color-muted);
+  font-size: 0.65rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.health-unit-label {
+  opacity: 0.6;
 }
 </style>

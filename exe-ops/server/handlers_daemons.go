@@ -28,7 +28,13 @@ type DaemonHealth struct {
 // daemonDefs returns the metric definitions for each daemon.
 // The PromQL queries are designed to produce a single aggregate
 // time-series per daemon type (summed across instances).
-func daemonDefs() []DaemonHealth {
+// When stage is non-empty, queries are filtered to that Prometheus
+// stage label (e.g. "production").
+func daemonDefs(stage string) []DaemonHealth {
+	sf := ""
+	if stage != "" {
+		sf = `,stage="` + stage + `"`
+	}
 	return []DaemonHealth{
 		{
 			Daemon: "exeprox",
@@ -36,19 +42,19 @@ func daemonDefs() []DaemonHealth {
 				{
 					Name:        "HTTP Request Rate",
 					Description: "Total HTTP requests/s across all exeprox instances",
-					Query:       `sum(rate(http_requests_total{job="exeprox"}[5m]))`,
+					Query:       `sum(rate(http_requests_total{job="exeprox"` + sf + `}[5m]))`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Proxy Bytes Rate",
 					Description: "Bytes/s proxied (in+out) across all instances",
-					Query:       `sum(rate(proxy_bytes_total{job="exeprox"}[5m]))`,
+					Query:       `sum(rate(proxy_bytes_total{job="exeprox"` + sf + `}[5m]))`,
 					Unit:        "bytes/s",
 				},
 				{
 					Name:        "Active Copy Sessions",
 					Description: "In-flight exepipe copy sessions (SSH/port-forward)",
-					Query:       `sum(copy_sessions_in_flight{job="exeprox"})`,
+					Query:       `sum(copy_sessions_in_flight{job="exeprox"` + sf + `})`,
 					Unit:        "count",
 				},
 			},
@@ -59,19 +65,19 @@ func daemonDefs() []DaemonHealth {
 				{
 					Name:        "SSH Connections",
 					Description: "Current active SSH connections to exed",
-					Query:       `sum(ssh_connections_current{job="exed"})`,
+					Query:       `sum(ssh_connections_current{job="exed"` + sf + `})`,
 					Unit:        "count",
 				},
 				{
 					Name:        "SSH Connection Rate",
 					Description: "New SSH connections/s (success+rejected)",
-					Query:       `sum(rate(ssh_connections_total{job="exed"}[5m]))`,
+					Query:       `sum(rate(ssh_connections_total{job="exed"` + sf + `}[5m]))`,
 					Unit:        "conn/s",
 				},
 				{
 					Name:        "HTTP Request Rate",
 					Description: "HTTP requests/s to exed (API, health, webhooks)",
-					Query:       `sum(rate(http_requests_total{job="exed"}[5m]))`,
+					Query:       `sum(rate(http_requests_total{job="exed"` + sf + `}[5m]))`,
 					Unit:        "req/s",
 				},
 			},
@@ -82,19 +88,19 @@ func daemonDefs() []DaemonHealth {
 				{
 					Name:        "gRPC Request Rate",
 					Description: "gRPC requests/s handled across all exelets",
-					Query:       `sum(rate(grpc_server_handled_total{job="exelet"}[5m]))`,
+					Query:       `sum(rate(grpc_server_handled_total{job="exelet"` + sf + `}[5m]))`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Gateway Requests",
 					Description: "LLM gateway proxy requests/s across all exelets",
-					Query:       `sum(rate(exelet_metadata_gateway_requests_total{job="exelet"}[5m]))`,
+					Query:       `sum(rate(exelet_metadata_gateway_requests_total{job="exelet"` + sf + `}[5m]))`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Ready Instances",
 					Description: "Number of exelets reporting ready=1",
-					Query:       `sum(exelet_ready{job="exelet"})`,
+					Query:       `sum(exelet_ready{job="exelet"` + sf + `})`,
 					Unit:        "count",
 				},
 			},
@@ -105,7 +111,7 @@ func daemonDefs() []DaemonHealth {
 				{
 					Name:        "Rows Inserted Rate",
 					Description: "Metric rows inserted/s into DuckDB",
-					Query:       `sum(rate(metricsd_rows_inserted_total{job="metricsd"}[5m]))`,
+					Query:       `sum(rate(metricsd_rows_inserted_total{job="metricsd"` + sf + `}[5m]))`,
 					Unit:        "rows/s",
 				},
 			},
@@ -120,6 +126,15 @@ func daemonDefs() []DaemonHealth {
 //nolint:unused
 func floatPtr(v float64) *float64 { return &v }
 
+// promStage returns the Prometheus stage label for an environment string.
+// Prometheus uses "production" while --environment uses "prod".
+func promStage(env string) string {
+	if env == "prod" {
+		return "production"
+	}
+	return env
+}
+
 // HandleDaemonHealth handles GET /api/v1/daemons/health — returns the top
 // metrics for each daemon with 1h sparkline data.
 func (h *Handlers) HandleDaemonHealth(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +146,7 @@ func (h *Handlers) HandleDaemonHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
-	defs := daemonDefs()
+	defs := daemonDefs(promStage(h.environment))
 
 	// Flatten all queries to run in parallel.
 	type qResult struct {
@@ -199,7 +214,7 @@ func (h *Handlers) HandleDaemonHealthSummary(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	defs := daemonDefs()
+	defs := daemonDefs(promStage(h.environment))
 
 	type qResult struct {
 		di, mi  int

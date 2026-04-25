@@ -126,6 +126,8 @@ export interface HostMetrics {
   memory_pressure: number | null
   cpu_pressure: number | null
   io_pressure: number | null
+  data_used_pct: number | null
+  swap_used_pct: number | null
 }
 
 export async function fetchHosts(): Promise<HostMetrics[]> {
