@@ -107,18 +107,16 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchDashboard: vi.fn(),
     fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
-    fetchVMLiveMetrics: vi.fn(),
-    fetchVMsLive: vi.fn(),
+    fetchPoolHistory: vi.fn(),
     fetchVMsPool: vi.fn(),
   }
 })
 
-import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchVMLiveMetrics, fetchVMsLive, fetchVMsPool } from '../api/client'
+import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchPoolHistory, fetchVMsPool } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
-const mockFetchVMLiveMetrics = vi.mocked(fetchVMLiveMetrics)
-const mockFetchVMsLive = vi.mocked(fetchVMsLive)
+const mockFetchPoolHistory = vi.mocked(fetchPoolHistory)
 const mockFetchVMsPool = vi.mocked(fetchVMsPool)
 
 // ---------------------------------------------------------------------------
@@ -154,7 +152,7 @@ describe('VMDetail', () => {
     // Default: LLM usage and profile never resolve (test loading states separately)
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
-    mockFetchVMsLive.mockResolvedValue({ vms: [] })
+    mockFetchPoolHistory.mockResolvedValue({ points: [] })
     mockFetchVMsPool.mockResolvedValue({ plan_name: '', tier_name: '', cpu_max: 0, mem_max_bytes: 0, max_vms: 0, vms_total: 0, vms_running: 0 })
   })
 
@@ -416,208 +414,12 @@ describe('VMDetail', () => {
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
 
-  // --- Pool section (resource pool bars) ---
+  // --- Pool charts section ---
 
-  it('shows pool section with stacked bars when pool data and live metrics are available', async () => {
+  it('renders PoolCharts component', async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 42.5,
-      mem_bytes: 1073741824,
-      swap_bytes: 0,
-      disk_bytes: 3221225472,
-      disk_logical_bytes: 5368709120,
-      disk_capacity_bytes: 30 * 1024 * 1024 * 1024,
-      mem_capacity_bytes: 8 * 1024 * 1024 * 1024,
-      cpus: 2,
-      net_rx_bytes: 1048576,
-      net_tx_bytes: 524288,
-    })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 42.5, cpus: 2, mem_bytes: 1073741824, mem_capacity_bytes: 8 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-        { name: 'other-vm', status: 'running', cpu_percent: 100, cpus: 4, mem_bytes: 0, mem_capacity_bytes: 16 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-    })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Large', cpu_max: 8, mem_max_bytes: 32 * 1024 * 1024 * 1024, max_vms: 50, vms_total: 2, vms_running: 2 })
     const wrapper = await mountVMDetail()
-    const poolSection = wrapper.find('.pool-section')
-    expect(poolSection.exists()).toBe(true)
-    expect(poolSection.text()).toContain('Resource Pool (live)')
-    // Should have stacked bar segments
-    expect(poolSection.findAll('.pool-seg-this').length).toBeGreaterThanOrEqual(1)
-    expect(poolSection.findAll('.pool-seg-other').length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('shows correct CPU values in pool section', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 150,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 150, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-    })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Large', cpu_max: 8, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
-    const wrapper = await mountVMDetail()
-    const poolSection = wrapper.find('.pool-section')
-    expect(poolSection.exists()).toBe(true)
-    // thisCPU = 150/100 = 1.5, totalCPU = 1.5, maxCPU = 8
-    const cpuRow = poolSection.findAll('.pool-row')[0]
-    expect(cpuRow.find('.pool-label').text()).toBe('vCPU')
-    expect(cpuRow.find('.pool-values').text()).toContain('1.5')
-    expect(cpuRow.find('.pool-values').text()).toContain('of 8')
-  })
-
-  it('shows memory row in pool section when maxMem > 0', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 4 * 1024 * 1024 * 1024,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-    })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 16 * 1024 * 1024 * 1024, max_vms: 50, vms_total: 1, vms_running: 1 })
-    const wrapper = await mountVMDetail()
-    const poolSection = wrapper.find('.pool-section')
-    const labels = poolSection.findAll('.pool-label').map(l => l.text())
-    expect(labels).toContain('Memory')
-  })
-
-  it('hides memory row in pool section when maxMem is 0', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 4 * 1024 * 1024 * 1024,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 4 * 1024 * 1024 * 1024, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-    })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
-    const wrapper = await mountVMDetail()
-    const poolSection = wrapper.find('.pool-section')
-    const labels = poolSection.findAll('.pool-label').map(l => l.text())
-    expect(labels).toContain('vCPU')
-    expect(labels).not.toContain('Memory')
-  })
-
-  it('shows legend with VM name in pool section', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchVMsLive.mockResolvedValue({
-      vms: [
-        { name: 'my-vm', status: 'running', cpu_percent: 50, cpus: 2, mem_bytes: 0, mem_capacity_bytes: 0, disk_bytes: 0, disk_logical_bytes: 0, disk_capacity_bytes: 0, net_rx_bytes: 0, net_tx_bytes: 0 },
-      ],
-    })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: 'Individual', tier_name: 'Medium', cpu_max: 4, mem_max_bytes: 0, max_vms: 50, vms_total: 1, vms_running: 1 })
-    const wrapper = await mountVMDetail()
-    const legend = wrapper.find('.pool-legend')
-    expect(legend.exists()).toBe(true)
-    expect(legend.text()).toContain('my-vm')
-    expect(legend.text()).toContain('other VMs')
-  })
-
-  it('hides pool section when fetchVMsPool returns cpu_max = 0 (unlimited plan)', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    // Default beforeEach mock already returns cpu_max: 0
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.pool-section').exists()).toBe(false)
-  })
-
-  it('hides pool section for stopped VMs (fetchProvisionedSpecs not called)', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard({
-      boxes: [makeBox({ status: 'stopped' })],
-    }))
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.pool-section').exists()).toBe(false)
-    expect(mockFetchVMLiveMetrics).not.toHaveBeenCalled()
-    expect(mockFetchVMsLive).not.toHaveBeenCalled()
-  })
-
-  it('hides pool section when backend returns empty vms (metrics not validated)', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    mockFetchVMLiveMetrics.mockResolvedValue({
-      name: 'my-vm',
-      status: 'running',
-      cpu_percent: 50,
-      mem_bytes: 0,
-      swap_bytes: 0,
-      disk_bytes: 0,
-      disk_logical_bytes: 0,
-      disk_capacity_bytes: 0,
-      mem_capacity_bytes: 0,
-      cpus: 2,
-      net_rx_bytes: 0,
-      net_tx_bytes: 0,
-    })
-    mockFetchVMsLive.mockResolvedValue({ vms: [] })
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.pool-section').exists()).toBe(false)
+    expect(wrapper.find('.pool-charts-section').exists()).toBe(true)
   })
 
 

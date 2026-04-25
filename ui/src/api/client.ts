@@ -407,6 +407,27 @@ export async function fetchVMsPool(): Promise<VMsPoolResponse> {
   return fetchJSON('/api/vms/pool')
 }
 
+// --- Pool History ---
+
+export interface PoolMetric {
+  avg: number
+  sum: number
+}
+
+export interface PoolPoint {
+  timestamp: string
+  cpu_cores: PoolMetric
+  mem_bytes: PoolMetric
+}
+
+export interface PoolHistoryResponse {
+  points: PoolPoint[]
+}
+
+export async function fetchPoolHistory(hours: number = 24): Promise<PoolHistoryResponse> {
+  return fetchJSON(`/api/vms/usage/pool?hours=${hours}`)
+}
+
 // --- Usage History ---
 
 export interface UsageDataPoint {
