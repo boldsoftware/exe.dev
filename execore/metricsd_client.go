@@ -200,3 +200,37 @@ func (c *metricsClient) queryVMsOverLimit(ctx context.Context, vmIDs []string, d
 	}
 	return result.VMs, nil
 }
+
+// queryVMsPool fetches aggregated pool history (avg/sum of CPU and memory) for the given VMs.
+func (c *metricsClient) queryVMsPool(ctx context.Context, vmNames []string, hours int) ([]types.PoolPoint, error) {
+	reqBody := types.QueryVMsPoolRequest{
+		VMNames: vmNames,
+		Hours:   hours,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/query/vms/pool", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query metricsd vms pool: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metricsd returned status %d", resp.StatusCode)
+	}
+
+	var result types.QueryVMsPoolResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return result.Points, nil
+}

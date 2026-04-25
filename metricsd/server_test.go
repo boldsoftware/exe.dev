@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/metricsd/types"
 )
 
 func TestServer(t *testing.T) {
@@ -490,6 +492,117 @@ func TestQueryVMs(t *testing.T) {
 	t.Run("invalid hours", func(t *testing.T) {
 		reqBody, _ := json.Marshal(QueryVMsRequest{VMNames: []string{"vm-a"}, Hours: 0})
 		resp, err := http.Post(ts.URL+"/query/vms", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+}
+
+func TestQueryVMsPool(t *testing.T) {
+	ctx := context.Background()
+
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	// Insert test data: two VMs with multiple data points over last hour.
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	metrics := []Metric{
+		// vm-a: two points 10 min apart, cpu goes from 1000 to 1600 (600s in 600s = 1.0 core)
+		{Timestamp: now.Add(-20 * time.Minute), Host: "h1", VMName: "vm-a", MemoryRSSBytes: 2_000_000_000, CPUUsedCumulativeSecs: 1000, CPUNominal: 4},
+		{Timestamp: now.Add(-10 * time.Minute), Host: "h1", VMName: "vm-a", MemoryRSSBytes: 3_000_000_000, CPUUsedCumulativeSecs: 1600, CPUNominal: 4},
+		{Timestamp: now, Host: "h1", VMName: "vm-a", MemoryRSSBytes: 2_500_000_000, CPUUsedCumulativeSecs: 2200, CPUNominal: 4},
+		// vm-b: two points 10 min apart, cpu goes from 500 to 800 (300s in 600s = 0.5 core)
+		{Timestamp: now.Add(-20 * time.Minute), Host: "h2", VMName: "vm-b", MemoryRSSBytes: 1_000_000_000, CPUUsedCumulativeSecs: 500, CPUNominal: 2},
+		{Timestamp: now.Add(-10 * time.Minute), Host: "h2", VMName: "vm-b", MemoryRSSBytes: 1_500_000_000, CPUUsedCumulativeSecs: 800, CPUNominal: 2},
+		{Timestamp: now, Host: "h2", VMName: "vm-b", MemoryRSSBytes: 1_200_000_000, CPUUsedCumulativeSecs: 1100, CPUNominal: 2},
+	}
+	if err := srv.InsertMetrics(ctx, metrics); err != nil {
+		t.Fatalf("InsertMetrics: %v", err)
+	}
+
+	t.Run("basic pool query", func(t *testing.T) {
+		reqBody, _ := json.Marshal(types.QueryVMsPoolRequest{VMNames: []string{"vm-a", "vm-b"}, Hours: 1})
+		resp, err := http.Post(ts.URL+"/query/vms/pool", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		var result types.QueryVMsPoolResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Points) == 0 {
+			t.Fatal("expected pool points, got 0")
+		}
+
+		// Each point should have sum >= avg (sum of 2 VMs, avg of 2 VMs)
+		for i, p := range result.Points {
+			if p.CPUCores.Sum < p.CPUCores.Avg {
+				t.Errorf("point %d: cpu sum (%f) < avg (%f)", i, p.CPUCores.Sum, p.CPUCores.Avg)
+			}
+			if p.MemBytes.Sum < p.MemBytes.Avg {
+				t.Errorf("point %d: mem sum (%f) < avg (%f)", i, p.MemBytes.Sum, p.MemBytes.Avg)
+			}
+		}
+	})
+
+	t.Run("single VM", func(t *testing.T) {
+		reqBody, _ := json.Marshal(types.QueryVMsPoolRequest{VMNames: []string{"vm-a"}, Hours: 1})
+		resp, err := http.Post(ts.URL+"/query/vms/pool", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d: %s", resp.StatusCode, body)
+		}
+		var result types.QueryVMsPoolResponse
+		json.NewDecoder(resp.Body).Decode(&result)
+
+		// With a single VM, avg == sum
+		for i, p := range result.Points {
+			if p.CPUCores.Avg != p.CPUCores.Sum {
+				t.Errorf("point %d: single VM cpu avg (%f) != sum (%f)", i, p.CPUCores.Avg, p.CPUCores.Sum)
+			}
+			if p.MemBytes.Avg != p.MemBytes.Sum {
+				t.Errorf("point %d: single VM mem avg (%f) != sum (%f)", i, p.MemBytes.Avg, p.MemBytes.Sum)
+			}
+		}
+	})
+
+	t.Run("empty vm_names", func(t *testing.T) {
+		reqBody, _ := json.Marshal(types.QueryVMsPoolRequest{VMNames: []string{}, Hours: 1})
+		resp, err := http.Post(ts.URL+"/query/vms/pool", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("invalid hours", func(t *testing.T) {
+		reqBody, _ := json.Marshal(types.QueryVMsPoolRequest{VMNames: []string{"vm-a"}, Hours: 0})
+		resp, err := http.Post(ts.URL+"/query/vms/pool", "application/json", bytes.NewReader(reqBody))
 		if err != nil {
 			t.Fatal(err)
 		}

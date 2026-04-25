@@ -40,3 +40,27 @@ type QueryVMsRequest struct {
 type QueryVMsResponse struct {
 	VMs map[string][]Metric `json:"vms"`
 }
+
+// QueryVMsPoolRequest is the request body for POST /query/vms/pool.
+type QueryVMsPoolRequest struct {
+	VMNames []string `json:"vm_names"`
+	Hours   int      `json:"hours"`
+}
+
+// PoolMetric holds avg and sum for a single metric at a point in time.
+type PoolMetric struct {
+	Avg float64 `json:"avg"`
+	Sum float64 `json:"sum"`
+}
+
+// PoolPoint is a single time-series data point for pool history.
+type PoolPoint struct {
+	Timestamp string     `json:"timestamp"`
+	CPUCores  PoolMetric `json:"cpu_cores"`
+	MemBytes  PoolMetric `json:"mem_bytes"`
+}
+
+// QueryVMsPoolResponse is the response for POST /query/vms/pool.
+type QueryVMsPoolResponse struct {
+	Points []PoolPoint `json:"points"`
+}

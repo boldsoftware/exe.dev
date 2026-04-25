@@ -229,6 +229,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /query/sparkline", s.handleSparklineData)
 	mux.HandleFunc("GET /sparklines", s.handleSparklines)
 	mux.HandleFunc("POST /query/vms", s.handleQueryVMs)
+	mux.HandleFunc("POST /query/vms/pool", s.handleQueryVMsPool)
 	mux.HandleFunc("POST /query/usage", s.handleQueryUsage)
 	mux.HandleFunc("POST /query/hourly", s.handleQueryHourly)
 	mux.HandleFunc("POST /query/daily", s.handleQueryDaily)
@@ -655,6 +656,125 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(QueryVMsResponse{VMs: vmMetrics})
+}
+
+func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req types.QueryVMsPoolRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.ErrorContext(ctx, "failed to decode request", "error", err)
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.VMNames) == 0 {
+		http.Error(w, "vm_names cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(req.VMNames) > 200 {
+		http.Error(w, "vm_names cannot contain more than 200 VMs", http.StatusBadRequest)
+		return
+	}
+	if req.Hours < 1 || req.Hours > 744 {
+		http.Error(w, "hours must be between 1 and 744", http.StatusBadRequest)
+		return
+	}
+
+	placeholders := make([]string, len(req.VMNames))
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	placeholderStr := strings.Join(placeholders, ", ")
+
+	args := make([]interface{}, len(req.VMNames))
+	for i, name := range req.VMNames {
+		args[i] = name
+	}
+
+	// Bucket interval: 10 min for <=24h, 1 hour for <=168h, 6 hours for >168h.
+	var bucketInterval string
+	switch {
+	case req.Hours <= 24:
+		bucketInterval = "10 MINUTE"
+	case req.Hours <= 168:
+		bucketInterval = "1 HOUR"
+	default:
+		bucketInterval = "6 HOUR"
+	}
+
+	// Query: bucket timestamps, compute CPU delta per VM using LAG,
+	// then aggregate across VMs per bucket.
+	query := fmt.Sprintf(`
+		WITH raw AS (
+			SELECT
+				time_bucket(INTERVAL '%s', timestamp) AS bucket,
+				vm_name,
+				LAST(memory_rss_bytes ORDER BY timestamp) AS mem_bytes,
+				LAST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum,
+				FIRST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum_first,
+				LAST(timestamp ORDER BY timestamp) AS last_ts,
+				FIRST(timestamp ORDER BY timestamp) AS first_ts
+			FROM vm_metrics_all
+			WHERE vm_name IN (%s)
+				AND timestamp > now() - INTERVAL '%d' HOUR
+			GROUP BY bucket, vm_name
+		),
+		deltas AS (
+			SELECT
+				bucket,
+				vm_name,
+				mem_bytes,
+				CASE
+					WHEN epoch(last_ts) - epoch(first_ts) > 0
+						AND cpu_cum >= cpu_cum_first
+					THEN (cpu_cum - cpu_cum_first) / (epoch(last_ts) - epoch(first_ts))
+					ELSE 0
+				END AS cpu_cores
+			FROM raw
+		)
+		SELECT
+			bucket,
+			AVG(cpu_cores) AS cpu_avg,
+			SUM(cpu_cores) AS cpu_sum,
+			AVG(mem_bytes) AS mem_avg,
+			SUM(mem_bytes) AS mem_sum
+		FROM deltas
+		GROUP BY bucket
+		ORDER BY bucket ASC
+	`, bucketInterval, placeholderStr, req.Hours)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to query pool history", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	points := make([]types.PoolPoint, 0)
+	for rows.Next() {
+		var bucket time.Time
+		var cpuAvg, cpuSum, memAvg, memSum float64
+		if err := rows.Scan(&bucket, &cpuAvg, &cpuSum, &memAvg, &memSum); err != nil {
+			slog.ErrorContext(ctx, "failed to scan pool row", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		points = append(points, types.PoolPoint{
+			Timestamp: bucket.UTC().Format(time.RFC3339),
+			CPUCores:  types.PoolMetric{Avg: cpuAvg, Sum: cpuSum},
+			MemBytes:  types.PoolMetric{Avg: memAvg, Sum: memSum},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		slog.ErrorContext(ctx, "rows iteration error", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(types.QueryVMsPoolResponse{Points: points})
 }
 
 func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
