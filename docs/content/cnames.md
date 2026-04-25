@@ -10,6 +10,9 @@ TLS certificates are issued automatically.
 
 ## Check Your DNS
 
+Enter your domain name and the VM name it should point to. We'll check
+that the records resolve to that VM.
+
 <div id="dns-checker"></div>
 
 ## Setting Up DNS

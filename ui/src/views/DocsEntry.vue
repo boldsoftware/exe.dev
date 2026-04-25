@@ -197,26 +197,33 @@ function initDNSChecker() {
   container.innerHTML = `
     <div class="dns-input-row">
       <input id="dns-domain" type="text" placeholder="example.com" class="dns-input" />
+      <input id="dns-vm" type="text" placeholder="vm-name" class="dns-input dns-input-vm" />
       <button id="dns-check-btn" class="dns-btn">Check DNS</button>
     </div>
     <div id="dns-result"></div>
   `
 
   const input = container.querySelector('#dns-domain') as HTMLInputElement
+  const vmInput = container.querySelector('#dns-vm') as HTMLInputElement
   const btn = container.querySelector('#dns-check-btn') as HTMLButtonElement
   const resultDiv = container.querySelector('#dns-result') as HTMLElement
 
   async function doCheck() {
     const domain = input.value.trim()
+    const vm = vmInput.value.trim()
     if (!domain) {
       resultDiv.innerHTML = '<p class="dns-warn">Enter a domain name.</p>'
+      return
+    }
+    if (!vm) {
+      resultDiv.innerHTML = '<p class="dns-warn">Enter your VM name.</p>'
       return
     }
     btn.disabled = true
     btn.textContent = 'Checking\u2026'
     resultDiv.innerHTML = ''
     try {
-      const resp = await fetch('/api/dns-check?domain=' + encodeURIComponent(domain))
+      const resp = await fetch('/api/dns-check?domain=' + encodeURIComponent(domain) + '&vm=' + encodeURIComponent(vm))
       const d = await resp.json()
       if (d.error) {
         resultDiv.innerHTML = '<p class="dns-err">' + escapeHtml(d.error) + '</p>'
@@ -232,7 +239,9 @@ function initDNSChecker() {
   }
 
   btn.addEventListener('click', doCheck)
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doCheck() })
+  const onEnter = (e: KeyboardEvent) => { if (e.key === 'Enter') doCheck() }
+  input.addEventListener('keydown', onEnter)
+  vmInput.addEventListener('keydown', onEnter)
 }
 
 function renderDNSResult(d: any): string {

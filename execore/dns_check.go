@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 
+	"exe.dev/boxname"
 	"exe.dev/dnsresolver"
 	"exe.dev/domz"
 	"golang.org/x/net/publicsuffix"
@@ -16,6 +16,9 @@ import (
 
 type dnsCheckResult struct {
 	Domain string `json:"domain"`
+
+	// User-provided VM name (without box host suffix)
+	VMName string `json:"vmName,omitempty"`
 
 	// CNAME lookup on the domain itself
 	CNAME      string `json:"cname,omitempty"`
@@ -75,6 +78,24 @@ func (s *Server) handleDNSCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vm := strings.TrimSpace(r.URL.Query().Get("vm"))
+	if vm == "" {
+		http.Error(w, `{"error":"vm parameter is required"}`, http.StatusBadRequest)
+		return
+	}
+	// Allow users to enter "foo.exe.xyz" or just "foo".
+	vm = strings.TrimSpace(domz.Canonicalize(vm))
+	for _, suffix := range []string{s.env.BoxHost, "exe.xyz", "exe-staging.xyz"} {
+		if name, ok := domz.CutBase(vm, suffix); ok {
+			vm = name
+			break
+		}
+	}
+	if !boxname.IsValid(vm) {
+		http.Error(w, `{"error":"invalid VM name"}`, http.StatusBadRequest)
+		return
+	}
+
 	// Normalize
 	domain = domz.Canonicalize(domain)
 	if domain == "" || !strings.Contains(domain, ".") {
@@ -91,18 +112,33 @@ func (s *Server) handleDNSCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	result := s.checkDNS(ctx, domain)
+	result := s.checkDNS(ctx, domain, vm)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
+func (s *Server) checkDNS(ctx context.Context, domain, vm string) dnsCheckResult {
 	result := dnsCheckResult{
-		Domain: domain,
+		Domain:  domain,
+		VMName:  vm,
+		BoxHost: s.env.BoxHost,
+		BoxName: vm,
 	}
 
-	// Step 1: CNAME lookup
+	boxFQDN := vm + "." + s.env.BoxHost
+
+	// Resolve the VM's IPs. Used for apex A-record matching.
+	var boxIPs map[string]bool
+	if ips, err := dnsresolver.Resolver().LookupNetIP(ctx, "ip4", boxFQDN); err == nil && len(ips) > 0 {
+		boxIPs = map[string]bool{}
+		for _, ip := range ips {
+			boxIPs[ip.Unmap().String()] = true
+		}
+		result.BoxIP = ips[0].Unmap().String()
+	}
+
+	// Step 1: CNAME lookup on the domain itself.
 	cname, cnameErr := dnsresolver.LookupCNAME(ctx, domain)
 	if cnameErr != nil {
 		if dnsErr, ok := cnameErr.(*net.DNSError); ok && dnsErr.IsNotFound {
@@ -114,9 +150,8 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 		cname = domz.Canonicalize(cname)
 		if cname != domain {
 			result.CNAME = cname
-			if boxName := s.extractBoxName(cname); boxName != "" {
+			if cname == boxFQDN {
 				result.CNAMEPointsToExe = true
-				result.BoxName = boxName
 			}
 		}
 	}
@@ -141,20 +176,22 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 			result.AError = aErr.Error()
 		}
 	} else {
+		allMatch := len(addrs) > 0 && boxIPs != nil
 		for _, addr := range addrs {
 			addr = addr.Unmap()
 			result.ARecords = append(result.ARecords, addr.String())
-			if s.isExeIP(addr) {
-				result.PointsToExe = true
+			if boxIPs == nil || !boxIPs[addr.String()] {
+				allMatch = false
 			}
 		}
+		result.PointsToExe = allMatch
 	}
 
 	// Determine if apex
 	result.IsApex = (result.CNAME == "" && len(result.ARecords) > 0)
 
-	// Step 3: For apex domains or domains without a CNAME pointing to exe,
-	// check www subdomain
+	// Step 3: For apex domains or domains without a CNAME pointing to the
+	// VM, also check the www subdomain.
 	if !result.CNAMEPointsToExe {
 		wwwHost := "www." + domain
 		wwwCname, wwwErr := dnsresolver.LookupCNAME(ctx, wwwHost)
@@ -170,24 +207,13 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 			wwwCname = domz.Canonicalize(wwwCname)
 			if wwwCname != wwwHost {
 				result.WWWCNAME = wwwCname
-				if boxName := s.extractBoxName(wwwCname); boxName != "" {
-					result.BoxName = boxName
+				if wwwCname == boxFQDN {
 					result.WWWPointsToExe = true
 				}
 			} else {
 				result.WWWMissing = true
-				result.WWWCNAMEError = "www points to itself, not to an exe.xyz VM"
+				result.WWWCNAMEError = "www points to itself, not to " + boxFQDN
 			}
-		}
-	}
-
-	result.BoxHost = s.env.BoxHost
-
-	// Resolve the box IP if we found a box name
-	if result.BoxName != "" {
-		boxFQDN := result.BoxName + "." + s.env.BoxHost
-		if ips, err := dnsresolver.Resolver().LookupNetIP(ctx, "ip4", boxFQDN); err == nil && len(ips) > 0 {
-			result.BoxIP = ips[0].Unmap().String()
 		}
 	}
 
@@ -195,16 +221,6 @@ func (s *Server) checkDNS(ctx context.Context, domain string) dnsCheckResult {
 	result.Status, result.Message = classifyDNSResult(&result, s.env.BoxHost)
 
 	return result
-}
-
-// extractBoxName checks if a hostname is a VM name under any known exe.dev box host.
-func (s *Server) extractBoxName(hostname string) string {
-	for _, suffix := range []string{s.env.BoxHost, "exe.xyz", "exe-staging.xyz"} {
-		if boxName, ok := domz.CutBase(hostname, suffix); ok && boxName != "" && !strings.Contains(boxName, ".") {
-			return boxName
-		}
-	}
-	return ""
 }
 
 // isApexDomain reports whether domain is the registrable apex under
@@ -216,18 +232,6 @@ func isApexDomain(domain string) bool {
 		return false
 	}
 	return etld1 == domain
-}
-
-func (s *Server) isExeIP(addr netip.Addr) bool {
-	if s.LobbyIP.IsValid() && addr == s.LobbyIP {
-		return true
-	}
-	for _, info := range s.PublicIPs {
-		if addr == info.IP {
-			return true
-		}
-	}
-	return false
 }
 
 // detectWildcardCNAME checks whether the CNAME for domain is the result of a
@@ -258,52 +262,48 @@ func detectWildcardCNAME(ctx context.Context, domain, cname string) bool {
 }
 
 func classifyDNSResult(r *dnsCheckResult, boxHost string) (status, message string) {
+	vmFQDN := r.BoxName + "." + boxHost
+
 	// Case 0: CNAME on an apex domain is an RFC violation.
 	if r.ApexCNAME {
-		return "error", "CNAME records are not allowed on apex domains (RFC 1912 § 2.4). A CNAME on " + r.Domain + " will break MX, NS, and other records. Replace it with an A, ALIAS, ANAME, or flattened-CNAME record pointing to your VM."
+		return "error", "CNAME records are not allowed on apex domains (RFC 1912 § 2.4). A CNAME on " + r.Domain + " will break MX, NS, and other records. Replace it with an A, ALIAS, ANAME, or flattened-CNAME record pointing to " + vmFQDN + "."
 	}
 
-	// Case 1: CNAME directly points to exe.xyz
+	// Case 1: CNAME directly points to the requested VM.
 	if r.CNAMEPointsToExe {
 		return "ok", "CNAME points to " + r.CNAME + ". Your domain is correctly configured."
 	}
 
-	// Case 2: CNAME exists but doesn't point to exe
-	if r.CNAME != "" && !r.CNAMEPointsToExe {
-		return "error", "CNAME points to " + r.CNAME + ", not to a " + boxHost + " address. Update your CNAME to point to your-vm." + boxHost + "."
+	// Case 2: CNAME exists but doesn't point to the requested VM.
+	if r.CNAME != "" {
+		return "error", "CNAME points to " + r.CNAME + ", not to " + vmFQDN + ". Update your CNAME to point to " + vmFQDN + "."
 	}
 
-	// Case 3: Apex domain with A records pointing to exe
+	// Case 3: Apex domain with A records matching the VM's IP.
 	if r.IsApex && r.PointsToExe {
 		if r.WWWMissing {
-			return "partial", "A record points to exe.dev, but www." + r.Domain + " is missing a CNAME to your-vm." + boxHost + ". Add a CNAME record for www."
+			return "partial", "A record points to " + vmFQDN + ", but www." + r.Domain + " is missing a CNAME to " + vmFQDN + ". Add a CNAME record for www."
 		}
-		if r.BoxName != "" {
-			return "ok", "Apex domain configured correctly. A record points to exe.dev and www." + r.Domain + " points to " + r.WWWCNAME + "."
+		if r.WWWPointsToExe {
+			return "ok", "Apex domain configured correctly. A record points to " + vmFQDN + " and www." + r.Domain + " points to " + r.WWWCNAME + "."
 		}
-		return "partial", "A record points to exe.dev, but www." + r.Domain + " does not point to a " + boxHost + " VM. Update the www CNAME."
+		return "partial", "A record points to " + vmFQDN + ", but www." + r.Domain + " does not point to " + vmFQDN + ". Update the www CNAME."
 	}
 
-	// Case 4: Apex domain with A records NOT pointing to exe
+	// Case 4: Apex domain with A records NOT matching the VM.
 	if r.IsApex && !r.PointsToExe {
 		ips := strings.Join(r.ARecords, ", ")
-		return "error", "A record resolves to " + ips + ", which is not an exe.dev IP. Update your A/ALIAS record to point to your VM's IP."
+		expected := vmFQDN
+		if r.BoxIP != "" {
+			expected = r.BoxIP + " (the IP of " + vmFQDN + ")"
+		}
+		return "error", "A record resolves to " + ips + ", but should resolve to " + expected + ". Update your A/ALIAS record."
 	}
 
 	// Case 5: No records at all
 	if r.CNAME == "" && len(r.ARecords) == 0 {
-		return "error", "No DNS records found for " + r.Domain + ". Add a CNAME record pointing to your-vm." + boxHost + "."
+		return "error", "No DNS records found for " + r.Domain + ". Add a CNAME record pointing to " + vmFQDN + "."
 	}
 
-	// Case 6: Has A records but not apex-like (has CNAME error but A records resolve)
-	if len(r.ARecords) > 0 && r.PointsToExe {
-		if r.WWWMissing {
-			return "partial", "Domain resolves to an exe.dev IP, but www." + r.Domain + " is missing. Add a CNAME record for www pointing to your-vm." + boxHost + "."
-		}
-		if r.BoxName != "" {
-			return "ok", "Domain is correctly configured."
-		}
-	}
-
-	return "error", "DNS is not configured for exe.dev. Add a CNAME record pointing to your-vm." + boxHost + "."
+	return "error", "DNS is not configured for " + vmFQDN + ". Add a CNAME record pointing to " + vmFQDN + "."
 }

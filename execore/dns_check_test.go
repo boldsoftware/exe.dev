@@ -11,39 +11,51 @@ func TestClassifyDNSResult(t *testing.T) {
 		wantStatus string
 	}{
 		{
-			name: "cname directly to exe.xyz",
+			name: "cname directly to vm",
 			result: dnsCheckResult{
 				Domain:           "app.example.com",
+				BoxName:          "myvm",
 				CNAME:            "myvm.exe.xyz",
 				CNAMEPointsToExe: true,
-				BoxName:          "myvm",
 			},
 			wantStatus: "ok",
 		},
 		{
 			name: "cname to wrong target",
 			result: dnsCheckResult{
-				Domain: "app.example.com",
-				CNAME:  "other.example.net",
+				Domain:  "app.example.com",
+				BoxName: "myvm",
+				CNAME:   "other.example.net",
 			},
 			wantStatus: "error",
 		},
 		{
-			name: "apex with A pointing to exe and www set",
+			name: "cname to wrong vm under exe.xyz",
 			result: dnsCheckResult{
-				Domain:      "example.com",
-				IsApex:      true,
-				ARecords:    []string{"1.2.3.4"},
-				PointsToExe: true,
-				WWWCNAME:    "myvm.exe.xyz",
-				BoxName:     "myvm",
+				Domain:  "app.example.com",
+				BoxName: "myvm",
+				CNAME:   "othervm.exe.xyz",
+			},
+			wantStatus: "error",
+		},
+		{
+			name: "apex with A matching vm and www set",
+			result: dnsCheckResult{
+				Domain:         "example.com",
+				BoxName:        "myvm",
+				IsApex:         true,
+				ARecords:       []string{"1.2.3.4"},
+				PointsToExe:    true,
+				WWWCNAME:       "myvm.exe.xyz",
+				WWWPointsToExe: true,
 			},
 			wantStatus: "ok",
 		},
 		{
-			name: "apex with A pointing to exe but www missing",
+			name: "apex with A matching vm but www missing",
 			result: dnsCheckResult{
 				Domain:      "example.com",
+				BoxName:     "myvm",
 				IsApex:      true,
 				ARecords:    []string{"1.2.3.4"},
 				PointsToExe: true,
@@ -52,23 +64,25 @@ func TestClassifyDNSResult(t *testing.T) {
 			wantStatus: "partial",
 		},
 		{
-			name: "apex with A pointing to exe but www CNAME points elsewhere",
+			name: "apex with A matching vm but www CNAME points elsewhere",
 			result: dnsCheckResult{
 				Domain:      "example.com",
+				BoxName:     "myvm",
 				IsApex:      true,
 				ARecords:    []string{"1.2.3.4"},
 				PointsToExe: true,
 				WWWCNAME:    "dbm48s5ns80mx.cloudfront.net",
-				// BoxName not set because www CNAME target is not an exe.xyz host
 			},
 			wantStatus: "partial",
 		},
 		{
-			name: "apex with A not pointing to exe",
+			name: "apex with A not matching vm",
 			result: dnsCheckResult{
 				Domain:   "example.com",
+				BoxName:  "myvm",
 				IsApex:   true,
 				ARecords: []string{"9.9.9.9"},
+				BoxIP:    "1.2.3.4",
 			},
 			wantStatus: "error",
 		},
@@ -76,9 +90,9 @@ func TestClassifyDNSResult(t *testing.T) {
 			name: "apex with CNAME (RFC 1912 violation)",
 			result: dnsCheckResult{
 				Domain:           "example.com",
+				BoxName:          "myvm",
 				CNAME:            "myvm.exe.xyz",
 				CNAMEPointsToExe: true,
-				BoxName:          "myvm",
 				ApexCNAME:        true,
 			},
 			wantStatus: "error",
@@ -87,6 +101,7 @@ func TestClassifyDNSResult(t *testing.T) {
 			name: "no records at all",
 			result: dnsCheckResult{
 				Domain:     "nonexistent.example.com",
+				BoxName:    "myvm",
 				CNAMEError: "no CNAME record found",
 				AError:     "no A records found",
 			},
