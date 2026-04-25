@@ -347,10 +347,11 @@ var plans = map[Category]Plan{
 		Name:        "Grandfathered",
 		DefaultTier: "grandfathered:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:     true,
-			VMCreate:   true,
-			VMRun:      true,
-			DiskResize: true,
+			LLMUse:      true,
+			InviteClaim: true,
+			VMCreate:    true,
+			VMRun:       true,
+			DiskResize:  true,
 		},
 	},
 	CategoryTrial: {

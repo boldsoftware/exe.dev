@@ -158,14 +158,14 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 	}
 }
 
-// TestInviteClaimEntitlementByPlan verifies only Basic grants invite:claim.
+// TestInviteClaimEntitlementByPlan verifies Basic and Grandfathered grant invite:claim.
 func TestInviteClaimEntitlementByPlan(t *testing.T) {
 	wantClaim := map[Category]bool{
 		CategoryEnterprise:    false,
 		CategoryTeam:          false,
 		CategoryIndividual:    false,
 		CategoryFriend:        false,
-		CategoryGrandfathered: false,
+		CategoryGrandfathered: true,
 		CategoryTrial:         false,
 		CategoryBasic:         true,
 		CategoryRestricted:    false,
