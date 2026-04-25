@@ -8127,8 +8127,10 @@ kbd {
   .git-graph-author {
     display: none;
   }
+  /* Hide SHAs on mobile to save horizontal space; the detail sheet
+     surfaces the full hash when a row is tapped. */
   .git-graph-hash {
-    width: 6ch;
+    display: none;
   }
 
   /* Mobile: the detail pane becomes a bottom sheet that only shows
