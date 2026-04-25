@@ -26,12 +26,12 @@ type CouponInfo struct {
 
 // CouponCustomer holds a Stripe customer that has redeemed a coupon.
 type CouponCustomer struct {
-	ID             string
-	Email          string
-	Name           string
-	DiscountStart  time.Time
-	DiscountEnd    *time.Time
-	PromotionCode  string
+	ID            string
+	Email         string
+	Name          string
+	DiscountStart time.Time
+	DiscountEnd   *time.Time
+	PromotionCode string
 }
 
 // ListCoupons returns all coupons from Stripe.
