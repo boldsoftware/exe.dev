@@ -152,6 +152,41 @@ export interface GitFileDiff {
   newContent: string;
 }
 
+export interface GitGraphCommit {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  subject: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  refs: string[];
+  isHead: boolean;
+}
+
+export interface GitGraphResponse {
+  commits: GitGraphCommit[];
+  gitRoot: string;
+  currentBranch: string;
+  githubBase?: string;
+}
+
+export interface GitCommitDetailFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+export interface GitCommitDetail {
+  hash: string;
+  subject: string;
+  body: string;
+  files: GitCommitDetailFile[];
+  insTotal: number;
+  delTotal: number;
+}
+
 export interface GitCommitMessage {
   hash: string;
   subject: string;

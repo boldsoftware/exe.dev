@@ -7673,3 +7673,557 @@ kbd {
 .message-selection-toolbar:hover {
   background: var(--bg-tertiary);
 }
+
+/* Git Graph Viewer */
+.git-graph-container {
+  font-size: 0.82rem;
+  position: relative;
+}
+
+.git-graph-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 5;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.git-graph-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.git-graph-close:focus-visible {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.git-graph-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.git-graph-list {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg-base);
+  font-family: var(--font-mono);
+  padding: 0.25rem 0 0.5rem;
+}
+
+.git-graph-status {
+  padding: 1rem;
+  color: var(--text-secondary);
+}
+
+.git-graph-error {
+  color: var(--error-text, #dc2626);
+}
+
+.git-graph-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0.8rem;
+}
+
+.git-graph-row:hover {
+  background: var(--bg-secondary);
+}
+
+.git-graph-row-selected,
+.git-graph-row-selected:hover {
+  background: var(--accent-bg, rgba(59, 130, 246, 0.18));
+}
+
+.git-graph-hash {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  width: 7ch;
+}
+
+/* Override the global svg sizing so each row's graph cell uses the
+   width/height we compute inline. */
+.git-graph-svg {
+  flex: 0 0 auto;
+  pointer-events: none;
+  display: block;
+  width: auto !important;
+  height: auto !important;
+}
+
+.git-graph-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-family: var(--font-sans, inherit);
+  color: var(--text-primary);
+}
+
+.git-graph-refs {
+  display: inline-flex;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.git-graph-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.git-graph-ref {
+  display: inline-block;
+  padding: 0 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}
+
+.git-graph-ref-head {
+  background: #fde68a;
+  color: #78350f;
+}
+
+.git-graph-ref-local {
+  background: #bbf7d0;
+  color: #064e3b;
+}
+
+.git-graph-ref-remote {
+  background: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.git-graph-ref-tag {
+  background: #e9d5ff;
+  color: #581c87;
+}
+
+.git-graph-author {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-sans, inherit);
+}
+
+.git-graph-time {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  min-width: 5rem;
+  text-align: right;
+  font-family: var(--font-sans, inherit);
+}
+
+.git-graph-loadmore {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-family: var(--font-sans, inherit);
+}
+
+.git-graph-loadmore-end {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.git-graph-loadmore-link {
+  color: var(--accent, #3b82f6);
+  text-decoration: none;
+}
+
+.git-graph-loadmore-link:hover {
+  text-decoration: underline;
+}
+
+.git-graph-detail {
+  width: 22rem;
+  max-width: 40%;
+  padding: 0.75rem 1rem;
+  border-left: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.git-graph-detail-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  /* leave room for the floating close button (~2rem) */
+  padding-right: 2.25rem;
+}
+
+.git-graph-gravatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.35rem;
+  flex-shrink: 0;
+  background: var(--bg-base);
+  object-fit: cover;
+}
+
+.git-graph-detail-hash {
+  font-size: 0.72rem;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+.git-graph-detail-sha-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.git-graph-copy-group {
+  display: inline-flex;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.git-graph-copy-btn {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.git-graph-copy-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--text-secondary);
+}
+
+.git-graph-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+.git-graph-open-diff {
+  background: var(--accent, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.git-graph-open-diff:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.git-graph-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 0.25rem;
+  text-decoration: none;
+}
+
+.git-graph-github-link:hover {
+  background: var(--bg-secondary);
+  border-color: var(--text-secondary);
+}
+
+.git-graph-github-link svg {
+  width: 0.95rem !important;
+  height: 0.95rem !important;
+}
+
+.git-graph-detail-subject {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.git-graph-detail-meta {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.git-graph-detail-refs {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.git-graph-detail-root {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+/* The body and diffstat list deliberately have no inner scroll. The
+   sidebar (or, on mobile, the bottom sheet) is the single scrollable
+   surface. Nested scrollers led to tiny, awkward read-areas for long
+   commit messages. */
+.git-graph-detail-body {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.git-graph-detail-loading {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.git-graph-diffstat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+}
+
+.git-graph-diffstat-summary {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+}
+
+.git-graph-diffstat-ins {
+  color: #16a34a;
+}
+
+.git-graph-diffstat-del {
+  color: #dc2626;
+}
+
+.dark .git-graph-diffstat-ins {
+  color: #4ade80;
+}
+
+.dark .git-graph-diffstat-del {
+  color: #f87171;
+}
+
+.git-graph-diffstat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.1rem 0.5rem;
+  align-items: baseline;
+  font-family: var(--font-mono);
+}
+
+.git-graph-diffstat-row {
+  display: contents;
+}
+
+.git-graph-diffstat-path {
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.git-graph-diffstat-counts {
+  display: inline-flex;
+  gap: 0.3rem;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.git-graph-diffstat-binary {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.git-graph-diffstat-bar {
+  font-family: var(--font-mono);
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+  color: #16a34a; /* + */
+}
+
+.dark .git-graph-diffstat-bar {
+  color: #4ade80;
+}
+
+/* Deletions in the bar rendered via ::first-line trick won't work — we
+   mix + and − in one span and color the −s via a pseudo approach isn't
+   easy without splitting. Keep simple: split colors by using two spans. */
+
+.git-graph-parent-link {
+  color: var(--accent, #3b82f6);
+  text-decoration: none;
+  font-family: var(--font-mono);
+}
+
+.git-graph-parent-link:hover {
+  text-decoration: underline;
+}
+
+/* Desktop: the sheet decorations are invisible. */
+.git-graph-sheet-backdrop,
+.git-graph-sheet-topbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .git-graph-author {
+    display: none;
+  }
+  .git-graph-hash {
+    width: 6ch;
+  }
+
+  /* Mobile: the detail pane becomes a bottom sheet that only shows
+     when the user taps a row. It slides up from the bottom and sits
+     above a dimmed backdrop. */
+  .git-graph-detail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    height: 75vh;
+    max-height: 85%;
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+    padding-top: 0.25rem;
+    transform: translateY(100%);
+    transition: transform 0.22s ease;
+    z-index: 4;
+  }
+
+  .git-graph-detail.git-graph-detail-sheet-open {
+    transform: translateY(0);
+  }
+
+  /* Top bar with drag grip + close button; gives the user a clear way
+     to dismiss the sheet. */
+  .git-graph-sheet-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    height: 1.5rem;
+    margin-bottom: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .git-graph-sheet-grip {
+    display: block;
+    width: 2.5rem;
+    height: 0.25rem;
+    border-radius: 999px;
+    background: var(--border-color);
+  }
+
+  .git-graph-sheet-close {
+    position: absolute;
+    top: -0.1rem;
+    right: 0.25rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-base);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  /* Backdrop sits behind the sheet, above everything else in the
+     graph container. Sibling of the sheet so it doesn't get stuck in
+     the sheet's stacking context. */
+  .git-graph-sheet-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 5;
+    animation: git-graph-fade-in 0.18s ease;
+  }
+
+  @keyframes git-graph-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .git-graph-detail.git-graph-detail-sheet-open {
+    z-index: 6;
+  }
+
+  /* When the sheet is closed on mobile, don't reserve any layout space. */
+  .git-graph-detail:not(.git-graph-detail-sheet-open) {
+    pointer-events: none;
+  }
+}

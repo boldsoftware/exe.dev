@@ -27,6 +27,7 @@ import MessageInput from "./MessageInput";
 import DiffViewer from "./DiffViewer";
 import MessageSelectionToolbar from "./MessageSelectionToolbar";
 import { buildMessageQuote } from "../utils/messageQuote";
+import GitGraphViewer from "./GitGraphViewer";
 import AgentsMdEditorModal from "./AgentsMdEditorModal";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
@@ -801,6 +802,7 @@ function ChatInterface({
     isChannelEnabled("browser"),
   );
   const [showDiffViewer, setShowDiffViewer] = useState(false);
+  const [showGitGraph, setShowGitGraph] = useState(false);
   const [showAgentsMdEditor, setShowAgentsMdEditor] = useState(false);
   const [diffViewerInitialCommit, setDiffViewerInitialCommit] = useState<string | undefined>(
     undefined,
@@ -2372,6 +2374,33 @@ function ChatInterface({
                     {t("diffs")}
                   </button>
                 )}
+                {(currentConversation?.cwd || selectedCwd) && (
+                  <button
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      setShowGitGraph(true);
+                    }}
+                    className="overflow-menu-item"
+                  >
+                    <svg
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      className="chat-menu-icon"
+                    >
+                      <circle cx="6" cy="6" r="2" strokeWidth={2} />
+                      <circle cx="6" cy="18" r="2" strokeWidth={2} />
+                      <circle cx="18" cy="12" r="2" strokeWidth={2} />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 8v8M8 6h2a4 4 0 014 4v0M8 18h2a4 4 0 004-4v0"
+                      />
+                    </svg>
+                    {t("gitGraph")}
+                  </button>
+                )}
                 {terminalURL && (
                   <button
                     onClick={() => {
@@ -2805,6 +2834,19 @@ function ChatInterface({
       />
 
       <MessageSelectionToolbar onComment={handleMessageComment} />
+
+      {/* Git Graph Viewer */}
+      <GitGraphViewer
+        cwd={(diffViewerCwd || currentConversation?.cwd || selectedCwd) as string}
+        isOpen={showGitGraph}
+        onClose={() => setShowGitGraph(false)}
+        onOpenDiff={(commit, cwd) => {
+          setShowGitGraph(false);
+          setDiffViewerInitialCommit(commit);
+          setDiffViewerCwd(cwd);
+          setShowDiffViewer(true);
+        }}
+      />
 
       {/* Diff Viewer */}
       <DiffViewer

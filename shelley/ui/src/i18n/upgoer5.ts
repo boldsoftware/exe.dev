@@ -13,6 +13,7 @@ export const upgoer5: TranslationKeys = {
 
   // Overflow Menu
   diffs: "Changes",
+  gitGraph: "Story Tree",
   terminal: "Computer Window",
   archiveConversation: "Put Away Talk",
   checkForNewVersion: "Look for a newer one",

@@ -321,6 +321,28 @@ class ApiService {
     return response.json();
   }
 
+  async getGitGraph(cwd: string, limit = 500): Promise<import("../types").GitGraphResponse> {
+    const response = await fetch(
+      `${this.baseUrl}/git/graph?cwd=${encodeURIComponent(cwd)}&limit=${limit}`,
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  }
+
+  async getGitCommitDetail(cwd: string, hash: string): Promise<import("../types").GitCommitDetail> {
+    const response = await fetch(
+      `${this.baseUrl}/git/commit-detail?cwd=${encodeURIComponent(cwd)}&hash=${encodeURIComponent(hash)}`,
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || response.statusText);
+    }
+    return response.json();
+  }
+
   async getGitDiffFiles(diffId: string, cwd: string): Promise<GitFileInfo[]> {
     const response = await fetch(
       `${this.baseUrl}/git/diffs/${diffId}/files?cwd=${encodeURIComponent(cwd)}`,

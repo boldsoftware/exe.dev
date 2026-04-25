@@ -14,6 +14,7 @@ export const fr: TranslationKeys = {
 
   // Overflow Menu
   diffs: "Différences",
+  gitGraph: "Graphe Git",
   terminal: "Terminal",
   archiveConversation: "Archiver la conversation",
   checkForNewVersion: "Vérifier les mises à jour",

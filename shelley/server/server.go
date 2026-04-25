@@ -289,6 +289,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/list-directory", gzipHandler(http.HandlerFunc(s.handleListDirectory)))
 	mux.Handle("/api/create-directory", http.HandlerFunc(s.handleCreateDirectory))
 	mux.Handle("/api/git/diffs", gzipHandler(http.HandlerFunc(s.handleGitDiffs)))
+	mux.Handle("/api/git/graph", gzipHandler(http.HandlerFunc(s.handleGitGraph)))
+	mux.Handle("/api/git/commit-detail", gzipHandler(http.HandlerFunc(s.handleGitCommitDetail)))
 	mux.Handle("/api/git/diffs/", gzipHandler(http.HandlerFunc(s.handleGitDiffFiles)))
 	mux.Handle("/api/git/file-diff/", gzipHandler(http.HandlerFunc(s.handleGitFileDiff)))
 	mux.Handle("/api/git/commit-messages", gzipHandler(http.HandlerFunc(s.handleGitCommitMessages)))

@@ -619,3 +619,280 @@ func (s *Server) handleGitCreateWorktree(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"path": worktreePath})
 }
+
+// GitGraphCommit is a single commit node in the graph view.
+type GitGraphCommit struct {
+	Hash      string   `json:"hash"`
+	ShortHash string   `json:"shortHash"`
+	Parents   []string `json:"parents"`
+	Subject   string   `json:"subject"`
+	Author    string   `json:"author"`
+	Email     string   `json:"email"`
+	Timestamp int64    `json:"timestamp"`
+	Refs      []string `json:"refs"`
+	IsHead    bool     `json:"isHead"`
+}
+
+// handleGitGraph returns the commit DAG for the graph viewer.
+func (s *Server) handleGitGraph(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cwd := r.URL.Query().Get("cwd")
+	if cwd == "" {
+		http.Error(w, "cwd parameter required", http.StatusBadRequest)
+		return
+	}
+	fi, err := os.Stat(cwd)
+	if err != nil || !fi.IsDir() {
+		http.Error(w, "invalid cwd", http.StatusBadRequest)
+		return
+	}
+	gitRoot, err := getGitRoot(cwd)
+	if err != nil {
+		http.Error(w, "not a git repository", http.StatusBadRequest)
+		return
+	}
+
+	limit := 500
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200000 {
+			limit = n
+		}
+	}
+
+	// Get all branches/tags/HEAD as starting points so multiple tips are
+	// visible in the graph. Include HEAD last so it's emphasized.
+	logArgs := []string{
+		"log",
+		"--all",
+		"--date-order",
+		"--pretty=format:%H%x00%P%x00%s%x00%an%x00%ae%x00%at%x00%D",
+		"-n", strconv.Itoa(limit),
+	}
+	cmd := exec.Command("git", logArgs...)
+	cmd.Dir = gitRoot
+	output, err := cmd.Output()
+	if err != nil {
+		http.Error(w, "git log failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var commits []GitGraphCommit
+	lines := strings.Split(strings.TrimRight(string(output), "\n"), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x00")
+		if len(parts) < 7 {
+			continue
+		}
+		hash := parts[0]
+		var parents []string
+		if parts[1] != "" {
+			parents = strings.Fields(parts[1])
+		}
+		ts, _ := strconv.ParseInt(parts[5], 10, 64)
+
+		var refs []string
+		isHead := false
+		if parts[6] != "" {
+			for _, rref := range strings.Split(parts[6], ", ") {
+				rref = strings.TrimSpace(rref)
+				if rref == "" {
+					continue
+				}
+				// HEAD -> main form
+				if strings.HasPrefix(rref, "HEAD -> ") {
+					isHead = true
+					refs = append(refs, "HEAD", strings.TrimPrefix(rref, "HEAD -> "))
+					continue
+				}
+				if rref == "HEAD" {
+					isHead = true
+				}
+				refs = append(refs, rref)
+			}
+		}
+
+		short := hash
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		commits = append(commits, GitGraphCommit{
+			Hash:      hash,
+			ShortHash: short,
+			Parents:   parents,
+			Subject:   parts[2],
+			Author:    parts[3],
+			Email:     parts[4],
+			Timestamp: ts,
+			Refs:      refs,
+			IsHead:    isHead,
+		})
+	}
+
+	// Current branch for convenience.
+	branchCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	branchCmd.Dir = gitRoot
+	branchOut, _ := branchCmd.Output()
+	currentBranch := strings.TrimSpace(string(branchOut))
+
+	// Origin remote URL → GitHub base URL, if it's github.
+	remoteCmd := exec.Command("git", "config", "--get", "remote.origin.url")
+	remoteCmd.Dir = gitRoot
+	remoteOut, _ := remoteCmd.Output()
+	githubBase := githubBaseURL(strings.TrimSpace(string(remoteOut)))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"commits":       commits,
+		"gitRoot":       gitRoot,
+		"currentBranch": currentBranch,
+		"githubBase":    githubBase,
+	})
+}
+
+// githubBaseURL returns the https://github.com/owner/repo base URL for a
+// remote URL, or "" if the remote isn't a github.com one. Supports
+// https://, git://, and ssh (git@github.com:owner/repo.git) forms.
+func githubBaseURL(remote string) string {
+	if remote == "" {
+		return ""
+	}
+	var path string
+	switch {
+	case strings.HasPrefix(remote, "git@github.com:"):
+		path = strings.TrimPrefix(remote, "git@github.com:")
+	case strings.HasPrefix(remote, "ssh://git@github.com/"):
+		path = strings.TrimPrefix(remote, "ssh://git@github.com/")
+	case strings.HasPrefix(remote, "https://github.com/"):
+		path = strings.TrimPrefix(remote, "https://github.com/")
+	case strings.HasPrefix(remote, "http://github.com/"):
+		path = strings.TrimPrefix(remote, "http://github.com/")
+	case strings.HasPrefix(remote, "git://github.com/"):
+		path = strings.TrimPrefix(remote, "git://github.com/")
+	default:
+		return ""
+	}
+	path = strings.TrimSuffix(path, ".git")
+	path = strings.TrimSuffix(path, "/")
+	if path == "" || !strings.Contains(path, "/") {
+		return ""
+	}
+	return "https://github.com/" + path
+}
+
+// GitCommitDetailFile is one file's diffstat line.
+type GitCommitDetailFile struct {
+	Path      string `json:"path"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+	Binary    bool   `json:"binary"`
+}
+
+// GitCommitDetail is the full detail bundle for a single commit.
+type GitCommitDetail struct {
+	Hash     string                `json:"hash"`
+	Subject  string                `json:"subject"`
+	Body     string                `json:"body"`
+	Files    []GitCommitDetailFile `json:"files"`
+	InsTotal int                   `json:"insTotal"`
+	DelTotal int                   `json:"delTotal"`
+}
+
+// handleGitCommitDetail returns commit body + numstat for a single commit.
+// Query: cwd, hash.
+func (s *Server) handleGitCommitDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cwd := r.URL.Query().Get("cwd")
+	hash := r.URL.Query().Get("hash")
+	if cwd == "" || hash == "" {
+		http.Error(w, "cwd and hash are required", http.StatusBadRequest)
+		return
+	}
+	// Validate hash shape: hex only, 4..64 chars. Prevents flag injection.
+	if len(hash) < 4 || len(hash) > 64 {
+		http.Error(w, "invalid hash", http.StatusBadRequest)
+		return
+	}
+	for _, c := range hash {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			http.Error(w, "invalid hash", http.StatusBadRequest)
+			return
+		}
+	}
+	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+		http.Error(w, "invalid cwd", http.StatusBadRequest)
+		return
+	}
+	gitRoot, err := getGitRoot(cwd)
+	if err != nil {
+		http.Error(w, "not a git repository", http.StatusBadRequest)
+		return
+	}
+
+	// Body (everything after the subject line).
+	bodyCmd := exec.Command("git", "log", "-1", "--format=%B", hash)
+	bodyCmd.Dir = gitRoot
+	bodyOut, err := bodyCmd.Output()
+	if err != nil {
+		http.Error(w, "git log failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	raw := strings.TrimRight(string(bodyOut), "\n")
+	subject := raw
+	body := ""
+	if i := strings.Index(raw, "\n"); i >= 0 {
+		subject = raw[:i]
+		body = strings.TrimLeft(raw[i+1:], "\n")
+	}
+
+	// Diffstat via --numstat: "add\tdel\tpath", or "-\t-\tpath" for binary.
+	numCmd := exec.Command("git", "show", "--format=", "--numstat", hash)
+	numCmd.Dir = gitRoot
+	numOut, err := numCmd.Output()
+	if err != nil {
+		http.Error(w, "git show failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var files []GitCommitDetailFile
+	var insTotal, delTotal int
+	for _, line := range strings.Split(strings.TrimRight(string(numOut), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		f := GitCommitDetailFile{Path: parts[2]}
+		if parts[0] == "-" || parts[1] == "-" {
+			f.Binary = true
+		} else {
+			f.Additions, _ = strconv.Atoi(parts[0])
+			f.Deletions, _ = strconv.Atoi(parts[1])
+			insTotal += f.Additions
+			delTotal += f.Deletions
+		}
+		files = append(files, f)
+	}
+	if files == nil {
+		files = []GitCommitDetailFile{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(GitCommitDetail{
+		Hash:     hash,
+		Subject:  subject,
+		Body:     body,
+		Files:    files,
+		InsTotal: insTotal,
+		DelTotal: delTotal,
+	})
+}

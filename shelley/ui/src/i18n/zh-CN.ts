@@ -13,6 +13,7 @@ export const zhCN: TranslationKeys = {
 
   // Overflow Menu
   diffs: "差异对比",
+  gitGraph: "Git 图",
   terminal: "终端",
   archiveConversation: "归档对话",
   checkForNewVersion: "检查新版本",

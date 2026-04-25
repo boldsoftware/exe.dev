@@ -13,6 +13,7 @@ export const zhTW: TranslationKeys = {
 
   // Overflow Menu
   diffs: "差異比較",
+  gitGraph: "Git 圖",
   terminal: "終端機",
   archiveConversation: "封存對話",
   checkForNewVersion: "檢查新版本",

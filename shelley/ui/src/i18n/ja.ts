@@ -13,6 +13,7 @@ export const ja: TranslationKeys = {
 
   // Overflow Menu
   diffs: "差分",
+  gitGraph: "Git グラフ",
   terminal: "ターミナル",
   archiveConversation: "会話をアーカイブ",
   checkForNewVersion: "新しいバージョンを確認",

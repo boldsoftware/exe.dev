@@ -13,6 +13,7 @@ export interface TranslationKeys {
 
   // Overflow Menu
   diffs: string;
+  gitGraph: string;
   terminal: string;
   archiveConversation: string;
   checkForNewVersion: string;
