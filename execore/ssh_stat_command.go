@@ -2,193 +2,288 @@ package execore
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"flag"
 	"fmt"
-	"time"
+	"math"
 
-	"exe.dev/billing/plan"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
 
+func statCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("stat", flag.ContinueOnError)
+	fs.String("range", "24h", "time range: 24h, 7d, or 30d")
+	fs.Bool("json", false, "output in JSON format")
+	return fs
+}
+
+// parseStatRange parses the range flag into hours. Accepts 24h, 7d, 30d.
+func parseStatRange(s string) (int, error) {
+	switch s {
+	case "24h", "24H":
+		return 24, nil
+	case "7d", "7D":
+		return 168, nil
+	case "30d", "30D":
+		return 720, nil
+	default:
+		return 0, fmt.Errorf("invalid range %q (use 24h, 7d, or 30d)", s)
+	}
+}
+
 // handleStatCommand handles the "stat <vm-name>" command.
-// It prints a one-shot summary of disk and bandwidth usage for a named VM,
-// including plan limits and overage state.
+// Shows per-VM metrics (CPU, memory, disk, IO) matching the web Usage view.
 func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) == 0 {
-		return cc.Errorf("usage: stat <vm-name>")
+		return cc.Errorf("usage: stat <vm-name> [--range=24h|7d|30d]")
 	}
 	vmName := cc.Args[0]
 	userID := cc.User.ID
 
-	// Verify the VM exists and belongs to this user.
-	_, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxWithOwnerNamed, exedb.BoxWithOwnerNamedParams{
-		Name:            vmName,
-		CreatedByUserID: userID,
-	})
+	rangeStr := cc.FlagSet.Lookup("range").Value.String()
+	hours, err := parseStatRange(rangeStr)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return cc.Errorf("VM not found: %s", vmName)
-		}
-		return cc.Errorf("looking up VM: %v", err)
+		return cc.Errorf("%v", err)
 	}
 
-	// Look up the user's plan.
-	planRow, planErr := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, userID)
-	var planID string
-	var includedDisk uint64
-	var includedBandwidth uint64
-	if planErr == nil {
-		planID = planRow.PlanID
-		includedDisk = plan.IncludedDisk(planID, ss.server.env.DefaultDisk)
-		includedBandwidth = plan.IncludedBandwidth(planID)
+	// Verify the VM exists and belongs to this user.
+	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, userID)
+	if err != nil {
+		return cc.Errorf("listing VMs: %v", err)
 	}
-
-	// Compute billing period.
-	var accountID string
-	if planErr == nil {
-		accountID = planRow.AccountID
-	}
-	periodStart, periodEnd := billingPeriodForUser(ctx, ss.server, accountID, planErr)
-
-	// Fetch usage metrics for this period.
-	var diskProvisionedBytes int64
-	var bandwidthBytes int64
-	if ss.server.metricsdURL != "" {
-		client := newMetricsClient(ss.server.metricsdURL)
-		summaries, err := client.queryUsage(ctx, []string{userID}, periodStart, periodEnd)
-		if err == nil {
-			for _, summary := range summaries {
-				for _, vm := range summary.VMs {
-					if vm.VMName == vmName {
-						diskProvisionedBytes = vm.DiskProvisionedMaxBytes
-						bandwidthBytes = vm.BandwidthBytes
-					}
-				}
-			}
+	var vmStatus string
+	found := false
+	for _, b := range boxes {
+		if b.Name == vmName {
+			vmStatus = b.Status
+			found = true
+			break
 		}
 	}
-
-	// Fetch live metrics from exelet.
-	var liveRow *vmUsageRow
-	usageRows, usageErr := ss.fetchVMUsageForUser(ctx, userID)
-	if usageErr == nil {
-		for i := range usageRows {
-			if usageRows[i].Name == vmName {
-				liveRow = &usageRows[i]
-				break
-			}
-		}
+	if !found {
+		return cc.Errorf("VM not found: %s", vmName)
 	}
 
-	// Print the stat output.
-	cc.Writeln("\033[1m%s\033[0m", vmName)
-
-	// Live metrics section.
-	if liveRow != nil && liveRow.Status == "running" {
-		cc.Writeln("  Status:     \033[32mrunning\033[0m")
-		cc.Writeln("  CPU:        %.1f%%", liveRow.CPUPercent)
-		if liveRow.CPUs > 0 {
-			cc.Writeln("  vCPUs:      %d", liveRow.CPUs)
-		}
-		if liveRow.MemCapacity > 0 {
-			cc.Writeln("  Memory:     %s", fmtBytes(liveRow.MemCapacity))
-		}
-		diskUsed := liveRow.DiskLogicalBytes
-		if diskUsed == 0 {
-			diskUsed = liveRow.DiskBytes
-		}
-		if diskUsed > 0 {
-			if liveRow.DiskCapacity > 0 {
-				cc.Writeln("  Disk used:  %s / %s", fmtBytes(diskUsed), fmtBytes(liveRow.DiskCapacity))
-			} else {
-				cc.Writeln("  Disk used:  %s", fmtBytes(diskUsed))
-			}
-		}
-	} else if liveRow != nil {
-		cc.Writeln("  Status:     %s", liveRow.Status)
+	// Fetch historical metrics from metricsd.
+	if ss.server.metricsdURL == "" {
+		return cc.Errorf("metrics not available")
 	}
 
-	// Pool context (only for plans with pool limits).
-	if planErr == nil && liveRow != nil && liveRow.Status == "running" {
-		cpuMax := plan.MaxCPUsForPlan(planID)
-		memMax := plan.MaxMemoryForPlan(planID)
-		if cpuMax > 0 || memMax > 0 {
-			// Compute totals across all VMs.
-			var totalCPU float64
-			var totalMem uint64
-			for _, row := range usageRows {
-				if row.Status == "running" {
-					totalCPU += row.CPUPercent / 100.0
-					totalMem += row.MemBytes
-				}
-			}
-			thisCPU := liveRow.CPUPercent / 100.0
+	client := newMetricsClient(ss.server.metricsdURL)
+	metrics, err := client.queryVMs(ctx, []string{vmName}, hours)
+	if err != nil {
+		return cc.Errorf("querying metrics: %v", err)
+	}
 
-			cc.Writeln("")
-			cc.Writeln("  \033[2mRESOURCE POOL\033[0m")
-			if cpuMax > 0 {
-				cc.Writeln("  vCPU:      %s", poolBar(totalCPU, float64(cpuMax),
-					fmt.Sprintf("%.1f of %d (this VM: %.1f)", clampF64(totalCPU, float64(cpuMax)), cpuMax, thisCPU)))
-			}
-			if memMax > 0 {
-				thisMem := liveRow.MemBytes
-				cc.Writeln("  Memory:    %s", poolBar(float64(totalMem), float64(memMax),
-					fmt.Sprintf("%s of %s (this VM: %s)", fmtBytes(clampU64(totalMem, memMax)), fmtBytes(memMax), fmtBytes(thisMem))))
-			}
+	points := computeUsageData(metrics[vmName])
+
+	rangeLabel := map[int]string{24: "24h", 168: "7d", 720: "30d"}[hours]
+
+	if cc.WantJSON() {
+		cc.WriteJSON(statJSON{
+			Name:   vmName,
+			Status: vmStatus,
+			Range:  rangeLabel,
+			Points: points,
+		})
+		return nil
+	}
+
+	cc.Writeln("\033[1m%s\033[0m  %s  %s", vmName, statusColorStr(vmStatus), rangeLabel)
+
+	if len(points) == 0 {
+		cc.Writeln("  No metrics data available.")
+		cc.Writeln("")
+		return nil
+	}
+
+	// Compute summary stats from the time series.
+	last := points[len(points)-1]
+	cpuNominal := last.CPUNominal
+
+	var peakCPUPct, peakMemGB, peakDiskGB, peakIOMBps float64
+	var avgCPUPct, avgMemGB, avgDiskGB float64
+	for _, p := range points {
+		nom := p.CPUNominal
+		if nom <= 0 {
+			nom = 1
+		}
+		cpuPct := (p.CPUCores / nom) * 100
+		if cpuPct > peakCPUPct {
+			peakCPUPct = cpuPct
+		}
+		avgCPUPct += cpuPct
+
+		if p.MemoryRSSGB > peakMemGB {
+			peakMemGB = p.MemoryRSSGB
+		}
+		avgMemGB += p.MemoryRSSGB
+
+		if p.DiskUsedGB > peakDiskGB {
+			peakDiskGB = p.DiskUsedGB
+		}
+		avgDiskGB += p.DiskUsedGB
+
+		io := p.IOReadMBps + p.IOWriteMBps
+		if io > peakIOMBps {
+			peakIOMBps = io
 		}
 	}
+	n := float64(len(points))
+	avgCPUPct /= n
+	avgMemGB /= n
+	avgDiskGB /= n
+
+	// Current values (last point).
+	curCPUPct := 0.0
+	if cpuNominal > 0 {
+		curCPUPct = (last.CPUCores / cpuNominal) * 100
+	}
+	curIO := last.IOReadMBps + last.IOWriteMBps
 
 	cc.Writeln("")
-	cc.Writeln("  Period:     %s \u2013 %s", formatDate(periodStart), formatDate(periodEnd))
-
-	// Disk line: show provisioned size, with extra if over included.
-	cc.Writeln("  Disk:       %s", diskStatLine(diskProvisionedBytes, includedDisk))
-
-	// Bandwidth line: show used / included.
-	cc.Writeln("  Bandwidth:  %s", bandwidthStatLine(bandwidthBytes, includedBandwidth))
-
+	//                  current    avg        peak
+	cc.Writeln("  \033[2m%-10s %8s %8s %8s\033[0m", "", "current", "avg", "peak")
+	cc.Writeln("  %-10s %7s%% %7s%% %7s%%", "CPU", fmtF1(curCPUPct), fmtF1(avgCPUPct), fmtF1(peakCPUPct))
+	cc.Writeln("  %-10s %8s %8s %8s", "RSS", fmtGBStat(last.MemoryRSSGB), fmtGBStat(avgMemGB), fmtGBStat(peakMemGB))
+	cc.Writeln("  %-10s %8s %8s %8s", "Disk", fmtGBStat(last.DiskUsedGB), fmtGBStat(avgDiskGB), fmtGBStat(peakDiskGB))
+	cc.Writeln("  %-10s %8s %8s %8s", "IO", fmtMBpsStat(curIO), "\033[2m-\033[0m", fmtMBpsStat(peakIOMBps))
 	cc.Writeln("")
+
+	// Sparkline section.
+	cc.Writeln("  \033[2mSPARKLINES\033[0m")
+	cc.Writeln("  CPU:  %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
+		nom := p.CPUNominal
+		if nom <= 0 {
+			nom = 1
+		}
+		return (p.CPUCores / nom) * 100
+	})))
+	cc.Writeln("  RSS:  %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
+		return p.MemoryRSSGB
+	})))
+	cc.Writeln("  Disk: %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
+		return p.DiskUsedGB
+	})))
+	cc.Writeln("  IO:   %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
+		return p.IOReadMBps + p.IOWriteMBps
+	})))
+	cc.Writeln("")
+
 	return nil
 }
 
-// diskStatLine formats the disk provisioned size with extra-disk indicator.
-// Shows just the size when at or below included, adds extra amount when over.
-func diskStatLine(provisionedBytes int64, includedBytes uint64) string {
-	size := fmtBytes(uint64(provisionedBytes))
-	if includedBytes == 0 {
-		return size
-	}
-	if provisionedBytes <= int64(includedBytes) {
-		return fmt.Sprintf("\033[32m%s\033[0m", size)
-	}
-	extraBytes := provisionedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[33m%s (%s extra)\033[0m",
-		size, fmtBytes(uint64(extraBytes)))
+// statJSON is the JSON output for the stat command.
+type statJSON struct {
+	Name   string           `json:"name"`
+	Status string           `json:"status"`
+	Range  string           `json:"range"`
+	Points []usageDataPoint `json:"points"`
 }
 
-// bandwidthStatLine formats bandwidth usage as used / included.
-func bandwidthStatLine(usedBytes int64, includedBytes uint64) string {
-	used := fmtBytes(uint64(usedBytes))
-	if includedBytes == 0 {
-		return used
+// statusColorStr returns a colored status string.
+func statusColorStr(status string) string {
+	switch status {
+	case "running":
+		return "\033[32m" + status + "\033[0m"
+	case "stopped":
+		return "\033[2m" + status + "\033[0m"
+	default:
+		return status
 	}
-	incl := fmtBytes(includedBytes)
-	if usedBytes <= int64(includedBytes) {
-		pct := float64(usedBytes) / float64(includedBytes) * 100
-		color := "\033[32m" // green
-		if pct >= 80 {
-			color = "\033[33m" // yellow
+}
+
+// fmtF1 formats a float with 1 decimal place.
+func fmtF1(v float64) string {
+	return fmt.Sprintf("%.1f", v)
+}
+
+// fmtGBStat formats a GB value for the stat table.
+func fmtGBStat(gb float64) string {
+	if gb >= 1 {
+		return fmt.Sprintf("%.1f GB", gb)
+	}
+	mb := gb * 1024
+	if mb < 1 {
+		return "0 MB"
+	}
+	return fmt.Sprintf("%.0f MB", mb)
+}
+
+// fmtMBpsStat formats a MB/s value for the stat table.
+func fmtMBpsStat(v float64) string {
+	if v < 0.1 {
+		return "0"
+	}
+	return fmt.Sprintf("%.1f MB/s", v)
+}
+
+// extractField extracts a float64 series from usage data points.
+func extractField(points []usageDataPoint, fn func(usageDataPoint) float64) []float64 {
+	vals := make([]float64, len(points))
+	for i, p := range points {
+		vals[i] = fn(p)
+	}
+	return vals
+}
+
+// sparkline renders a series of values as a unicode sparkline.
+func sparkline(values []float64) string {
+	if len(values) == 0 {
+		return "\033[2m(no data)\033[0m"
+	}
+
+	// Downsample to at most 40 buckets for terminal width.
+	const maxBuckets = 40
+	buckets := downsample(values, maxBuckets)
+
+	min, max := buckets[0], buckets[0]
+	for _, v := range buckets {
+		if v < min {
+			min = v
 		}
-		return fmt.Sprintf("%s%s / %s\033[0m", color, used, incl)
+		if v > max {
+			max = v
+		}
 	}
-	extraBytes := usedBytes - int64(includedBytes)
-	return fmt.Sprintf("\033[1;31m%s / %s (%s extra)\033[0m",
-		used, incl, fmtBytes(uint64(extraBytes)))
+
+	blocks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	out := make([]rune, len(buckets))
+	for i, v := range buckets {
+		if max == min {
+			out[i] = blocks[0]
+		} else {
+			idx := int(math.Round((v - min) / (max - min) * float64(len(blocks)-1)))
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(blocks) {
+				idx = len(blocks) - 1
+			}
+			out[i] = blocks[idx]
+		}
+	}
+	return string(out)
 }
 
-// formatDate formats a time.Time as a short date string.
-func formatDate(t time.Time) string {
-	return t.UTC().Format("Jan 2, 2006")
+// downsample reduces a slice to at most n buckets by averaging.
+func downsample(values []float64, n int) []float64 {
+	if len(values) <= n {
+		return values
+	}
+	buckets := make([]float64, n)
+	bucketSize := float64(len(values)) / float64(n)
+	for i := 0; i < n; i++ {
+		start := int(float64(i) * bucketSize)
+		end := int(float64(i+1) * bucketSize)
+		if end > len(values) {
+			end = len(values)
+		}
+		var sum float64
+		for j := start; j < end; j++ {
+			sum += values[j]
+		}
+		buckets[i] = sum / float64(end-start)
+	}
+	return buckets
 }

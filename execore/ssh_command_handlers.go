@@ -364,11 +364,17 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "stat",
 			AllowTagScoped:    true,
-			Description:       "Show disk and bandwidth usage for a VM",
-			Usage:             "stat <vm-name>",
+			Description:       "Show CPU, memory, disk, and IO metrics for a VM",
+			Usage:             "stat <vm-name> [--range=24h|7d|30d]",
 			HasPositionalArgs: true,
+			FlagSetFunc:       statCommandFlags,
 			CompleterFunc:     ss.completeBoxNames,
 			Handler:           ss.handleStatCommand,
+			Examples: []string{
+				"stat my-vm             # last 24 hours (default)",
+				"stat my-vm --range=7d  # last 7 days",
+				"stat my-vm --range=30d # last 30 days",
+			},
 		},
 		{
 			Name:              "cp",
