@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><title>Coupon: {{if .Coupon.Name}}{{.Coupon.Name}}{{else}}{{.Coupon.ID}}{{end}}</title>
+{{template "base-head"}}
+<style>
+table { border-collapse: collapse; }
+th, td { text-align: left; padding: 4px 12px; border-bottom: 1px solid #eee; }
+th { color: #666; font-size: 12px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+.badge-valid { background: #28a745; color: white; }
+.badge-invalid { background: #dc3545; color: white; }
+.badge-duration { background: #6c757d; color: white; }
+.mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+.section { margin-top: 24px; }
+.detail-table th { width: 160px; white-space: nowrap; }
+</style>
+</head><body>
+<h1>Coupon: {{if .Coupon.Name}}{{.Coupon.Name}}{{else}}{{.Coupon.ID}}{{end}}</h1>
+<p><a href="/debug">/debug</a> &gt; billing &gt; <a href="/debug/coupons">coupons</a> &gt; {{.Coupon.ID}}</p>
+
+<div class="section">
+<h2>Details</h2>
+<table class="detail-table">
+    <tr><th>ID</th><td class="mono">{{.Coupon.ID}}</td></tr>
+    <tr><th>Name</th><td>{{if .Coupon.Name}}{{.Coupon.Name}}{{else}}<em>none</em>{{end}}</td></tr>
+    <tr><th>Discount</th><td>{{if .Coupon.PercentOff}}{{printf "%.0f" .Coupon.PercentOff}}% off{{else if .Coupon.AmountOffCents}}${{printf "%.2f" (divf64 .Coupon.AmountOffCents 100)}} off{{if .Coupon.Currency}} ({{.Coupon.Currency}}){{end}}{{end}}</td></tr>
+    <tr><th>Duration</th><td><span class="badge badge-duration">{{.Coupon.Duration}}{{if .Coupon.DurationInMonths}} ({{.Coupon.DurationInMonths}} months){{end}}</span></td></tr>
+    <tr><th>Redeemed</th><td>{{.Coupon.TimesRedeemed}}{{if .Coupon.MaxRedemptions}} / {{.Coupon.MaxRedemptions}}{{end}}</td></tr>
+    <tr><th>Status</th><td>{{if .Coupon.Valid}}<span class="badge badge-valid">valid</span>{{else}}<span class="badge badge-invalid">invalid</span>{{end}}</td></tr>
+    <tr><th>Created</th><td>{{.Coupon.Created.Format "2006-01-02 15:04:05 UTC"}}</td></tr>
+    {{if .Coupon.RedeemBy}}<tr><th>Redeem By</th><td>{{.Coupon.RedeemBy.Format "2006-01-02 15:04:05 UTC"}}</td></tr>{{end}}
+    <tr><th>Stripe</th><td><a href="https://dashboard.stripe.com/coupons/{{.Coupon.ID}}" target="_blank">View in Stripe ↗</a></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Customers ({{len .Customers}})</h2>
+{{if .Customers}}
+<table>
+<thead>
+<tr>
+    <th>Customer ID</th>
+    <th>Email</th>
+    <th>Name</th>
+    <th>Promo Code</th>
+    <th>Discount Start</th>
+    <th>Discount End</th>
+</tr>
+</thead>
+<tbody>
+{{range .Customers}}
+<tr>
+    <td class="mono"><a href="https://dashboard.stripe.com/customers/{{.ID}}" target="_blank">{{.ID}}</a></td>
+    <td>{{if .Email}}<a href="/debug/user?email={{.Email}}">{{.Email}}</a>{{else}}<em>none</em>{{end}}</td>
+    <td>{{if .Name}}{{.Name}}{{else}}<em>none</em>{{end}}</td>
+    <td>{{if .PromotionCode}}<code>{{.PromotionCode}}</code>{{else}}—{{end}}</td>
+    <td>{{.DiscountStart.Format "2006-01-02"}}</td>
+    <td>{{if .DiscountEnd}}{{.DiscountEnd.Format "2006-01-02"}}{{else}}—{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p>No customers have redeemed this coupon (or their discount is no longer active).</p>
+{{end}}
+</div>
+
+</body></html>

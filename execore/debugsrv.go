@@ -86,6 +86,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/plans", s.handleDebugPlans)
 	mux.HandleFunc("GET /debug/entitlements", s.handleDebugEntitlements)
 	mux.HandleFunc("GET /debug/billing-jump", s.handleDebugBillingJump)
+	mux.HandleFunc("GET /debug/coupons", s.handleDebugCoupons)
+	mux.HandleFunc("GET /debug/coupons/{id}", s.handleDebugCouponDetail)
 	mux.HandleFunc("POST /debug/user/give-invites", s.handleDebugUserGiveInvites)
 	mux.HandleFunc("POST /debug/user/migrate-region", s.handleDebugUserMigrateRegion)
 	mux.HandleFunc("POST /debug/user/migrate-vms", s.handleDebugUserMigrateVMs)
@@ -7040,6 +7042,46 @@ func (s *Server) handleDebugBillingJump(w http.ResponseWriter, r *http.Request) 
 
 	// Treat as userId directly.
 	http.Redirect(w, r, "/debug/billing?userId="+url.QueryEscape(q), http.StatusFound)
+}
+
+func (s *Server) handleDebugCoupons(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	coupons, err := s.billing.ListCoupons(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("list coupons: %v", err), http.StatusInternalServerError)
+		return
+	}
+	data := struct {
+		Coupons []billing.CouponInfo
+	}{Coupons: coupons}
+	s.renderDebugTemplate(ctx, w, "coupons.html", data)
+}
+
+func (s *Server) handleDebugCouponDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	couponID := r.PathValue("id")
+	if couponID == "" {
+		http.Error(w, "coupon id is required", http.StatusBadRequest)
+		return
+	}
+
+	coupon, err := s.billing.GetCoupon(ctx, couponID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("get coupon: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	customers, err := s.billing.ListCouponCustomers(ctx, couponID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("list coupon customers: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		Coupon    *billing.CouponInfo
+		Customers []billing.CouponCustomer
+	}{Coupon: coupon, Customers: customers}
+	s.renderDebugTemplate(ctx, w, "coupon-detail.html", data)
 }
 
 func (s *Server) handleDebugUserGiveInvites(w http.ResponseWriter, r *http.Request) {

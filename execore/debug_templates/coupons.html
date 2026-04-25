@@ -1,0 +1,51 @@
+<!doctype html>
+<html><head><title>Coupons</title>
+{{template "base-head"}}
+<style>
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 4px 12px; border-bottom: 1px solid #eee; }
+th { color: #666; font-size: 12px; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+.badge-valid { background: #28a745; color: white; }
+.badge-invalid { background: #dc3545; color: white; }
+.badge-duration { background: #6c757d; color: white; }
+.mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+</style>
+</head><body>
+<h1>Coupons</h1>
+<p><a href="/debug">/debug</a> &gt; billing &gt; coupons</p>
+
+<table>
+<thead>
+<tr>
+    <th>Name</th>
+    <th>ID</th>
+    <th>Discount</th>
+    <th>Duration</th>
+    <th>Redeemed</th>
+    <th>Status</th>
+    <th>Created</th>
+</tr>
+</thead>
+<tbody>
+{{range .Coupons}}
+<tr>
+    <td><a href="/debug/coupons/{{urlPathEscape .ID}}">{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</a></td>
+    <td class="mono">{{.ID}}</td>
+    <td>{{if .PercentOff}}{{printf "%.0f" .PercentOff}}% off{{else if .AmountOffCents}}${{printf "%.2f" (divf64 .AmountOffCents 100)}} off{{end}}</td>
+    <td><span class="badge badge-duration">{{.Duration}}{{if .DurationInMonths}} ({{.DurationInMonths}}mo){{end}}</span></td>
+    <td class="num">{{.TimesRedeemed}}{{if .MaxRedemptions}} / {{.MaxRedemptions}}{{end}}</td>
+    <td>{{if .Valid}}<span class="badge badge-valid">valid</span>{{else}}<span class="badge badge-invalid">invalid</span>{{end}}</td>
+    <td>{{.Created.Format "2006-01-02"}}</td>
+</tr>
+{{end}}
+{{if not .Coupons}}
+<tr><td colspan="7">No coupons found.</td></tr>
+{{end}}
+</tbody>
+</table>
+
+</body></html>
