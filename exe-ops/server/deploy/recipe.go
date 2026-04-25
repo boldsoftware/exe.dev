@@ -84,7 +84,7 @@ func (r Recipe) remoteUser() string {
 // to prod-stage hosts. Processes not in this set require staging first.
 func prodDeployAllowed(process string) bool {
 	switch process {
-	case "metricsd", "cgtop", "exeletd", "exed", "exeprox", "exepipe":
+	case "metricsd", "cgtop", "exeletd", "exed", "exeprox", "exepipe", "exe-ops":
 		return true
 	}
 	return false
@@ -219,6 +219,9 @@ var Recipes = map[string]Recipe{
 		HealthTLS:   true,
 		PreBuildCmds: []string{
 			"make build-ui",
+		},
+		ServiceFiles: map[string]string{
+			"": "exe-ops/ops/exe-ops-server.service",
 		},
 	},
 }
