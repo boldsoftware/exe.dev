@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
 func (s *Service) GetInstance(ctx context.Context, req *api.GetInstanceRequest) (*api.GetInstanceResponse, error) {
@@ -60,6 +61,35 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 	}
 
 	i.State = state
+	if size, ok := s.readDiskSizeBytes(ctx, id); ok && i.VMConfig != nil {
+		// The zvol volsize is the source of truth for provisioned disk size.
+		// Overwrite the persisted VMConfig.Disk so callers always see the live
+		// value (and so drift between config.json and the zvol is invisible).
+		i.VMConfig.Disk = size
+	}
 
 	return i, nil
+}
+
+// readDiskSizeBytes returns the current provisioned disk size from the
+// storage manager (ZFS volsize). The second return value is false when the
+// zvol can't be read (e.g. during creation/deletion, transient storage
+// error, or tests without a StorageManager); callers should fall back to
+// the persisted VMConfig.Disk in that case.
+func (s *Service) readDiskSizeBytes(ctx context.Context, id string) (uint64, bool) {
+	if s.context == nil || s.context.StorageManager == nil {
+		return 0, false
+	}
+	sm, err := s.resolveStorageForInstance(ctx, id)
+	if err != nil || sm == nil {
+		return 0, false
+	}
+	fs, err := sm.Get(ctx, id)
+	if err != nil {
+		if !errors.Is(err, storageapi.ErrNotFound) {
+			s.log.DebugContext(ctx, "read disk size from storage", "id", id, "error", err)
+		}
+		return 0, false
+	}
+	return fs.Size, true
 }

@@ -75,11 +75,9 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 		s.log.WarnContext(ctx, "failed to notify VMM of disk resize", "instance_id", req.ID, "error", err)
 	}
 
-	// Update the saved VM config with the new disk size
-	if err := s.updateInstanceDiskSize(ctx, req.ID, newSize); err != nil {
-		// Log but don't fail - the disk is already expanded
-		s.log.WarnContext(ctx, "failed to update instance config with new disk size", "instance_id", req.ID, "error", err)
-	}
+	// Note: we intentionally do not write the new disk size back to config.json.
+	// The zvol volsize is the source of truth, and getInstance overlays it onto
+	// VMConfig.Disk at read time (see readDiskSizeBytes).
 
 	s.log.InfoContext(ctx, "disk grown successfully",
 		"instance_id", req.ID,
@@ -91,19 +89,4 @@ func (s *Service) GrowDisk(ctx context.Context, req *api.GrowDiskRequest) (*api.
 		OldSize: oldSize,
 		NewSize: newSize,
 	}, nil
-}
-
-// updateInstanceDiskSize updates the saved VM config with the new disk size
-func (s *Service) updateInstanceDiskSize(ctx context.Context, id string, newSize uint64) error {
-	// Load the current instance config
-	instance, err := s.getInstance(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Update the disk size in the config
-	instance.VMConfig.Disk = newSize
-
-	// Save the updated config
-	return s.saveInstanceConfig(instance)
 }
