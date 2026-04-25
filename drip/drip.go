@@ -408,7 +408,7 @@ func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, skipReason strin
 		body = "Hello,\n\n" +
 			"Your exe.dev trial ends in 2 days.\n\n" +
 			"Upgrade now to keep your work:\n" +
-			r.webURL("/billing") + "\n" +
+			r.webURL("/user") + "\n" +
 			signature()
 	} else {
 		body = "Hello,\n\n" +
@@ -428,8 +428,7 @@ func (r *Runner) day7Expiry() (subject, body, skipReason string, shouldSend bool
 		"Your VMs are stopped, but your disk is preserved for 30 days.\n\n" +
 		"Upgrade to the Individual plan to turn your VMs back on. " +
 		"New subscribers receive a $100 LLM credit.\n\n" +
-		"Upgrade:\n" +
-		r.webURL("/billing") + "\n" +
+		"Upgrade: " + r.webURL("/user") + "\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -443,7 +442,7 @@ func (r *Runner) day10WinBack(ctx context.Context, u exedb.ListTrialUsersForDrip
 		"Your exe.dev workspace and persistent disk are still intact. " +
 		"Everything you built during your trial is waiting for you.\n\n" +
 		"Upgrade to pick up where you left off:\n" +
-		r.webURL("/billing") + "\n" +
+		r.webURL("/user") + "\n" +
 		signature()
 	return subject, body, "", true
 }
@@ -454,7 +453,7 @@ func (r *Runner) day14Final() (subject, body, skipReason string, shouldSend bool
 		"This is our last email about your exe.dev trial.\n\n" +
 		"Your workspace will be cleaned up soon. " +
 		"Upgrade anytime to pick up where you left off:\n" +
-		r.webURL("/billing") + "\n\n" +
+		r.webURL("/user") + "\n\n" +
 		"Thanks for trying exe.dev.\n" +
 		signature()
 	return subject, body, "", true
