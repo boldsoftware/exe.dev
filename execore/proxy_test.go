@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -148,5 +149,110 @@ func TestProxyStreaming(t *testing.T) {
 	// Verify content type
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("Expected Content-Type 'text/event-stream', got %q", ct)
+	}
+}
+
+func TestExeproxTarget(t *testing.T) {
+	server := newTestServer(t)
+	server.exeproxAddress = "exeprox.exe.xyz"
+
+	for _, test := range []struct {
+		host   string
+		url    string
+		lookup string
+		cname  string
+		want   string
+	}{
+		{
+			host: "example.com",
+			url:  "https://example.com/",
+			want: "https://exeprox.exe.xyz/?exedev_host=example.com",
+		},
+		{
+			host: "example.com",
+			url:  "https://example.com/page",
+			want: "https://exeprox.exe.xyz/page?exedev_host=example.com",
+		},
+		{
+			host: "example.com",
+			url:  "https://example.com/?param=val",
+			want: "https://exeprox.exe.xyz/?exedev_host=example.com&param=val",
+		},
+		{
+			host: "example.com",
+			url:  "https://example.com/page?param=val",
+			want: "https://exeprox.exe.xyz/page?exedev_host=example.com&param=val",
+		},
+		{
+			host:   "example.com",
+			url:    "https://example.com/",
+			lookup: "www.example.com",
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://example." + server.env.BoxHost + "/",
+		},
+		{
+			host:   "example.com",
+			url:    "https://example.com/page",
+			lookup: "www.example.com",
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://example." + server.env.BoxHost + "/page",
+		},
+		{
+			host:   "example.com",
+			url:    "https://example.com/?param=val",
+			lookup: "www.example.com",
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://example." + server.env.BoxHost + "/?param=val",
+		},
+		{
+			host:   "example.com",
+			url:    "https://example.com/page?param=val",
+			lookup: "www.example.com",
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://example." + server.env.BoxHost + "/page?param=val",
+		},
+		{
+			host:   "www.example.com",
+			url:    "https://www.example.com/",
+			lookup: "www.example.com", // should not be used
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://exeprox.exe.xyz/?exedev_host=www.example.com",
+		},
+		{
+			host: "example.com:8080",
+			url:  "https://example.com:8080/",
+			want: "https://exeprox.exe.xyz/?exedev_host=example.com%3A8080",
+		},
+		{
+			host:   "example.com:8080",
+			url:    "https://example.com:8080/",
+			lookup: "www.example.com",
+			cname:  "example." + server.env.BoxHost,
+			want:   "https://example." + server.env.BoxHost + ":8080/",
+		},
+		{
+			host:   "example.com",
+			url:    "https://example.com/",
+			lookup: "www.example.com",
+			cname:  "www.example.com", // dnsresolver.LookupCNAME will return argument if there is no CNAME
+			want:   "https://exeprox.exe.xyz/?exedev_host=example.com",
+		},
+	} {
+		server.lookupCNAMEFunc = func(ctx context.Context, host string) (string, error) {
+			if test.lookup != "" && host == test.lookup {
+				return test.cname, nil
+			}
+			return "", errors.New("no such CNAME")
+		}
+
+		reqURL, err := url.Parse(test.url)
+		if err != nil {
+			t.Errorf("url.Parse(%q) failed: %v", test.url, err)
+			continue
+		}
+		got := server.exeproxTarget(t.Context(), "https", test.host, reqURL)
+		if got != test.want {
+			t.Errorf("exeproxTarget(%q, %q) = %q, want %q", test.host, reqURL, got, test.want)
+		}
 	}
 }

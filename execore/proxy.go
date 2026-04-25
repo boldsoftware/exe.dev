@@ -6,18 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-
+	"exe.dev/dnsresolver"
+	"exe.dev/domz"
 	"exe.dev/email"
 	"exe.dev/exedb"
 	"exe.dev/exeweb"
 	"exe.dev/sshkey"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://vmname.exe.dev/,
@@ -50,16 +54,55 @@ func (s *Server) forwardToExeprox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add a header so that exeprox knows the original host,
-	// so that it knows which box is being referenced.
-	vals := r.URL.Query()
-	vals.Set("exedev_host", r.Host)
-	r.URL.RawQuery = vals.Encode()
-
-	scheme := getScheme(r)
-	target := fmt.Sprintf("%s://%s%s", scheme, s.exeproxAddress, r.URL.RequestURI())
+	target := s.exeproxTarget(r.Context(), getScheme(r), r.Host, r.URL)
 	s.slog().InfoContext(r.Context(), "redirecting to exeprox", "URL", r.URL, "method", r.Method, "host", r.Host, "target", target)
 	http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+}
+
+// exeproxTarget returns the target to use when forwarding to exeprox.
+// If possible this will be a user domain name.
+func (s *Server) exeproxTarget(ctx context.Context, scheme, host string, reqURL *url.URL) string {
+	// For most cases where foo.com has a DNS entry pointing to exe.dev,
+	// www.foo.com is defined with a CNAME that points to box.exe.xyz.
+	// This seems to be caused by people misreading our docs.
+	// Look for such a CNAME, and use it if it exists.
+	if !strings.HasPrefix(host, "www.") {
+		// Lookup host name without port.
+		hostSplit, port, err := net.SplitHostPort(host)
+		lookupHost := host
+		if err == nil {
+			lookupHost = hostSplit
+		}
+
+		wwwHost := "www." + lookupHost
+
+		// Note that dnsresolver.LookupCNAME currently
+		// queries 8.8.8.8 directly with no caching.
+		// Should we add a cache there or here?
+		lookupCNAME := dnsresolver.LookupCNAME
+
+		if s.lookupCNAMEFunc != nil {
+			lookupCNAME = s.lookupCNAMEFunc
+		}
+		cname, err := lookupCNAME(ctx, wwwHost)
+		// Note that dnsresolver.LookupCNAME returns
+		// a name without a trailing dot.
+		if err == nil && cname != wwwHost && domz.Label(cname, s.env.BoxHost) != "" {
+			if port != "" {
+				cname += ":" + port
+			}
+			return fmt.Sprintf("%s://%s%s", scheme, cname, reqURL.RequestURI())
+		}
+	}
+
+	// We couldn't find a good alias; forward to the exeprox address.
+	// Add a query parameter so that exeprox knows the original host,
+	// so that it knows which box is being referenced.
+	urlCopy := *reqURL
+	vals := urlCopy.Query()
+	vals.Set("exedev_host", host)
+	urlCopy.RawQuery = vals.Encode()
+	return fmt.Sprintf("%s://%s%s", scheme, s.exeproxAddress, urlCopy.RequestURI())
 }
 
 // isProxyRequest reports whether a request to host should be handled by the proxy.
