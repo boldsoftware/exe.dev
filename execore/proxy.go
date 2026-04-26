@@ -89,9 +89,9 @@ func (s *Server) exeproxTarget(ctx context.Context, scheme, host string, reqURL 
 		// a name without a trailing dot.
 		if err == nil && cname != wwwHost && domz.Label(cname, s.env.BoxHost) != "" {
 			if port != "" {
-				wwwHost += ":" + port
+				cname += ":" + port
 			}
-			return fmt.Sprintf("%s://%s%s", scheme, wwwHost, reqURL.RequestURI())
+			return fmt.Sprintf("%s://%s%s", scheme, cname, reqURL.RequestURI())
 		}
 	}
 
