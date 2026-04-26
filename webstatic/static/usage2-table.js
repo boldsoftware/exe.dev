@@ -88,12 +88,12 @@
     {
       group: 'Memory',
       cols: [
-        {key: 'memory_rss_gb', label: 'RSS', fmt: fmtGB, color: '#1f77b4', nominal: 'memory_nominal_gb',
-         tooltip: 'Resident Set Size'},
+        {key: 'memory_used_gb', label: 'Used', fmt: fmtGB, color: '#1f77b4', nominal: 'memory_nominal_gb',
+         tooltip: 'VM memory used (cgroup memory.current minus reclaimable host page cache)'},
         {key: 'memory_swap_gb', label: 'Swap', fmt: fmtGB, color: '#9467bd',
          tooltip: 'Swap usage'},
         {key: 'mem_pct', label: '% Nom', fmt: fmtPct, color: '#1f77b4', derived: true,
-         tooltip: 'RSS as % of nominal memory'},
+         tooltip: 'Used memory as % of nominal memory'},
         {key: 'memory_nominal_gb', label: 'Nominal', fmt: fmtGB, color: '#aec7e8',
          tooltip: 'Nominal (provisioned) memory'}
       ]
@@ -135,7 +135,7 @@
       };
 
       // Build sparkline arrays and find latest
-      var allKeys = ['cpu_cores', 'memory_rss_gb', 'memory_swap_gb', 'memory_nominal_gb',
+      var allKeys = ['cpu_cores', 'memory_used_gb', 'memory_swap_gb', 'memory_nominal_gb',
                      'network_rx_mbps', 'network_tx_mbps', 'io_read_mbps', 'io_write_mbps',
                      'cpu_nominal'];
       for (var k = 0; k < allKeys.length; k++) {
@@ -153,7 +153,7 @@
         var cpuPct = (p.cpu_nominal > 0) ? (p.cpu_cores / p.cpu_nominal) : 0;
         vm.sparklines['cpu_pct'].push(cpuPct);
         // Derived: Mem %
-        var memPct = (p.memory_nominal_gb > 0) ? (p.memory_rss_gb / p.memory_nominal_gb) : 0;
+        var memPct = (p.memory_nominal_gb > 0) ? (p.memory_used_gb / p.memory_nominal_gb) : 0;
         vm.sparklines['mem_pct'].push(memPct);
 
         if (p.cpu_nominal > vm.maxNomCPU) vm.maxNomCPU = p.cpu_nominal;
@@ -167,10 +167,10 @@
           cpu_cores: last.cpu_cores,
           cpu_nominal: last.cpu_nominal,
           cpu_pct: last.cpu_nominal > 0 ? last.cpu_cores / last.cpu_nominal : 0,
-          memory_rss_gb: last.memory_rss_gb,
+          memory_used_gb: last.memory_used_gb,
           memory_swap_gb: last.memory_swap_gb,
           memory_nominal_gb: last.memory_nominal_gb,
-          mem_pct: last.memory_nominal_gb > 0 ? last.memory_rss_gb / last.memory_nominal_gb : 0,
+          mem_pct: last.memory_nominal_gb > 0 ? last.memory_used_gb / last.memory_nominal_gb : 0,
           network_rx_mbps: last.network_rx_mbps,
           network_tx_mbps: last.network_tx_mbps,
           io_read_mbps: last.io_read_mbps,

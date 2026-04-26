@@ -78,23 +78,34 @@ type ResourceManager struct {
 
 // vmUsageState tracks per-VM usage and activity
 type vmUsageState struct {
-	name                 string
-	groupID              string // Group ID for per-account cgroup grouping
-	cpuSeconds           float64
-	cpuPercent           float64 // CPU usage percentage from last poll interval
-	memoryBytes          uint64
-	swapBytes            uint64 // Per-VM swap usage from /proc/<pid>/status VmSwap
-	allocatedMemoryBytes uint64 // VM's allocated memory from config (for memory.high calculation)
-	allocatedCPUs        uint64 // VM's allocated vCPUs from config
-	diskVolsizeBytes     uint64 // ZFS volsize (provisioned size)
-	diskBytes            uint64 // ZFS used (actual compressed bytes on disk)
-	diskLogicalBytes     uint64 // ZFS logicalused (uncompressed)
-	netRxBytes           uint64
-	netTxBytes           uint64
-	ioReadBytes          uint64
-	ioWriteBytes         uint64
-	priority             api.VMPriority
-	cgroupApplied        bool // true after applyPriority succeeds at least once
+	name        string
+	groupID     string // Group ID for per-account cgroup grouping
+	cpuSeconds  float64
+	cpuPercent  float64 // CPU usage percentage from last poll interval
+	memoryBytes uint64  // cgroup memory.current (total charged)
+	swapBytes   uint64  // Per-VM swap usage from /proc/<pid>/status VmSwap
+
+	// Detailed cgroup memory.stat breakdown. anonBytes is the closest proxy
+	// to the VM guest's actual working set (host-side anonymous memory backing
+	// the VM's RAM). fileBytes is host page cache from the VM's disk I/O
+	// (reclaimable).
+	memoryAnonBytes         uint64
+	memoryFileBytes         uint64
+	memoryKernelBytes       uint64
+	memoryShmemBytes        uint64
+	memorySlabBytes         uint64
+	memoryInactiveFileBytes uint64
+	allocatedMemoryBytes    uint64 // VM's allocated memory from config (for memory.high calculation)
+	allocatedCPUs           uint64 // VM's allocated vCPUs from config
+	diskVolsizeBytes        uint64 // ZFS volsize (provisioned size)
+	diskBytes               uint64 // ZFS used (actual compressed bytes on disk)
+	diskLogicalBytes        uint64 // ZFS logicalused (uncompressed)
+	netRxBytes              uint64
+	netTxBytes              uint64
+	ioReadBytes             uint64
+	ioWriteBytes            uint64
+	priority                api.VMPriority
+	cgroupApplied           bool // true after applyPriority succeeds at least once
 
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
@@ -458,6 +469,12 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.cpuPercent = cpuPercent
 	state.memoryBytes = usage.memoryBytes
 	state.swapBytes = usage.swapBytes
+	state.memoryAnonBytes = usage.memoryAnonBytes
+	state.memoryFileBytes = usage.memoryFileBytes
+	state.memoryKernelBytes = usage.memoryKernelBytes
+	state.memoryShmemBytes = usage.memoryShmemBytes
+	state.memorySlabBytes = usage.memorySlabBytes
+	state.memoryInactiveFileBytes = usage.memoryInactiveFileBytes
 	state.diskVolsizeBytes = usage.diskVolsizeBytes
 	state.diskBytes = usage.diskBytes
 	state.diskLogicalBytes = usage.diskLogicalBytes

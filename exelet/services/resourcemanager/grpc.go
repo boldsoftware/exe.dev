@@ -63,23 +63,34 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 	}
 
 	return &api.GetVMUsageResponse{
-		Usage: &api.VMUsage{
-			ID:                req.VmID,
-			Name:              state.name,
-			CpuSeconds:        state.cpuSeconds,
-			CpuPercent:        state.cpuPercent,
-			MemoryBytes:       state.memoryBytes,
-			SwapBytes:         state.swapBytes,
-			DiskBytes:         state.diskBytes,
-			DiskLogicalBytes:  state.diskLogicalBytes,
-			DiskCapacityBytes: state.diskVolsizeBytes,
-			MemCapacityBytes:  state.allocatedMemoryBytes,
-			CPUs:              state.allocatedCPUs,
-			NetRxBytes:        state.netRxBytes,
-			NetTxBytes:        state.netTxBytes,
-			Priority:          state.priority,
-		},
+		Usage: vmUsageProto(req.VmID, state),
 	}, nil
+}
+
+// vmUsageProto builds an api.VMUsage from a vmUsageState.
+func vmUsageProto(id string, state *vmUsageState) *api.VMUsage {
+	return &api.VMUsage{
+		ID:                      id,
+		Name:                    state.name,
+		CpuSeconds:              state.cpuSeconds,
+		CpuPercent:              state.cpuPercent,
+		MemoryBytes:             state.memoryBytes,
+		SwapBytes:               state.swapBytes,
+		DiskBytes:               state.diskBytes,
+		DiskLogicalBytes:        state.diskLogicalBytes,
+		DiskCapacityBytes:       state.diskVolsizeBytes,
+		MemCapacityBytes:        state.allocatedMemoryBytes,
+		CPUs:                    state.allocatedCPUs,
+		NetRxBytes:              state.netRxBytes,
+		NetTxBytes:              state.netTxBytes,
+		Priority:                state.priority,
+		MemoryAnonBytes:         state.memoryAnonBytes,
+		MemoryFileBytes:         state.memoryFileBytes,
+		MemoryKernelBytes:       state.memoryKernelBytes,
+		MemoryShmemBytes:        state.memoryShmemBytes,
+		MemorySlabBytes:         state.memorySlabBytes,
+		MemoryInactiveFileBytes: state.memoryInactiveFileBytes,
+	}
 }
 
 // ListVMUsage streams usage information for all VMs.
@@ -89,22 +100,7 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 
 	for id, state := range m.usageState {
 		if err := stream.Send(&api.ListVMUsageResponse{
-			Usage: &api.VMUsage{
-				ID:                id,
-				Name:              state.name,
-				CpuSeconds:        state.cpuSeconds,
-				CpuPercent:        state.cpuPercent,
-				MemoryBytes:       state.memoryBytes,
-				SwapBytes:         state.swapBytes,
-				DiskBytes:         state.diskBytes,
-				DiskLogicalBytes:  state.diskLogicalBytes,
-				DiskCapacityBytes: state.diskVolsizeBytes,
-				MemCapacityBytes:  state.allocatedMemoryBytes,
-				CPUs:              state.allocatedCPUs,
-				NetRxBytes:        state.netRxBytes,
-				NetTxBytes:        state.netTxBytes,
-				Priority:          state.priority,
-			},
+			Usage: vmUsageProto(id, state),
 		}); err != nil {
 			return err
 		}

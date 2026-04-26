@@ -76,6 +76,21 @@ message VMUsage {
   VMPriority priority = 9;
   uint64 swap_bytes = 11;           // Current swap usage
   uint64 disk_capacity_bytes = 12;  // Provisioned disk capacity (ZFS volsize)
+
+  // Detailed cgroup memory.stat breakdown. memory_bytes above is the
+  // cgroup's total memory.current (sum of charges: anon + file + kernel +
+  // ...; cgroup v2 'kernel' already includes slab). For a hugepage-backed
+  // VM, the guest RAM does not show up in memory.current at all, while
+  // host page cache from the VM's disk I/O does — so memory_bytes is
+  // typically dominated by reclaimable cache. memory_anon_bytes is the
+  // closest proxy to the VM guest's non-reclaimable working set, and
+  // memory_file_bytes is reclaimable host page cache.
+  uint64 memory_anon_bytes = 16;
+  uint64 memory_file_bytes = 17;
+  uint64 memory_kernel_bytes = 18;
+  uint64 memory_shmem_bytes = 19;
+  uint64 memory_slab_bytes = 20;
+  uint64 memory_inactive_file_bytes = 21;
 }
 
 enum VMPriority {

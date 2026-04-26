@@ -118,7 +118,7 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 				for _, row := range usageRows {
 					if row.Status == "running" {
 						cpuUsed += row.CPUPercent / 100.0
-						memUsed += row.MemBytes
+						memUsed += row.DisplayMemBytes()
 					}
 					diskProvisioned += row.DiskCapacity
 				}
@@ -201,7 +201,7 @@ func (ss *SSHServer) writeBillingPlanPoolBars(ctx context.Context, cc *exemenu.C
 	for _, row := range usageRows {
 		if row.Status == "running" {
 			cpuUsed += row.CPUPercent / 100.0
-			memUsed += row.MemBytes
+			memUsed += row.DisplayMemBytes()
 		}
 		diskProvisioned += row.DiskCapacity
 	}

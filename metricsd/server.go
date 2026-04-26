@@ -410,7 +410,8 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 		ts := m.Timestamp
 		// Column order must match the physical table layout.
 		// resource_group is added by migration 002, io_read/write_bytes by migration 003,
-		// and vm_id by migration 006 (ALTER TABLE) — it appears last physically.
+		// vm_id by migration 006 (ALTER TABLE) — it appears later physically — and
+		// the memory.stat breakdown columns by migration 010.
 		err := appender.AppendRow(
 			ts, m.Host, m.VMName,
 			m.DiskSizeBytes, m.DiskUsedBytes, m.DiskLogicalUsedBytes,
@@ -420,6 +421,8 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 			m.ResourceGroup,
 			m.IOReadBytes, m.IOWriteBytes,
 			m.VMID,
+			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
+			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -481,6 +484,8 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 		&m.ResourceGroup,
 		&m.IOReadBytes, &m.IOWriteBytes,
 		&m.VMID,
+		&m.MemoryAnonBytes, &m.MemoryFileBytes, &m.MemoryKernelBytes,
+		&m.MemoryShmemBytes, &m.MemorySlabBytes, &m.MemoryInactiveFileBytes,
 	); err != nil {
 		return fmt.Errorf("scan row: %w", err)
 	}
@@ -602,7 +607,13 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 			cpu_used_cumulative_seconds, cpu_nominal,
 			network_tx_bytes, network_rx_bytes, resource_group,
-			COALESCE(vm_id, '') AS vm_id
+			COALESCE(vm_id, '') AS vm_id,
+			COALESCE(memory_anon_bytes, 0) AS memory_anon_bytes,
+			COALESCE(memory_file_bytes, 0) AS memory_file_bytes,
+			COALESCE(memory_kernel_bytes, 0) AS memory_kernel_bytes,
+			COALESCE(memory_shmem_bytes, 0) AS memory_shmem_bytes,
+			COALESCE(memory_slab_bytes, 0) AS memory_slab_bytes,
+			COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes
 		FROM (
 			SELECT *,
 				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
@@ -641,6 +652,12 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			&m.NetworkRXBytes,
 			&m.ResourceGroup,
 			&m.VMID,
+			&m.MemoryAnonBytes,
+			&m.MemoryFileBytes,
+			&m.MemoryKernelBytes,
+			&m.MemoryShmemBytes,
+			&m.MemorySlabBytes,
+			&m.MemoryInactiveFileBytes,
 		); err != nil {
 			slog.ErrorContext(ctx, "failed to scan row", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

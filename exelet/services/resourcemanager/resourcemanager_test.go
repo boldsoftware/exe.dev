@@ -901,3 +901,67 @@ func TestCheckDuplicateIPs(t *testing.T) {
 type netnsStubNetworkManager struct{ network.NetworkManager }
 
 func (netnsStubNetworkManager) GetInstanceByExtIP(string) (string, bool) { return "", false }
+
+func TestReadCgroupMemoryStat(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &ResourceManager{cgroupRoot: tmpDir}
+
+	cgroupPath := m.vmCgroupPath("vm-test", "acct_123")
+	if err := os.MkdirAll(cgroupPath, 0o755); err != nil {
+		t.Fatalf("create cgroup dir: %v", err)
+	}
+
+	contents := "" +
+		"anon 17179869184\n" +
+		"file 37244928000\n" +
+		"kernel 1000000000\n" +
+		"shmem 200000000\n" +
+		"slab 500000000\n" +
+		"inactive_file 30000000000\n" +
+		"active_file 7244928000\n" +
+		"some_unknown_field 42\n"
+	if err := os.WriteFile(filepath.Join(cgroupPath, "memory.stat"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("write memory.stat: %v", err)
+	}
+
+	got, err := m.readCgroupMemoryStat(cgroupPath)
+	if err != nil {
+		t.Fatalf("readCgroupMemoryStat: %v", err)
+	}
+	if got.anon != 17179869184 {
+		t.Errorf("anon = %d, want 17179869184", got.anon)
+	}
+	if got.file != 37244928000 {
+		t.Errorf("file = %d, want 37244928000", got.file)
+	}
+	if got.kernel != 1000000000 {
+		t.Errorf("kernel = %d, want 1000000000", got.kernel)
+	}
+	if got.shmem != 200000000 {
+		t.Errorf("shmem = %d", got.shmem)
+	}
+	if got.slab != 500000000 {
+		t.Errorf("slab = %d", got.slab)
+	}
+	if got.inactiveFile != 30000000000 {
+		t.Errorf("inactive_file = %d", got.inactiveFile)
+	}
+}
+
+func TestParseMemoryStatMalformed(t *testing.T) {
+	// Lines that don't have exactly two fields are skipped; non-numeric values
+	// are skipped; unknown keys are ignored. Missing keys leave zeroes.
+	contents := []byte("" +
+		"\n" +
+		"anon\n" +
+		"anon notanumber\n" +
+		"file 12345\n" +
+		"unknown 99\n")
+	got := parseMemoryStat(contents)
+	if got.anon != 0 {
+		t.Errorf("anon = %d, want 0 (malformed values should be ignored)", got.anon)
+	}
+	if got.file != 12345 {
+		t.Errorf("file = %d, want 12345", got.file)
+	}
+}

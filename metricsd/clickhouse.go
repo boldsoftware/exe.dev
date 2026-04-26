@@ -42,11 +42,29 @@ CREATE TABLE IF NOT EXISTS vm_metrics (
 	network_tx_bytes            Int64,
 	network_rx_bytes            Int64,
 	io_read_bytes               Int64,
-	io_write_bytes              Int64
+	io_write_bytes              Int64,
+	memory_anon_bytes           Int64 DEFAULT 0,
+	memory_file_bytes           Int64 DEFAULT 0,
+	memory_kernel_bytes         Int64 DEFAULT 0,
+	memory_shmem_bytes          Int64 DEFAULT 0,
+	memory_slab_bytes           Int64 DEFAULT 0,
+	memory_inactive_file_bytes  Int64 DEFAULT 0
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (vm_name, timestamp)
 `
+
+// clickHouseAlterStatements brings older deployments up to date. Each
+// statement is idempotent (uses IF NOT EXISTS). Append new statements; do
+// not reorder.
+var clickHouseAlterStatements = []string{
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_anon_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_file_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_kernel_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_shmem_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_slab_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS memory_inactive_file_bytes Int64 DEFAULT 0`,
+}
 
 const clickHouseInsertSQL = `INSERT INTO vm_metrics (
 	timestamp, host, vm_name, resource_group, vm_id,
@@ -54,7 +72,9 @@ const clickHouseInsertSQL = `INSERT INTO vm_metrics (
 	memory_nominal_bytes, memory_rss_bytes, memory_swap_bytes,
 	cpu_used_cumulative_seconds, cpu_nominal,
 	network_tx_bytes, network_rx_bytes,
-	io_read_bytes, io_write_bytes
+	io_read_bytes, io_write_bytes,
+	memory_anon_bytes, memory_file_bytes, memory_kernel_bytes,
+	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes
 )`
 
 // ClickHouseConfig configures the async ClickHouse mirror.
@@ -120,6 +140,12 @@ func StartClickHouseSync(ctx context.Context, cfg ClickHouseConfig) (*ClickHouse
 	if err := conn.Exec(ctx, ClickHouseTableSQL); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("create clickhouse table: %w", err)
+	}
+	for _, alter := range clickHouseAlterStatements {
+		if err := conn.Exec(ctx, alter); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("alter clickhouse table: %w", err)
+		}
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -262,6 +288,8 @@ func (s *ClickHouseSync) doInsert(ctx context.Context, metrics []types.Metric) e
 			m.CPUUsedCumulativeSecs, m.CPUNominal,
 			m.NetworkTXBytes, m.NetworkRXBytes,
 			m.IOReadBytes, m.IOWriteBytes,
+			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
+			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
 		); err != nil {
 			return fmt.Errorf("append row: %w", err)
 		}

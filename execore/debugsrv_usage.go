@@ -66,12 +66,26 @@ type usageDataPoint struct {
 	CPUNominal        float64 `json:"cpu_nominal"` // total nominal cores
 	NetworkTXMbps     float64 `json:"network_tx_mbps"`
 	NetworkRXMbps     float64 `json:"network_rx_mbps"`
-	MemoryRSSGB       float64 `json:"memory_rss_gb"`
-	MemorySwapGB      float64 `json:"memory_swap_gb"`
-	MemoryNominalGB   float64 `json:"memory_nominal_gb"`
-	IOReadMBps        float64 `json:"io_read_mbps"`
-	IOWriteMBps       float64 `json:"io_write_mbps"`
-	VMName            string  `json:"vm_name"`
+	// MemoryUsedGB is the user-facing "VM memory used" figure: cgroup
+	// memory.current minus host page cache attributed to the VM
+	// (memory.stat "file"). The page cache from VM disk I/O is reclaimable
+	// and not part of the guest working set, so charging it to the VM
+	// dramatically overstates real usage. Old metrics without the
+	// memory.stat breakdown (MemoryFileBytes == 0) fall back to the raw
+	// memory.current. The raw breakdown is available alongside as
+	// memory_anon_gb / memory_file_gb / etc.
+	MemoryUsedGB         float64 `json:"memory_used_gb"`
+	MemoryAnonGB         float64 `json:"memory_anon_gb"`
+	MemoryFileGB         float64 `json:"memory_file_gb"`
+	MemoryKernelGB       float64 `json:"memory_kernel_gb"`
+	MemoryShmemGB        float64 `json:"memory_shmem_gb"`
+	MemorySlabGB         float64 `json:"memory_slab_gb"`
+	MemoryInactiveFileGB float64 `json:"memory_inactive_file_gb"`
+	MemorySwapGB         float64 `json:"memory_swap_gb"`
+	MemoryNominalGB      float64 `json:"memory_nominal_gb"`
+	IOReadMBps           float64 `json:"io_read_mbps"`
+	IOWriteMBps          float64 `json:"io_write_mbps"`
+	VMName               string  `json:"vm_name"`
 }
 
 func computeUsageData(metrics []types.Metric) []usageDataPoint {
@@ -82,15 +96,21 @@ func computeUsageData(metrics []types.Metric) []usageDataPoint {
 	points := make([]usageDataPoint, 0, len(metrics))
 	for i, m := range metrics {
 		p := usageDataPoint{
-			Timestamp:         m.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
-			DiskSizeGB:        float64(m.DiskSizeBytes) / 1e9,
-			DiskUsedGB:        float64(m.DiskUsedBytes) / 1e9,
-			DiskLogicalUsedGB: float64(m.DiskLogicalUsedBytes) / 1e9,
-			CPUNominal:        m.CPUNominal,
-			MemoryRSSGB:       float64(m.MemoryRSSBytes) / 1e9,
-			MemorySwapGB:      float64(m.MemorySwapBytes) / 1e9,
-			MemoryNominalGB:   float64(m.MemoryNominalBytes) / 1e9,
-			VMName:            m.VMName,
+			Timestamp:            m.Timestamp.UTC().Format("2006-01-02T15:04:05Z"),
+			DiskSizeGB:           float64(m.DiskSizeBytes) / 1e9,
+			DiskUsedGB:           float64(m.DiskUsedBytes) / 1e9,
+			DiskLogicalUsedGB:    float64(m.DiskLogicalUsedBytes) / 1e9,
+			CPUNominal:           m.CPUNominal,
+			MemoryUsedGB:         float64(saturatingSub(m.MemoryRSSBytes, m.MemoryFileBytes)) / 1e9,
+			MemoryAnonGB:         float64(m.MemoryAnonBytes) / 1e9,
+			MemoryFileGB:         float64(m.MemoryFileBytes) / 1e9,
+			MemoryKernelGB:       float64(m.MemoryKernelBytes) / 1e9,
+			MemoryShmemGB:        float64(m.MemoryShmemBytes) / 1e9,
+			MemorySlabGB:         float64(m.MemorySlabBytes) / 1e9,
+			MemoryInactiveFileGB: float64(m.MemoryInactiveFileBytes) / 1e9,
+			MemorySwapGB:         float64(m.MemorySwapBytes) / 1e9,
+			MemoryNominalGB:      float64(m.MemoryNominalBytes) / 1e9,
+			VMName:               m.VMName,
 		}
 
 		// Compute CPU cores used (seconds/second) from cumulative seconds
@@ -137,4 +157,12 @@ func computeUsageData(metrics []types.Metric) []usageDataPoint {
 	}
 
 	return points
+}
+
+// saturatingSub returns a-b, or 0 if b > a.
+func saturatingSub(a, b int64) int64 {
+	if b >= a {
+		return 0
+	}
+	return a - b
 }

@@ -463,8 +463,22 @@ type VMUsage struct {
 	Priority          VMPriority             `protobuf:"varint,9,opt,name=priority,proto3,enum=exe.resource.v1.VMPriority" json:"priority,omitempty"`
 	SwapBytes         uint64                 `protobuf:"varint,11,opt,name=swap_bytes,json=swapBytes,proto3" json:"swap_bytes,omitempty"`                           // Current swap usage
 	DiskCapacityBytes uint64                 `protobuf:"varint,12,opt,name=disk_capacity_bytes,json=diskCapacityBytes,proto3" json:"disk_capacity_bytes,omitempty"` // Provisioned disk capacity (ZFS volsize)
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Detailed cgroup memory.stat breakdown. memory_bytes above is the
+	// cgroup's total memory.current (sum of charges: anon + file + kernel +
+	// ...; cgroup v2 'kernel' already includes slab). For a hugepage-backed
+	// VM, the guest RAM does not show up in memory.current at all, while
+	// host page cache from the VM's disk I/O does — so memory_bytes is
+	// typically dominated by reclaimable cache. memory_anon_bytes is the
+	// closest proxy to the VM guest's non-reclaimable working set, and
+	// memory_file_bytes is reclaimable host page cache.
+	MemoryAnonBytes         uint64 `protobuf:"varint,16,opt,name=memory_anon_bytes,json=memoryAnonBytes,proto3" json:"memory_anon_bytes,omitempty"`
+	MemoryFileBytes         uint64 `protobuf:"varint,17,opt,name=memory_file_bytes,json=memoryFileBytes,proto3" json:"memory_file_bytes,omitempty"`
+	MemoryKernelBytes       uint64 `protobuf:"varint,18,opt,name=memory_kernel_bytes,json=memoryKernelBytes,proto3" json:"memory_kernel_bytes,omitempty"`
+	MemoryShmemBytes        uint64 `protobuf:"varint,19,opt,name=memory_shmem_bytes,json=memoryShmemBytes,proto3" json:"memory_shmem_bytes,omitempty"`
+	MemorySlabBytes         uint64 `protobuf:"varint,20,opt,name=memory_slab_bytes,json=memorySlabBytes,proto3" json:"memory_slab_bytes,omitempty"`
+	MemoryInactiveFileBytes uint64 `protobuf:"varint,21,opt,name=memory_inactive_file_bytes,json=memoryInactiveFileBytes,proto3" json:"memory_inactive_file_bytes,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *VMUsage) Reset() {
@@ -598,6 +612,48 @@ func (x *VMUsage) GetSwapBytes() uint64 {
 func (x *VMUsage) GetDiskCapacityBytes() uint64 {
 	if x != nil {
 		return x.DiskCapacityBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemoryAnonBytes() uint64 {
+	if x != nil {
+		return x.MemoryAnonBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemoryFileBytes() uint64 {
+	if x != nil {
+		return x.MemoryFileBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemoryKernelBytes() uint64 {
+	if x != nil {
+		return x.MemoryKernelBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemoryShmemBytes() uint64 {
+	if x != nil {
+		return x.MemoryShmemBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemorySlabBytes() uint64 {
+	if x != nil {
+		return x.MemorySlabBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetMemoryInactiveFileBytes() uint64 {
+	if x != nil {
+		return x.MemoryInactiveFileBytes
 	}
 	return 0
 }
@@ -1133,7 +1189,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\x92\x04\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xb1\x06\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1156,7 +1212,13 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\bpriority\x18\t \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\x12\x1d\n" +
 	"\n" +
 	"swap_bytes\x18\v \x01(\x04R\tswapBytes\x12.\n" +
-	"\x13disk_capacity_bytes\x18\f \x01(\x04R\x11diskCapacityBytes\"d\n" +
+	"\x13disk_capacity_bytes\x18\f \x01(\x04R\x11diskCapacityBytes\x12*\n" +
+	"\x11memory_anon_bytes\x18\x10 \x01(\x04R\x0fmemoryAnonBytes\x12*\n" +
+	"\x11memory_file_bytes\x18\x11 \x01(\x04R\x0fmemoryFileBytes\x12.\n" +
+	"\x13memory_kernel_bytes\x18\x12 \x01(\x04R\x11memoryKernelBytes\x12,\n" +
+	"\x12memory_shmem_bytes\x18\x13 \x01(\x04R\x10memoryShmemBytes\x12*\n" +
+	"\x11memory_slab_bytes\x18\x14 \x01(\x04R\x0fmemorySlabBytes\x12;\n" +
+	"\x1amemory_inactive_file_bytes\x18\x15 \x01(\x04R\x17memoryInactiveFileBytes\"d\n" +
 	"\x14SetVMPriorityRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x127\n" +
 	"\bpriority\x18\x02 \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"\x17\n" +

@@ -29,7 +29,7 @@ func (m *ResourceManager) vmCgroupPath(id, groupID string) string {
 // usageData holds collected usage metrics for a VM
 type usageData struct {
 	cpuSeconds       float64
-	memoryBytes      uint64
+	memoryBytes      uint64 // cgroup memory.current (sum of charges; see types.Metric.MemoryRSSBytes)
 	swapBytes        uint64
 	diskVolsizeBytes uint64 // ZFS volsize (provisioned size)
 	diskBytes        uint64 // ZFS used (actual compressed bytes on disk)
@@ -38,6 +38,19 @@ type usageData struct {
 	netTxBytes       uint64
 	ioReadBytes      uint64 // cumulative IO read bytes from cgroup io.stat
 	ioWriteBytes     uint64 // cumulative IO write bytes from cgroup io.stat
+
+	// Detailed memory breakdown from cgroup memory.stat.
+	// For a cloud-hypervisor VM, anonBytes is the closest proxy to the VM
+	// guest's actual working set (since the VM's RAM is backed by anonymous
+	// memory in the host). fileBytes is host page cache (reclaimable) from the
+	// VM's disk I/O. inactiveFileBytes is the easily-reclaimable subset of
+	// fileBytes.
+	memoryAnonBytes         uint64 // memory.stat anon
+	memoryFileBytes         uint64 // memory.stat file (page cache; reclaimable)
+	memoryKernelBytes       uint64 // memory.stat kernel
+	memoryShmemBytes        uint64 // memory.stat shmem (tmpfs)
+	memorySlabBytes         uint64 // memory.stat slab
+	memoryInactiveFileBytes uint64 // memory.stat inactive_file (easily reclaimable)
 }
 
 // collectUsage collects resource usage for a VM.
@@ -65,6 +78,16 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 	usage.swapBytes, err = m.readCgroupSwap(cgroupPath)
 	if err != nil {
 		m.log.DebugContext(ctx, "failed to read cgroup swap", "id", id, "error", err)
+	}
+	if breakdown, err := m.readCgroupMemoryStat(cgroupPath); err != nil {
+		m.log.DebugContext(ctx, "failed to read cgroup memory.stat", "id", id, "error", err)
+	} else {
+		usage.memoryAnonBytes = breakdown.anon
+		usage.memoryFileBytes = breakdown.file
+		usage.memoryKernelBytes = breakdown.kernel
+		usage.memoryShmemBytes = breakdown.shmem
+		usage.memorySlabBytes = breakdown.slab
+		usage.memoryInactiveFileBytes = breakdown.inactiveFile
 	}
 
 	// Disk info from ZFS (volsize, used, and logicalused)
@@ -132,6 +155,57 @@ func (m *ResourceManager) readCgroupMemory(cgroupPath string) (uint64, error) {
 		return 0, err
 	}
 	return strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+}
+
+// memoryStatBreakdown holds selected fields parsed from cgroup v2 memory.stat.
+type memoryStatBreakdown struct {
+	anon         uint64
+	file         uint64
+	kernel       uint64
+	shmem        uint64
+	slab         uint64
+	inactiveFile uint64
+}
+
+// readCgroupMemoryStat reads memory.stat and extracts the fields we care about.
+// memory.stat is line-oriented: "<key> <value>\n". Unknown keys are ignored,
+// and missing keys leave the corresponding field at zero.
+func (m *ResourceManager) readCgroupMemoryStat(cgroupPath string) (memoryStatBreakdown, error) {
+	data, err := os.ReadFile(filepath.Join(cgroupPath, "memory.stat"))
+	if err != nil {
+		return memoryStatBreakdown{}, err
+	}
+	return parseMemoryStat(data), nil
+}
+
+// parseMemoryStat parses cgroup v2 memory.stat content.
+func parseMemoryStat(data []byte) memoryStatBreakdown {
+	var b memoryStatBreakdown
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		val, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		switch fields[0] {
+		case "anon":
+			b.anon = val
+		case "file":
+			b.file = val
+		case "kernel":
+			b.kernel = val
+		case "shmem":
+			b.shmem = val
+		case "slab":
+			b.slab = val
+		case "inactive_file":
+			b.inactiveFile = val
+		}
+	}
+	return b
 }
 
 // readCgroupSwap reads memory.swap.current from the VM's cgroup.

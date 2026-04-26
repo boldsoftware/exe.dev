@@ -108,7 +108,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 			nom = 1
 		}
 		avgCPUPct += (p.CPUCores / nom) * 100
-		avgMemGB += p.MemoryRSSGB
+		avgMemGB += p.MemoryUsedGB
 		avgDiskGB += p.DiskUsedGB
 	}
 	n := float64(len(points))
@@ -126,7 +126,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	cc.Writeln("")
 	cc.Writeln("  \033[2m%-10s %8s %8s\033[0m", "", "current", "avg")
 	cc.Writeln("  %-10s %7s%% %7s%%", "CPU", fmtF1(curCPUPct), fmtF1(avgCPUPct))
-	cc.Writeln("  %-10s %8s %8s", "RSS", fmtGBStat(last.MemoryRSSGB), fmtGBStat(avgMemGB))
+	cc.Writeln("  %-10s %8s %8s", "RSS", fmtGBStat(last.MemoryUsedGB), fmtGBStat(avgMemGB))
 	cc.Writeln("  %-10s %8s %8s", "Disk", fmtGBStat(last.DiskUsedGB), fmtGBStat(avgDiskGB))
 	cc.Writeln("  %-10s %8s", "IO", fmtMBpsStat(curIO))
 	cc.Writeln("")
@@ -141,7 +141,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 		return (p.CPUCores / nom) * 100
 	})))
 	cc.Writeln("  RSS:  %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
-		return p.MemoryRSSGB
+		return p.MemoryUsedGB
 	})))
 	cc.Writeln("  Disk: %s", sparkline(extractField(points, func(p usageDataPoint) float64 {
 		return p.DiskUsedGB

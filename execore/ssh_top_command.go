@@ -28,7 +28,7 @@ type vmUsageRow struct {
 	Name             string
 	Status           string
 	CPUPercent       float64 // 100% = 1 core
-	MemBytes         uint64  // RSS
+	MemBytes         uint64  // cgroup memory.current (total charged — includes host page cache)
 	SwapBytes        uint64
 	DiskBytes        uint64 // compressed on-disk usage (ZFS used)
 	DiskLogicalBytes uint64 // uncompressed logical usage (ZFS logicalused, matches df -h)
@@ -37,6 +37,27 @@ type vmUsageRow struct {
 	CPUs             uint64 // allocated vCPUs from VM config
 	NetRx            uint64 // cumulative bytes
 	NetTx            uint64 // cumulative bytes
+
+	// Cgroup memory.stat breakdown. Older exelets leave these zero.
+	MemAnonBytes         uint64 // anonymous memory (closest proxy to VM working set)
+	MemFileBytes         uint64 // page cache (reclaimable)
+	MemKernelBytes       uint64
+	MemShmemBytes        uint64
+	MemSlabBytes         uint64
+	MemInactiveFileBytes uint64
+}
+
+// DisplayMemBytes returns the user-facing memory figure: cgroup memory.current
+// minus the host page cache attributed to the VM's disk I/O. The page cache
+// (memory.stat "file") is reclaimable and not part of the guest working set,
+// so charging it to the VM dramatically overstates real usage. Older exelets
+// don't report MemFileBytes (it's zero), in which case this falls back to
+// MemBytes.
+func (r vmUsageRow) DisplayMemBytes() uint64 {
+	if r.MemFileBytes >= r.MemBytes {
+		return 0
+	}
+	return r.MemBytes - r.MemFileBytes
 }
 
 // topModel is the bubbletea model for the "top" command.
@@ -194,7 +215,7 @@ func (m *topModel) View() string {
 
 		statusStr := colorizeStatus(row.Status)
 		cpuStr := colorizeCPU(row.CPUPercent)
-		memStr := colorizeMemory(row.MemBytes + row.SwapBytes)
+		memStr := colorizeMemory(row.DisplayMemBytes() + row.SwapBytes)
 
 		// Disk: logical-used/capacity (use logical bytes so the number matches df -h)
 		var diskStr string
@@ -429,6 +450,12 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 					row.CPUs = u.CPUs
 					row.NetRx = u.NetRxBytes
 					row.NetTx = u.NetTxBytes
+					row.MemAnonBytes = u.MemoryAnonBytes
+					row.MemFileBytes = u.MemoryFileBytes
+					row.MemKernelBytes = u.MemoryKernelBytes
+					row.MemShmemBytes = u.MemoryShmemBytes
+					row.MemSlabBytes = u.MemorySlabBytes
+					row.MemInactiveFileBytes = u.MemoryInactiveFileBytes
 				}
 				allRows = append(allRows, row)
 			}

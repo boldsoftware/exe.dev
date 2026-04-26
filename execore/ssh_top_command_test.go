@@ -557,3 +557,38 @@ func TestTopViewMemShowsRSSPlusSwap(t *testing.T) {
 		t.Errorf("View() should show combined RSS+swap memory (2.0G), got %q", out)
 	}
 }
+
+// TestTopViewMemSubtractsFileCache verifies that the displayed memory
+// excludes host page cache attributed to the VM (memory.stat "file"),
+// since that cache is reclaimable and not part of the guest working set.
+func TestTopViewMemSubtractsFileCache(t *testing.T) {
+	rows := []vmUsageRow{{
+		Name:         "vm1",
+		Status:       "running",
+		MemBytes:     3 * 1024 * 1024 * 1024, // 3G memory.current
+		MemFileBytes: 2 * 1024 * 1024 * 1024, // 2G page cache (reclaimable)
+	}}
+	m := newTestModel(rows, nil)
+	out := m.View()
+	// Should show 1.0G (memory.current - file cache).
+	if !strings.Contains(out, "1.0G") {
+		t.Errorf("View() should subtract file cache and show 1.0G, got %q", out)
+	}
+	if strings.Contains(out, "3.0G") {
+		t.Errorf("View() should not show raw memory.current (3.0G), got %q", out)
+	}
+}
+
+func TestDisplayMemBytesSaturating(t *testing.T) {
+	// File cache larger than memory.current (can happen briefly with
+	// charge migration / accounting skew) — saturate at zero.
+	r := vmUsageRow{MemBytes: 1024, MemFileBytes: 4096}
+	if got := r.DisplayMemBytes(); got != 0 {
+		t.Errorf("DisplayMemBytes: got %d, want 0", got)
+	}
+	// Old exelet (no breakdown) — fall back to MemBytes.
+	r = vmUsageRow{MemBytes: 4096, MemFileBytes: 0}
+	if got := r.DisplayMemBytes(); got != 4096 {
+		t.Errorf("DisplayMemBytes (no breakdown): got %d, want 4096", got)
+	}
+}

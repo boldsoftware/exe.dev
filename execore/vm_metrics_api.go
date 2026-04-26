@@ -10,18 +10,29 @@ import (
 
 // vmMetricsResponse is the JSON response for GET /api/vm/{name}/compute-usage/live
 type vmMetricsResponse struct {
-	Name             string  `json:"name"`
-	Status           string  `json:"status"`
-	CPUPercent       float64 `json:"cpu_percent"`         // 100% = 1 core
-	MemBytes         uint64  `json:"mem_bytes"`           // cgroup memory.current (not useful for VMs)
-	SwapBytes        uint64  `json:"swap_bytes"`          // Swap usage in bytes
-	DiskBytes        uint64  `json:"disk_bytes"`          // Compressed on-disk usage (ZFS used)
-	DiskLogicalBytes uint64  `json:"disk_logical_bytes"`  // Uncompressed logical usage (matches df -h)
-	DiskCapacity     uint64  `json:"disk_capacity_bytes"` // Provisioned disk size (ZFS volsize)
-	MemCapacity      uint64  `json:"mem_capacity_bytes"`  // Allocated memory from VM config
-	CPUs             uint64  `json:"cpus"`                // Allocated vCPUs from VM config
-	NetRxBytes       uint64  `json:"net_rx_bytes"`        // Cumulative received bytes
-	NetTxBytes       uint64  `json:"net_tx_bytes"`        // Cumulative transmitted bytes
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	CPUPercent float64 `json:"cpu_percent"` // 100% = 1 core
+	// MemBytes is the user-facing "memory used" figure: cgroup memory.current
+	// minus host page cache (memory.stat "file"). Page cache from VM disk I/O
+	// is reclaimable and not part of the guest working set, so charging it
+	// would dramatically overstate real usage. The raw breakdown remains
+	// available in the mem_anon_bytes / mem_file_bytes / etc. fields.
+	MemBytes             uint64 `json:"mem_bytes"`
+	MemAnonBytes         uint64 `json:"mem_anon_bytes"`
+	MemFileBytes         uint64 `json:"mem_file_bytes"`
+	MemKernelBytes       uint64 `json:"mem_kernel_bytes"`
+	MemShmemBytes        uint64 `json:"mem_shmem_bytes"`
+	MemSlabBytes         uint64 `json:"mem_slab_bytes"`
+	MemInactiveFileBytes uint64 `json:"mem_inactive_file_bytes"`
+	SwapBytes            uint64 `json:"swap_bytes"`          // Swap usage in bytes
+	DiskBytes            uint64 `json:"disk_bytes"`          // Compressed on-disk usage (ZFS used)
+	DiskLogicalBytes     uint64 `json:"disk_logical_bytes"`  // Uncompressed logical usage (matches df -h)
+	DiskCapacity         uint64 `json:"disk_capacity_bytes"` // Provisioned disk size (ZFS volsize)
+	MemCapacity          uint64 `json:"mem_capacity_bytes"`  // Allocated memory from VM config
+	CPUs                 uint64 `json:"cpus"`                // Allocated vCPUs from VM config
+	NetRxBytes           uint64 `json:"net_rx_bytes"`        // Cumulative received bytes
+	NetTxBytes           uint64 `json:"net_tx_bytes"`        // Cumulative transmitted bytes
 }
 
 // handleAPIVMMetrics handles GET /api/vm/{name}/compute-usage/live
@@ -67,18 +78,24 @@ func (s *Server) handleAPIVMMetrics(w http.ResponseWriter, r *http.Request, user
 		if row.Name == vmName {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(vmMetricsResponse{
-				Name:             row.Name,
-				Status:           row.Status,
-				CPUPercent:       row.CPUPercent,
-				MemBytes:         row.MemBytes,
-				SwapBytes:        row.SwapBytes,
-				DiskBytes:        row.DiskBytes,
-				DiskLogicalBytes: row.DiskLogicalBytes,
-				DiskCapacity:     row.DiskCapacity,
-				MemCapacity:      row.MemCapacity,
-				CPUs:             row.CPUs,
-				NetRxBytes:       row.NetRx,
-				NetTxBytes:       row.NetTx,
+				Name:                 row.Name,
+				Status:               row.Status,
+				CPUPercent:           row.CPUPercent,
+				MemBytes:             row.DisplayMemBytes(),
+				MemAnonBytes:         row.MemAnonBytes,
+				MemFileBytes:         row.MemFileBytes,
+				MemKernelBytes:       row.MemKernelBytes,
+				MemShmemBytes:        row.MemShmemBytes,
+				MemSlabBytes:         row.MemSlabBytes,
+				MemInactiveFileBytes: row.MemInactiveFileBytes,
+				SwapBytes:            row.SwapBytes,
+				DiskBytes:            row.DiskBytes,
+				DiskLogicalBytes:     row.DiskLogicalBytes,
+				DiskCapacity:         row.DiskCapacity,
+				MemCapacity:          row.MemCapacity,
+				CPUs:                 row.CPUs,
+				NetRxBytes:           row.NetRx,
+				NetTxBytes:           row.NetTx,
 			})
 			return
 		}

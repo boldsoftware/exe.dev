@@ -131,7 +131,7 @@
 
     // Legend sort orders
     var cpuSort = sortedVMNames(allData, 'cpu_cores');
-    var memRSSSort = sortedVMNames(allData, 'memory_rss_gb');
+    var memUsedSort = sortedVMNames(allData, 'memory_used_gb');
     var memSwapSort = sortedVMNames(allData, 'memory_swap_gb');
     var netSort = sortedVMNames(allData, 'network_rx_mbps');
     var diskSort = sortedVMNames(allData, 'disk_size_gb');
@@ -146,11 +146,11 @@
       maxCPUNom > 0 ? maxCPUNom : null
     ));
 
-    // === Memory RSS Chart ===
+    // === Memory Used Chart ===
     specs.push(lineChart(
-      'Memory RSS', width, height, multiVM,
-      'memory_rss_gb', 'GB', memRSSSort,
-      [{field: 'memory_rss_gb', title: 'RSS', format: '.2f'},
+      'Memory Used', width, height, multiVM,
+      'memory_used_gb', 'GB', memUsedSort,
+      [{field: 'memory_used_gb', title: 'Used', format: '.2f'},
        {field: 'memory_nominal_gb', title: 'Nominal', format: '.1f'}],
       maxMemNom > 0 ? {domain: [0, maxMemNom]} : {},
       maxMemNom > 0 ? maxMemNom : null
@@ -167,7 +167,7 @@
     // === Memory Nominal Chart ===
     specs.push(lineChart(
       'Memory Nominal', width, height, multiVM,
-      'memory_nominal_gb', 'GB', memRSSSort,
+      'memory_nominal_gb', 'GB', memUsedSort,
       [{field: 'memory_nominal_gb', title: 'Nominal GB', format: '.1f'}],
       {}, null
     ));

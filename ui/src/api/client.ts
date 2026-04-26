@@ -434,7 +434,7 @@ export interface UsageDataPoint {
   timestamp: string
   cpu_cores: number
   cpu_nominal: number
-  memory_rss_gb: number
+  memory_used_gb: number
   memory_nominal_gb: number
   disk_used_gb: number
   disk_size_gb: number

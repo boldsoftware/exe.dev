@@ -29,6 +29,15 @@ type prometheusMetrics struct {
 	memoryGauge    *prometheus.GaugeVec
 	swapGauge      *prometheus.GaugeVec
 
+	// Detailed memory.stat gauges. memoryGauge above is the cgroup's
+	// memory.current (total); these expose the breakdown.
+	memoryAnonGauge         *prometheus.GaugeVec
+	memoryFileGauge         *prometheus.GaugeVec
+	memoryKernelGauge       *prometheus.GaugeVec
+	memoryShmemGauge        *prometheus.GaugeVec
+	memorySlabGauge         *prometheus.GaugeVec
+	memoryInactiveFileGauge *prometheus.GaugeVec
+
 	duplicateIPs prometheus.Gauge
 
 	mu    sync.Mutex
@@ -125,6 +134,32 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	)
 	registry.MustRegister(swapGauge)
 
+	newMemBreakdown := func(name, help string) *prometheus.GaugeVec {
+		g := prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "exelet",
+				Subsystem: "vm",
+				Name:      name,
+				Help:      help,
+			},
+			[]string{"vm_id", "vm_name"},
+		)
+		registry.MustRegister(g)
+		return g
+	}
+	memoryAnonGauge := newMemBreakdown("memory_anon_bytes",
+		"Anonymous memory charged to VM cgroup (memory.stat anon). Closest proxy to the VM guest's working set.")
+	memoryFileGauge := newMemBreakdown("memory_file_bytes",
+		"Page cache charged to VM cgroup (memory.stat file). Reclaimable host page cache from VM disk I/O.")
+	memoryKernelGauge := newMemBreakdown("memory_kernel_bytes",
+		"Kernel memory charged to VM cgroup (memory.stat kernel).")
+	memoryShmemGauge := newMemBreakdown("memory_shmem_bytes",
+		"Shmem/tmpfs memory charged to VM cgroup (memory.stat shmem).")
+	memorySlabGauge := newMemBreakdown("memory_slab_bytes",
+		"Slab memory charged to VM cgroup (memory.stat slab).")
+	memoryInactiveFileGauge := newMemBreakdown("memory_inactive_file_bytes",
+		"Inactive file pages charged to VM cgroup (memory.stat inactive_file). Easily reclaimable.")
+
 	duplicateIPs := prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "exelet",
 		Name:      "duplicate_ips_detected",
@@ -133,16 +168,22 @@ func newPrometheusMetrics(registry *prometheus.Registry) *prometheusMetrics {
 	registry.MustRegister(duplicateIPs)
 
 	return &prometheusMetrics{
-		cpuCounter:     cpuCounter,
-		netRxCounter:   netRxCounter,
-		netTxCounter:   netTxCounter,
-		ioReadCounter:  ioReadCounter,
-		ioWriteCounter: ioWriteCounter,
-		diskGauge:      diskGauge,
-		memoryGauge:    memoryGauge,
-		swapGauge:      swapGauge,
-		duplicateIPs:   duplicateIPs,
-		state:          make(map[string]*metricsState),
+		cpuCounter:              cpuCounter,
+		netRxCounter:            netRxCounter,
+		netTxCounter:            netTxCounter,
+		ioReadCounter:           ioReadCounter,
+		ioWriteCounter:          ioWriteCounter,
+		diskGauge:               diskGauge,
+		memoryGauge:             memoryGauge,
+		swapGauge:               swapGauge,
+		memoryAnonGauge:         memoryAnonGauge,
+		memoryFileGauge:         memoryFileGauge,
+		memoryKernelGauge:       memoryKernelGauge,
+		memoryShmemGauge:        memoryShmemGauge,
+		memorySlabGauge:         memorySlabGauge,
+		memoryInactiveFileGauge: memoryInactiveFileGauge,
+		duplicateIPs:            duplicateIPs,
+		state:                   make(map[string]*metricsState),
 	}
 }
 
@@ -163,6 +204,12 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 			p.diskGauge.DeleteLabelValues(id, state.name)
 			p.memoryGauge.DeleteLabelValues(id, state.name)
 			p.swapGauge.DeleteLabelValues(id, state.name)
+			p.memoryAnonGauge.DeleteLabelValues(id, state.name)
+			p.memoryFileGauge.DeleteLabelValues(id, state.name)
+			p.memoryKernelGauge.DeleteLabelValues(id, state.name)
+			p.memoryShmemGauge.DeleteLabelValues(id, state.name)
+			p.memorySlabGauge.DeleteLabelValues(id, state.name)
+			p.memoryInactiveFileGauge.DeleteLabelValues(id, state.name)
 		}
 		// Initialize with current values - add full amount on first observation
 		p.state[id] = &metricsState{
@@ -193,6 +240,12 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 		p.diskGauge.WithLabelValues(id, name).Set(float64(usage.diskBytes))
 		p.memoryGauge.WithLabelValues(id, name).Set(float64(usage.memoryBytes))
 		p.swapGauge.WithLabelValues(id, name).Set(float64(usage.swapBytes))
+		p.memoryAnonGauge.WithLabelValues(id, name).Set(float64(usage.memoryAnonBytes))
+		p.memoryFileGauge.WithLabelValues(id, name).Set(float64(usage.memoryFileBytes))
+		p.memoryKernelGauge.WithLabelValues(id, name).Set(float64(usage.memoryKernelBytes))
+		p.memoryShmemGauge.WithLabelValues(id, name).Set(float64(usage.memoryShmemBytes))
+		p.memorySlabGauge.WithLabelValues(id, name).Set(float64(usage.memorySlabBytes))
+		p.memoryInactiveFileGauge.WithLabelValues(id, name).Set(float64(usage.memoryInactiveFileBytes))
 		return
 	}
 
@@ -260,6 +313,12 @@ func (p *prometheusMetrics) update(id, name string, usage *vmUsageState) {
 	p.diskGauge.WithLabelValues(id, name).Set(float64(usage.diskBytes))
 	p.memoryGauge.WithLabelValues(id, name).Set(float64(usage.memoryBytes))
 	p.swapGauge.WithLabelValues(id, name).Set(float64(usage.swapBytes))
+	p.memoryAnonGauge.WithLabelValues(id, name).Set(float64(usage.memoryAnonBytes))
+	p.memoryFileGauge.WithLabelValues(id, name).Set(float64(usage.memoryFileBytes))
+	p.memoryKernelGauge.WithLabelValues(id, name).Set(float64(usage.memoryKernelBytes))
+	p.memoryShmemGauge.WithLabelValues(id, name).Set(float64(usage.memoryShmemBytes))
+	p.memorySlabGauge.WithLabelValues(id, name).Set(float64(usage.memorySlabBytes))
+	p.memoryInactiveFileGauge.WithLabelValues(id, name).Set(float64(usage.memoryInactiveFileBytes))
 }
 
 // delete removes metrics for a VM.
@@ -280,5 +339,11 @@ func (p *prometheusMetrics) delete(id string) {
 	p.diskGauge.DeleteLabelValues(id, state.name)
 	p.memoryGauge.DeleteLabelValues(id, state.name)
 	p.swapGauge.DeleteLabelValues(id, state.name)
+	p.memoryAnonGauge.DeleteLabelValues(id, state.name)
+	p.memoryFileGauge.DeleteLabelValues(id, state.name)
+	p.memoryKernelGauge.DeleteLabelValues(id, state.name)
+	p.memoryShmemGauge.DeleteLabelValues(id, state.name)
+	p.memorySlabGauge.DeleteLabelValues(id, state.name)
+	p.memoryInactiveFileGauge.DeleteLabelValues(id, state.name)
 	delete(p.state, id)
 }

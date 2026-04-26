@@ -55,8 +55,8 @@ func TestComputeUsageData(t *testing.T) {
 	if p.MemoryNominalGB != 8.0 {
 		t.Errorf("memory_nominal_gb: got %f, want 8.0", p.MemoryNominalGB)
 	}
-	if p.MemoryRSSGB != 5.0 {
-		t.Errorf("memory_rss_gb: got %f, want 5.0", p.MemoryRSSGB)
+	if p.MemoryUsedGB != 5.0 {
+		t.Errorf("memory_used_gb: got %f, want 5.0", p.MemoryUsedGB)
 	}
 	if p.MemorySwapGB != 2.0 {
 		t.Errorf("memory_swap_gb: got %f, want 2.0", p.MemorySwapGB)
@@ -94,5 +94,26 @@ func TestComputeUsageData_SinglePoint(t *testing.T) {
 	// Single point returned since we can't drop the first from a 1-element slice
 	if len(points) != 1 {
 		t.Errorf("expected 1 point, got %d", len(points))
+	}
+}
+
+func TestComputeUsageData_MemoryRSSSubtractsFileCache(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	metrics := []types.Metric{
+		{Timestamp: now, VMName: "vm-a", MemoryRSSBytes: 5e9, MemoryFileBytes: 0},
+		{Timestamp: now.Add(time.Minute), VMName: "vm-a", MemoryRSSBytes: 5e9, MemoryFileBytes: 3e9},
+	}
+	points := computeUsageData(metrics)
+	if len(points) != 1 {
+		t.Fatalf("expected 1 point, got %d", len(points))
+	}
+	// memory_used_gb should be (5e9 - 3e9) / 1e9 = 2.0.
+	if got := points[0].MemoryUsedGB; got < 1.999 || got > 2.001 {
+		t.Errorf("MemoryUsedGB: got %f, want ~2.0", got)
+	}
+	// And the raw breakdown should be present.
+	if got := points[0].MemoryFileGB; got < 2.999 || got > 3.001 {
+		t.Errorf("MemoryFileGB: got %f, want ~3.0", got)
 	}
 }

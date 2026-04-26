@@ -11,7 +11,7 @@
           </div>
         </div>
         <div v-if="pool.mem_max_bytes > 0" class="pool-metric">
-          <div class="pool-label">RSS <span class="pool-value">{{ fmtGB(peakMemGB) }} / {{ fmtGB(pool.mem_max_bytes / GB) }}</span></div>
+          <div class="pool-label">Used <span class="pool-value">{{ fmtGB(peakMemGB) }} / {{ fmtGB(pool.mem_max_bytes / GB) }}</span></div>
           <div class="pool-bar-track">
             <div class="pool-bar-fill" :class="barColor((peakMemGB / (pool.mem_max_bytes / GB)) * 100)" :style="{ width: pct(peakMemGB, pool.mem_max_bytes / GB) }"></div>
           </div>
@@ -38,7 +38,7 @@
       <div class="usage-header">
         <button class="col-btn" @click="toggleSort('name')">VM <i :class="sortIcon('name')" class="sort-icon"></i></button>
         <button class="col-btn col-right" @click="toggleSort('cpu')">CPU <i :class="sortIcon('cpu')" class="sort-icon"></i></button>
-        <button class="col-btn col-right" @click="toggleSort('mem')">RSS <i :class="sortIcon('mem')" class="sort-icon"></i></button>
+        <button class="col-btn col-right" @click="toggleSort('mem')">Used <i :class="sortIcon('mem')" class="sort-icon"></i></button>
         <button class="col-btn col-right" @click="toggleSort('disk')">Disk <i :class="sortIcon('disk')" class="sort-icon"></i></button>
         <button class="col-btn col-right" @click="toggleSort('io')">IO <i :class="sortIcon('io')" class="sort-icon"></i></button>
       </div>
@@ -188,7 +188,7 @@ const peakMemGB = computed(() => {
   const byTime = new Map<string, number>()
   for (const points of Object.values(history.value)) {
     for (const p of points) {
-      byTime.set(p.timestamp, (byTime.get(p.timestamp) ?? 0) + p.memory_rss_gb)
+      byTime.set(p.timestamp, (byTime.get(p.timestamp) ?? 0) + p.memory_used_gb)
     }
   }
   let max = 0
@@ -279,12 +279,12 @@ const rows = computed<UsageRow[]>(() => {
     const cpuNominal = points.length > 0 ? lastValue(points, 'cpu_nominal') : 1
 
     const cpuValues = points.map((p) => (cpuNominal > 0 ? p.cpu_cores / cpuNominal : 0))
-    const memValues = points.map((p) => p.memory_rss_gb)
+    const memValues = points.map((p) => p.memory_used_gb)
     const diskValues = points.map((p) => p.disk_used_gb)
     const ioValues = points.map((p) => p.io_read_mbps + p.io_write_mbps)
 
     const cpuLast = points.length > 0 ? lastValue(points, 'cpu_cores') : 0
-    const memLast = points.length > 0 ? lastValue(points, 'memory_rss_gb') : 0
+    const memLast = points.length > 0 ? lastValue(points, 'memory_used_gb') : 0
     const diskLast = points.length > 0 ? lastValue(points, 'disk_used_gb') : 0
     const ioLast = points.length > 0 ? lastValue(points, 'io_read_mbps') + lastValue(points, 'io_write_mbps') : 0
 
