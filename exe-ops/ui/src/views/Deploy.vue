@@ -192,7 +192,7 @@
                         <path :d="sparklinePath(m.sparkline)" stroke="var(--primary-color)" fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
                       </svg>
                       <span class="health-val">{{ formatMetricVal(m.current, m.unit) }}</span>
-                      <span class="health-unit">{{ m.name }} <span class="health-unit-label">{{ m.unit }}</span></span>
+                      <a :href="grafanaDaemonURL(m.grafana_expr, p.hostname)" target="_blank" rel="noopener" class="health-unit health-grafana-link" @click.stop>{{ m.name }} <span class="health-unit-label">{{ m.unit }}</span></a>
                     </div>
                   </template>
                 </td>
@@ -739,6 +739,34 @@ function formatMetricVal(v: number | null, unit: string): string {
     default:
       return v.toFixed(2)
   }
+}
+
+const GRAFANA_BASE = 'https://grafana.crocodile-vector.ts.net'
+const GRAFANA_DS_UID = 'PBFA97CFB590B2093'
+
+function grafanaDaemonURL(grafanaExpr: string | undefined, hostname: string): string {
+  if (!grafanaExpr) return '#'
+  const expr = grafanaExpr.replace('{{instance}}', hostname)
+  const panes = {
+    sp: {
+      datasource: GRAFANA_DS_UID,
+      queries: [{
+        refId: 'A',
+        expr,
+        range: true,
+        instant: true,
+        datasource: { type: 'prometheus', uid: GRAFANA_DS_UID },
+        editorMode: 'builder',
+        legendFormat: '__auto',
+        useBackend: false,
+        disableTextWrap: false,
+        fullMetaSearch: false,
+        includeNullMetadata: false,
+      }],
+      range: { from: 'now-1h', to: 'now' },
+    },
+  }
+  return `${GRAFANA_BASE}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify(panes))}&orgId=1`
 }
 
 // Multi-select state
@@ -2168,7 +2196,7 @@ onUnmounted(() => {
 }
 
 .filter-only-btn {
-  display: none;
+  display: inline;
   padding: 0 0.25rem;
   font-size: 0.6rem;
   font-family: inherit;
@@ -2178,10 +2206,6 @@ onUnmounted(() => {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
-}
-
-.filter-chip:hover .filter-only-btn {
-  display: inline;
 }
 
 .filter-only-btn:hover {
@@ -3509,5 +3533,15 @@ a.version-sha:hover {
 
 .health-unit-label {
   opacity: 0.6;
+}
+
+a.health-grafana-link {
+  text-decoration: none;
+  color: var(--text-color-muted);
+}
+
+a.health-grafana-link:hover {
+  color: var(--primary-color);
+  text-decoration: underline;
 }
 </style>

@@ -12,11 +12,12 @@ import (
 type DaemonMetric struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
-	Query       string       `json:"-"`                     // PromQL used to fetch the data; not exposed to the client.
-	Sparkline   [][2]float64 `json:"sparkline,omitempty"`   // [[unix_ts, value], ...]
-	Current     *float64     `json:"current"`               // latest value, nil = unknown
-	FloorValue  *float64     `json:"floor_value,omitempty"` // suggested alert floor, nil = no suggestion
-	Unit        string       `json:"unit"`                  // human label: "req/s", "bytes/s", "%", "count"
+	Query       string       `json:"-"`                      // PromQL used to fetch the data; not exposed to the client.
+	GrafanaExpr string       `json:"grafana_expr,omitempty"` // Per-instance PromQL template; {{instance}} = hostname regex.
+	Sparkline   [][2]float64 `json:"sparkline,omitempty"`    // [[unix_ts, value], ...]
+	Current     *float64     `json:"current"`                // latest value, nil = unknown
+	FloorValue  *float64     `json:"floor_value,omitempty"`  // suggested alert floor, nil = no suggestion
+	Unit        string       `json:"unit"`                   // human label: "req/s", "bytes/s", "%", "count"
 }
 
 // DaemonHealth describes the top metrics for one daemon type.
@@ -35,6 +36,9 @@ func daemonDefs(stage string) []DaemonHealth {
 	if stage != "" {
 		sf = `,stage="` + stage + `"`
 	}
+	// ig is instance-glob: a label selector snippet for per-instance Grafana links.
+	// {{instance}} is replaced client-side with the hostname.
+	ig := `,instance=~"{{instance}}.*"`
 	return []DaemonHealth{
 		{
 			Daemon: "exeprox",
@@ -43,18 +47,21 @@ func daemonDefs(stage string) []DaemonHealth {
 					Name:        "HTTP Request Rate",
 					Description: "Total HTTP requests/s across all exeprox instances",
 					Query:       `sum(rate(http_requests_total{job="exeprox"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(http_requests_total{job="exeprox"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Proxy Bytes Rate",
 					Description: "Bytes/s proxied (in+out) across all instances",
 					Query:       `sum(rate(proxy_bytes_total{job="exeprox"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(proxy_bytes_total{job="exeprox"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "bytes/s",
 				},
 				{
 					Name:        "Active Copy Sessions",
 					Description: "In-flight exepipe copy sessions (SSH/port-forward)",
 					Query:       `sum(copy_sessions_in_flight{job="exeprox"` + sf + `})`,
+					GrafanaExpr: `copy_sessions_in_flight{job="exeprox"` + sf + ig + `}`,
 					Unit:        "count",
 				},
 			},
@@ -66,18 +73,21 @@ func daemonDefs(stage string) []DaemonHealth {
 					Name:        "SSH Connections",
 					Description: "Current active SSH connections to exed",
 					Query:       `sum(ssh_connections_current{job="exed"` + sf + `})`,
+					GrafanaExpr: `ssh_connections_current{job="exed"` + sf + ig + `}`,
 					Unit:        "count",
 				},
 				{
 					Name:        "SSH Connection Rate",
 					Description: "New SSH connections/s (success+rejected)",
 					Query:       `sum(rate(ssh_connections_total{job="exed"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(ssh_connections_total{job="exed"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "conn/s",
 				},
 				{
 					Name:        "HTTP Request Rate",
 					Description: "HTTP requests/s to exed (API, health, webhooks)",
 					Query:       `sum(rate(http_requests_total{job="exed"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(http_requests_total{job="exed"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "req/s",
 				},
 			},
@@ -89,18 +99,21 @@ func daemonDefs(stage string) []DaemonHealth {
 					Name:        "gRPC Request Rate",
 					Description: "gRPC requests/s handled across all exelets",
 					Query:       `sum(rate(grpc_server_handled_total{job="exelet"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(grpc_server_handled_total{job="exelet"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Gateway Requests",
 					Description: "LLM gateway proxy requests/s across all exelets",
 					Query:       `sum(rate(exelet_metadata_gateway_requests_total{job="exelet"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(exelet_metadata_gateway_requests_total{job="exelet"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "req/s",
 				},
 				{
 					Name:        "Ready Instances",
 					Description: "Number of exelets reporting ready=1",
 					Query:       `sum(exelet_ready{job="exelet"` + sf + `})`,
+					GrafanaExpr: `exelet_ready{job="exelet"` + sf + ig + `}`,
 					Unit:        "count",
 				},
 			},
@@ -112,6 +125,7 @@ func daemonDefs(stage string) []DaemonHealth {
 					Name:        "Rows Inserted Rate",
 					Description: "Metric rows inserted/s into DuckDB",
 					Query:       `sum(rate(metricsd_rows_inserted_total{job="metricsd"` + sf + `}[5m]))`,
+					GrafanaExpr: `rate(metricsd_rows_inserted_total{job="metricsd"` + sf + ig + `}[$__rate_interval])`,
 					Unit:        "rows/s",
 				},
 			},

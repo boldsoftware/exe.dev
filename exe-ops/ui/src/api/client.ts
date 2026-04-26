@@ -277,6 +277,7 @@ export async function resumeRollout(id: string): Promise<RolloutStatus> {
 export interface DaemonMetric {
   name: string
   description: string
+  grafana_expr?: string
   sparkline?: [number, number][]
   current: number | null
   floor_value: number | null
