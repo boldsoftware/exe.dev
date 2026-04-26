@@ -323,6 +323,16 @@ var keyPressTests = []struct {
 		in:   "abcd\x1b[D\x1b[D\x1b[D\x14\x14\x14\r",
 		line: "bcda",
 	},
+	{
+		// iTerm2 / macOS Option+Backspace (ESC + DEL): delete word.
+		in:   "help ssh\x1b\x7f\r",
+		line: "help ",
+	},
+	{
+		// Some terminals send ESC + BS (^H) for Option+Backspace.
+		in:   "help ssh\x1b\b\r",
+		line: "help ",
+	},
 }
 
 func TestKeyPresses(t *testing.T) {

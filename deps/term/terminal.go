@@ -240,6 +240,13 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 		return keyDelete, b[4:]
 	}
 
+	// Option/Alt+Backspace on macOS terminals (iTerm2, Terminal.app) sends
+	// ESC followed by DEL (\x7f) or ESC followed by ^H (\x08). Treat both as
+	// "delete previous word", matching readline / bash behavior.
+	if !pasteActive && len(b) >= 2 && b[0] == keyEscape && (b[1] == 0x7f || b[1] == 0x08) {
+		return keyDeleteWord, b[2:]
+	}
+
 	if !pasteActive && len(b) >= 6 && b[0] == keyEscape && b[1] == '[' && b[2] == '1' && b[3] == ';' && (b[4] == '3' || b[4] == '5') {
 		switch b[5] {
 		case 'C':
