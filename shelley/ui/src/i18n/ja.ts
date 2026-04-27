@@ -132,6 +132,10 @@ export const ja: TranslationKeys = {
   tagsPlaceholder: "カンマ区切り、例: slug, cheap",
   tagsTooltip:
     'このモデル用のカンマ区切りのタグ。会話タイトル生成用のモデルとしてマークするには"slug"を使用します。"slug"タグを持つモデルがない場合は、会話のモデルが使用されます。',
+  reasoningEffort: "Reasoning Effort",
+  reasoningEffortPlaceholder: "e.g., medium, high, xhigh, none — leave blank for default",
+  reasoningEffortHint:
+    "Sent as reasoning.effort to the OpenAI Responses API. Free-form: providers add new tiers periodically.",
   testButton: "テスト",
   testingButton: "テスト中...",
   save: "保存",

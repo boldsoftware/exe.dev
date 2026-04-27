@@ -131,6 +131,9 @@ export interface TranslationKeys {
   tags: string;
   tagsPlaceholder: string;
   tagsTooltip: string;
+  reasoningEffort: string;
+  reasoningEffortPlaceholder: string;
+  reasoningEffortHint: string;
   testButton: string;
   testingButton: string;
   save: string;

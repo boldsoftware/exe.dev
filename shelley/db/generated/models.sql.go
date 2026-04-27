@@ -10,20 +10,21 @@ import (
 )
 
 const createModel = `-- name: CreateModel :one
-INSERT INTO models (model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at
+INSERT INTO models (model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, reasoning_effort)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at, reasoning_effort
 `
 
 type CreateModelParams struct {
-	ModelID      string `json:"model_id"`
-	DisplayName  string `json:"display_name"`
-	ProviderType string `json:"provider_type"`
-	Endpoint     string `json:"endpoint"`
-	ApiKey       string `json:"api_key"`
-	ModelName    string `json:"model_name"`
-	MaxTokens    int64  `json:"max_tokens"`
-	Tags         string `json:"tags"`
+	ModelID         string `json:"model_id"`
+	DisplayName     string `json:"display_name"`
+	ProviderType    string `json:"provider_type"`
+	Endpoint        string `json:"endpoint"`
+	ApiKey          string `json:"api_key"`
+	ModelName       string `json:"model_name"`
+	MaxTokens       int64  `json:"max_tokens"`
+	Tags            string `json:"tags"`
+	ReasoningEffort string `json:"reasoning_effort"`
 }
 
 func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model, error) {
@@ -36,6 +37,7 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		arg.ModelName,
 		arg.MaxTokens,
 		arg.Tags,
+		arg.ReasoningEffort,
 	)
 	var i Model
 	err := row.Scan(
@@ -49,6 +51,7 @@ func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model
 		&i.Tags,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReasoningEffort,
 	)
 	return i, err
 }
@@ -63,7 +66,7 @@ func (q *Queries) DeleteModel(ctx context.Context, modelID string) error {
 }
 
 const getModel = `-- name: GetModel :one
-SELECT model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at FROM models WHERE model_id = ?
+SELECT model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at, reasoning_effort FROM models WHERE model_id = ?
 `
 
 func (q *Queries) GetModel(ctx context.Context, modelID string) (Model, error) {
@@ -80,12 +83,13 @@ func (q *Queries) GetModel(ctx context.Context, modelID string) (Model, error) {
 		&i.Tags,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReasoningEffort,
 	)
 	return i, err
 }
 
 const getModels = `-- name: GetModels :many
-SELECT model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at FROM models ORDER BY created_at ASC
+SELECT model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at, reasoning_effort FROM models ORDER BY created_at ASC
 `
 
 func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
@@ -108,6 +112,7 @@ func (q *Queries) GetModels(ctx context.Context) ([]Model, error) {
 			&i.Tags,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ReasoningEffort,
 		); err != nil {
 			return nil, err
 		}
@@ -131,20 +136,22 @@ SET display_name = ?,
     model_name = ?,
     max_tokens = ?,
     tags = ?,
+    reasoning_effort = ?,
     updated_at = CURRENT_TIMESTAMP
 WHERE model_id = ?
-RETURNING model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at
+RETURNING model_id, display_name, provider_type, endpoint, api_key, model_name, max_tokens, tags, created_at, updated_at, reasoning_effort
 `
 
 type UpdateModelParams struct {
-	DisplayName  string `json:"display_name"`
-	ProviderType string `json:"provider_type"`
-	Endpoint     string `json:"endpoint"`
-	ApiKey       string `json:"api_key"`
-	ModelName    string `json:"model_name"`
-	MaxTokens    int64  `json:"max_tokens"`
-	Tags         string `json:"tags"`
-	ModelID      string `json:"model_id"`
+	DisplayName     string `json:"display_name"`
+	ProviderType    string `json:"provider_type"`
+	Endpoint        string `json:"endpoint"`
+	ApiKey          string `json:"api_key"`
+	ModelName       string `json:"model_name"`
+	MaxTokens       int64  `json:"max_tokens"`
+	Tags            string `json:"tags"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	ModelID         string `json:"model_id"`
 }
 
 func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model, error) {
@@ -156,6 +163,7 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		arg.ModelName,
 		arg.MaxTokens,
 		arg.Tags,
+		arg.ReasoningEffort,
 		arg.ModelID,
 	)
 	var i Model
@@ -170,6 +178,7 @@ func (q *Queries) UpdateModel(ctx context.Context, arg UpdateModelParams) (Model
 		&i.Tags,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReasoningEffort,
 	)
 	return i, err
 }

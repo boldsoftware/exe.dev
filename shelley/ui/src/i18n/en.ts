@@ -132,6 +132,10 @@ export const en: TranslationKeys = {
   tagsPlaceholder: "comma-separated, e.g., slug, cheap",
   tagsTooltip:
     'Comma-separated tags for this model. Use "slug" to mark this model for generating conversation titles. If no model has the "slug" tag, the conversation\'s model will be used.',
+  reasoningEffort: "Reasoning Effort",
+  reasoningEffortPlaceholder: "e.g., medium, high, xhigh, none — leave blank for default",
+  reasoningEffortHint:
+    "Sent as reasoning.effort to the OpenAI Responses API. Free-form: providers add new tiers periodically.",
   testButton: "Test",
   testingButton: "Testing...",
   save: "Save",

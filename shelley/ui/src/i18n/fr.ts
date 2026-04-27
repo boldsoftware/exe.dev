@@ -133,6 +133,10 @@ export const fr: TranslationKeys = {
   tagsPlaceholder: "séparées par des virgules, ex : slug, cheap",
   tagsTooltip:
     "Étiquettes séparées par des virgules pour ce modèle. Utilisez « slug » pour marquer ce modèle pour la génération de titres de conversation. Si aucun modèle n'a l'étiquette « slug », le modèle de la conversation sera utilisé.",
+  reasoningEffort: "Reasoning Effort",
+  reasoningEffortPlaceholder: "e.g., medium, high, xhigh, none — leave blank for default",
+  reasoningEffortHint:
+    "Sent as reasoning.effort to the OpenAI Responses API. Free-form: providers add new tiers periodically.",
   testButton: "Tester",
   testingButton: "Test en cours...",
   save: "Enregistrer",

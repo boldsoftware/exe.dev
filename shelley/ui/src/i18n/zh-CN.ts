@@ -132,6 +132,10 @@ export const zhCN: TranslationKeys = {
   tagsPlaceholder: "逗号分隔，例如：slug, cheap",
   tagsTooltip:
     '此模型的逗号分隔标签。使用 "slug" 标记此模型用于生成对话标题。如果没有模型带有 "slug" 标签，将使用对话当前的模型。',
+  reasoningEffort: "Reasoning Effort",
+  reasoningEffortPlaceholder: "e.g., medium, high, xhigh, none — leave blank for default",
+  reasoningEffortHint:
+    "Sent as reasoning.effort to the OpenAI Responses API. Free-form: providers add new tiers periodically.",
   testButton: "测试",
   testingButton: "测试中...",
   save: "保存",

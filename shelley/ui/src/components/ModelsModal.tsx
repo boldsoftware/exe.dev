@@ -36,8 +36,17 @@ const DEFAULT_MODELS: Record<ProviderType, { name: string; model_name: string }[
     { name: "Claude Opus 4.6", model_name: "claude-opus-4-6" },
     { name: "Claude Haiku 4.5", model_name: "claude-haiku-4-5" },
   ],
-  openai: [{ name: "GPT-5.2", model_name: "gpt-5.2" }],
-  "openai-responses": [{ name: "GPT-5.2 Codex", model_name: "gpt-5.2-codex" }],
+  openai: [
+    { name: "GPT-5.3 Chat", model_name: "gpt-5.3-chat-latest" },
+    { name: "GPT-5.5", model_name: "gpt-5.5" },
+    { name: "GPT-5.4", model_name: "gpt-5.4" },
+  ],
+  "openai-responses": [
+    { name: "GPT-5.5", model_name: "gpt-5.5" },
+    { name: "GPT-5.4", model_name: "gpt-5.4" },
+    { name: "GPT-5.4 mini", model_name: "gpt-5.4-mini" },
+    { name: "GPT-5.3 Codex", model_name: "gpt-5.3-codex" },
+  ],
   gemini: [
     { name: "Gemini 3 Pro", model_name: "gemini-3-pro-preview" },
     { name: "Gemini 3 Flash", model_name: "gemini-3-flash-preview" },
@@ -61,6 +70,7 @@ interface FormData {
   model_name: string;
   max_tokens: number;
   tags: string; // Comma-separated tags
+  reasoning_effort: string; // Free-form reasoning.effort for OpenAI Responses API
 }
 
 const emptyForm: FormData = {
@@ -72,7 +82,12 @@ const emptyForm: FormData = {
   model_name: "",
   max_tokens: 200000,
   tags: "",
+  reasoning_effort: "",
 };
+
+// Common reasoning.effort values for the OpenAI Responses API. Free-form so
+// users can type anything providers add later.
+const REASONING_EFFORT_SUGGESTIONS = ["none", "minimal", "low", "medium", "high", "xhigh"];
 
 function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
   const { t } = useI18n();
@@ -136,14 +151,6 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
     }));
   };
 
-  const handleSelectPresetModel = (preset: { name: string; model_name: string }) => {
-    setForm((prev) => ({
-      ...prev,
-      display_name: preset.name,
-      model_name: preset.model_name,
-    }));
-  };
-
   const handleTest = async () => {
     // Need model_name always, and either api_key or editing an existing model
     if (!form.model_name) {
@@ -165,6 +172,7 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
         endpoint: form.endpoint,
         api_key: form.api_key,
         model_name: form.model_name,
+        reasoning_effort: form.reasoning_effort,
       };
       const result = await customModelsApi.testCustomModel(request);
       setTestResult(result);
@@ -194,6 +202,7 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
         model_name: form.model_name,
         max_tokens: form.max_tokens,
         tags: form.tags,
+        reasoning_effort: form.reasoning_effort,
       };
 
       if (editingModelId) {
@@ -224,6 +233,7 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
       model_name: model.model_name,
       max_tokens: model.max_tokens,
       tags: model.tags,
+      reasoning_effort: model.reasoning_effort || "",
     });
     setShowForm(true);
     setTestResult(null);
@@ -350,28 +360,40 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
               )}
             </div>
 
-            {/* Model Name with Presets */}
+            {/* Model Name with autocomplete suggestions */}
             <div className="form-group">
               <label>{t("model")}</label>
-              <div className="model-presets">
-                {DEFAULT_MODELS[form.provider_type].map((preset) => (
-                  <button
-                    key={preset.model_name}
-                    type="button"
-                    className={`preset-btn ${form.model_name === preset.model_name ? "selected" : ""}`}
-                    onClick={() => handleSelectPresetModel(preset)}
-                  >
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
               <input
                 type="text"
                 value={form.model_name}
-                onChange={(e) => setForm((prev) => ({ ...prev, model_name: e.target.value }))}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((prev) => {
+                    // If the user picked a known suggestion and the display
+                    // name is empty, pre-fill it from the preset's friendly
+                    // name. Never overwrite a non-empty display name.
+                    const preset = DEFAULT_MODELS[prev.provider_type].find(
+                      (p) => p.model_name === v,
+                    );
+                    return {
+                      ...prev,
+                      model_name: v,
+                      display_name: preset && !prev.display_name ? preset.name : prev.display_name,
+                    };
+                  });
+                }}
                 placeholder="Model name (e.g., claude-sonnet-4-6)"
                 className="form-input"
+                list={`model-name-suggestions-${form.provider_type}`}
+                autoComplete="off"
               />
+              <datalist id={`model-name-suggestions-${form.provider_type}`}>
+                {DEFAULT_MODELS[form.provider_type].map((preset) => (
+                  <option key={preset.model_name} value={preset.model_name}>
+                    {preset.name}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             {/* Display Name */}
@@ -411,6 +433,30 @@ function ModelsModal({ isOpen, onClose, onModelsChanged }: ModelsModalProps) {
                 className="form-input"
               />
             </div>
+
+            {/* Reasoning Effort (OpenAI Responses API only) */}
+            {form.provider_type === "openai-responses" && (
+              <div className="form-group">
+                <label>{t("reasoningEffort")}</label>
+                <input
+                  type="text"
+                  value={form.reasoning_effort}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, reasoning_effort: e.target.value }))
+                  }
+                  placeholder={t("reasoningEffortPlaceholder")}
+                  className="form-input"
+                  list="reasoning-effort-suggestions"
+                  autoComplete="off"
+                />
+                <datalist id="reasoning-effort-suggestions">
+                  {REASONING_EFFORT_SUGGESTIONS.map((suggestion) => (
+                    <option key={suggestion} value={suggestion} />
+                  ))}
+                </datalist>
+                <div className="form-hint">{t("reasoningEffortHint")}</div>
+              </div>
+            )}
 
             {/* Tags */}
             <div className="form-group">

@@ -132,6 +132,10 @@ export const es: TranslationKeys = {
   tagsPlaceholder: "separadas por comas, ej., slug, cheap",
   tagsTooltip:
     'Etiquetas separadas por comas para este modelo. Use "slug" para marcar este modelo para generar títulos de conversación. Si ningún modelo tiene la etiqueta "slug", se usará el modelo de la conversación.',
+  reasoningEffort: "Reasoning Effort",
+  reasoningEffortPlaceholder: "e.g., medium, high, xhigh, none — leave blank for default",
+  reasoningEffortHint:
+    "Sent as reasoning.effort to the OpenAI Responses API. Free-form: providers add new tiers periodically.",
   testButton: "Probar",
   testingButton: "Probando...",
   save: "Guardar",

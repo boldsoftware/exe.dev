@@ -29,6 +29,12 @@ type ResponsesService struct {
 	Org           string            // optional - organization ID
 	DumpLLM       bool              // whether to dump request/response text to files for debugging; defaults to false
 	ThinkingLevel llm.ThinkingLevel // thinking level (ThinkingLevelOff disables reasoning)
+
+	// ReasoningEffort, if non-empty, is used as the reasoning.effort value sent to
+	// the OpenAI Responses API verbatim, overriding ThinkingLevel. This allows
+	// custom-model configurations to pass through provider-specific values
+	// (e.g. "xhigh", "none") without Shelley needing to know them.
+	ReasoningEffort string
 }
 
 var _ llm.Service = (*ResponsesService)(nil)
@@ -401,8 +407,11 @@ func (s *ResponsesService) Do(ctx context.Context, ir *llm.Request) (*llm.Respon
 		MaxOutputTokens: cmp.Or(s.MaxTokens, DefaultMaxTokens),
 	}
 
-	// Add reasoning if thinking is enabled
-	if s.ThinkingLevel != llm.ThinkingLevelOff {
+	// Add reasoning if thinking is enabled. ReasoningEffort, if set, takes
+	// precedence over ThinkingLevel and is passed through verbatim.
+	if s.ReasoningEffort != "" {
+		req.Reasoning = &responsesReasoning{Effort: s.ReasoningEffort}
+	} else if s.ThinkingLevel != llm.ThinkingLevelOff {
 		effort := s.ThinkingLevel.ThinkingEffort()
 		if effort != "" {
 			req.Reasoning = &responsesReasoning{Effort: effort}

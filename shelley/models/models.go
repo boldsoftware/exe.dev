@@ -827,9 +827,10 @@ func (m *Manager) createServiceFromModel(model *generated.Model) llm.Service {
 				ModelName: model.ModelName,
 				URL:       model.Endpoint,
 			},
-			MaxTokens:     int(model.MaxTokens),
-			HTTPC:         m.httpc,
-			ThinkingLevel: llm.ThinkingLevelMedium,
+			MaxTokens:       int(model.MaxTokens),
+			HTTPC:           m.httpc,
+			ThinkingLevel:   llm.ThinkingLevelMedium,
+			ReasoningEffort: model.ReasoningEffort,
 		}
 	case "gemini":
 		return &gem.Service{
