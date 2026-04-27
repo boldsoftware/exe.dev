@@ -71,6 +71,12 @@ type MemoryReclaimer interface {
 // special cgroup placement.
 type CgroupPreparer interface {
 	PrepareVMCgroup(ctx context.Context, id, groupID string) (string, error)
+	// ReleaseVMCgroup removes the per-VM scope created by PrepareVMCgroup.
+	// Safe to call even if PrepareVMCgroup was never called or returned an
+	// empty path. Used by create_instance / clone_instance rollback so that
+	// failed VM creations do not leak empty vm-<id>.scope directories under
+	// exelet.slice.
+	ReleaseVMCgroup(ctx context.Context, id, groupID string) error
 }
 
 type ServiceContext struct {

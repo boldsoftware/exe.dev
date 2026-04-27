@@ -305,6 +305,26 @@ func (m *ResourceManager) PrepareVMCgroup(ctx context.Context, id, groupID strin
 	return cgroupPath, nil
 }
 
+// ReleaseVMCgroup removes the VM's scope (if it exists) and tries to drop the
+// account slice if it became empty. It is safe to call when PrepareVMCgroup
+// was never called or when cgroup v2 is not available — in both cases this
+// is effectively a no-op. Used by VM creation rollback so that failed
+// creates do not leak empty vm-<id>.scope dirs.
+func (m *ResourceManager) ReleaseVMCgroup(ctx context.Context, id, groupID string) error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(m.cgroupRoot, "cgroup.controllers")); err != nil {
+		return nil
+	}
+	// Drop any tracked usage state so a stale entry doesn't keep the
+	// poll-loop reaper from re-creating or skipping over this VM.
+	m.usageMu.Lock()
+	delete(m.usageState, id)
+	m.usageMu.Unlock()
+	return m.removeCgroup(ctx, id, groupID)
+}
+
 // cleanupOldVMCgroups removes any cgroups for this VM that aren't in the expected location.
 // This handles migration from flat hierarchy and between account slices.
 func (m *ResourceManager) cleanupOldVMCgroups(ctx context.Context, id, scopeName, currentPath string) {

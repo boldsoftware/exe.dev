@@ -25,6 +25,7 @@ type createInstanceRollback struct {
 	log                *slog.Logger
 	vmm                vmm.VMM
 	instanceID         string
+	groupID            string
 	instanceDir        string
 	imageFSID          string
 	networkCreated     bool
@@ -186,6 +187,17 @@ func (r *createInstanceRollback) Rollback() {
 	if r.networkCreated {
 		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, bareIP, r.networkMAC); err != nil {
 			r.log.ErrorContext(r.ctx, "rollback: failed to delete network interface", "id", r.instanceID, "error", err)
+		}
+	}
+
+	// Release the per-VM cgroup scope created by PrepareVMCgroup. Without
+	// this, every failed VM creation leaks an empty vm-<id>.scope dir under
+	// exelet.slice forever (the resource manager poll loop only reaps VMs
+	// it has tracked usage for, and a never-started VM never enters that
+	// table). Best-effort: a non-Linux exelet or absent cgroup v2 is fine.
+	if r.serviceContext != nil && r.serviceContext.CgroupPreparer != nil {
+		if err := r.serviceContext.CgroupPreparer.ReleaseVMCgroup(r.ctx, r.instanceID, r.groupID); err != nil {
+			r.log.DebugContext(r.ctx, "rollback: failed to release VM cgroup", "id", r.instanceID, "error", err)
 		}
 	}
 

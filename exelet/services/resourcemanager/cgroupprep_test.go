@@ -109,3 +109,67 @@ func TestPrepareVMCgroup_NoV2(t *testing.T) {
 		t.Fatalf("expected empty path without cgroup v2; got %q", got)
 	}
 }
+
+// TestReleaseVMCgroup_RemovesScope verifies that ReleaseVMCgroup removes the
+// vm-<id>.scope directory created by PrepareVMCgroup, so failed VM creations
+// don't leak empty scope dirs.
+func TestReleaseVMCgroup_RemovesScope(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("cgroup v2 only on linux")
+	}
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "cgroup.controllers"), []byte("cpu memory\n"), 0o644); err != nil {
+		t.Fatalf("write cgroup.controllers: %v", err)
+	}
+
+	m := &ResourceManager{
+		config:     &config.ExeletConfig{},
+		log:        slog.Default(),
+		cgroupRoot: root,
+		usageState: map[string]*vmUsageState{},
+	}
+
+	scope, err := m.PrepareVMCgroup(context.Background(), "vmrel", "acct1")
+	if err != nil {
+		t.Fatalf("PrepareVMCgroup: %v", err)
+	}
+	if _, err := os.Stat(scope); err != nil {
+		t.Fatalf("scope not created: %v", err)
+	}
+
+	if err := m.ReleaseVMCgroup(context.Background(), "vmrel", "acct1"); err != nil {
+		t.Fatalf("ReleaseVMCgroup: %v", err)
+	}
+	if _, err := os.Stat(scope); !os.IsNotExist(err) {
+		t.Fatalf("scope still exists after release: err=%v", err)
+	}
+}
+
+// TestReleaseVMCgroup_Idempotent verifies that ReleaseVMCgroup is safe to
+// call when the scope was never created (rollback path before
+// PrepareVMCgroup runs) and when cgroup v2 is unavailable.
+func TestReleaseVMCgroup_Idempotent(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux-only")
+	}
+
+	root := t.TempDir()
+	m := &ResourceManager{
+		config:     &config.ExeletConfig{},
+		log:        slog.Default(),
+		cgroupRoot: root,
+		usageState: map[string]*vmUsageState{},
+	}
+	// No cgroup.controllers => v2 unavailable => no-op.
+	if err := m.ReleaseVMCgroup(context.Background(), "ghost", ""); err != nil {
+		t.Fatalf("release without v2: %v", err)
+	}
+	// With v2 but never-prepared scope: still ok (removeCgroup tolerates missing).
+	if err := os.WriteFile(filepath.Join(root, "cgroup.controllers"), []byte("cpu memory\n"), 0o644); err != nil {
+		t.Fatalf("write cgroup.controllers: %v", err)
+	}
+	if err := m.ReleaseVMCgroup(context.Background(), "ghost", ""); err != nil {
+		t.Fatalf("release of nonexistent scope: %v", err)
+	}
+}

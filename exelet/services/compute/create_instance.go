@@ -210,6 +210,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		serviceContext: s.context,
 		vmm:            s.vmm,
 		instanceID:     instanceID,
+		groupID:        req.GroupID,
 		proxyManager:   s.proxyManager,
 		portAllocator:  s.portAllocator,
 	}

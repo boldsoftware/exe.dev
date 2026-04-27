@@ -90,6 +90,7 @@ func (s *Service) cloneInstance(ctx context.Context, req *api.CloneInstanceReque
 		serviceContext: s.context,
 		vmm:            s.vmm,
 		instanceID:     newInstanceID,
+		groupID:        req.GroupID,
 		proxyManager:   s.proxyManager,
 		portAllocator:  s.portAllocator,
 	}
