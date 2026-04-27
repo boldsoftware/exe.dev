@@ -95,34 +95,36 @@ func (m *Manager) GetCoupon(ctx context.Context, couponID string) (*CouponInfo, 
 }
 
 // ListCouponCustomers returns the Stripe customers that have redeemed a specific coupon.
-// It uses the Stripe Customer Search API to find customers with a matching discount coupon.
+// Stripe's Customer Search API does not support filtering by discount.coupon,
+// so we list all customers with expanded discount and filter client-side.
 func (m *Manager) ListCouponCustomers(ctx context.Context, couponID string) ([]CouponCustomer, error) {
 	c := m.client()
-	params := &stripe.CustomerSearchParams{}
-	params.Query = fmt.Sprintf("discount.coupon:'%s'", couponID)
+	params := &stripe.CustomerListParams{}
 	params.Limit = stripe.Int64(100)
 	params.AddExpand("data.discount")
 	params.AddExpand("data.discount.promotion_code")
 
 	var result []CouponCustomer
-	for customer, err := range c.V1Customers.Search(ctx, params).All(ctx) {
+	for customer, err := range c.V1Customers.List(ctx, params).All(ctx) {
 		if err != nil {
-			return nil, fmt.Errorf("search customers for coupon %s: %w", couponID, err)
+			return nil, fmt.Errorf("list customers for coupon %s: %w", couponID, err)
+		}
+		if customer.Discount == nil || customer.Discount.Source == nil ||
+			customer.Discount.Source.Coupon == nil || customer.Discount.Source.Coupon.ID != couponID {
+			continue
 		}
 		cc := CouponCustomer{
 			ID:    customer.ID,
 			Email: customer.Email,
 			Name:  customer.Name,
 		}
-		if customer.Discount != nil {
-			cc.DiscountStart = time.Unix(customer.Discount.Start, 0).UTC()
-			if customer.Discount.End > 0 {
-				t := time.Unix(customer.Discount.End, 0).UTC()
-				cc.DiscountEnd = &t
-			}
-			if customer.Discount.PromotionCode != nil {
-				cc.PromotionCode = customer.Discount.PromotionCode.Code
-			}
+		cc.DiscountStart = time.Unix(customer.Discount.Start, 0).UTC()
+		if customer.Discount.End > 0 {
+			t := time.Unix(customer.Discount.End, 0).UTC()
+			cc.DiscountEnd = &t
+		}
+		if customer.Discount.PromotionCode != nil {
+			cc.PromotionCode = customer.Discount.PromotionCode.Code
 		}
 		result = append(result, cc)
 	}
