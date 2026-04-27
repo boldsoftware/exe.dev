@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ---------------------------------------------------------------------------
@@ -644,5 +645,79 @@ func TestDisplayMemBytesSaturating(t *testing.T) {
 	r = vmUsageRow{MemBytes: 4096, MemFileBytes: 0}
 	if got := r.DisplayMemBytes(); got != 4096 {
 		t.Errorf("DisplayMemBytes (no breakdown): got %d, want 4096", got)
+	}
+}
+
+// TestTopModelViewFitsTerminal verifies the rendered View() never exceeds
+// the terminal width (no line wrap) or height (no header scrolled off).
+func TestTopModelViewFitsTerminal(t *testing.T) {
+	mkRows := func(n int) []vmUsageRow {
+		rows := make([]vmUsageRow, n)
+		for i := range rows {
+			rows[i] = vmUsageRow{
+				Name:         fmt.Sprintf("vm-%02d", i),
+				Status:       "running",
+				CPUPercent:   12.3,
+				MemBytes:     1 << 30,
+				SwapBytes:    1 << 28,
+				MemCapacity:  4 << 30,
+				DiskCapacity: 10 << 30,
+			}
+		}
+		return rows
+	}
+
+	cases := []struct {
+		name          string
+		rows          int
+		width, height int
+	}{
+		{"narrow_wide_terminal", 5, 40, 30},
+		{"tiny_terminal", 5, 20, 5},
+		{"many_vms_short_terminal", 50, 120, 10},
+		{"many_vms_narrow_terminal", 50, 60, 10},
+		{"exactly_at_limit", 7, 100, 10}, // 7 rows + header(2) + truncation? = 9, fits
+		{"one_over_limit", 100, 100, 10},
+		{"zero_height", 5, 80, 0},
+		{"zero_width", 5, 0, 30},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel(mkRows(tc.rows), nil)
+			m.width = tc.width
+			m.height = tc.height
+			out := m.View()
+			lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+
+			if tc.height > 0 && len(lines) > tc.height {
+				t.Errorf("rendered %d lines > height %d", len(lines), tc.height)
+			}
+			if tc.width > 0 {
+				for i, ln := range lines {
+					if w := ansi.StringWidth(ln); w > tc.width {
+						t.Errorf("line %d width %d > terminal width %d: %q", i, w, tc.width, ln)
+					}
+				}
+			}
+			// First line must always start with the header marker.
+			if !strings.Contains(lines[0], "exe top") {
+				t.Errorf("first line must contain 'exe top' header, got %q", lines[0])
+			}
+		})
+	}
+}
+
+func TestTopModelViewNarrowHeader(t *testing.T) {
+	m := newTestModel(nil, nil)
+	m.width = 30
+	m.height = 10
+	out := m.View()
+	first := strings.Split(out, "\n")[0]
+	if ansi.StringWidth(first) > 30 {
+		t.Errorf("narrow header should fit width 30, got width %d: %q", ansi.StringWidth(first), first)
+	}
+	if !strings.Contains(first, "exe top") {
+		t.Errorf("header should still contain 'exe top', got %q", first)
 	}
 }

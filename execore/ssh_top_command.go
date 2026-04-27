@@ -265,16 +265,24 @@ func (m *topModel) View() string {
 	if remaining < 0 {
 		remaining = 0
 	}
-	b.WriteString(fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  sort:%s  [s] cycle sort  [q] quit\n", elapsed, remaining, m.sortBy.header()))
+	// Compose two header variants; pick the widest that fits.
+	hdrFull := fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  sort:%s  [s] cycle sort  [q] quit", elapsed, remaining, m.sortBy.header())
+	hdrShort := fmt.Sprintf("\033[1mexe top\033[0m  up %s  sort:%s  [s] [q]", elapsed, m.sortBy.header())
+	if m.width > 0 && ansi.StringWidth(hdrFull) > m.width {
+		b.WriteString(hdrShort)
+	} else {
+		b.WriteString(hdrFull)
+	}
+	b.WriteString("\n")
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("\033[1;31merror: %v\033[0m\n", m.err))
-		return b.String()
+		return truncateViewLines(b.String(), m.width, m.height)
 	}
 
 	if len(m.rows) == 0 {
 		b.WriteString("\033[2mno running VMs\033[0m\n")
-		return b.String()
+		return truncateViewLines(b.String(), m.width, m.height)
 	}
 
 	// Column header. ANSI-aware padding keeps columns aligned
@@ -372,7 +380,39 @@ func (m *topModel) View() string {
 		b.WriteString(fmt.Sprintf("\033[2m… %d more not shown (resize terminal to see all)\033[0m\n", truncated))
 	}
 
-	return b.String()
+	return truncateViewLines(b.String(), m.width, m.height)
+}
+
+// truncateViewLines clips each line of s to width visible columns and the
+// total number of lines to height. This guarantees the View output never
+// wraps or overflows the terminal viewport, which would otherwise scroll
+// the header off-screen under tea.WithAltScreen.
+func truncateViewLines(s string, width, height int) string {
+	if width <= 0 && height <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	// strings.Split on "a\nb\n" yields ["a","b",""]; preserve trailing newline.
+	trailingNL := len(lines) > 0 && lines[len(lines)-1] == ""
+	if trailingNL {
+		lines = lines[:len(lines)-1]
+	}
+	if width > 0 {
+		for i, ln := range lines {
+			if ansi.StringWidth(ln) > width {
+				lines[i] = ansi.Truncate(ln, width, "")
+			}
+		}
+	}
+	if height > 0 && len(lines) > height {
+		lines = lines[:height]
+		trailingNL = false // avoid extra blank line that would push content up
+	}
+	out := strings.Join(lines, "\n")
+	if trailingNL {
+		out += "\n"
+	}
+	return out
 }
 
 // ansiPadRight pads s on the right to width visible columns.
