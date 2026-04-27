@@ -303,13 +303,24 @@ function closeDrawer() {
 
 function selectIdea(idea: Idea) {
   const isImageOnly = idea.image && !idea.prompt
+  const prev = selectedIdea.value
+  const prevWasImageOnly = prev && prev.image && !prev.prompt
+
+  // Clear leftovers from the previously-selected idea so switching ideas
+  // doesn't leave the old idea's prompt or image hanging around.
+  if (prev && !prevWasImageOnly && prompt.value.trim() === prev.prompt.trim()) {
+    prompt.value = ''
+  }
+  if (prev && prevWasImageOnly && image.value === prev.image) {
+    image.value = ''
+  }
 
   if (isImageOnly) {
     image.value = idea.image
   } else {
     // If prompt is empty or matches the previous template, just replace
     const current = prompt.value.trim()
-    const wasFromTemplate = selectedIdea.value && current === selectedIdea.value.prompt.trim()
+    const wasFromTemplate = prev && current === prev.prompt.trim()
     if (current === '' || wasFromTemplate) {
       prompt.value = idea.prompt
     } else {
