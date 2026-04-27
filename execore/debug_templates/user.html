@@ -379,6 +379,18 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 </table>
 {{end}}
 
+{{if .Entitlements}}
+<h3 style="margin-top:15px;">Entitlements</h3>
+<table class="info">
+<thead><tr><th>Entitlement</th><th>ID</th><th>Granted</th></tr></thead>
+<tbody>
+{{range .Entitlements}}
+<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}<span style="color:#28a745;">&#x2713; yes</span>{{else}}<span style="color:#dc3545;">&#x2717; no</span>{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}
+
 <h3 style="margin-top:15px;">Cgroup Overrides{{if not .CgroupOverrides}} (none){{end}}</h3>
 <p style="font-size:13px;color:#666;">Group-level cgroup limits applied to all VMs owned by this user.<br>
 Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...</code></p>

@@ -5643,6 +5643,11 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		EndedAt   string
 		ChangedBy string
 	}
+	type entitlementRow struct {
+		ID      string
+		Name    string
+		Granted bool
+	}
 	type quotaRow struct {
 		Name       string
 		Stage      string
@@ -5745,6 +5750,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		BillingPeriodEnd    string
 		NextInvoiceDate     string
 		NextInvoiceAmount   string
+		Entitlements        []entitlementRow
 		Quotas              []quotaRow
 	}{
 		Email:                    user.Email,
@@ -5971,6 +5977,15 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				effMaxCPUs = uint64(cgroupCPUCores)
 			}
 			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
+		}
+
+		// Populate entitlements from the user's active plan.
+		for _, ent := range plan.AllEntitlements() {
+			data.Entitlements = append(data.Entitlements, entitlementRow{
+				ID:      ent.ID,
+				Name:    ent.DisplayName,
+				Granted: plan.Grants(planRow.PlanID, ent),
+			})
 		}
 	}
 
