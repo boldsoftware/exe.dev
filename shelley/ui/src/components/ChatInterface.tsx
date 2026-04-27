@@ -2236,7 +2236,25 @@ function ChatInterface({
             </button>
             {showAdvancedSettings && (
               <div className="advanced-settings-popover">
-                <div className="advanced-settings-header">Tools</div>
+                <div className="advanced-settings-header">
+                  <span>Tools</span>
+                  <button
+                    type="button"
+                    className="advanced-settings-reset"
+                    onClick={() => {
+                      setToolOverridesState({});
+                      try {
+                        localStorage.removeItem(TOOL_OVERRIDES_KEY);
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    disabled={Object.keys(toolOverrides).length === 0}
+                    title="Clear all overrides"
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
                 <div className="tool-override-list">
                   {[
                     {
@@ -2312,10 +2330,6 @@ function ChatInterface({
                       </React.Fragment>
                     );
                   })}
-                </div>
-                <div className="advanced-settings-footer">
-                  Non-default selections are stored in browser localStorage (
-                  <code>{TOOL_OVERRIDES_KEY}</code>).
                 </div>
               </div>
             )}
