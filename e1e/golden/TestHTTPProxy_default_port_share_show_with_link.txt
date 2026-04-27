@@ -1,0 +1,27 @@
+
+
+●
+● ssh localhost
+●
+
+share show BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share show BOX_NAME
+
+Sharing for VM 'BOX_NAME'
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
+Port: 8080
+Mode: PUBLIC - Anyone can access this VM without authentication
+
+Note: This VM is publicly accessible. Individual shares are not needed.
+To make it private, use: share set-private BOX_NAME
+
+Existing shares (will take effect if VM becomes private):
+
+Share links:
+  SHARE_TOKEN (created SHARE_AGE, used 0 times)
+
+PROMPT ▶ exit
+Goodbye!

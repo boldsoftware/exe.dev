@@ -4,19 +4,17 @@
 ● ssh localhost
 ●
 
-share port BOX_NAME 8080
+share set-private BOX_NAME
 
 - help to see a list of commands
 
+PROMPT ▶ share set-private BOX_NAME
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ is now private (port 8080).
+PROMPT ▶ share port BOX_NAME 8081
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ now points to port 8081 (private).
 PROMPT ▶ share port BOX_NAME 8080
 http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ now points to port 8080 (private).
 PROMPT ▶ share set-public BOX_NAME
 http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ is now public (port 8080).
-PROMPT ▶ share port BOX_NAME
-
-Route configuration for VM 'BOX_NAME':
-  Port: 8080
-  Share: public
-
 PROMPT ▶ exit
 Goodbye!

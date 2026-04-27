@@ -332,7 +332,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	route := box.GetRoute()
 	isPublic := route.Share == "public"
 
-	boxURL := ss.server.boxProxyAddress(box.Name)
+	boxURL := ss.server.boxProxyAddress(box.Name) + "/"
 
 	cc.Writeln("")
 	cc.Writeln("\033[1;36mSharing for VM '%s'\033[0m", box.Name)
@@ -436,8 +436,10 @@ func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.Command
 	}
 
 	var oldPort int
+	var share string
 	err = ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		oldPort = route.Port
+		share = route.Share
 		route.Port = port
 		return nil
 	})
@@ -445,9 +447,23 @@ func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.Command
 		return err
 	}
 
-	if oldPort != 0 && oldPort != port && oldPort != 80 {
-		cc.Writeln("Port %d is now publicly shareable.", port)
-		cc.Writeln("Port %d is now private and will require sign-in.", oldPort)
+	if cc.WantJSON() {
+		return nil
+	}
+
+	url := ss.server.boxProxyAddress(boxName)
+	visibility := "private"
+	if share == "public" {
+		visibility = "public"
+	}
+	cc.Writeln("%s/ now points to port %d (%s).", url, port, visibility)
+
+	// Only the default port is reachable at the bare hostname and follows
+	// the share setting; non-default ports are always owner-only. So when
+	// the VM is public and the default port changes, the old port silently
+	// becomes private. Call that out to avoid surprise.
+	if share == "public" && oldPort != 0 && oldPort != port && oldPort != 80 {
+		cc.Writeln("Port %d is now private. Only the default port can be public.", oldPort)
 	}
 	return nil
 }
@@ -474,10 +490,27 @@ func (ss *SSHServer) handleShareVisibilityCmd(ctx context.Context, cc *exemenu.C
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
 
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+	var port int
+	err := ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.Share = shareMode
+		port = route.Port
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if cc.WantJSON() {
+		return nil
+	}
+
+	url := ss.server.boxProxyAddress(boxName)
+	switch shareMode {
+	case "public":
+		cc.Writeln("%s/ is now public (port %d).", url, port)
+	case "private":
+		cc.Writeln("%s/ is now private (port %d).", url, port)
+	}
+	return nil
 }
 
 func (ss *SSHServer) getOwnedBox(ctx context.Context, cc *exemenu.CommandContext, boxName string) (exedb.Box, error) {
@@ -549,20 +582,7 @@ func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandCont
 			"status":       "updated",
 		}
 		cc.WriteJSON(result)
-		return nil
 	}
-
-	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
-	cc.Writeln("  Port: %d", route.Port)
-	cc.Writeln("  Share: %s", route.Share)
-	if route.TeamSSH && route.TeamShelley {
-		cc.Writeln("  Team Access: \033[1;32mallowed\033[0m")
-	} else if route.TeamSSH {
-		cc.Writeln("  Team SSH: \033[1;32mallowed\033[0m")
-	} else if route.TeamShelley {
-		cc.Writeln("  Team Shelley: \033[1;32mallowed\033[0m")
-	}
-	cc.Writeln("")
 	return nil
 }
 
@@ -589,11 +609,18 @@ func (ss *SSHServer) handleShareAccessAllowCmd(ctx context.Context, cc *exemenu.
 		return cc.Errorf("usage: share access allow <vm>")
 	}
 	boxName := ss.normalizeBoxName(cc.Args[0])
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+	err := ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.TeamSSH = true
 		route.TeamShelley = true
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if !cc.WantJSON() {
+		cc.Writeln("Team members can now SSH and access Shelley on %s.", boxName)
+	}
+	return nil
 }
 
 func (ss *SSHServer) handleShareAccessDisallowCmd(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -601,11 +628,18 @@ func (ss *SSHServer) handleShareAccessDisallowCmd(ctx context.Context, cc *exeme
 		return cc.Errorf("usage: share access disallow <vm>")
 	}
 	boxName := ss.normalizeBoxName(cc.Args[0])
-	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+	err := ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
 		route.TeamSSH = false
 		route.TeamShelley = false
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if !cc.WantJSON() {
+		cc.Writeln("Team members can no longer SSH or access Shelley on %s.", boxName)
+	}
+	return nil
 }
 
 func formatAge(t *time.Time) string {
@@ -1025,7 +1059,7 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 		return err
 	}
 
-	shareURL := fmt.Sprintf("%s?share=%s", ss.server.boxProxyAddress(box.Name), token)
+	shareURL := fmt.Sprintf("%s/?share=%s", ss.server.boxProxyAddress(box.Name), token)
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{

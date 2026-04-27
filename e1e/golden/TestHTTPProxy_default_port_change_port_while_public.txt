@@ -1,0 +1,18 @@
+
+
+●
+● ssh localhost
+●
+
+share port BOX_NAME 8081
+
+- help to see a list of commands
+
+PROMPT ▶ share port BOX_NAME 8081
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ now points to port 8081 (public).
+Port 8080 is now private. Only the default port can be public.
+PROMPT ▶ share port BOX_NAME 8080
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/ now points to port 8080 (public).
+Port 8081 is now private. Only the default port can be public.
+PROMPT ▶ exit
+Goodbye!

@@ -111,7 +111,7 @@ func TestVMAccess(t *testing.T) {
 	// Enable team_ssh on owner's box.
 	ownerPTY = sshToExeDev(t, ownerKeyFile)
 	ownerPTY.SendLine(fmt.Sprintf("share access allow %s", ownerBox))
-	ownerPTY.Want("Route updated successfully")
+	ownerPTY.Want("Team members can now SSH")
 	ownerPTY.WantPrompt()
 	ownerPTY.Disconnect()
 

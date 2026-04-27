@@ -85,18 +85,123 @@ chmod +x /home/exedev/cgi-bin/headers
 		})
 
 		t.Run("mark_public", func(t *testing.T) {
+			// Box starts at port=8000, share=private. Changing the port while
+			// share is private should NOT print the "old port is now private"
+			// hint — nothing about publicness is changing.
 			exeShell := sshToExeDev(t, keyFile)
 			exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
-			exeShell.Want("Route updated successfully")
+			exeShell.Want("now points to port 8080 (private)")
+			exeShell.Reject("only the default port can be public")
 			exeShell.WantPrompt()
 
 			exeShell.SendLine(fmt.Sprintf("share set-public %s", box))
-			exeShell.Want("Route updated successfully")
+			exeShell.Want("is now public")
 			exeShell.WantPrompt()
 
 			exeShell.SendLine(fmt.Sprintf("share port %s", box))
 			exeShell.Want("Port: 8080")
 			exeShell.Want("Share: public")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
+		})
+
+		t.Run("change_port_while_public", func(t *testing.T) {
+			// Box state going in: port=8080, share=public.
+			// Changing the default port silently changes which port is
+			// reachable as public at the bare hostname; non-default ports
+			// are always private. We expect the hint to fire here.
+			exeShell := sshToExeDev(t, keyFile)
+			exeShell.SendLine(fmt.Sprintf("share port %s 8081", box))
+			exeShell.Want("now points to port 8081 (public)")
+			exeShell.Want("Port 8080 is now private. Only the default port can be public.")
+			exeShell.WantPrompt()
+
+			// Revert so downstream subtests still see port=8080, share=public.
+			// The hint fires again, in the other direction.
+			exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
+			exeShell.Want("now points to port 8080 (public)")
+			exeShell.Want("Port 8081 is now private. Only the default port can be public.")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
+		})
+
+		t.Run("change_port_after_revert_to_private", func(t *testing.T) {
+			// Box state going in: port=8080, share=public.
+			// Going back to private and then changing the port should not
+			// print the hint — share=private is now the new normal.
+			exeShell := sshToExeDev(t, keyFile)
+			exeShell.SendLine(fmt.Sprintf("share set-private %s", box))
+			exeShell.Want("is now private")
+			exeShell.WantPrompt()
+
+			exeShell.SendLine(fmt.Sprintf("share port %s 8081", box))
+			exeShell.Want("now points to port 8081 (private)")
+			exeShell.Reject("only the default port can be public")
+			exeShell.WantPrompt()
+
+			// Restore state for downstream subtests: port=8080, share=public.
+			exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
+			exeShell.Want("now points to port 8080 (private)")
+			exeShell.WantPrompt()
+			exeShell.SendLine(fmt.Sprintf("share set-public %s", box))
+			exeShell.Want("is now public")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
+		})
+
+		t.Run("share_show", func(t *testing.T) {
+			// State going in: port=8080, share=public.
+			// Walks `share show` through public + private (no shares) states
+			// to capture the descriptive copy users see for each.
+			exeShell := sshToExeDev(t, keyFile)
+
+			// Public state: "publicly accessible" disclaimer.
+			exeShell.SendLine(fmt.Sprintf("share show %s", box))
+			exeShell.Want("Mode: PUBLIC")
+			exeShell.Want("This VM is publicly accessible")
+			exeShell.WantPrompt()
+
+			// Switch to private and view again: "No shares configured" + tips.
+			exeShell.SendLine(fmt.Sprintf("share set-private %s", box))
+			exeShell.Want("is now private")
+			exeShell.WantPrompt()
+
+			exeShell.SendLine(fmt.Sprintf("share show %s", box))
+			exeShell.Want("Mode: Private")
+			exeShell.Want("No shares configured")
+			exeShell.WantPrompt()
+
+			// Restore: port=8080, share=public.
+			exeShell.SendLine(fmt.Sprintf("share set-public %s", box))
+			exeShell.Want("is now public")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
+		})
+
+		t.Run("share_add_link", func(t *testing.T) {
+			// State going in: port=8080, share=public.
+			// Adding a link while public surfaces a disclaimer that the link
+			// only matters if/when the VM is made private. Includes the URL
+			// and revoke-instructions copy.
+			exeShell := sshToExeDev(t, keyFile)
+			exeShell.SendLine(fmt.Sprintf("share add-link %s", box))
+			exeShell.Want("Share link created")
+			exeShell.Want("This VM is currently PUBLIC")
+			exeShell.Want("Anyone with this link can access your VM")
+			exeShell.Want("To revoke this link")
+			exeShell.WantPrompt()
+			exeShell.Disconnect()
+		})
+
+		t.Run("share_show_with_link", func(t *testing.T) {
+			// State going in: port=8080, share=public, with one share link.
+			// In public mode, existing shares are still listed but with a
+			// caveat that they take effect only if the VM becomes private.
+			exeShell := sshToExeDev(t, keyFile)
+			exeShell.SendLine(fmt.Sprintf("share show %s", box))
+			exeShell.Want("Mode: PUBLIC")
+			exeShell.Want("Existing shares (will take effect if VM becomes private)")
+			exeShell.Want("Share links:")
 			exeShell.WantPrompt()
 			exeShell.Disconnect()
 		})
@@ -1453,10 +1558,10 @@ func TestProxyTokenNamespaceIsolation(t *testing.T) {
 	// Make the route private (requires auth)
 	exeShell := sshToExeDev(t, keyFile)
 	exeShell.SendLine(fmt.Sprintf("share port %s 8080", box))
-	exeShell.Want("Route updated successfully")
+	exeShell.Want("now points to port 8080")
 	exeShell.WantPrompt()
 	exeShell.SendLine(fmt.Sprintf("share set-private %s", box))
-	exeShell.Want("Route updated successfully")
+	exeShell.Want("is now private")
 	exeShell.WantPrompt()
 	exeShell.Disconnect()
 

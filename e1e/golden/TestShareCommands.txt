@@ -52,7 +52,7 @@ Your VMs:
 PROMPT ▶ share show BOX_NAME
 
 Sharing for VM 'BOX_NAME'
-URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
 Port: 8000
 Mode: Private
 
@@ -73,7 +73,7 @@ You can also share this URL directly: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 PROMPT ▶ share show BOX_NAME
 
 Sharing for VM 'BOX_NAME'
-URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
 Port: 8000
 Mode: Private
 
@@ -85,7 +85,7 @@ PROMPT ▶ share add-share-link BOX_NAME
 ✓ Share link created
 
 Anyone with this link can access your VM after logging in:
-http://BOX_NAME.exe.cloud:EXED_HTTP_PORT?share=SHARE_TOKEN
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/?share=SHARE_TOKEN
 
 To revoke this link, use:
   share remove-link BOX_NAME SHARE_TOKEN
@@ -93,7 +93,7 @@ To revoke this link, use:
 PROMPT ▶ share show BOX_NAME
 
 Sharing for VM 'BOX_NAME'
-URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
 Port: 8000
 Mode: Private
 
@@ -110,7 +110,7 @@ PROMPT ▶ share remove BOX_NAME friend@example.com
 PROMPT ▶ share show BOX_NAME
 
 Sharing for VM 'BOX_NAME'
-URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
 Port: 8000
 Mode: Private
 

@@ -1,0 +1,25 @@
+
+
+●
+● ssh localhost
+●
+
+share add-link BOX_NAME
+
+- help to see a list of commands
+
+PROMPT ▶ share add-link BOX_NAME
+
+✓ Share link created
+
+Note: This VM is currently PUBLIC (no authentication required).
+The share link will only matter if you make the VM private.
+
+Anyone with this link can access your VM after logging in:
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/?share=SHARE_TOKEN
+
+To revoke this link, use:
+  share remove-link BOX_NAME SHARE_TOKEN
+
+PROMPT ▶ exit
+Goodbye!

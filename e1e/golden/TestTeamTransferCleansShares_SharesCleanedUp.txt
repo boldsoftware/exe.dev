@@ -12,7 +12,7 @@ share show BOX_NAME
 PROMPT ▶ share show BOX_NAME
 
 Sharing for VM 'BOX_NAME'
-URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT/
 Port: 8000
 Mode: Private
 

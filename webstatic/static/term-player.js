@@ -506,9 +506,7 @@
         { t: 300, type: 'type', text: 'ssh exe.dev share set-public fun-sphinx' },
         { t: 400, type: 'enter' },
         { t: 300, type: 'output', text: '\n' },
-        { t: 0, type: 'output', text: '\u2713 Route updated successfully\n', cls: 'tp-prompt-text' },
-        { t: 0, type: 'output', text: '  Port: 80\n', cls: 'tp-output-text' },
-        { t: 0, type: 'output', text: '  Share: public\n', cls: 'tp-output-text' },
+        { t: 0, type: 'output', text: 'https://fun-sphinx.exe.xyz/ is now public (port 80).\n', cls: 'tp-prompt-text' },
         { t: 200, type: 'output', text: '\n' },
         // Curl the public URL
         { t: 0, type: 'prompt', text: '$ ' },

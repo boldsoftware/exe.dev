@@ -9,11 +9,7 @@ share access allow BOX_NAME
 - help to see a list of commands
 
 PROMPT ▶ share access allow BOX_NAME
-✓ Route updated successfully
-  Port: 8080
-  Share: private
-  Team Access: allowed
-
+Team members can now SSH and access Shelley on BOX_NAME.
 PROMPT ▶ exit
 Goodbye!
 
@@ -45,9 +41,6 @@ share access disallow BOX_NAME
 - help to see a list of commands
 
 PROMPT ▶ share access disallow BOX_NAME
-✓ Route updated successfully
-  Port: 8080
-  Share: private
-
+Team members can no longer SSH or access Shelley on BOX_NAME.
 PROMPT ▶ exit
 Goodbye!
