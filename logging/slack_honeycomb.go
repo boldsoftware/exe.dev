@@ -5,10 +5,34 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
+	"sort"
 	"time"
 
 	"github.com/slack-go/slack"
 )
+
+// maxSlackFieldLen is the maximum length of a single attribute value in a
+// Slack attachment field. Slack truncates long messages, so we trim aggressively
+// to keep important context visible.
+const maxSlackFieldLen = 1500
+
+// truncate shortens s to at most n runes, appending a marker if truncated.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + fmt.Sprintf("…[truncated, %d more chars]", len(s)-n)
+}
+
+// hostname is captured once at startup for use in Slack messages.
+var hostname = func() string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return "unknown"
+	}
+	return h
+}()
 
 // honeycombEnv is the Honeycomb environment name (e.g., "production" or "staging").
 // Set via SetHoneycombEnv during logger setup.
@@ -36,9 +60,10 @@ func HoneycombConverter(addSource bool, replaceAttr func(groups []string, a slog
 		return true
 	})
 
-	// Build the message
+	// Build the message. Prepend hostname so it's always visible even if Slack
+	// truncates the attachment fields (which can happen for long error messages).
 	message := &slack.WebhookMessage{}
-	message.Text = record.Message
+	message.Text = fmt.Sprintf("[%s] %s", hostname, record.Message)
 
 	// Color based on level
 	color := "#36a64f" // green default
@@ -77,8 +102,27 @@ func HoneycombConverter(addSource bool, replaceAttr func(groups []string, a slog
 		delete(attrs, "trace_id")
 	}
 
-	// Add remaining attributes as fields
-	for key, value := range attrs {
+	// Add remaining attributes as fields. Sort with important keys first
+	// (so they survive any downstream truncation) and the rest alphabetically
+	// for deterministic output. Truncate each value so a single huge attribute
+	// (e.g. a multi-VM error) doesn't push everything else out of view.
+	// Render error/err last so short context fields (host, ip, userID, ...)
+	// are visible even if Slack truncates the message before reaching the
+	// (potentially huge) error value.
+	isErr := func(k string) bool { return k == "error" || k == "err" || k == "grpc.error" }
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ei, ej := isErr(keys[i]), isErr(keys[j])
+		if ei != ej {
+			return !ei
+		}
+		return keys[i] < keys[j]
+	})
+	for _, key := range keys {
+		value := attrs[key]
 		var valueStr string
 		switch v := value.(type) {
 		case string:
@@ -88,6 +132,7 @@ func HoneycombConverter(addSource bool, replaceAttr func(groups []string, a slog
 		default:
 			valueStr = fmt.Sprintf("%v", v)
 		}
+		valueStr = truncate(valueStr, maxSlackFieldLen)
 		attachment.Fields = append(attachment.Fields, slack.AttachmentField{
 			Title: key,
 			Value: valueStr,

@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"log/slog"
 	"net/url"
 	"strings"
 	"testing"
@@ -77,5 +78,57 @@ func TestHoneycombConverterWithTraceID(t *testing.T) {
 	// but we can at least verify the environment is set correctly
 	if honeycombEnv != "production" {
 		t.Errorf("Expected honeycombEnv to be 'production', got %q", honeycombEnv)
+	}
+}
+
+func TestHoneycombConverterTruncatesAndReorders(t *testing.T) {
+	longErr := strings.Repeat("vm021070-saasta: rpc error context canceled, ", 200)
+	rec := slog.NewRecord(time.Now(), slog.LevelError, "failed to load instance configs", 0)
+	rec.AddAttrs(
+		slog.String("error", longErr),
+		slog.String("ip", "10.42.0.232"),
+		slog.String("userID", "u-123"),
+	)
+
+	msg := HoneycombConverter(false, nil, nil, nil, &rec)
+	if !strings.Contains(msg.Text, "failed to load instance configs") {
+		t.Errorf("text missing message: %q", msg.Text)
+	}
+	if !strings.Contains(msg.Text, "[") || !strings.Contains(msg.Text, "]") {
+		t.Errorf("text missing hostname prefix: %q", msg.Text)
+	}
+
+	if len(msg.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(msg.Attachments))
+	}
+	fields := msg.Attachments[0].Fields
+	if len(fields) < 3 {
+		t.Fatalf("expected >=3 fields, got %d", len(fields))
+	}
+	// error must be last
+	if fields[len(fields)-1].Title != "error" {
+		t.Errorf("expected last field to be 'error', got %q (all: %+v)", fields[len(fields)-1].Title, fields)
+	}
+	// error value must be truncated
+	if lv := len(fields[len(fields)-1].Value); lv > maxSlackFieldLen+200 {
+		t.Errorf("error field not truncated: len=%d", lv)
+	}
+	if !strings.Contains(fields[len(fields)-1].Value, "truncated") {
+		t.Errorf("expected truncation marker in error value")
+	}
+	// Non-error fields appear before error.
+	errIdx, ipIdx, userIdx := -1, -1, -1
+	for i, f := range fields {
+		switch f.Title {
+		case "error":
+			errIdx = i
+		case "ip":
+			ipIdx = i
+		case "userID":
+			userIdx = i
+		}
+	}
+	if !(ipIdx < errIdx && userIdx < errIdx) {
+		t.Errorf("expected ip(%d) and userID(%d) before error(%d)", ipIdx, userIdx, errIdx)
 	}
 }
