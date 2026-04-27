@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"slices"
@@ -12,6 +13,14 @@ import (
 )
 
 var tagNameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+
+// validateTagName returns an error if name does not match tagNameRe.
+func validateTagName(name string) error {
+	if !tagNameRe.MatchString(name) {
+		return fmt.Errorf("invalid tag name %q: must match %s", name, tagNameRe.String())
+	}
+	return nil
+}
 
 func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	deleteMode := cc.FlagSet.Lookup("d").Value.String() == "true"

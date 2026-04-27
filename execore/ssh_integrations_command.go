@@ -298,10 +298,13 @@ func (ss *SSHServer) checkIntegrationNameAvailable(ctx context.Context, cc *exem
 // parseTeamAttachmentSpec validates an attachment spec for a team integration.
 // Team integrations only support tag:<name>.
 func parseTeamAttachmentSpec(spec string) (string, error) {
-	if strings.HasPrefix(spec, "tag:") && len(spec) > 4 {
-		return spec, nil
+	if !strings.HasPrefix(spec, "tag:") || len(spec) <= 4 {
+		return "", fmt.Errorf("team integrations only support tag:<name> attachments, got %q", spec)
 	}
-	return "", fmt.Errorf("team integrations only support tag:<name> attachments, got %q", spec)
+	if err := validateTagName(spec[4:]); err != nil {
+		return "", err
+	}
+	return spec, nil
 }
 
 func (ss *SSHServer) handleIntegrationsHelp(ctx context.Context, cc *exemenu.CommandContext) error {
@@ -873,9 +876,8 @@ func (ss *SSHServer) validateAttachmentSpec(ctx context.Context, cc *exemenu.Com
 			return cc.Errorf("vm %q not found", vmName)
 		}
 	case strings.HasPrefix(spec, "tag:"):
-		tagName := spec[4:]
-		if !tagNameRe.MatchString(tagName) {
-			return cc.Errorf("invalid tag name %q: must match %s", tagName, tagNameRe.String())
+		if err := validateTagName(spec[4:]); err != nil {
+			return cc.Errorf("%v", err)
 		}
 	case spec == "auto:all":
 		// Nothing to validate.

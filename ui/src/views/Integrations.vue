@@ -256,12 +256,12 @@
                 ref="svcAttachInputRef"
                 v-model="svcAttachSearch"
                 class="form-input"
-                placeholder="Search VMs, tags..."
+                :placeholder="svcModal.team ? 'Search or create a tag...' : 'Search VMs, tags, or create a tag...'"
                 @focus="svcAttachOpen = true"
                 @input="svcAttachOpen = true"
                 @blur="delayClose(() => svcAttachOpen = false)"
               />
-              <div v-if="svcAttachOpen && filteredSvcAttachOptions.length > 0" class="attach-dropdown">
+              <div v-if="svcAttachOpen && (filteredSvcAttachOptions.length > 0 || creatableSvcAttachOption || svcModal.team)" class="attach-dropdown">
                 <div
                   v-for="opt in filteredSvcAttachOptions"
                   :key="opt.value"
@@ -270,6 +270,19 @@
                 >
                   <span>{{ opt.label }}</span>
                   <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+                <div
+                  v-if="creatableSvcAttachOption"
+                  class="attach-option attach-option-create"
+                  @mousedown.prevent="addSvcAttachment(creatableSvcAttachOption.value)"
+                >
+                  <span>+ {{ creatableSvcAttachOption.label }}</span>
+                </div>
+                <div
+                  v-if="svcModal.team && filteredSvcAttachOptions.length === 0 && !creatableSvcAttachOption"
+                  class="attach-hint"
+                >
+                  {{ teamAttachHint(svcModal.attachments) }}
                 </div>
               </div>
             </div>
@@ -400,12 +413,12 @@
                 ref="ghAttachInputRef"
                 v-model="ghAttachSearch"
                 class="form-input"
-                placeholder="Search VMs, tags..."
+                :placeholder="ghModal.team ? 'Search or create a tag...' : 'Search VMs, tags, or create a tag...'"
                 @focus="ghAttachOpen = true"
                 @input="ghAttachOpen = true"
                 @blur="delayClose(() => ghAttachOpen = false)"
               />
-              <div v-if="ghAttachOpen && filteredGhAttachOptions.length > 0" class="attach-dropdown">
+              <div v-if="ghAttachOpen && (filteredGhAttachOptions.length > 0 || creatableGhAttachOption || ghModal.team)" class="attach-dropdown">
                 <div
                   v-for="opt in filteredGhAttachOptions"
                   :key="opt.value"
@@ -414,6 +427,19 @@
                 >
                   <span>{{ opt.label }}</span>
                   <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+                <div
+                  v-if="creatableGhAttachOption"
+                  class="attach-option attach-option-create"
+                  @mousedown.prevent="addGhAttachment(creatableGhAttachOption.value)"
+                >
+                  <span>+ {{ creatableGhAttachOption.label }}</span>
+                </div>
+                <div
+                  v-if="ghModal.team && filteredGhAttachOptions.length === 0 && !creatableGhAttachOption"
+                  class="attach-hint"
+                >
+                  {{ teamAttachHint(ghModal.attachments) }}
                 </div>
               </div>
             </div>
@@ -479,7 +505,7 @@
         <div class="modal-body">
           <div class="form-row">
             <label>Name</label>
-            <input v-model="proxyModal.name" class="form-input" placeholder="my-api" />
+            <input ref="proxyNameInputRef" v-model="proxyModal.name" class="form-input" placeholder="my-api" />
           </div>
           <div v-if="data?.hasTeam" class="form-row">
             <div class="form-row-check">
@@ -556,12 +582,12 @@
                 ref="proxyAttachInputRef"
                 v-model="proxyAttachSearch"
                 class="form-input"
-                placeholder="Search VMs, tags..."
+                :placeholder="proxyModal.team ? 'Search or create a tag...' : 'Search VMs, tags, or create a tag...'"
                 @focus="proxyAttachOpen = true"
                 @input="proxyAttachOpen = true"
                 @blur="delayClose(() => proxyAttachOpen = false)"
               />
-              <div v-if="proxyAttachOpen && filteredProxyAttachOptions.length > 0" class="attach-dropdown">
+              <div v-if="proxyAttachOpen && (filteredProxyAttachOptions.length > 0 || creatableProxyAttachOption || proxyModal.team)" class="attach-dropdown">
                 <div
                   v-for="opt in filteredProxyAttachOptions"
                   :key="opt.value"
@@ -570,6 +596,19 @@
                 >
                   <span>{{ opt.label }}</span>
                   <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+                <div
+                  v-if="creatableProxyAttachOption"
+                  class="attach-option attach-option-create"
+                  @mousedown.prevent="addProxyAttachment(creatableProxyAttachOption.value)"
+                >
+                  <span>+ {{ creatableProxyAttachOption.label }}</span>
+                </div>
+                <div
+                  v-if="proxyModal.team && filteredProxyAttachOptions.length === 0 && !creatableProxyAttachOption"
+                  class="attach-hint"
+                >
+                  {{ teamAttachHint(proxyModal.attachments) }}
                 </div>
               </div>
             </div>
@@ -647,12 +686,12 @@
                 ref="attachModalInputRef"
                 v-model="attachModalSearch"
                 class="form-input"
-                placeholder="Search VMs, tags to attach..."
+                :placeholder="attachModal.isTeam ? 'Search or create a tag...' : 'Search VMs, tags, or create a tag to attach...'"
                 @focus="attachModalOpen = true"
                 @input="attachModalOpen = true"
                 @blur="delayClose(() => attachModalOpen = false)"
               />
-              <div v-if="attachModalOpen && filteredAttachModalOptions.length > 0" class="attach-dropdown">
+              <div v-if="attachModalOpen && (filteredAttachModalOptions.length > 0 || creatableAttachModalOption || attachModal.isTeam)" class="attach-dropdown">
                 <div
                   v-for="opt in filteredAttachModalOptions"
                   :key="opt.value"
@@ -661,6 +700,19 @@
                 >
                   <span>{{ opt.label }}</span>
                   <span v-if="opt.sublabel" class="attach-option-context">{{ opt.sublabel }}</span>
+                </div>
+                <div
+                  v-if="creatableAttachModalOption"
+                  class="attach-option attach-option-create"
+                  @mousedown.prevent="attachFromModal(creatableAttachModalOption.value)"
+                >
+                  <span>+ {{ creatableAttachModalOption.label }}</span>
+                </div>
+                <div
+                  v-if="attachModal.isTeam && filteredAttachModalOptions.length === 0 && !creatableAttachModalOption"
+                  class="attach-hint"
+                >
+                  {{ teamAttachHint(attachModal.currentAttachments) }}
                 </div>
               </div>
             </div>
@@ -921,6 +973,7 @@ const proxyModal = reactive({
 })
 
 const proxyTargetRef = ref<HTMLElement | null>(null)
+const proxyNameInputRef = ref<HTMLInputElement | null>(null)
 const proxyTargetOpen = ref(false)
 
 const proxyAttachSearch = ref('')
@@ -976,7 +1029,7 @@ const attachModalInputRef = ref<HTMLInputElement | null>(null)
 // Helper: describe VMs for a tag in the dropdown
 function tagVMLabel(tag: string): string {
   const vms = data.value?.tagVMs?.[tag] || []
-  if (vms.length === 0) return ''
+  if (vms.length === 0) return 'new tag'
   if (vms.length <= 3) return vms.join(', ')
   return `${vms.length} VMs`
 }
@@ -988,13 +1041,27 @@ function tagChipHint(tag: string): string {
   return `attached to ${vms.length} VMs`
 }
 
+// Tags known to the user — union of box tags (data.allTags, populated only
+// from VMs the user owns) and any tag referenced by an existing integration
+// attachment. Integration attachments can reference tags that aren't applied
+// to any VM yet, so we surface those here too.
+const allKnownTags = computed(() => {
+  const set = new Set<string>(data.value?.allTags ?? [])
+  for (const ig of data.value?.integrations ?? []) {
+    for (const a of ig.attachments ?? []) {
+      if (a.startsWith('tag:')) set.add(a.slice(4))
+    }
+  }
+  return [...set].sort()
+})
+
 // All possible attachment options (for existing integration attach modal)
 const allAttachOptions = computed(() => {
   if (!data.value) return [] as { value: string; label: string; sublabel: string }[]
   const opts: { value: string; label: string; sublabel: string }[] = [
     { value: 'auto:all', label: 'auto:all', sublabel: `${data.value.boxes.length} VMs` },
   ]
-  for (const tag of data.value.allTags) {
+  for (const tag of allKnownTags.value) {
     opts.push({ value: `tag:${tag}`, label: `tag:${tag}`, sublabel: tagVMLabel(tag) })
   }
   for (const box of data.value.boxes) {
@@ -1010,10 +1077,38 @@ function filterAttachOptions(search: string, selected: string[]) {
     .filter(o => !q || o.value.toLowerCase().includes(q) || o.sublabel.toLowerCase().includes(q))
 }
 
+// Tag names must match this server-side regex (see ssh_tag_command.go).
+const tagNameRe = /^[a-z][a-z0-9_-]*$/
+
+// Returns a synthesized "Create tag '<name>'" option when the search string is
+// a valid new tag name not already present in selected attachments or known
+// tags. Used to let users create-and-attach tags directly from the dropdown.
+function creatableTagOption(search: string, selected: string[]): { value: string; label: string } | null {
+  const q = search.trim().replace(/^tag:/i, '')
+  if (!q || !tagNameRe.test(q)) return null
+  const value = `tag:${q}`
+  if (selected.includes(value)) return null
+  if (allKnownTags.value.includes(q)) return null
+  return { value, label: `Create tag '${q}'` }
+}
+
+// Hint shown in attachment dropdowns when team mode is on and no options match.
+// Considers tags already in the current modal's attachments list, so the hint
+// doesn't claim "no tags" right after the user creates one in this session.
+function teamAttachHint(currentAttachments: string[]): string {
+  const hasAnyTag =
+    allKnownTags.value.length > 0 ||
+    currentAttachments.some(a => a.startsWith('tag:'))
+  return hasAnyTag
+    ? "Team integrations attach by tag — type a tag name."
+    : "You have no tags yet. Team integrations attach by tag — type a tag name to create one."
+}
+
 const filteredAttachModalOptions = computed(() => {
   const opts = filterAttachOptions(attachModalSearch.value, attachModal.currentAttachments)
   return attachModal.isTeam ? opts.filter(o => o.value.startsWith('tag:')) : opts
 })
+const creatableAttachModalOption = computed(() => creatableTagOption(attachModalSearch.value, attachModal.currentAttachments))
 
 // VM options for tagging (used in both add modals)
 // Helper: get tags for a VM
@@ -1021,7 +1116,7 @@ function vmTags(vmName: string): string[] {
   if (!data.value?.tagVMs) return []
   const tags: string[] = []
   for (const [tag, vms] of Object.entries(data.value.tagVMs)) {
-    if (vms.includes(vmName)) tags.push(tag)
+    if (vms?.includes(vmName)) tags.push(tag)
   }
   return tags
 }
@@ -1042,6 +1137,7 @@ const filteredGhAttachOptions = computed(() => {
   const opts = filterAttachOptions(ghAttachSearch.value, ghModal.attachments)
   return ghModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
 })
+const creatableGhAttachOption = computed(() => creatableTagOption(ghAttachSearch.value, ghModal.attachments))
 // Target URL VM suggestions
 const filteredTargetVMs = computed(() => {
   const boxes = data.value?.boxes || []
@@ -1085,6 +1181,7 @@ const filteredProxyAttachOptions = computed(() => {
   const opts = filterAttachOptions(proxyAttachSearch.value, proxyModal.attachments)
   return proxyModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
 })
+const creatableProxyAttachOption = computed(() => creatableTagOption(proxyAttachSearch.value, proxyModal.attachments))
 const filteredGhTagVMOptions = computed(() => filterVMOptions(ghTagVMSearch.value, ghModal.tagVMs))
 const filteredProxyTagVMOptions = computed(() => filterVMOptions(proxyTagVMSearch.value, proxyModal.tagVMs))
 
@@ -1192,6 +1289,14 @@ watch(() => ghModal.team, (isTeam) => {
 })
 
 watch(() => proxyModal.target, (newTarget) => {
+  // Strip a duplicate scheme prefix that arises when the user pastes a full
+  // URL into the pre-filled "https://" field. Match http(s):// followed by
+  // another http(s):// and drop the first one.
+  const dupScheme = /^https?:\/\/(https?:\/\/)/i
+  if (dupScheme.test(newTarget)) {
+    proxyModal.target = newTarget.replace(dupScheme, '$1')
+    return
+  }
   if (proxyModal.authMethod !== 'none' && proxyModal.authMethod !== 'basic') return
   try {
     const url = new URL(newTarget)
@@ -1360,6 +1465,7 @@ const filteredSvcAttachOptions = computed(() => {
   const opts = filterAttachOptions(svcAttachSearch.value, svcModal.attachments)
   return svcModal.team ? opts.filter(o => o.value.startsWith('tag:')) : opts
 })
+const creatableSvcAttachOption = computed(() => creatableTagOption(svcAttachSearch.value, svcModal.attachments))
 const filteredSvcTagVMOptions = computed(() => filterVMOptions(svcTagVMSearch.value, svcModal.tagVMs))
 
 watch(svcEffectiveName, (newName, oldName) => {
@@ -1770,7 +1876,7 @@ async function runGhCommand() {
 function openAddHTTPProxy() {
   proxyModal.visible = true
   proxyModal.name = ''
-  proxyModal.target = ''
+  proxyModal.target = 'https://'
   proxyModal.usePeer = false
   proxyModal.authMethod = 'none'
   proxyModal.basicUser = ''
@@ -1784,6 +1890,7 @@ function openAddHTTPProxy() {
   proxyModal.result = null
   proxyAttachSearch.value = ''
   proxyTagVMSearch.value = ''
+  nextTick(() => proxyNameInputRef.value?.focus())
 }
 
 function closeProxyModal() {
@@ -2655,6 +2762,18 @@ select.form-input {
   color: var(--text-color-muted);
   margin-left: 8px;
   white-space: nowrap;
+}
+
+.attach-option-create {
+  color: var(--text-color);
+  font-style: italic;
+}
+
+.attach-hint {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-color-muted);
+  line-height: 1.4;
 }
 
 
