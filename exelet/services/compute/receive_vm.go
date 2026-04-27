@@ -32,7 +32,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 	kernelPath := filepath.Join(instanceDir, kernelName)
 
 	// Edit CH snapshot config to fix disk path, kernel path, and boot args
-	if err := editSnapshotConfig(snapshotDir, instanceFS.Path, kernelPath, sourceInstance.VMConfig, targetNetwork); err != nil {
+	if err := editSnapshotConfig(snapshotDir, instanceFS.Path, kernelPath, s.vmm.OperatorSSHSocketPath(instanceID), sourceInstance.VMConfig, targetNetwork); err != nil {
 		return nil, false, status.Errorf(codes.Internal, "failed to edit snapshot config: %v", err)
 	}
 
@@ -181,7 +181,7 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 
 // editSnapshotConfig modifies the CH snapshot's config.json to point to the target's
 // disk path, kernel path, and updated boot args (with new IP).
-func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *api.VMConfig, targetNetwork *api.NetworkInterface) error {
+func editSnapshotConfig(snapshotDir, diskPath, kernelPath, operatorSSHSocket string, srcVMConfig *api.VMConfig, targetNetwork *api.NetworkInterface) error {
 	configPath := filepath.Join(snapshotDir, "config.json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -210,6 +210,14 @@ func editSnapshotConfig(snapshotDir, diskPath, kernelPath string, srcVMConfig *a
 		return fmt.Errorf("snapshot config missing payload object")
 	}
 	payload["kernel"] = kernelPath
+
+	// Update the operator-SSH vsock socket path so CH re-binds it under this
+	// exelet's data dir rather than the source exelet's.
+	if operatorSSHSocket != "" {
+		if vs, ok := config["vsock"].(map[string]any); ok {
+			vs["socket"] = operatorSSHSocket
+		}
+	}
 
 	// Update cmdline: replace ip= boot arg with target IP (skip when targetNetwork is nil,
 	// e.g., during local tier migration where the IP doesn't change)

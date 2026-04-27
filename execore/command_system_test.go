@@ -955,6 +955,7 @@ func TestRequiresSudoExplicitlySet(t *testing.T) {
 		"sudo-exe add-gift":       true,
 		"sudo-exe chown":          true,
 		"sudo-exe llm-credits":    true,
+		"sudo-exe operator-ssh":   true,
 		"sudo-exe set-limits":     true,
 		"team create":             true,
 		"team enroll":             true,

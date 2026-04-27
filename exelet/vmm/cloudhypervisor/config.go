@@ -104,6 +104,18 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		Console: &client.ConsoleConfig{
 			Mode: client.ConsoleConfigModeTty,
 		},
+		// Hybrid-vsock socket exposed on the host for operator access to the
+		// guest. exe-init listens on an AF_VSOCK port inside the guest and
+		// runs a Go ssh server there; the operator reaches it by speaking the
+		// CH hybrid-vsock handshake ("CONNECT <port>\n") over this unix
+		// socket. Cid 3 is the default guest cid for CH.
+		Vsock: func() *client.VsockConfig {
+			socket := v.OperatorSSHSocketPath(cfg.ID)
+			return &client.VsockConfig{
+				Cid:    3,
+				Socket: socket,
+			}
+		}(),
 		Net: &networkConfig,
 		Payload: client.PayloadConfig{
 			Kernel:  &kernelPath,

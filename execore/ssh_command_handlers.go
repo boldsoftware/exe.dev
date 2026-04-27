@@ -675,6 +675,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 					FlagSetFunc:       jsonOnlyFlags("chown"),
 					Handler:           ss.handleChownCommand,
 				},
+				{
+					Name:              "operator-ssh",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "Print SSH command to access a VM via the operator-SSH vsock backdoor (support only)",
+					Usage:             "sudo-exe operator-ssh <vmname>",
+					HasPositionalArgs: true,
+					FlagSetFunc:       jsonOnlyFlags("operator-ssh"),
+					Handler:           ss.handleOperatorSSHCommand,
+				},
 			},
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				return cc.Errorf("usage: sudo-exe <subcommand>")

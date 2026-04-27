@@ -129,6 +129,15 @@ func (v *VMM) bootLogPath(id string) string {
 	return filepath.Join(v.getDataPath(id), bootLogName)
 }
 
+// OperatorSSHSocketPath returns the unix socket path cloud-hypervisor binds
+// for the guest's operator SSH vsock. A hybrid-vsock handshake on this
+// socket ("CONNECT <port>\n") reaches an exe-init-spawned ssh server
+// listening on AF_VSOCK inside the guest. The filename is kept short
+// (SUN_LEN is 108 bytes).
+func (v *VMM) OperatorSSHSocketPath(id string) string {
+	return filepath.Join(v.getDataPath(id), "opssh.sock")
+}
+
 func (v *VMM) waitForReady(ctx context.Context, id string) error {
 	// Create a timeout context for the overall wait
 	waitCtx, cancel := context.WithTimeout(ctx, config.InstanceStartTimeout)

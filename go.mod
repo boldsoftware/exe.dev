@@ -56,6 +56,7 @@ require (
 	github.com/klauspost/compress v1.18.3
 	github.com/lmittmann/tint v1.1.2
 	github.com/mailgun/mailgun-go/v4 v4.23.0
+	github.com/mdlayher/vsock v1.2.1
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/mistifyio/go-zfs/v3 v3.1.0
 	github.com/mrz1836/postmark v1.8.2

@@ -66,6 +66,8 @@ TEST_LETTER_COUNTS = [
 MIGRATION_TEST_COSTS = [
     ("TestDirectMigrationCold", 31),
     ("TestDirectMigrationLive", 51),
+    ("TestDirectMigrationOperatorSSHCold", 32),
+    ("TestDirectMigrationOperatorSSHLive", 55),
     ("TestDirectMigrationOrphanedDataset", 30),
     ("TestDirectMigrationReconnect", 25),
     ("TestDirectMigrationResumable", 34),
@@ -210,6 +212,51 @@ def split_migration_tests(n_shards):
     return shards
 
 
+def _generate_migration_shards_text(exelets_vm_concurrency, migration_shards, coverage):
+    """YAML for the exelets-migration shard steps. Sharded because the
+    TestDirectMigration* tests are serial and dominate the critical path."""
+    lines = []
+    shards = split_migration_tests(migration_shards)
+    for i, tests in enumerate(shards):
+        shard_num = i + 1
+        label = f"migration-{shard_num}"
+        # -run filter: anchored exact-match alternation so "TestDirectMigration"
+        # doesn't accidentally match "TestDirectMigrationResumable".
+        run_filter = "^(" + "|".join(tests) + ")$"
+        lines.append(f'- label: ":arrow_right_hook: e1e migration ({shard_num}/{migration_shards})"')
+        lines.append(f'  key: test-exelets-{label}')
+        lines.append('  depends_on:')
+        lines.append('    - build-e1e')
+        lines.append('    - ensure-snapshot')
+        lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
+        lines.append('  timeout_in_minutes: 10')
+        lines.append('  env:')
+        lines.append('    VM_DRIVER: cloudhypervisor')
+        lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
+        lines.append(f'    E1E_EXELETS_RUN_FILTER: "{run_filter}"')
+        lines.append(f'    E1E_EXELETS_LABEL: "{label}"')
+        # Direct-migration tests are bottlenecked on zfs send/recv CPU inside
+        # the outer CI VM. Give these shards more vCPUs (default is 4).
+        lines.append('    VCPUS: "8"')
+        if coverage:
+            lines.append(f'    E1E_COVERAGE: "true"')
+        lines.append('  artifact_paths:')
+        lines.append(f'    - "e1e-results-{label}.json"')
+        lines.append(f'    - "test-gantt-{label}.html"')
+        lines.append(f'    - "e1e-results-{label}.xml"')
+        lines.append(f'    - "e1e-logs-{label}/**/*"')
+        if coverage:
+            lines.append(f'    - "coverage-{label}.txt"')
+        lines.append('')
+    return "\n".join(lines)
+
+
+def generate_migration_only_steps(exelets_vm_concurrency, migration_shards, coverage=False):
+    """YAML for just the exelets-migration shards, used by the Migration-Only
+    trailer for fast iteration on migration tests."""
+    return _generate_migration_shards_text(exelets_vm_concurrency, migration_shards, coverage)
+
+
 def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=False):
     """Generate YAML text for e1e shard steps + exelets step."""
     shards = split_letters(n_shards)
@@ -271,39 +318,7 @@ def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurre
     lines.append('')
 
     # Exelets migration steps (direct migration tests, parallel with above).
-    # Sharded because these tests are serial and dominate the critical path.
-    shards = split_migration_tests(migration_shards)
-    for i, tests in enumerate(shards):
-        shard_num = i + 1
-        label = f"migration-{shard_num}"
-        # -run filter: anchored exact-match alternation so "TestDirectMigration"
-        # doesn't accidentally match "TestDirectMigrationResumable".
-        run_filter = "^(" + "|".join(tests) + ")$"
-        lines.append(f'- label: ":arrow_right_hook: e1e migration ({shard_num}/{migration_shards})"')
-        lines.append(f'  key: test-exelets-{label}')
-        lines.append('  depends_on:')
-        lines.append('    - build-e1e')
-        lines.append('    - ensure-snapshot')
-        lines.append('  command: python3 .buildkite/steps/test-e1e-exelets.py')
-        lines.append('  timeout_in_minutes: 10')
-        lines.append('  env:')
-        lines.append('    VM_DRIVER: cloudhypervisor')
-        lines.append(f'    E1E_EXELETS_VM_CONCURRENCY: "{exelets_vm_concurrency}"')
-        lines.append(f'    E1E_EXELETS_RUN_FILTER: "{run_filter}"')
-        lines.append(f'    E1E_EXELETS_LABEL: "{label}"')
-        # Direct-migration tests are bottlenecked on zfs send/recv CPU inside
-        # the outer CI VM. Give these shards more vCPUs (default is 4).
-        lines.append('    VCPUS: "8"')
-        if coverage:
-            lines.append(f'    E1E_COVERAGE: "true"')
-        lines.append('  artifact_paths:')
-        lines.append(f'    - "e1e-results-{label}.json"')
-        lines.append(f'    - "test-gantt-{label}.html"')
-        lines.append(f'    - "e1e-results-{label}.xml"')
-        lines.append(f'    - "e1e-logs-{label}/**/*"')
-        if coverage:
-            lines.append(f'    - "coverage-{label}.txt"')
-        lines.append('')
+    lines.append(_generate_migration_shards_text(exelets_vm_concurrency, migration_shards, coverage))
 
     # Billing e1e step (separate exed instance with billing enabled).
     lines.append('- label: ":credit_card: e1e billing"')
@@ -460,6 +475,12 @@ def main():
         trailers.get("bypass-ci", "").strip().lower() == "true"
         and branch != "main"
     )
+    # Migration-Only: true — skip everything except exelets-migration shards.
+    # For fast iteration on migration tests only. Honored only off main.
+    migration_only = (
+        trailers.get("migration-only", "").strip().lower() == "true"
+        and branch != "main"
+    )
 
     print(f"exe_changed={exe_changed} shelley_changed={shelley_changed} "
           f"blog_changed={blog_changed} ui_changed={ui_changed} "
@@ -480,12 +501,17 @@ def main():
 
     # Conditional: exe tests
     if exe_changed and not bypass_ci:
-        exe_segment = load_segment("exe.yml")
-        if coverage:
-            exe_segment = _inject_coverage_env(exe_segment)
-        segments.append(exe_segment)
-        # Generate e1e steps dynamically
-        segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=coverage))
+        if migration_only:
+            # Only include exelets-migration shards (and their prerequisites).
+            segments.append(load_segment("exe.yml"))
+            segments.append(generate_migration_only_steps(exelets_vm_concurrency, migration_shards, coverage=coverage))
+        else:
+            exe_segment = load_segment("exe.yml")
+            if coverage:
+                exe_segment = _inject_coverage_env(exe_segment)
+            segments.append(exe_segment)
+            # Generate e1e steps dynamically
+            segments.append(generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=coverage))
 
     # Conditional: shelley tests
     if shelley_changed and not bypass_ci:
