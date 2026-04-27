@@ -3,7 +3,7 @@
 title: "browser"
 description: "Generate a magic link to log in to the website"
 subheading: "9. CLI Reference"
-suborder: 20
+suborder: 19
 published: true
 ---
 

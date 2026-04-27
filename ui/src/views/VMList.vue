@@ -317,7 +317,7 @@ const searchQuery = ref((route.query.filter as string) || '')
 const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
-const viewMode = ref<'list' | 'usage'>('list')
+const viewMode = ref<'list' | 'usage'>(route.name === 'vms-usage' ? 'usage' : 'list')
 const usageHours = ref(24)
 const hasUsage = ref(false)
 

@@ -1,30 +1,12 @@
 <template>
   <div class="usage-view">
-    <!-- Pool Summary -->
-    <div v-if="pool && pool.cpu_max > 0" class="pool-section">
-      <div class="pool-heading">Resource Pool <span class="pool-heading-peak">peak, {{ rangeLabel }}</span></div>
-      <div class="pool-summary">
-        <div class="pool-metric">
-          <div class="pool-label">CPU <span class="pool-value">{{ peakCpu.toFixed(1) }} / {{ pool.cpu_max }} cores</span></div>
-          <div class="pool-bar-track">
-            <div class="pool-bar-fill" :class="barColor(pool.cpu_max > 0 ? (peakCpu / pool.cpu_max) * 100 : 0)" :style="{ width: pct(peakCpu, pool.cpu_max) }"></div>
-          </div>
-        </div>
-        <div v-if="pool.mem_max_bytes > 0" class="pool-metric">
-          <div class="pool-label">Used <span class="pool-value">{{ fmtGB(peakMemGB) }} / {{ fmtGB(pool.mem_max_bytes / GB) }}</span></div>
-          <div class="pool-bar-track">
-            <div class="pool-bar-fill" :class="barColor((peakMemGB / (pool.mem_max_bytes / GB)) * 100)" :style="{ width: pct(peakMemGB, pool.mem_max_bytes / GB) }"></div>
-          </div>
-        </div>
-        <div class="pool-plan">
-          <div><span class="plan-name">{{ pool.plan_name }}</span> <span v-if="pool.tier_name">({{ pool.tier_name }})</span></div>
-          <div>{{ pool.vms_running }} of {{ pool.vms_total }} VMs running</div>
-        </div>
-      </div>
+    <div class="beta-banner">
+      <span class="beta-banner-tag">Beta</span>
+      Metrics update periodically and may have discrepancies. For real-time data, use <code>free</code>, <code>df -h</code>, or <code>top</code> on the VM.
     </div>
 
     <!-- Pool Charts -->
-    <PoolCharts v-if="pool && pool.cpu_max > 0" />
+    <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
 
     <!-- Loading -->
     <div v-if="historyLoading" class="usage-loading">
@@ -33,7 +15,7 @@
 
     <!-- Usage Table -->
     <template v-else-if="filteredRows.length > 0">
-    <div class="table-heading">Per-VM Metrics <span class="table-heading-range">{{ rangeLabel }}</span></div>
+    <div class="table-heading">VMs <span class="table-heading-range">{{ rangeLabel }}</span></div>
     <div class="boxes-list">
       <div class="usage-header">
         <button class="col-btn" @click="toggleSort('name')">VM <i :class="sortIcon('name')" class="sort-icon"></i></button>
@@ -94,8 +76,6 @@ import {
 } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import PoolCharts from './PoolCharts.vue'
-
-const GB = 1024 * 1024 * 1024
 
 const props = defineProps<{
   boxes: BoxInfo[]
@@ -169,35 +149,6 @@ const boxStatusMap = computed(() => {
   return m
 })
 
-// Peak pool CPU/mem from history (sum across VMs at each timestamp, take max).
-const peakCpu = computed(() => {
-  const byTime = new Map<string, number>()
-  for (const points of Object.values(history.value)) {
-    for (const p of points) {
-      byTime.set(p.timestamp, (byTime.get(p.timestamp) ?? 0) + p.cpu_cores)
-    }
-  }
-  let max = 0
-  for (const v of byTime.values()) {
-    if (v > max) max = v
-  }
-  return max
-})
-
-const peakMemGB = computed(() => {
-  const byTime = new Map<string, number>()
-  for (const points of Object.values(history.value)) {
-    for (const p of points) {
-      byTime.set(p.timestamp, (byTime.get(p.timestamp) ?? 0) + p.memory_used_gb)
-    }
-  }
-  let max = 0
-  for (const v of byTime.values()) {
-    if (v > max) max = v
-  }
-  return max
-})
-
 // Per-VM row data with raw sort values.
 interface UsageRow {
   name: string
@@ -248,17 +199,6 @@ function fmtGB(gb: number): string {
 function fmtIO(mbps: number): string {
   if (mbps < 0.1) return '0'
   return mbps.toFixed(1) + ' MB/s'
-}
-
-function pct(used: number, max: number): string {
-  if (max <= 0) return '0%'
-  return Math.min((used / max) * 100, 100) + '%'
-}
-
-function barColor(pctVal: number): string {
-  if (pctVal >= 85) return 'red'
-  if (pctVal >= 60) return 'yellow'
-  return 'green'
 }
 
 function lastValue(points: UsageDataPoint[], field: keyof UsageDataPoint): number {
@@ -348,92 +288,28 @@ const filteredRows = computed(() => {
   gap: 12px;
 }
 
-/* Pool section */
-.pool-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.pool-heading {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-color-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.pool-heading-peak {
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 10px;
-}
-.pool-summary {
-  display: flex;
-  gap: 24px;
-  padding: 14px 16px;
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  align-items: center;
-}
-.pool-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  flex: 1;
-  min-width: 0;
-}
-.pool-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-color-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.pool-label .pool-value {
-  font-family: var(--font-mono);
+/* Beta banner */
+.beta-banner {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-  text-transform: none;
-  letter-spacing: 0;
+  color: var(--badge-public-text);
+  background: var(--badge-public-bg);
+  border-radius: 6px;
+  padding: 8px 12px;
+  line-height: 1.5;
 }
-.pool-bar-track {
-  height: 8px;
-  background: var(--surface-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.pool-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s;
-}
-.pool-bar-fill.green {
-  background: #2da44e;
-}
-.pool-bar-fill.yellow {
-  background: #bf8700;
-}
-.pool-bar-fill.red {
-  background: #cf222e;
-}
-.pool-plan {
+.beta-banner code {
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-color-muted);
-  text-align: right;
-  white-space: nowrap;
-  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
-.pool-plan .plan-name {
-  font-weight: 600;
-  color: var(--text-color-secondary);
+.beta-banner-tag {
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
 }
 
 /* Table heading */
@@ -564,13 +440,6 @@ const filteredRows = computed(() => {
 }
 
 @media (max-width: 768px) {
-  .pool-summary {
-    flex-direction: column;
-    gap: 12px;
-  }
-  .pool-plan {
-    text-align: left;
-  }
   .usage-header,
   .box-row {
     grid-template-columns: minmax(100px, 1.2fr) 1fr 1fr;

@@ -3,7 +3,7 @@
 title: "integrations"
 description: "Manage integrations"
 subheading: "9. CLI Reference"
-suborder: 17
+suborder: 16
 published: true
 ---
 

@@ -3,7 +3,7 @@
 title: "resize"
 description: "Resize a VM's disk"
 subheading: "9. CLI Reference"
-suborder: 11
+suborder: 10
 published: true
 ---
 

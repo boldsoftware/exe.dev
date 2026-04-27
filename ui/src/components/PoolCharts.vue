@@ -1,20 +1,6 @@
 <template>
   <div class="pool-charts-section">
-    <div class="section-heading">
-      Resource Pool
-      <span class="section-heading-sub">{{ rangeLabel }}</span>
-    </div>
-    <div class="range-tabs">
-      <button
-        v-for="r in ranges"
-        :key="r.hours"
-        class="range-tab"
-        :class="{ active: hours === r.hours }"
-        @click="hours = r.hours"
-      >
-        {{ r.label }}
-      </button>
-    </div>
+    <div class="section-heading">Resource Pool</div>
 
     <div v-if="loading" class="pool-charts-loading">
       <i class="pi pi-spin pi-spinner"></i> Loading...
@@ -51,15 +37,10 @@ import {
 
 Chart.register(...registerables)
 
+const props = defineProps<{
+  hours: number
+}>()
 
-
-const ranges = [
-  { hours: 1, label: '1h' },
-  { hours: 24, label: '24h' },
-  { hours: 168, label: '7d' },
-]
-
-const hours = ref(24)
 const loading = ref(true)
 const points = ref<PoolPoint[]>([])
 const pool = ref<VMsPoolResponse | null>(null)
@@ -71,11 +52,6 @@ let memChart: Chart | null = null
 
 const cpuLimit = computed(() => pool.value?.cpu_max ?? 0)
 const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
-
-const rangeLabel = computed(() => {
-  const r = ranges.find((r) => r.hours === hours.value)
-  return r ? r.label : ''
-})
 
 const cpuCurrent = computed(() => {
   if (points.value.length === 0) return ''
@@ -98,8 +74,7 @@ function fmtGB(bytes: number): string {
 
 function fmtTime(ts: string): string {
   const d = new Date(ts)
-  if (hours.value <= 1) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  if (hours.value <= 24)
+  if (props.hours <= 24)
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
@@ -250,7 +225,7 @@ async function loadData() {
   try {
     const [poolRes, historyRes] = await Promise.all([
       pool.value ? Promise.resolve(pool.value) : fetchVMsPool(),
-      fetchPoolHistory(hours.value),
+      fetchPoolHistory(props.hours),
     ])
     pool.value = poolRes
     points.value = historyRes.points ?? []
@@ -263,7 +238,7 @@ async function loadData() {
   renderCharts()
 }
 
-watch(hours, loadData)
+watch(() => props.hours, loadData)
 
 onMounted(loadData)
 
@@ -289,50 +264,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: baseline;
   gap: 8px;
-}
-
-.section-heading-sub {
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-color-muted);
-  text-transform: none;
-}
-
-.range-tabs {
-  display: flex;
-  gap: 0;
-  align-self: flex-end;
-  margin-top: -24px;
-}
-
-.range-tab {
-  padding: 3px 10px;
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  background: var(--surface-card);
-  color: var(--text-color-muted);
-  border: 1px solid var(--surface-border);
-  transition: all 0.15s;
-}
-
-.range-tab:first-child {
-  border-radius: 4px 0 0 4px;
-}
-
-.range-tab:last-child {
-  border-radius: 0 4px 4px 0;
-}
-
-.range-tab:not(:first-child) {
-  border-left: none;
-}
-
-.range-tab.active {
-  background: var(--text-color);
-  color: var(--surface-ground);
-  border-color: var(--text-color);
 }
 
 .chart-grid {
@@ -393,11 +324,6 @@ onBeforeUnmount(() => {
 @media (max-width: 640px) {
   .chart-grid {
     grid-template-columns: 1fr;
-  }
-
-  .range-tabs {
-    margin-top: 0;
-    align-self: flex-start;
   }
 }
 </style>

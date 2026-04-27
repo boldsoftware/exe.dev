@@ -3,7 +3,7 @@
 title: "shelley"
 description: "Manage Shelley agent on VMs"
 subheading: "9. CLI Reference"
-suborder: 19
+suborder: 18
 published: true
 ---
 

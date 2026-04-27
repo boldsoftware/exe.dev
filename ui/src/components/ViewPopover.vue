@@ -3,6 +3,7 @@
     <button class="view-btn" @click="toggle" :class="{ active: open }">
       <i class="pi pi-sliders-h" style="font-size: 11px;"></i>
       <span class="view-btn-text">View</span>
+      <span v-if="mode === 'usage'" class="view-btn-range">{{ rangeLabel }}</span>
       <i class="pi pi-chevron-down view-btn-chevron" style="font-size: 9px;"></i>
     </button>
     <Teleport to="body">
@@ -42,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 
 export type SortField = 'updatedAt' | 'createdAt' | 'name'
 export type GroupField = 'none' | 'tag'
@@ -97,6 +98,11 @@ const rangeOptions: { value: number; label: string }[] = [
   { value: 168, label: '7 days' },
   { value: 720, label: '30 days' },
 ]
+
+const rangeLabel = computed(() => {
+  const r = rangeOptions.find((o) => o.value === localRange.value)
+  return r ? r.label : ''
+})
 
 function toggle() {
   open.value = !open.value
@@ -162,6 +168,15 @@ function emitRangeChange() {
   color: var(--btn-hover-text);
 }
 
+.view-btn-range {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-color-muted);
+  border-left: 1px solid var(--surface-border);
+  padding-left: 6px;
+  margin-left: 2px;
+}
+
 .view-backdrop {
   position: fixed;
   inset: 0;
@@ -223,7 +238,8 @@ function emitRangeChange() {
 
 @media (max-width: 768px) {
   .view-btn-text,
-  .view-btn-chevron {
+  .view-btn-chevron,
+  .view-btn-range {
     display: none;
   }
   .view-btn {

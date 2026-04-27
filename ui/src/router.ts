@@ -11,6 +11,7 @@ const router = createRouter({
   },
   routes: [
     { path: '/', name: 'vms', component: VMList },
+    { path: '/vms/usage', name: 'vms-usage', component: VMList },
     { path: '/user', name: 'profile', component: () => import('./views/Profile.vue') },
     { path: '/integrations', name: 'integrations', component: () => import('./views/Integrations.vue') },
     { path: '/shell', name: 'shell', component: () => import('./views/Shell.vue') },

@@ -364,6 +364,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "stat",
+			Hidden:            true,
 			AllowTagScoped:    true,
 			Description:       "Show CPU, memory, disk, and IO metrics for a VM",
 			Usage:             "stat <vm-name> [--range=24h|7d|30d]",

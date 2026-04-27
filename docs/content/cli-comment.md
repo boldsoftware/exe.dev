@@ -3,7 +3,7 @@
 title: "comment"
 description: "Set or clear a short comment on a VM"
 subheading: "9. CLI Reference"
-suborder: 12
+suborder: 11
 published: true
 ---
 

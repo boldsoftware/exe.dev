@@ -90,6 +90,7 @@ func (ss *SSHServer) handleStatCommand(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	cc.Writeln("\033[1m%s\033[0m  %s  %s", vmName, statusColorStr(vmStatus), rangeLabel)
+	cc.Writeln("\033[33m[Beta]\033[0m Metrics update periodically and may have discrepancies. For real-time data, use free, df -h, or top.")
 
 	if len(points) == 0 {
 		cc.Writeln("  No metrics data available.")
