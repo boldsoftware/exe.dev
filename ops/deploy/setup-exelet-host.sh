@@ -57,10 +57,20 @@ VIRTIOFSD_VERSION="1.13.2"
 
 REGION="${REGION:-us-west-2}"
 AZ="${ZONE:-${REGION}b}"
-# Default to public subnets; us-west-2 uses private
+# Subnet type and name prefix.
+# - exelet hosts in us-west-2 use a dedicated IGW-routed public subnet
+#   (exelet-public-<az>) so EIPs route both directions cleanly.
+# - exe-ctr hosts in us-west-2 keep the existing NAT-routed private subnet.
+# - All other regions default to public (exe-<az>), which matches the
+#   existing exe-us-east-1b subnet.
 if [ "$REGION" = "us-west-2" ]; then
-    SUBNET_TYPE="${SUBNET_TYPE:-private}"
-    SUBNET_NAME_PREFIX="exe-ctr-${SUBNET_TYPE}"
+    if [[ "$MACHINE_NAME" == exelet-* ]]; then
+        SUBNET_TYPE="${SUBNET_TYPE:-public}"
+        SUBNET_NAME_PREFIX="exelet-public"
+    else
+        SUBNET_TYPE="${SUBNET_TYPE:-private}"
+        SUBNET_NAME_PREFIX="exe-ctr-${SUBNET_TYPE}"
+    fi
 else
     SUBNET_TYPE="${SUBNET_TYPE:-public}"
     SUBNET_NAME_PREFIX="exe"
@@ -77,11 +87,23 @@ if [ "$REGION" = "us-west-2" ]; then
     INSTANCE_ROLE_NAME="exe-ctr-instance-role"
     INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
     BACKUP_VOLUME_TYPE="exe-ctr-backup"
+    # Snapshot taxonomy: us-west-2 DLM matches exe-volume-type=exe-ctr-data
+    TANK_VOLUME_TYPE="exe-ctr-data"
 else
     INSTANCE_ROLE_NAME="exe-instance-role"
     INSTANCE_PROFILE_NAME="exe-instance-profile"
     BACKUP_VOLUME_TYPE="exe-backup"
+    # us-east-1 DLM matches exe-volume-type=exe-data
+    TANK_VOLUME_TYPE="exe-data"
 fi
+# tank EBS gp3 sizing
+TANK_VOLUME_SIZE="2048" # GiB
+TANK_VOLUME_IOPS="12000"
+TANK_VOLUME_THROUGHPUT="250" # MB/s
+
+# EC2 SSH key pair attached to new instances. Override per-region via env var
+# if aws-bold-common isn't imported there yet.
+SSH_KEY_NAME="${SSH_KEY_NAME:-aws-bold-common}"
 
 # Look up a subnet in the requested AZ (or create one)
 if [ -n "${SUBNET_ID:-}" ]; then
@@ -96,14 +118,34 @@ else
     if [ -z "$SUBNET_ID" ] || [ "$SUBNET_ID" = "None" ]; then
         echo "No ${SUBNET_TYPE} subnet found in ${AZ}, creating one..."
 
-        # Find the VPC by looking at an existing subnet in another AZ
+        # Find the VPC. First try a subnet matching the requested prefix (so
+        # we can grow an existing subnet family by adding a new AZ). If none
+        # match (e.g. very first exelet-public-* subnet), fall back to the
+        # default VPC, then to the only VPC in the region.
         VPC_ID=$(aws ec2 describe-subnets \
             --filters "Name=tag:Name,Values=${SUBNET_NAME_PREFIX}*" \
             --query 'Subnets[0].VpcId' \
             --output text \
-            --region ${REGION})
+            --region ${REGION} 2>/dev/null || true)
         if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
-            echo "Error: Could not find VPC from existing subnets. Set SUBNET_ID explicitly."
+            VPC_ID=$(aws ec2 describe-vpcs \
+                --filters "Name=is-default,Values=true" \
+                --query 'Vpcs[0].VpcId' \
+                --output text \
+                --region ${REGION} 2>/dev/null || true)
+        fi
+        if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            ALL_VPCS=$(aws ec2 describe-vpcs \
+                --query 'Vpcs[].VpcId' \
+                --output text \
+                --region ${REGION})
+            VPC_COUNT=$(echo "$ALL_VPCS" | wc -w)
+            if [ "$VPC_COUNT" = "1" ]; then
+                VPC_ID="$ALL_VPCS"
+            fi
+        fi
+        if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+            echo "Error: Could not auto-detect VPC. Set SUBNET_ID explicitly."
             exit 1
         fi
         echo "Found VPC: ${VPC_ID}"
@@ -138,12 +180,39 @@ else
             exit 1
         fi
 
-        # Find the NAT route table before confirming so we can show it
-        NAT_RT=$(aws ec2 describe-route-tables \
-            --filters "Name=vpc-id,Values=${VPC_ID}" "Name=route.nat-gateway-id,Values=*" \
-            --query 'RouteTables[0].RouteTableId' \
-            --output text \
-            --region ${REGION})
+        # Pick the route table for the new subnet:
+        # - public:  the IGW-routed table (defaults to the VPC main RT, which
+        #            is what the existing default-VPC public subnets use).
+        # - private: the NAT-routed table (matches existing exe-ctr-private-*).
+        if [ "$SUBNET_TYPE" = "public" ]; then
+            TARGET_RT=$(aws ec2 describe-route-tables \
+                --filters "Name=vpc-id,Values=${VPC_ID}" "Name=association.main,Values=true" \
+                --query 'RouteTables[0].RouteTableId' \
+                --output text \
+                --region ${REGION})
+            HAS_IGW=$(aws ec2 describe-route-tables \
+                --route-table-ids "${TARGET_RT}" \
+                --query "RouteTables[0].Routes[?starts_with(GatewayId, \`igw-\`)].GatewayId | [0]" \
+                --output text \
+                --region ${REGION} 2>/dev/null || true)
+            if [ -z "$HAS_IGW" ] || [ "$HAS_IGW" = "None" ]; then
+                echo "Error: VPC ${VPC_ID} main route table ${TARGET_RT} has no IGW route."
+                echo "A public subnet needs an Internet Gateway. Aborting."
+                exit 1
+            fi
+            RT_LABEL="${TARGET_RT} (IGW: ${HAS_IGW})"
+        else
+            TARGET_RT=$(aws ec2 describe-route-tables \
+                --filters "Name=vpc-id,Values=${VPC_ID}" "Name=route.nat-gateway-id,Values=*" \
+                --query 'RouteTables[0].RouteTableId' \
+                --output text \
+                --region ${REGION})
+            if [ -n "$TARGET_RT" ] && [ "$TARGET_RT" != "None" ]; then
+                RT_LABEL="${TARGET_RT} (NAT gateway)"
+            else
+                RT_LABEL="(none with NAT found — subnet may lack internet access)"
+            fi
+        fi
 
         echo ""
         echo "Will create a new ${SUBNET_TYPE} subnet:"
@@ -151,11 +220,7 @@ else
         echo "  AZ:          ${AZ}"
         echo "  CIDR:        ${NEW_CIDR}"
         echo "  Name tag:    ${SUBNET_NAME_PREFIX}-${AZ}"
-        if [ -n "$NAT_RT" ] && [ "$NAT_RT" != "None" ]; then
-            echo "  Route table: ${NAT_RT} (NAT gateway)"
-        else
-            echo "  Route table: (none with NAT found — subnet may lack internet access)"
-        fi
+        echo "  Route table: ${RT_LABEL}"
         echo ""
         read -r -p "Proceed? [y/N] " CONFIRM
         if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
@@ -177,22 +242,27 @@ else
             --tags Key=Name,Value="${SUBNET_NAME_PREFIX}-${AZ}" \
             --region ${REGION}
 
-        # Associate with the NAT route table found earlier
-        if [ -n "$NAT_RT" ] && [ "$NAT_RT" != "None" ]; then
+        # Associate the chosen route table.
+        if [ -n "$TARGET_RT" ] && [ "$TARGET_RT" != "None" ]; then
             aws ec2 associate-route-table \
                 --subnet-id ${SUBNET_ID} \
-                --route-table-id ${NAT_RT} \
+                --route-table-id ${TARGET_RT} \
                 --region ${REGION} >/dev/null
-            echo "Associated subnet with NAT route table ${NAT_RT}"
+            echo "Associated subnet with route table ${RT_LABEL}"
         else
-            echo "Warning: No route table with NAT gateway found. Subnet may not have internet access."
+            echo "Warning: no usable route table found. Subnet may lack internet access."
         fi
     fi
     echo "Using subnet ${SUBNET_ID} in ${AZ}"
 fi
 
-# Check if machine name already exists in AWS
-echo "Checking if machine name ${MACHINE_NAME} is available..."
+# Two-phase flow:
+#   Phase 1 — no AWS instance yet: launch one with the Tailscale package
+#     installed (but not joined), print instructions for the operator to run
+#     `tailscale up` manually, and exit.
+#   Phase 2 — instance exists and is reachable on the tailnet: refuse to
+#     overwrite an already-provisioned host, otherwise run the rest of setup.
+echo "Checking if instance ${MACHINE_NAME} already exists..."
 EXISTING_INSTANCE=$(aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=${MACHINE_NAME}" \
     "Name=instance-state-name,Values=pending,running,stopping,stopped" \
@@ -200,34 +270,79 @@ EXISTING_INSTANCE=$(aws ec2 describe-instances \
     --output text \
     --region ${REGION})
 
-REPROVISION=false
+NEW_INSTANCE=true
 if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ]; then
-    echo "Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
-    read -r -p "Re-provision existing instance? (skips Tailscale setup) [y/N] " CONFIRM
-    if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-        echo "Aborted."
+    NEW_INSTANCE=false
+    INSTANCE_ID="$EXISTING_INSTANCE"
+    echo "Found existing instance ${INSTANCE_ID} for ${MACHINE_NAME}"
+
+    # Require Tailscale SSH connectivity. If it fails, the operator hasn't
+    # authenticated this host into the tailnet yet — print instructions and stop.
+    echo "Verifying ${MACHINE_NAME} is reachable via Tailscale SSH..."
+    if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
+        EXISTING_PRIVATE_IP=$(aws ec2 describe-instances \
+            --instance-ids ${INSTANCE_ID} \
+            --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+            --output text \
+            --region ${REGION})
+        EXISTING_PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids ${INSTANCE_ID} \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text \
+            --region ${REGION})
+        if [ -z "$EXISTING_PUBLIC_IP" ] || [ "$EXISTING_PUBLIC_IP" = "None" ]; then
+            EXISTING_PUBLIC_IP=""
+        fi
+        EXISTING_TARGET="${EXISTING_PUBLIC_IP:-${EXISTING_PRIVATE_IP}}"
+        cat <<INSTRUCTIONS
+ERROR: Cannot reach ${MACHINE_NAME} via Tailscale SSH.
+The instance exists in AWS (${INSTANCE_ID}, private ${EXISTING_PRIVATE_IP}, public ${EXISTING_PUBLIC_IP:-<none>})
+but is not on the tailnet yet.
+
+Connect to the instance and run:
+
+  ssh ubuntu@${EXISTING_TARGET}
+  sudo tailscale up \\
+    --advertise-tags=${TS_ADVERTISE_TAGS} \\
+    --ssh \\
+    --hostname=${MACHINE_NAME}
+
+Authenticate via the URL it prints, then re-run:
+
+  $0 ${MACHINE_NAME}
+INSTRUCTIONS
         exit 1
     fi
-    REPROVISION=true
-    INSTANCE_ID="$EXISTING_INSTANCE"
-    echo "Re-provisioning existing instance ${INSTANCE_ID}..."
+    echo "✓ ${MACHINE_NAME} is reachable via Tailscale SSH"
+
+    # Safety: refuse to clobber an already-provisioned host. The volume
+    # setup script destroys 'tank', 'backup', and 'dozer' unconditionally,
+    # so finding any of them here means we'd be wiping a live node's data.
+    echo "Checking for existing zpools (tank, backup, dozer)..."
+    EXISTING_POOLS=$(ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        ubuntu@${MACHINE_NAME} \
+        "sudo zpool list -H -o name 2>/dev/null | grep -E '^(tank|backup|dozer)\$' || true" |
+        tr '\n' ' ' | sed 's/ *$//')
+    if [ -n "$EXISTING_POOLS" ]; then
+        cat <<POOL_ERR
+ERROR: ${MACHINE_NAME} already has zpool(s): ${EXISTING_POOLS}
+Refusing to overwrite an existing node's data.
+
+If you really intend to re-provision this host, destroy the pools manually
+first (this is destructive — make sure the host has nothing you need):
+
+  ssh ubuntu@${MACHINE_NAME} 'sudo swapoff -a; sudo zpool destroy -f tank backup dozer 2>/dev/null; true'
+
+Then re-run this script.
+POOL_ERR
+        exit 1
+    fi
+    echo "✓ No existing zpools — continuing with provisioning"
 else
-    echo "Machine name ${MACHINE_NAME} is available"
+    echo "No existing AWS instance found for ${MACHINE_NAME}"
 fi
 
-if [ "$REPROVISION" = "true" ]; then
-    # Verify the instance is accessible via Tailscale SSH
-    echo "Verifying ${MACHINE_NAME} is accessible via Tailscale SSH..."
-    if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
-        echo "ERROR: Cannot reach ${MACHINE_NAME} via Tailscale SSH"
-        echo "The instance exists but is not accessible. Check Tailscale status."
-        exit 1
-    fi
-    echo "Instance is accessible via Tailscale SSH"
-else
-
-    # Run the Tailscale OAuth preflight check
-    "${SCRIPT_DIR}/test-tailscale-oauth.sh"
+if [ "$NEW_INSTANCE" = "true" ]; then
 
     # Check if security group exists
     echo "Checking security group..."
@@ -323,19 +438,35 @@ else
         exit 1
     fi
 
-    # Check for Tailscale OAuth credentials in environment variables
-    if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
-        echo "ERROR: Tailscale OAuth credentials not set"
-        echo "Please set the following environment variables:"
-        echo "  export TS_OAUTH_CLIENT_ID=<your-client-id>"
-        echo "  export TS_OAUTH_CLIENT_SECRET=<your-client-secret>"
-        echo ""
-        echo "You can get these credentials from the Tailscale admin console:"
-        echo "  https://login.tailscale.com/admin/settings/oauth"
+    # Verify the SSH key pair exists in this region before launching.
+    if ! aws ec2 describe-key-pairs --key-names "${SSH_KEY_NAME}" --region "${REGION}" >/dev/null 2>&1; then
+        echo "ERROR: EC2 key pair '${SSH_KEY_NAME}' not found in ${REGION}."
+        echo "Either import it into this region or override with SSH_KEY_NAME=<name>."
+        exit 1
+    fi
+    echo "Using SSH key pair: ${SSH_KEY_NAME}"
+
+    # Fetch the public key for SSH_KEY_NAME from AWS so we can install it into
+    # ~ubuntu/.ssh/authorized_keys via cloud-init. The cloud-init `users:`
+    # block below replaces the default ubuntu user setup, which suppresses
+    # the SSH key cloud-init would otherwise auto-install from the EC2
+    # keypair, so we have to inject it explicitly.
+    SSH_KEY_PUBLIC=$(aws ec2 describe-key-pairs \
+        --key-names "${SSH_KEY_NAME}" \
+        --include-public-key \
+        --query 'KeyPairs[0].PublicKey' \
+        --output text \
+        --region "${REGION}")
+    SSH_KEY_PUBLIC="${SSH_KEY_PUBLIC%$'\n'}" # strip trailing newline AWS includes
+    if [ -z "$SSH_KEY_PUBLIC" ] || [ "$SSH_KEY_PUBLIC" = "None" ]; then
+        echo "ERROR: Could not retrieve public key material for ${SSH_KEY_NAME} in ${REGION}."
         exit 1
     fi
 
-    # Create user data script with Tailscale setup
+    # Build cloud-init user data. The instance gets the Tailscale package
+    # installed but is NOT joined to the tailnet here — the operator runs
+    # `tailscale up` manually on the host (see post-launch instructions
+    # printed at the end of this section).
     #   package isal installs igzip which is supposed to speed up image
     #   decompression
     USER_DATA=$(
@@ -345,6 +476,7 @@ users:
   - name: ubuntu
     ssh_authorized_keys:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEetwKXuTe+byx+VJTOn3ZxjVnpMe/82YroL111tTwK ubuntu@exed-01
+      - ${SSH_KEY_PUBLIC}
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
 
@@ -368,80 +500,8 @@ packages:
   - isal
 
 runcmd:
-  - echo "Starting Tailscale setup..."
   - curl -fsSL https://tailscale.com/install.sh | sh
-  - |
-    echo "Generating Tailscale auth key via OAuth..."
-    # First get OAuth access token
-    echo "Getting OAuth access token..."
-    OAUTH_RESPONSE=\$(curl -s -w "\\n%{http_code}" -X POST \\
-      "https://api.tailscale.com/api/v2/oauth/token" \\
-      -d "client_id=${TS_OAUTH_CLIENT_ID}" \\
-      -d "client_secret=${TS_OAUTH_CLIENT_SECRET}" \\
-      -d "grant_type=client_credentials")
-
-    OAUTH_HTTP=\$(echo "\$OAUTH_RESPONSE" | tail -n 1)
-    OAUTH_BODY=\$(echo "\$OAUTH_RESPONSE" | head -n -1)
-
-    if [ "\$OAUTH_HTTP" != "200" ]; then
-        echo "ERROR: Failed to get OAuth token. HTTP code: \$OAUTH_HTTP"
-        echo "Response body: \$OAUTH_BODY"
-        exit 1
-    fi
-
-    ACCESS_TOKEN=\$(echo "\$OAUTH_BODY" | jq -r '.access_token')
-    if [ -z "\$ACCESS_TOKEN" ] || [ "\$ACCESS_TOKEN" = "null" ]; then
-        echo "ERROR: Failed to extract access token"
-        echo "Response body: \$OAUTH_BODY"
-        exit 1
-    fi
-    echo "Got OAuth access token successfully"
-
-    # Now create auth key using Bearer auth
-    echo "Creating Tailscale auth key..."
-    KEY_RESPONSE=\$(curl -s -w "\\n%{http_code}" -X POST \\
-      "https://api.tailscale.com/api/v2/tailnet/-/keys" \\
-      -H "Authorization: Bearer \$ACCESS_TOKEN" \\
-      -H "Content-Type: application/json" \\
-      -d '{
-        "capabilities": {
-          "devices": {
-            "create": {
-              "reusable": false,
-              "ephemeral": false,
-              "tags": ["${TS_ROLE_TAG}", "${TS_STAGE_TAG}"]
-            }
-          }
-        },
-        "expirySeconds": 3600
-      }')
-
-    KEY_HTTP=\$(echo "\$KEY_RESPONSE" | tail -n 1)
-    KEY_BODY=\$(echo "\$KEY_RESPONSE" | head -n -1)
-
-    if [ "\$KEY_HTTP" != "200" ]; then
-        echo "ERROR: Failed to create auth key. HTTP code: \$KEY_HTTP"
-        echo "Response body: \$KEY_BODY"
-        exit 1
-    fi
-
-    AUTH_KEY=\$(echo "\$KEY_BODY" | jq -r '.key')
-    if [ -z "\$AUTH_KEY" ] || [ "\$AUTH_KEY" = "null" ]; then
-        echo "ERROR: Failed to extract auth key from response"
-        echo "Response body: \$KEY_BODY"
-        exit 1
-    fi
-
-    echo "Auth key generated successfully (first 10 chars): \$(echo "\$AUTH_KEY" | cut -c1-10)..."
-    echo "Starting Tailscale with hostname: ${MACHINE_NAME}"
-    tailscale up --authkey=\$AUTH_KEY --advertise-tags=${TS_ADVERTISE_TAGS} --ssh --hostname=${MACHINE_NAME} 2>&1
-    echo "Tailscale up command completed with exit code: \$?"
-    sleep 5
-    tailscale status 2>&1
-    echo "Tailscale initialization complete"
-
-    # install build dependencies for cloud-hypervisor
-    apt-get install -y build-essential git libcap-ng-dev libseccomp-dev pkg-config
+  - apt-get install -y build-essential git libcap-ng-dev libseccomp-dev pkg-config
 EOF
     )
 
@@ -453,10 +513,12 @@ EOF
         --subnet-id ${SUBNET_ID} \
         --security-group-ids ${SG_ID} \
         --iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
+        --key-name "${SSH_KEY_NAME}" \
         --user-data "${USER_DATA}" \
         --block-device-mappings \
         "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
         "DeviceName=/dev/xvdf,Ebs={VolumeSize=${BACKUP_VOLUME_SIZE},VolumeType=io2,Iops=12000,DeleteOnTermination=true}" \
+        "DeviceName=/dev/xvdg,Ebs={VolumeSize=${TANK_VOLUME_SIZE},VolumeType=gp3,Iops=${TANK_VOLUME_IOPS},Throughput=${TANK_VOLUME_THROUGHPUT},DeleteOnTermination=true}" \
         --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
         --query 'Instances[0].InstanceId' \
         --output text \
@@ -476,6 +538,11 @@ EOF
         --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdf`].Ebs.VolumeId' \
         --output text \
         --region ${REGION})
+    TANK_VOLUME_ID=$(aws ec2 describe-instances \
+        --instance-ids ${INSTANCE_ID} \
+        --query 'Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==`/dev/xvdg`].Ebs.VolumeId' \
+        --output text \
+        --region ${REGION})
 
     if [ -n "$ROOT_VOLUME_ID" ] && [ "$ROOT_VOLUME_ID" != "None" ]; then
         aws ec2 create-tags --resources ${ROOT_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-root Key=role,Value=${ROLE} Key=stage,Value=${STAGE} --region ${REGION}
@@ -485,12 +552,15 @@ EOF
         aws ec2 create-tags --resources ${BACKUP_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-backup Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=${BACKUP_VOLUME_TYPE} --region ${REGION}
         echo "Tagged backup volume ${BACKUP_VOLUME_ID} as ${MACHINE_NAME}-backup (role=${ROLE}, stage=${STAGE})"
     fi
+    if [ -n "$TANK_VOLUME_ID" ] && [ "$TANK_VOLUME_ID" != "None" ]; then
+        aws ec2 create-tags --resources ${TANK_VOLUME_ID} --tags Key=Name,Value=${MACHINE_NAME}-tank Key=role,Value=${ROLE} Key=stage,Value=${STAGE} Key=exe-volume-type,Value=${TANK_VOLUME_TYPE} --region ${REGION}
+        echo "Tagged tank volume ${TANK_VOLUME_ID} as ${MACHINE_NAME}-tank (role=${ROLE}, stage=${STAGE}, exe-volume-type=${TANK_VOLUME_TYPE})"
+    fi
 
     # Wait for instance to be running
     echo "Waiting for instance to start..."
     aws ec2 wait instance-running --instance-ids ${INSTANCE_ID} --region ${REGION}
 
-    # Get instance IP (private IP since we're using a private subnet)
     INSTANCE_IP=$(aws ec2 describe-instances \
         --instance-ids ${INSTANCE_ID} \
         --query 'Reservations[0].Instances[0].PrivateIpAddress' \
@@ -499,35 +569,73 @@ EOF
 
     echo "Instance is running at ${INSTANCE_IP} (private IP)"
 
-    # Wait for Tailscale to be connected
-    echo ""
-    echo "Waiting for Tailscale to connect..."
-
-    MAX_WAIT=300 # 5 minutes
-    WAIT_INTERVAL=10
-    ELAPSED=0
-
-    while [ $ELAPSED -lt $MAX_WAIT ]; do
-        # Try to SSH to the machine via Tailscale
-        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
-            echo "✓ Machine is accessible via Tailscale SSH"
-            break
+    # Allocate (or reuse) an Elastic IP and associate it with the instance.
+    # Skipped on NAT-only private subnets where an EIP would be split-brain
+    # (inbound via IGW, outbound via NAT).
+    PUBLIC_IP=""
+    if [ "$SUBNET_TYPE" = "public" ]; then
+        EIP_ALLOC_ID=$(aws ec2 describe-addresses \
+            --filters "Name=tag:Name,Values=${MACHINE_NAME}" \
+            --query 'Addresses[0].AllocationId' \
+            --output text \
+            --region ${REGION} 2>/dev/null || true)
+        if [ -z "$EIP_ALLOC_ID" ] || [ "$EIP_ALLOC_ID" = "None" ]; then
+            echo "Allocating new Elastic IP for ${MACHINE_NAME}..."
+            EIP_ALLOC_ID=$(aws ec2 allocate-address \
+                --domain vpc \
+                --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=${MACHINE_NAME}},{Key=role,Value=${ROLE}},{Key=stage,Value=${STAGE}}]" \
+                --query 'AllocationId' \
+                --output text \
+                --region ${REGION})
+            echo "Allocated EIP ${EIP_ALLOC_ID}"
+        else
+            echo "Reusing existing EIP ${EIP_ALLOC_ID} (tagged ${MACHINE_NAME})"
         fi
-
-        echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
-        sleep $WAIT_INTERVAL
-        ELAPSED=$((ELAPSED + WAIT_INTERVAL))
-    done
-
-    if [ $ELAPSED -ge $MAX_WAIT ]; then
-        echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
-        echo "You may need to check the Tailscale setup manually"
-        echo "To debug, you can SSH via exed-01:"
-        echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
-        exit 1
+        aws ec2 associate-address \
+            --instance-id ${INSTANCE_ID} \
+            --allocation-id ${EIP_ALLOC_ID} \
+            --region ${REGION} >/dev/null
+        PUBLIC_IP=$(aws ec2 describe-addresses \
+            --allocation-ids ${EIP_ALLOC_ID} \
+            --query 'Addresses[0].PublicIp' \
+            --output text \
+            --region ${REGION})
+        echo "✓ EIP ${PUBLIC_IP} associated with ${INSTANCE_ID}"
     fi
 
-fi # end of new-instance provisioning (skipped during re-provision)
+    SSH_TARGET="${PUBLIC_IP:-${INSTANCE_IP}}"
+    cat <<INSTRUCTIONS
+
+==========================================
+Instance launched
+==========================================
+
+  Name:       ${MACHINE_NAME}
+  ID:         ${INSTANCE_ID}
+  Private IP: ${INSTANCE_IP}
+  Public IP:  ${PUBLIC_IP:-<none>}
+  Type:       ${INSTANCE_TYPE}
+
+Cloud-init is installing the Tailscale package; it will not auto-join.
+Wait ~2-5 min for cloud-init to finish, then connect to the instance and
+authenticate it into the tailnet:
+
+  ssh ubuntu@${SSH_TARGET}
+  sudo tailscale up \\
+    --advertise-tags=${TS_ADVERTISE_TAGS} \\
+    --ssh \\
+    --hostname=${MACHINE_NAME}
+
+Visit the auth URL it prints to sign the device into the tailnet.
+
+Then re-run this script to finish provisioning:
+
+  $0 ${MACHINE_NAME}
+
+INSTRUCTIONS
+    exit 0
+
+fi # end of new-instance provisioning
 
 # Setup volumes on metal instances
 echo ""
@@ -535,12 +643,25 @@ echo "=========================================="
 echo "Setting up volumes (swap, zpool)"
 echo "=========================================="
 
-# Create a script to setup the volumes on the remote machine
+# Create a script to setup the volumes on the remote machine.
+# Args (passed by the parent setup-exelet-host.sh):
+#   $1 = expected tank EBS volume size in GiB   (default 2048)
+#   $2 = expected backup EBS volume size in GiB (default 500)
+# Layout:
+#   - tank   ← EBS gp3 (the larger non-root EBS volume), single-disk pool
+#   - backup ← EBS io2 (the smaller non-root EBS volume), single-disk pool
+#   - dozer  ← instance-store NVMe (75% partition each), RAID layout depends on count
 cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
 #!/bin/bash
 set -euo pipefail
 
+TANK_GIB="${1:-2048}"
+BACKUP_GIB="${2:-500}"
+SIZE_TOLERANCE_GIB=16  # EBS rounding wiggle room
+
 echo "=== Setting up volumes on metal instance ==="
+echo "Expected tank EBS size:   ${TANK_GIB} GiB"
+echo "Expected backup EBS size: ${BACKUP_GIB} GiB"
 
 # First check if this is a metal instance (has NVMe drives)
 if [ ! -e /dev/nvme0n1 ]; then
@@ -580,53 +701,68 @@ done
 # Remove NVMe swap entries from fstab
 sudo sed -i '\|^/dev/nvme.*swap|d' /etc/fstab
 
-# Destroy existing ZFS pools
-for pool in tank backup; do
+# Destroy existing ZFS pools (including dozer in case of partial prior run)
+for pool in tank backup dozer; do
   if sudo zpool list "$pool" &>/dev/null; then
     echo "Destroying ZFS pool $pool"
     sudo zpool destroy -f "$pool"
   fi
 done
 
-# Detect NVMe devices by model string
+# Detect NVMe devices and classify by model + (for EBS) size
 echo "=== Detecting NVMe devices ==="
 INSTANCE_STORE_DEVICES=()
-EBS_DATA_DEVICES=()
+EBS_TANK_DEVICE=""
+EBS_BACKUP_DEVICE=""
 
 for dev in /dev/nvme*n1; do
   [ -b "$dev" ] || continue
   devname=$(basename "$dev")
   model=$(cat "/sys/block/${devname}/device/model" 2>/dev/null | xargs)
-  size_gb=$(lsblk -b -n -d -o SIZE "$dev" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
+  size_gib=$(lsblk -b -n -d -o SIZE "$dev" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
 
   # Safety: never touch a device that has mounted filesystems
   if lsblk -n -o MOUNTPOINT "$dev" 2>/dev/null | grep -q '/'; then
-    echo "Mounted: $dev (${size_gb}GB) - skipping"
+    echo "Mounted: $dev (${size_gib}GiB) - skipping"
     continue
   fi
 
   if [ "$model" = "Amazon EC2 NVMe Instance Storage" ]; then
-    echo "Instance-store: $dev (${size_gb}GB)"
+    echo "Instance-store: $dev (${size_gib}GiB)"
     INSTANCE_STORE_DEVICES+=("$dev")
   elif [ "$model" = "Amazon Elastic Block Store" ]; then
-    echo "EBS data: $dev (${size_gb}GB)"
-    EBS_DATA_DEVICES+=("$dev")
+    # Match by expected size with a small tolerance to account for EBS rounding.
+    if [ "$size_gib" -ge $((TANK_GIB - SIZE_TOLERANCE_GIB)) ] && [ "$size_gib" -le $((TANK_GIB + SIZE_TOLERANCE_GIB)) ]; then
+      echo "EBS tank:   $dev (${size_gib}GiB)"
+      EBS_TANK_DEVICE="$dev"
+    elif [ "$size_gib" -ge $((BACKUP_GIB - SIZE_TOLERANCE_GIB)) ] && [ "$size_gib" -le $((BACKUP_GIB + SIZE_TOLERANCE_GIB)) ]; then
+      echo "EBS backup: $dev (${size_gib}GiB)"
+      EBS_BACKUP_DEVICE="$dev"
+    else
+      echo "EBS (unrecognized size): $dev (${size_gib}GiB) - skipping"
+    fi
   else
-    echo "Unknown NVMe: $dev (model: $model, ${size_gb}GB) - skipping"
+    echo "Unknown NVMe: $dev (model: $model, ${size_gib}GiB) - skipping"
   fi
 done
 
 if [ ${#INSTANCE_STORE_DEVICES[@]} -eq 0 ]; then
-  echo "ERROR: No instance-store NVMe devices found"
+  echo "ERROR: No instance-store NVMe devices found (cannot build 'dozer' pool)"
+  lsblk
+  exit 1
+fi
+if [ -z "$EBS_TANK_DEVICE" ]; then
+  echo "ERROR: No EBS data volume of expected tank size (${TANK_GIB} GiB) found"
   lsblk
   exit 1
 fi
 
 echo ""
-echo "Found ${#INSTANCE_STORE_DEVICES[@]} instance-store device(s)"
-echo "Found ${#EBS_DATA_DEVICES[@]} EBS data device(s)"
+echo "Found ${#INSTANCE_STORE_DEVICES[@]} instance-store device(s) for dozer"
+echo "tank   EBS: ${EBS_TANK_DEVICE:-<missing>}"
+echo "backup EBS: ${EBS_BACKUP_DEVICE:-<missing>}"
 
-# Partition each instance-store drive: 25% swap, 75% data
+# Partition each instance-store drive: 25% swap, 75% data (for dozer)
 echo ""
 echo "=== Partitioning instance-store NVMe devices (25% swap, 75% data) ==="
 SWAP_PARTS=()
@@ -668,21 +804,21 @@ for part in "${SWAP_PARTS[@]}"; do
 done
 echo "Swap enabled on ${#SWAP_PARTS[@]} partition(s)"
 
-# Create ZFS pool 'tank' from instance-store data partitions
+# Create ZFS pool 'dozer' from instance-store data partitions
 echo ""
-echo "=== Setting up ZFS pool 'tank' ==="
+echo "=== Setting up ZFS pool 'dozer' (instance-store NVMe) ==="
 NDISKS=${#DATA_PARTS[@]}
 
 if [ "$NDISKS" -eq 1 ]; then
-  echo "Single drive, creating tank with no redundancy"
-  sudo zpool create -o ashift=12 -m none tank "${DATA_PARTS[0]}"
+  echo "Single drive, creating dozer with no redundancy"
+  sudo zpool create -o ashift=12 -m none dozer "${DATA_PARTS[0]}"
 elif [ "$NDISKS" -eq 2 ]; then
-  echo "Two drives, creating tank as mirror"
-  sudo zpool create -o ashift=12 -m none tank mirror "${DATA_PARTS[@]}"
+  echo "Two drives, creating dozer as mirror"
+  sudo zpool create -o ashift=12 -m none dozer mirror "${DATA_PARTS[@]}"
 elif [ "$NDISKS" -le 6 ]; then
   # 3-6 drives: raidz1 for more usable space
-  echo "Creating tank as raidz1 with $NDISKS drives"
-  sudo zpool create -o ashift=12 -m none tank raidz1 "${DATA_PARTS[@]}"
+  echo "Creating dozer as raidz1 with $NDISKS drives"
+  sudo zpool create -o ashift=12 -m none dozer raidz1 "${DATA_PARTS[@]}"
 else
   # >6 drives: mirrored vdevs (pairs of 2 drives each)
   if [ $((NDISKS % 2)) -ne 0 ]; then
@@ -695,51 +831,55 @@ else
     ZPOOL_ARGS+=("mirror" "${DATA_PARTS[$i]}" "${DATA_PARTS[$((i + 1))]}")
   done
 
-  echo "Creating tank: ${ZPOOL_ARGS[*]}"
-  sudo zpool create -o ashift=12 -m none tank "${ZPOOL_ARGS[@]}"
+  echo "Creating dozer: ${ZPOOL_ARGS[*]}"
+  sudo zpool create -o ashift=12 -m none dozer "${ZPOOL_ARGS[@]}"
 fi
 
-# Configure ZFS properties on tank
+sudo zfs set compression=lz4 dozer
+sudo zfs set atime=off dozer
+sudo zfs set xattr=sa dozer
+
+echo "ZFS pool 'dozer' ready:"
+zpool status dozer
+
+# Create ZFS pool 'tank' from the EBS gp3 volume
+echo ""
+echo "=== Setting up ZFS pool 'tank' (EBS gp3) ==="
+TANK_DEV=$(resolve_by_id "$EBS_TANK_DEVICE")
+echo "  ${EBS_TANK_DEVICE} -> ${TANK_DEV}"
+sudo zpool create -o ashift=12 -m none tank "${TANK_DEV}"
 sudo zfs set compression=lz4 tank
 sudo zfs set atime=off tank
 sudo zfs set xattr=sa tank
 
-# Create /data dataset
+# /data dataset on tank (durable across instance restarts)
 sudo zfs create -o mountpoint=/data tank/data
 sudo mkdir -p /data/exelet
 
 echo "ZFS pool 'tank' ready:"
 zpool status tank
 
-# Resolve EBS devices to /dev/disk/by-id paths
-RESOLVED_EBS=()
-for dev in "${EBS_DATA_DEVICES[@]}"; do
-  resolved=$(resolve_by_id "$dev")
-  echo "  $dev -> $resolved"
-  RESOLVED_EBS+=("$resolved")
-done
-EBS_DATA_DEVICES=("${RESOLVED_EBS[@]}")
-
-# Create backup pool from EBS volume
+# Create backup pool from the io2 EBS volume (if attached)
 echo ""
 echo "=== Setting up ZFS backup pool ==="
-if [ ${#EBS_DATA_DEVICES[@]} -ge 1 ]; then
-  echo "Creating backup pool from EBS volume: ${EBS_DATA_DEVICES[0]}"
-  sudo zpool create -o ashift=12 -m none backup "${EBS_DATA_DEVICES[0]}"
+if [ -n "$EBS_BACKUP_DEVICE" ]; then
+  BACKUP_DEV=$(resolve_by_id "$EBS_BACKUP_DEVICE")
+  echo "  ${EBS_BACKUP_DEVICE} -> ${BACKUP_DEV}"
+  sudo zpool create -o ashift=12 -m none backup "${BACKUP_DEV}"
   sudo zfs set compression=lz4 backup
   sudo zfs set atime=off backup
   echo "Backup pool ready:"
   zpool status backup
 else
-  echo "No EBS data volumes found, skipping backup pool"
+  echo "No EBS backup volume found, skipping backup pool"
 fi
 
-# Configure ZFS ARC (min 16GB, max 64GB)
+# Configure ZFS ARC (min 16GB, max 24GB)
 echo ""
 echo "Configuring ZFS ARC limits..."
 cat <<EOF | sudo tee /etc/modprobe.d/zfs.conf >/dev/null
 options zfs zfs_arc_min=17179869184
-options zfs zfs_arc_max=68719476736
+options zfs zfs_arc_max=25769803776
 EOF
 sudo update-initramfs -u
 
@@ -760,7 +900,7 @@ fi
 
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "ubuntu@${MACHINE_NAME}" \
-    'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
+    "chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh ${TANK_VOLUME_SIZE} ${BACKUP_VOLUME_SIZE}"; then
     echo "ERROR: Volume setup failed"
     rm -f /tmp/setup-volumes.sh
     exit 1
@@ -995,36 +1135,22 @@ python3 "${SCRIPT_DIR}/../../observability/deploy-node-exporter.py" "${MACHINE_N
 
 echo ""
 echo "=========================================="
-if [ "$REPROVISION" = "true" ]; then
-    echo "Re-provisioning complete!"
-else
-    echo "Setup complete!"
-fi
+echo "Setup complete!"
 echo "=========================================="
 echo ""
 echo "The machine is ready to deploy the exelet."
 echo ""
-if [ "$REPROVISION" = "true" ]; then
-    echo "${MACHINE_NAME} has been re-provisioned with:"
-    echo "  - Cloud Hypervisor (rebuilt)"
-    echo "  - sysctl, needrestart, IPv6, node_exporter (re-applied)"
-    echo "  - Tailscale and disk configuration were preserved"
-else
-    echo "${MACHINE_NAME} is now fully configured with:"
-    echo "  - Cloud Hypervisor"
-    echo "  - Swap on 25% of each instance-store NVMe drive"
-    echo "  - ZFS pool 'tank' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives"
-    echo "  - ZFS pool 'backup' on EBS io2 volume"
-    echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
-fi
+echo "${MACHINE_NAME} is now fully configured with:"
+echo "  - Cloud Hypervisor"
+echo "  - Swap on 25% of each instance-store NVMe drive"
+echo "  - ZFS pool 'tank' on EBS gp3 (${TANK_VOLUME_SIZE} GiB, ${TANK_VOLUME_IOPS} IOPS, ${TANK_VOLUME_THROUGHPUT} MB/s) — durable"
+echo "  - ZFS pool 'dozer' (raidz1 if <=6 drives, mirrored vdevs if >6) on 75% of instance-store NVMe drives — ephemeral"
+echo "  - ZFS pool 'backup' on EBS io2 volume"
+echo "  - ZFS ARC limits set to 16GB min / 24GB max (requires reboot)"
 echo ""
 echo "Instance details:"
 echo "  Name: ${MACHINE_NAME}"
 echo "  ID: ${INSTANCE_ID}"
-if [ "$REPROVISION" != "true" ]; then
-    echo "  Private IP: ${INSTANCE_IP}"
-    echo "  Type: ${INSTANCE_TYPE}"
-fi
 echo ""
 echo "You can now connect via:"
 echo "  ssh ubuntu@${MACHINE_NAME}"

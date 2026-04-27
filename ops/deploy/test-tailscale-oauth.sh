@@ -9,14 +9,32 @@ set -euo pipefail
 preflight_tailscale_oauth() {
     : "${TS_OAUTH_CLIENT_ID:?set TS_OAUTH_CLIENT_ID}"
     : "${TS_OAUTH_CLIENT_SECRET:?set TS_OAUTH_CLIENT_SECRET}"
-    : "${TS_TAG:=tag:server}"
+    : "${TS_TAG:=tag:exelet}"
+
+    # TS_TAG may be a single tag or a comma-separated list. Build a JSON
+    # array for the API call and a human-readable label for messages.
+    local IFS_BAK="$IFS"
+    IFS=',' read -r -a _tag_arr <<<"$TS_TAG"
+    IFS="$IFS_BAK"
+    local _tag_json="" _tag
+    for _tag in "${_tag_arr[@]}"; do
+        _tag="${_tag## }"
+        _tag="${_tag%% }"
+        [ -z "$_tag" ] && continue
+        if [ -z "$_tag_json" ]; then
+            _tag_json="\"${_tag}\""
+        else
+            _tag_json="${_tag_json}, \"${_tag}\""
+        fi
+    done
+    local TS_TAG_LABEL="${TS_TAG}"
 
     # Prefer explicit tailnet if you run multiple orgs; otherwise use "-"
     local slug="${TS_TAILNET_SLUG:--}"
     local BASE="https://api.tailscale.com/api/v2/tailnet/${slug%/}/"
 
     echo "== Tailscale OAuth Client Preflight Check"
-    echo "Target tag: ${TS_TAG}"
+    echo "Target tag(s): ${TS_TAG_LABEL}"
     echo "Tailnet: ${slug}"
     echo
 
@@ -62,7 +80,7 @@ preflight_tailscale_oauth() {
         echo "     • Scopes required:"
         echo "       - devices:core:write (for device management)"
         echo "       - auth_keys:write (for creating auth keys)"
-        echo "     • Allowed tag: ${TS_TAG}"
+        echo "     • Allowed tag(s): ${TS_TAG_LABEL}"
         exit 1
     elif [ "$oauth_http" != "200" ]; then
         echo "✗ Unexpected error (HTTP $oauth_http)"
@@ -176,9 +194,9 @@ except Exception:
 PY
     }
 
-    echo "→ Step 2: Testing key creation for ${TS_TAG}..."
+    echo "→ Step 2: Testing key creation for ${TS_TAG_LABEL}..."
 
-    # First, try creating a key with tag:server specifically
+    # Try creating a key with the requested tag set
     local resp http body key_id error_msg
     resp=$(_post "${BASE}keys" "$(
         cat <<JSON
@@ -186,7 +204,7 @@ PY
   "capabilities": {"devices": {"create": {
     "reusable": false,
     "ephemeral": false,
-    "tags": ["${TS_TAG}"]
+    "tags": [${_tag_json}]
   }}},
   "expirySeconds": 60
 }
@@ -199,7 +217,7 @@ JSON
         # Success! Clean up the test key
         key_id=$(printf "%s" "$body" | _json_get_id || true)
         _delete_key "$key_id"
-        echo "✓ Can create keys with ${TS_TAG}"
+        echo "✓ Can create keys with ${TS_TAG_LABEL}"
         echo
         echo "✅ Tailscale OAuth client is properly configured!"
         return 0
@@ -215,77 +233,92 @@ except:
     pass
 " 2>/dev/null || echo "")
 
-    echo "✗ FAILED to create key with ${TS_TAG} (HTTP $http)"
+    echo "✗ FAILED to create key with ${TS_TAG_LABEL} (HTTP $http)"
     echo "  Error: ${error_msg:-$body}"
     echo
 
-    echo "→ Step 3: Determining what tags this OAuth client can use..."
+    echo "→ Step 3: Testing each requested tag individually..."
+    echo "  (this isolates which specific tag the OAuth client / tailnet ACL is rejecting)"
+    echo
 
-    # Since we can't create untagged keys, let's try some common tags
-    local test_tags=("tag:prod" "tag:dev" "tag:container" "tag:docker" "tag:server")
-    local working_tag=""
+    # Test each requested tag in isolation so we can pinpoint the bad one.
+    local good_tags=() bad_tags=() bad_errors=() per_tag t per_resp per_http per_body per_err
+    for t in "${_tag_arr[@]}"; do
+        t="${t## }"
+        t="${t%% }"
+        [ -z "$t" ] && continue
 
-    for test_tag in "${test_tags[@]}"; do
-        if [ "$test_tag" = "${TS_TAG}" ]; then
-            continue # Skip the one we already tried
-        fi
-
-        resp=$(_post "${BASE}keys" "$(
+        per_resp=$(_post "${BASE}keys" "$(
             cat <<JSON
 {
   "capabilities": {"devices": {"create": {
     "reusable": false,
     "ephemeral": true,
-    "tags": ["${test_tag}"]
+    "tags": ["${t}"]
   }}},
   "expirySeconds": 60
 }
 JSON
         )" 2>/dev/null)
-        http=$(printf "%s\n" "$resp" | tail -n1)
+        per_http=$(printf "%s\n" "$per_resp" | tail -n1)
+        per_body=$(printf "%s\n" "$per_resp" | sed '$d')
 
-        if [ "$http" = "200" ]; then
-            working_tag="$test_tag"
-            key_id=$(printf "%s\n" "$resp" | sed '$d' | _json_get_id || true)
+        if [ "$per_http" = "200" ]; then
+            key_id=$(printf "%s" "$per_body" | _json_get_id || true)
             _delete_key "$key_id"
-            echo "  ✓ Found working tag: ${test_tag}"
-            break
+            good_tags+=("$t")
+            echo "  ✓ ${t} — accepted"
+        else
+            per_err=$(printf "%s" "$per_body" | /usr/bin/python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('message', ''))
+except:
+    pass
+" 2>/dev/null || echo "")
+            bad_tags+=("$t")
+            bad_errors+=("${per_err:-HTTP $per_http}")
+            echo "  ✗ ${t} — rejected (${per_err:-HTTP $per_http})"
         fi
     done
 
     echo
     echo "DIAGNOSIS:"
-    echo "  Your OAuth client has the auth_keys scope but"
-    echo "  is NOT configured to use ${TS_TAG}"
-
-    if [ -n "$working_tag" ]; then
+    if [ ${#bad_tags[@]} -eq 0 ]; then
+        echo "  All individual tags work, but the combined set ${TS_TAG_LABEL} does not."
+        echo "  This usually means the tailnet ACL's tagOwners doesn't permit"
+        echo "  these tags to be applied together. Check the policy file's"
+        echo "  tagOwners section — e.g. tag:exelet's owners may need to include"
+        echo "  the OAuth client (autogroup:owner) or one of the other tags in the set."
         echo
-        echo "  This OAuth client CAN create keys with: ${working_tag}"
-        echo "  But it CANNOT create keys with: ${TS_TAG}"
-    fi
-
-    echo
-    echo "TO FIX:"
-    echo "  1. Go to: https://login.tailscale.com/admin/settings/oauth"
-    echo "  2. Find your OAuth client"
-    echo "  3. Edit the client and ensure it has:"
-    echo "     • Scopes:"
-    echo "       - devices:core:write (for device management)"
-    echo "       - auth_keys:write (for creating auth keys)"
-    echo "     • In the 'auth_keys:write' scope section:"
-    echo "       - Add ${TS_TAG} to the allowed tags"
-    if [ -n "$working_tag" ]; then
-        echo "     - Currently has: ${working_tag}"
-        echo "     - Needs to have: ${TS_TAG}"
-    fi
-    echo "  5. Save the changes"
-    echo
-    echo "ALTERNATIVE:"
-    if [ -n "$working_tag" ]; then
-        echo "  Use the working tag instead:"
-        echo "    export TS_TAG='${working_tag}'"
+        echo "  Reference: https://tailscale.com/kb/1068/acl-tags#tagowners"
     else
-        echo "  Create a new OAuth client with ${TS_TAG} in allowed tags"
+        echo "  The OAuth client / tailnet rejects these specific tag(s):"
+        local i
+        for i in "${!bad_tags[@]}"; do
+            echo "    • ${bad_tags[$i]}  —  ${bad_errors[$i]}"
+        done
+        echo
+        echo "  Tags that did work in isolation:"
+        if [ ${#good_tags[@]} -gt 0 ]; then
+            for t in "${good_tags[@]}"; do
+                echo "    • ${t}"
+            done
+        else
+            echo "    (none)"
+        fi
+        echo
+        echo "TO FIX:"
+        echo "  1. Confirm each rejected tag is listed under the OAuth client's"
+        echo "     auth_keys:write scope at:"
+        echo "       https://login.tailscale.com/admin/settings/oauth"
+        echo "     (auth_keys with no :write suffix is read-only and won't work)"
+        echo "  2. Confirm each rejected tag has a tagOwners entry in the tailnet"
+        echo "     policy file at:"
+        echo "       https://login.tailscale.com/admin/acls/file"
+        echo "     A tag must be defined in tagOwners or the API will reject it"
+        echo "     even if the OAuth client lists it as allowed."
     fi
     exit 1
 }
