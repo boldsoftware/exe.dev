@@ -124,8 +124,8 @@ var Recipes = map[string]Recipe{
 	"cgtop": {
 		BuildTarget: "./cmd/cgtop",
 		BinaryName:  "cgtop",
-		SymlinkName: "cgtop.latest",
-		RemoteDir:   "/home/ubuntu",
+		SymlinkName: "cgtop",
+		RemoteDir:   "/usr/local/bin",
 		ServiceUnit: "cgtop.service",
 		HealthPort:  9090,
 		HealthPath:  "/debug/gitsha",

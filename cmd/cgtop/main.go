@@ -299,6 +299,7 @@ func findSubtree(node *CgroupNode, path string) *CgroupNode {
 func main() {
 	httpAddr := flag.String("http", ":9090", "HTTP listen address")
 	cgroupRoot := flag.String("root", "", "cgroup2 root path (auto-detected if empty)")
+	discoverCmd := flag.String("discover-cmd", "", "shell command that outputs cgtop URLs, one per line")
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test"`)
 	flag.Parse()
 
@@ -318,6 +319,12 @@ func main() {
 
 	c := newCollector(root)
 	c.collect()
+
+	var mc *multiCollector
+	if *discoverCmd != "" {
+		mc = newMultiCollector(*discoverCmd)
+		log.Printf("multi-host mode enabled, discover command: %s", *discoverCmd)
+	}
 
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
@@ -359,6 +366,35 @@ func main() {
 			log.Printf("json encode: %v", err)
 		}
 	})
+
+	if mc != nil {
+		mux.HandleFunc("GET /api/hosts", func(w http.ResponseWriter, r *http.Request) {
+			hosts, err := mc.fetchHosts(r.Context())
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to fetch hosts: %v", err), http.StatusBadGateway)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(hosts); err != nil {
+				log.Printf("json encode: %v", err)
+			}
+		})
+
+		mux.HandleFunc("GET /api/multi-data", func(w http.ResponseWriter, r *http.Request) {
+			hostsParam := r.URL.Query().Get("hosts")
+			if hostsParam == "" {
+				http.Error(w, "missing hosts parameter", http.StatusBadRequest)
+				return
+			}
+			hostnames := strings.Split(hostsParam, ",")
+			rootParam := r.URL.Query().Get("root")
+			resp := mc.fetchMultiData(r.Context(), hostnames, rootParam)
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				log.Printf("json encode: %v", err)
+			}
+		})
+	}
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))

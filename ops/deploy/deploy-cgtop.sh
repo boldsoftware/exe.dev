@@ -105,8 +105,7 @@ ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<EOF
 set -e
 chmod +x ~/$BINARY_NAME
 
-rm -f ~/cgtop.latest
-ln -sf ~/$BINARY_NAME ~/cgtop.latest
+sudo mv ~/$BINARY_NAME /usr/local/bin/cgtop
 
 sudo mv ~/cgtop.service /etc/systemd/system/cgtop.service
 sudo systemctl daemon-reload

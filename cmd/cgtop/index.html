@@ -49,6 +49,46 @@ body { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; 
 .psi-yellow { background: #fff8c5; color: #9a6700; }
 .psi-red { background: #ffebe9; color: #cf222e; }
 
+/* Mode toggle in topbar */
+.mode-toggle {
+  display: inline-flex; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden;
+  margin-right: 8px;
+}
+.mode-toggle button {
+  padding: 2px 10px; border: none; background: #fff; cursor: pointer;
+  font-family: inherit; font-size: 11px; color: #57606a;
+}
+.mode-toggle button:not(:last-child) { border-right: 1px solid #d0d7de; }
+.mode-toggle button:hover { background: #f6f8fa; }
+.mode-toggle button.active { background: #24292f; color: #fff; }
+
+/* Host summary grid — single-line entries in 3 columns */
+#host-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+  border-bottom: 2px solid #d0d7de; font-size: 11px;
+}
+.host-card {
+  display: flex; align-items: center; gap: 6px;
+  background: #fff; padding: 2px 6px; cursor: pointer;
+  white-space: nowrap; border-bottom: 1px solid #eaeef2;
+}
+.host-card:hover { background: #f6f8fa; }
+.host-card .hc-name { font-weight: bold; color: #24292f; min-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.host-card .hc-err { color: #cf222e; }
+.host-card .hc-cpu-bar {
+  display: inline-flex; width: 48px; height: 8px; background: #eaeef2;
+  border-radius: 2px; overflow: hidden; vertical-align: middle; flex-shrink: 0;
+}
+.host-card .hc-cpu-bar .user { background: #2da44e; }
+.host-card .hc-cpu-bar .sys { background: #bf8700; }
+.host-card .hc-cpu-bar .iowait { background: #cf222e; }
+.host-card .hc-val { color: #57606a; }
+.host-card .hc-val b { color: #24292f; font-weight: bold; }
+.hc-psi { display: inline-block; padding: 0 2px; border-radius: 2px; font-size: 10px; font-weight: bold; }
+.hc-psi.psi-green { background: #dafbe1; color: #1a7f37; }
+.hc-psi.psi-yellow { background: #fff8c5; color: #9a6700; }
+.hc-psi.psi-red { background: #ffebe9; color: #cf222e; }
+
 #col-controls {
   display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
   padding: 4px 12px; background: #fff; border-bottom: 1px solid #d0d7de;
@@ -165,10 +205,11 @@ tr:hover td:first-child { background: #eaeef2 !important; }
 </head>
 <body>
 <div id="topbar">
-  <div class="left"><div id="breadcrumbs"></div></div>
+  <div class="left"><span id="mode-toggle-wrap"></span><div id="breadcrumbs"></div></div>
   <div class="center" id="topbar-center"></div>
   <div class="right"><input id="filter-input" type="text" placeholder="Filter..." autocomplete="off" spellcheck="false"></div>
 </div>
+<div id="host-grid" style="display:none"></div>
 <div id="col-controls"></div>
 <div id="histo-tooltip"></div>
 <div id="table-wrap">
@@ -748,7 +789,7 @@ function toggleAll() {
 function zoom(path) {
   currentRoot = path;
   stateToURL();
-  refresh();
+  if (viewMode === 'local') _origRefresh();
 }
 
 function renderTable() {
@@ -1055,8 +1096,315 @@ filterInput.addEventListener('input', () => {
   renderTable();
 });
 
-refresh();
-setInterval(refresh, 10000);
+// ---------------------------------------------------------------------------
+// Multi-host support
+// ---------------------------------------------------------------------------
+let multiMode = false;
+let knownHosts = [];      // [{name, url}]
+let viewMode = 'local';   // 'local' or 'all'
+let multiData = {};       // name -> last HostData from /api/multi-data
+
+// Save reference to original local-only refresh.
+const _origRefresh = refresh;
+
+async function detectMultiMode() {
+  try {
+    const resp = await fetch('/api/hosts');
+    if (!resp.ok) return;
+    const hosts = await resp.json();
+    if (hosts && hosts.length > 0) {
+      multiMode = true;
+      knownHosts = hosts;
+      const params = new URLSearchParams(location.search);
+      if (params.get('host') === 'all') viewMode = 'all';
+      renderModeToggle();
+    }
+  } catch(e) {}
+}
+
+function renderModeToggle() {
+  const wrap = document.getElementById('mode-toggle-wrap');
+  if (!multiMode) { wrap.innerHTML = ''; return; }
+  const localCls = viewMode === 'local' ? 'active' : '';
+  const allCls = viewMode === 'all' ? 'active' : '';
+  wrap.innerHTML = `<span class="mode-toggle"><button class="${localCls}" onclick="switchMode('local')">Local</button><button class="${allCls}" onclick="switchMode('all')">All Hosts</button></span>`;
+}
+
+function switchMode(mode) {
+  viewMode = mode;
+  const params = new URLSearchParams(location.search);
+  if (mode === 'all') params.set('host', 'all');
+  else params.delete('host');
+  const qs = params.toString();
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+  renderModeToggle();
+  refreshCurrent();
+}
+
+function showAllHostsUI(show) {
+  document.getElementById('host-grid').style.display = show ? '' : 'none';
+  // In all-hosts mode we still show the table (mega cgroup view) and col controls.
+  document.getElementById('table-wrap').style.display = '';
+  document.getElementById('col-controls').style.display = '';
+}
+
+// Render the 3-column host summary grid.
+function renderHostGrid() {
+  const grid = document.getElementById('host-grid');
+  if (viewMode !== 'all') { grid.style.display = 'none'; return; }
+  grid.style.display = '';
+
+  // Build sorted host list.
+  const hosts = knownHosts.map(h => {
+    const md = multiData[h.name];
+    const ok = md && md.data;
+    const s = ok ? md.data.system : null;
+    const tree = ok ? md.data.tree : null;
+    return { name: h.name, ok, error: md ? md.error : null, s, tree };
+  });
+  hosts.sort((a, b) => a.name.localeCompare(b.name));
+
+  let h = '';
+  for (const host of hosts) {
+    h += `<div class="host-card">`;
+    // Short name: strip common prefix/suffix for display.
+    const short = host.name.replace(/^exelet-/, '').replace(/-prod-/, '-');
+    h += `<span class="hc-name" title="${esc(host.name)}">${esc(short)}</span>`;
+    if (!host.ok) {
+      h += `<span class="hc-err">${esc(host.error || 'loading...')}</span>`;
+    } else {
+      const s = host.s;
+      const cpu = s && s.cpu ? (100 - s.cpu.idle_pct) : 0;
+      const userW = s && s.cpu ? s.cpu.user_pct.toFixed(1) : 0;
+      const sysW = s && s.cpu ? s.cpu.sys_pct.toFixed(1) : 0;
+      const ioW = s && s.cpu ? s.cpu.iowait_pct.toFixed(1) : 0;
+      const load = s && s.loadavg ? s.loadavg.load1.toFixed(1) : '?';
+      const mem = host.tree && host.tree.stats ? fmtBytes(host.tree.stats['memory.current'] || 0) : '?';
+      const psiCpu = s && s.psi_cpu ? s.psi_cpu.some.avg10 : 0;
+      const psiMem = s && s.psi_memory ? s.psi_memory.some.avg10 : 0;
+      const psiIO = s && s.psi_io ? s.psi_io.some.avg10 : 0;
+      h += `<span class="hc-cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span>`;
+      h += `<span class="hc-val"><b>${cpu.toFixed(0)}%</b></span>`;
+      h += `<span class="hc-val">Ld <b>${load}</b></span>`;
+      h += `<span class="hc-val"><b>${mem}</b></span>`;
+      h += `<span class="hc-psi ${psiClass(psiCpu)}">${psiCpu.toFixed(1)}</span>`;
+      h += `<span class="hc-psi ${psiClass(psiMem)}">${psiMem.toFixed(1)}</span>`;
+      h += `<span class="hc-psi ${psiClass(psiIO)}">${psiIO.toFixed(1)}</span>`;
+    }
+    h += `</div>`;
+  }
+  grid.innerHTML = h;
+}
+
+// Build a merged flat node list from all hosts' trees.
+function buildMegaFlatRows() {
+  const rows = [];
+  const hostNames = knownHosts.map(h => h.name).sort();
+  for (const hostname of hostNames) {
+    const md = multiData[hostname];
+    if (!md || !md.data || !md.data.tree) continue;
+    flattenForMega(md.data.tree, hostname, rows, md.data.sparklines || {});
+  }
+  return rows;
+}
+
+function flattenForMega(node, hostname, rows, sparklines) {
+  const megaPath = hostname + '/' + (node.path || '');
+  const megaNode = {
+    name: node.name,
+    path: megaPath,
+    stats: node.stats || {},
+    rates: node.rates || {},
+    config: node.config || {},
+    children: null,
+  };
+  rows.push({ node: megaNode, depth: 0, _sparkPath: node.path, _sparklines: sparklines });
+  if (node.children) {
+    for (const child of node.children) {
+      flattenForMega(child, hostname, rows, sparklines);
+    }
+  }
+}
+
+// Override renderTable for all-hosts mega mode.
+function renderMegaTable() {
+  const cols = visibleColumns();
+  histoDataMap = {};
+
+  let rows = buildMegaFlatRows();
+
+  // Apply filter.
+  if (filterText) {
+    const ft = filterText.toLowerCase();
+    rows = rows.filter(r => r.node.path.toLowerCase().includes(ft));
+  }
+
+  // Sort.
+  if (sortKey) {
+    rows.sort((a, b) => cmpNodes(a.node, b.node));
+  }
+
+  // Column stats for heatmap.
+  const colStats = {};
+  for (const col of cols) {
+    if (col.src === 'config') continue;
+    const vals = collectColumnValues(rows, col.key, col.src);
+    if (vals.length > 0) {
+      colStats[col.key] = { min: Math.min(...vals), max: Math.max(...vals), vals };
+    }
+  }
+
+  // Header.
+  const r1Top = 'position:sticky;top:0;z-index:2;background:#f6f8fa';
+  let groupRow = `<tr><th rowspan="3" class="name-col" style="position:sticky;top:0;left:0;z-index:4;background:#f6f8fa;min-width:280px">Host / Path</th>`;
+  const seen = new Set();
+  for (const col of cols) {
+    if (seen.has(col.groupId)) continue;
+    seen.add(col.groupId);
+    const cfgCls = col.isCfg ? ' cfg-group' : '';
+    groupRow += `<th colspan="${col.groupLen}" class="group-header${cfgCls} group-start" style="${r1Top}">${col.groupLabel}</th>`;
+  }
+  groupRow += '</tr>';
+
+  const r2Top = 'position:sticky;top:21px;z-index:2;background:#f6f8fa';
+  let colRow = '<tr>';
+  for (const col of cols) {
+    const cls = ['sortable'];
+    if (col.groupFirst) cls.push('group-start');
+    if (col.isCfg) cls.push('cfg-col');
+    if (sortKey === col.key) cls.push('sorted');
+    let arrow = '';
+    if (sortKey === col.key) arrow = `<span class="sort-arrow">${sortDir === 'asc' ? '\u25b2' : '\u25bc'}</span>`;
+    const cs = colStats[col.key];
+    const histo = cs ? `<div class="col-histo">${makeHistogram(cs.vals, col.key)}</div>` : '';
+    colRow += `<th class="${cls.join(' ')}" style="${r2Top}" title="${esc(col.help || '')}" onclick="doSort('${col.key}','${col.src}')">${col.label}${arrow}${histo}</th>`;
+  }
+  colRow += '</tr>';
+
+  const r3Top = 'position:sticky;top:42px;z-index:2;background:#f6f8fa';
+  let helpRow = '<tr>';
+  for (const col of cols) {
+    const cls = ['help-cell'];
+    if (col.groupFirst) cls.push('group-start');
+    const link = col.doc ? `<a class="info-icon" href="${col.doc}" target="_blank" rel="noopener" title="${esc(col.help || '')}">i</a>` : '';
+    helpRow += `<th class="${cls.join(' ')}" style="${r3Top}">${link}</th>`;
+  }
+  helpRow += '</tr>';
+
+  document.getElementById('thead').innerHTML = groupRow + colRow + helpRow;
+
+  // Body — cap at 500 rows to keep the DOM manageable.
+  const maxRows = 500;
+  let html = '';
+  const display = rows.slice(0, maxRows);
+  for (const row of display) {
+    html += renderMegaRow(row, cols, colStats);
+  }
+  if (rows.length > maxRows) {
+    const nCols = cols.length + 1;
+    html += `<tr><td colspan="${nCols}" style="text-align:center;color:#57606a;padding:8px">Showing ${maxRows} of ${rows.length} rows — use the filter to narrow</td></tr>`;
+  }
+  document.getElementById('tbody').innerHTML = html;
+}
+
+function renderMegaRow(row, cols, colStats) {
+  const { node } = row;
+  let html = '<tr>';
+  html += `<td>${esc(node.path)}</td>`;
+
+  for (const col of cols) {
+    const src = col.src === 'config' ? node.config : (col.src === 'rates' ? node.rates : node.stats);
+    const val = src ? src[col.key] : undefined;
+    const fmt = col.fmt || fmtDefault;
+    const display = fmt(val);
+    const isEmpty = display === '' || display === '0' || display === '0%';
+
+    const cls = [];
+    if (col.groupFirst) cls.push('group-start');
+    if (isEmpty) cls.push('zero');
+    const clsStr = cls.length ? ` class="${cls.join(' ')}"` : '';
+
+    let style = '';
+    if (!isEmpty && colStats && col.src !== 'config') {
+      const cs = colStats[col.key];
+      if (cs) {
+        const r = colorRatio(val, cs.min, cs.max);
+        if (r > 0) style = ` style="background:${valueColor(r)}"`;
+      }
+    }
+
+    // Sparklines from the original host data.
+    let spark = '';
+    if (col.showSpark && row._sparklines && row._sparklines[row._sparkPath] && row._sparklines[row._sparkPath][col.key]) {
+      spark = makeSpark(row._sparklines[row._sparkPath][col.key], null);
+    }
+
+    if (spark) {
+      html += `<td${clsStr}${style}><span class="spark-cell">${spark}<span class="spark-val">${display}</span></span></td>`;
+    } else {
+      html += `<td${clsStr}${style}>${display}</td>`;
+    }
+  }
+  html += '</tr>';
+  return html;
+}
+
+async function refreshCurrent() {
+  if (viewMode === 'all') {
+    await refreshAllHosts();
+  } else {
+    showAllHostsUI(false);
+    document.getElementById('host-grid').style.display = 'none';
+    await _origRefresh();
+  }
+}
+
+async function refreshAllHosts() {
+  showAllHostsUI(true);
+  try {
+    const hostnames = knownHosts.map(h => h.name).join(',');
+    if (!hostnames) return;
+    const resp = await fetch(`/api/multi-data?hosts=${encodeURIComponent(hostnames)}`);
+    const multi = await resp.json();
+    if (multi.hosts) {
+      for (const [hostname, hd] of Object.entries(multi.hosts)) {
+        multiData[hostname] = hd;
+      }
+    }
+
+    // Topbar summary.
+    const center = document.getElementById('topbar-center');
+    const nOk = Object.values(multiData).filter(d => d && d.data).length;
+    center.innerHTML = `<span><span class="label">Hosts</span> <span class="value">${nOk}/${knownHosts.length}</span></span>`;
+    document.title = 'All Hosts \u2014 cgtop';
+
+    renderHostGrid();
+    renderColControls();
+    renderMegaTable();
+  } catch(e) {
+    console.error('multi-fetch error:', e);
+  }
+}
+
+// Bootstrap.
+(async function init() {
+  await detectMultiMode();
+  await refreshCurrent();
+
+  setInterval(refreshCurrent, 10000);
+
+  // Refresh host list periodically.
+  setInterval(async () => {
+    if (!multiMode) return;
+    try {
+      const resp = await fetch('/api/hosts');
+      if (resp.ok) {
+        knownHosts = await resp.json();
+        renderModeToggle();
+      }
+    } catch(e) {}
+  }, 30000);
+})();
 </script>
 </body>
 </html>

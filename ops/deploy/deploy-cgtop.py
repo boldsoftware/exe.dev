@@ -36,6 +36,32 @@ if len(sys.argv) < 2:
 
 hosts = [h if "@" in h else f"ubuntu@{h}" for h in sys.argv[1:]]
 
+# Fetch the list of all cgtop URLs from exed's debug page (we run this
+# locally where we have human Tailscale access, then deploy the file).
+print("=== Fetching exelet host list from exed ===\n")
+try:
+    exelets_json = subprocess.check_output(
+        ["curl", "-sf", "--max-time", "30",
+         "https://exed-02.crocodile-vector.ts.net/debug/exelets?format=json"],
+        text=True,
+    )
+    import json
+    cgtop_urls = "\n".join(
+        e["cgtop_url"].replace(":9090", ".crocodile-vector.ts.net:9090")
+        for e in json.loads(exelets_json)
+    )
+    print(f"  Found {len(cgtop_urls.splitlines())} cgtop hosts")
+except Exception as e:
+    print(f"WARNING: could not fetch exelet list: {e}")
+    cgtop_urls = ""
+
+HOSTS_FILE = "/etc/cgtop-hosts.txt"
+
+# Write hosts file to temp location for scp.
+hosts_tmp = os.path.join(tempfile.gettempdir(), "cgtop-hosts.txt")
+with open(hosts_tmp, "w") as f:
+    f.write(cgtop_urls + "\n")
+
 # Build locally for linux/amd64
 print(f"=== Building cgtop ({BINARY_NAME}) ===\n")
 binary_path = os.path.join(tempfile.gettempdir(), BINARY_NAME)
@@ -53,15 +79,17 @@ for host in hosts:
         # Check connectivity
         run(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host, "true"])
 
-        # Copy binary and service file
+        # Copy binary, service file, and hosts file
         scp(binary_path, host, f"~/{BINARY_NAME}")
         scp(SERVICE_SRC, host, "~/cgtop.service")
+        scp(hosts_tmp, host, "~/cgtop-hosts.txt")
 
-        # Install binary, service, and restart
+        # Install binary, hosts file, service, and restart
         ssh(host, f"""
 set -e
 chmod +x ~/{BINARY_NAME}
 sudo mv ~/{BINARY_NAME} /usr/local/bin/cgtop
+sudo mv ~/cgtop-hosts.txt {HOSTS_FILE}
 sudo mv ~/cgtop.service /etc/systemd/system/cgtop.service
 sudo systemctl daemon-reload
 sudo systemctl enable cgtop
@@ -76,8 +104,9 @@ echo "cgtop running on $(hostname)"
         print(f"ERROR: deploy to {host} failed: {e}")
         failed_hosts.append(host)
 
-# Cleanup local binary
+# Cleanup local files
 os.remove(binary_path)
+os.remove(hosts_tmp)
 
 if failed_hosts:
     print(f"\n=== FAILED on: {', '.join(failed_hosts)} ===")
