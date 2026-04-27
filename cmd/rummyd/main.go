@@ -640,7 +640,7 @@ func mustParseRSAPublicKey(b64 string) ssh.PublicKey {
 	return key
 }
 
-var gitSHARe = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
+var gitSHARe = regexp.MustCompile(`^[0-9a-f]{7,40}(-dirty)?$`)
 
 func validGitSHA(s string) bool {
 	return gitSHARe.MatchString(s)
