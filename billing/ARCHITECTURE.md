@@ -10,12 +10,12 @@ All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a v
 |------|-----|------|--------------|
 | Enterprise | `enterprise:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
 | Team | `team:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
-| Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize |
+| Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize, self-serve billing |
 | Friend | `friend` | No | LLM, VM create/run, disk resize |
-| Grandfathered | `grandfathered` | No | Same as Friend |
-| Trial | `trial:monthly:20260106` | No | Same as Friend |
-| Basic | `basic:monthly:20260106` | No | LLM only |
-| Restricted | `restricted` | No | None |
+| Grandfathered | `grandfathered` | No | LLM, invite claim, VM create/run, disk resize |
+| Trial | `trial:monthly:20260106` | No | LLM, VM create/run, disk resize, self-serve billing, trial access |
+| Basic | `basic:monthly:20260106` | No | LLM, invite claim, self-serve billing, trial access, account delete |
+| Restricted | `restricted` | No | Account delete only |
 
 Only Individual gets `TeamCreate`.
 
@@ -74,10 +74,14 @@ Entitlements are boolean feature gates defined in `billing/plan/entitlement.go`.
 | LLMUse | `llm:use` | Use LLM Gateway |
 | CreditPurchase | `credit:purchase` | Purchase Credits |
 | InviteRequest | `invite:request` | Request Invites |
+| InviteClaim | `invite:claim` | Claim Invite Codes |
 | TeamCreate | `team:create` | Create Teams |
 | VMCreate | `vm:create` | Create VMs |
 | VMRun | `vm:run` | Run VMs |
 | DiskResize | `disk:resize` | Resize VM Disks |
+| BillingSelfServe | `billing:selfserve` | Self-Service Billing Management |
+| BillingTrialAccess | `billing:trialaccess` | Show Trial Messaging |
+| AccountDelete | `account:delete` | Account Deletable |
 | All | `*` | Wildcard (reserved) |
 
 Checked via `execore/billing_status.go:UserHasEntitlement()`, which resolves user → account → active plan → tier → entitlements. For team members, the parent account's plan is used.

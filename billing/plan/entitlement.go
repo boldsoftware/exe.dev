@@ -35,7 +35,7 @@ var (
 
 	// Billing operations.
 	BillingSelfServe   = Entitlement{"billing:selfserve", "Self-Service Billing Management"}
-	BillingTrialAccess = Entitlement{"billing:trialaccess", "Show Trial Messaging"}
+	BillingTrialAccess = Entitlement{"billing:trialaccess", "Has / Had Access to Trials"}
 
 	// Account operations.
 	AccountDelete = Entitlement{"account:delete", "Account Deletable"}
