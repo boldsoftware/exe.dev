@@ -144,6 +144,29 @@ func (h *Handlers) HandleHosts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Merge hosts known to the inventory (via tailscale) but missing from
+	// Prometheus. This ensures newly-provisioned hosts appear in the UI
+	// even before their node_exporter is scraped.
+	if h.inventory != nil {
+		seen := make(map[string]bool, len(hosts))
+		for _, hm := range hosts {
+			seen[hm.Hostname] = true
+		}
+		for _, p := range h.inventory.Processes() {
+			if seen[p.Hostname] {
+				continue
+			}
+			seen[p.Hostname] = true
+			hosts[p.Hostname] = &HostMetrics{
+				Instance: p.Hostname,
+				Hostname: p.Hostname,
+				Stage:    p.Stage,
+				Role:     p.Role,
+				Region:   p.Region,
+			}
+		}
+	}
+
 	// Prometheus scrapes every environment, so filter to the environment
 	// this exe-ops serves. Prometheus uses "production" for the prod
 	// stage label, while --environment and the inventory hostname
