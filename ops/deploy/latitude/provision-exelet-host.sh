@@ -517,6 +517,27 @@ else
     sudo update-grub
 fi
 
+# Watchdog: if IPv6 ever comes back (e.g. tailscaled reload), re-disable it.
+sudo tee /usr/local/sbin/disable-ipv6-if-needed.sh > /dev/null <<'WATCHDOG'
+#!/bin/bash
+set -e
+if ip -6 addr show 2>/dev/null | grep -q 'inet6'; then
+    systemd-run --on-active=30 /bin/systemctl restart tailscaled
+    sysctl -w net.ipv6.conf.default.disable_ipv6=1
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1
+    sysctl -w net.ipv6.conf.all.accept_ra=0
+    sysctl -w net.ipv6.conf.default.accept_ra=0
+fi
+WATCHDOG
+sudo chmod 0755 /usr/local/sbin/disable-ipv6-if-needed.sh
+
+sudo tee /etc/cron.d/disable-ipv6-watchdog > /dev/null <<'CRON'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/5 * * * * root /usr/local/sbin/disable-ipv6-if-needed.sh >/dev/null 2>&1
+CRON
+sudo chmod 0644 /etc/cron.d/disable-ipv6-watchdog
+
 echo "IPv6 disabled"
 DISABLE_IPV6
 
