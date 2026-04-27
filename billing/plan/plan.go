@@ -361,11 +361,12 @@ var plans = map[Category]Plan{
 		Name:        "Trial",
 		DefaultTier: "trial:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:           true,
-			VMCreate:         true,
-			VMRun:            true,
-			DiskResize:       true,
-			BillingSelfServe: true,
+			LLMUse:             true,
+			VMCreate:           true,
+			VMRun:              true,
+			DiskResize:         true,
+			BillingSelfServe:   true,
+			BillingTrialAccess: true,
 		},
 	},
 	CategoryBasic: {
@@ -375,10 +376,11 @@ var plans = map[Category]Plan{
 		Name:        "Basic",
 		DefaultTier: "basic:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
-			LLMUse:           true,
-			InviteClaim:      true,
-			BillingSelfServe: true,
-			AccountDelete:    true,
+			LLMUse:             true,
+			InviteClaim:        true,
+			BillingSelfServe:   true,
+			BillingTrialAccess: true,
+			AccountDelete:      true,
 		},
 	},
 	CategoryRestricted: {

@@ -110,26 +110,22 @@ func (s *Server) resolveTrialInfo(ctx context.Context, userID string) *jsonTrial
 	if err != nil || planData.PlanID == nil || !strings.HasPrefix(*planData.PlanID, "trial:") || planData.TrialExpiresAt == nil {
 		return nil
 	}
-	cat, err := withRxRes0(s, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
-		return plan.ForUser(ctx, q, userID)
-	})
+	planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID)
 	if err != nil {
 		return nil
 	}
-	if cat == plan.CategoryTrial {
-		daysLeft := int(time.Until(*planData.TrialExpiresAt).Hours()/24) + 1
-		if daysLeft < 0 {
-			daysLeft = 0
-		}
-		return &jsonTrialInfo{
-			ExpiresAt: *planData.TrialExpiresAt,
-			DaysLeft:  daysLeft,
-		}
+	if !plan.Grants(planRow.PlanID, plan.BillingTrialAccess) {
+		return nil
 	}
-	// Trial plan in DB but ForUser didn't resolve to trial — it's expired.
+	expired := time.Now().After(*planData.TrialExpiresAt)
+	daysLeft := int(time.Until(*planData.TrialExpiresAt).Hours()/24) + 1
+	if daysLeft < 0 {
+		daysLeft = 0
+	}
 	return &jsonTrialInfo{
 		ExpiresAt: *planData.TrialExpiresAt,
-		Expired:   true,
+		DaysLeft:  daysLeft,
+		Expired:   expired,
 	}
 }
 

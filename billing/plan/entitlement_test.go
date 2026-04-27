@@ -51,16 +51,17 @@ func TestAllEntitlements(t *testing.T) {
 
 	// Should contain all known concrete entitlements.
 	want := map[string]bool{
-		"llm:use":           true,
-		"credit:purchase":   true,
-		"invite:request":    true,
-		"invite:claim":      true,
-		"team:create":       true,
-		"vm:create":         true,
-		"vm:run":            true,
-		"disk:resize":       true,
-		"billing:selfserve": true,
-		"account:delete":    true,
+		"llm:use":             true,
+		"credit:purchase":     true,
+		"invite:request":      true,
+		"invite:claim":        true,
+		"team:create":         true,
+		"vm:create":           true,
+		"vm:run":              true,
+		"disk:resize":         true,
+		"billing:selfserve":   true,
+		"billing:trialaccess": true,
+		"account:delete":      true,
 	}
 	got := make(map[string]bool)
 	for _, e := range all {
