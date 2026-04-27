@@ -3,6 +3,7 @@ package execore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -214,8 +215,9 @@ func TestTopModelView(t *testing.T) {
 				CPUPercent:       45.2,
 				MemBytes:         1024 * 1024 * 1024,      // 1G RSS
 				SwapBytes:        512 * 1024 * 1024,       // 512M swap
+				MemCapacity:      4 * 1024 * 1024 * 1024,  // 4G allocated
 				DiskBytes:        300 * 1024 * 1024,       // 300M compressed
-				DiskLogicalBytes: 500 * 1024 * 1024,       // 500M logical (matches df -h)
+				DiskLogicalBytes: 500 * 1024 * 1024,       // 500M logical
 				DiskCapacity:     10 * 1024 * 1024 * 1024, // 10G capacity
 				NetRx:            2048,
 				NetTx:            4096,
@@ -227,20 +229,29 @@ func TestTopModelView(t *testing.T) {
 		if !strings.Contains(out, "VM") || !strings.Contains(out, "STATUS") || !strings.Contains(out, "CPU%") {
 			t.Errorf("View() should contain column headers, got %q", out)
 		}
+		for _, h := range []string{"MEM", "SWAP", "RAM", "DISK"} {
+			if !strings.Contains(out, h) {
+				t.Errorf("View() should contain column header %q, got %q", h, out)
+			}
+		}
 		if !strings.Contains(out, "my-vm") {
 			t.Errorf("View() should contain VM name 'my-vm', got %q", out)
 		}
-		// MEM should be RSS+swap = 1.5G
-		if !strings.Contains(out, "1.5G") {
-			t.Errorf("View() should show combined RSS+swap memory '1.5G', got %q", out)
+		// MEM is now active memory only (RSS) = 1.0G.
+		if !strings.Contains(out, "1.0G") {
+			t.Errorf("View() should show active memory '1.0G', got %q", out)
 		}
-		// DISK should show used/capacity
-		if !strings.Contains(out, "500M/10.0G") {
-			t.Errorf("View() should show disk as 'used/capacity' e.g. '500M/10.0G', got %q", out)
+		// SWAP shows 512M.
+		if !strings.Contains(out, "512M") {
+			t.Errorf("View() should show swap '512M', got %q", out)
 		}
-		// NET rates should show "-" on first poll (no previous data)
-		if !strings.Contains(out, "-") {
-			t.Errorf("View() should show '-' for net rates on first poll, got %q", out)
+		// RAM (allocation) shows 4.0G.
+		if !strings.Contains(out, "4.0G") {
+			t.Errorf("View() should show allocated RAM '4.0G', got %q", out)
+		}
+		// DISK column now shows allocated capacity only.
+		if !strings.Contains(out, "10.0G") {
+			t.Errorf("View() should show allocated disk capacity '10.0G', got %q", out)
 		}
 	})
 
@@ -488,73 +499,116 @@ func TestFetchUsageCmdReturnsError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestTopViewDiskFormat
+// TestTopViewDiskShowsCapacity
 // ---------------------------------------------------------------------------
 
-func TestTopViewDiskFormat(t *testing.T) {
-	t.Run("prefers_logical_bytes", func(t *testing.T) {
-		rows := []vmUsageRow{{
-			Name:             "vm1",
-			Status:           "running",
-			DiskBytes:        1 * 1024 * 1024 * 1024, // 1G compressed
-			DiskLogicalBytes: 2 * 1024 * 1024 * 1024, // 2G logical
-			DiskCapacity:     20 * 1024 * 1024 * 1024,
-		}}
-		m := newTestModel(rows, nil)
-		out := m.View()
-		if !strings.Contains(out, "2.0G/20.0G") {
-			t.Errorf("View() should show logical bytes (2.0G), not compressed (1.0G), got %q", out)
-		}
-	})
-
-	t.Run("falls_back_to_compressed", func(t *testing.T) {
-		// When DiskLogicalBytes is 0 (old exelet), fall back to DiskBytes
-		rows := []vmUsageRow{{
-			Name:         "vm1",
-			Status:       "running",
-			DiskBytes:    2 * 1024 * 1024 * 1024,
-			DiskCapacity: 20 * 1024 * 1024 * 1024,
-		}}
-		m := newTestModel(rows, nil)
-		out := m.View()
-		if !strings.Contains(out, "2.0G/20.0G") {
-			t.Errorf("View() should fall back to compressed bytes, got %q", out)
-		}
-	})
-
-	t.Run("without_capacity", func(t *testing.T) {
-		rows := []vmUsageRow{{
-			Name:             "vm1",
-			Status:           "running",
-			DiskLogicalBytes: 500 * 1024 * 1024,
-		}}
-		m := newTestModel(rows, nil)
-		out := m.View()
-		if !strings.Contains(out, "500M") {
-			t.Errorf("View() should show disk usage without capacity, got %q", out)
-		}
-		if strings.Contains(out, "/") {
-			t.Errorf("View() should not show '/' when no capacity, got %q", out)
-		}
-	})
-}
-
-// ---------------------------------------------------------------------------
-// TestTopViewMemShowsRSSPlusSwap
-// ---------------------------------------------------------------------------
-
-func TestTopViewMemShowsRSSPlusSwap(t *testing.T) {
+func TestTopViewDiskShowsCapacity(t *testing.T) {
 	rows := []vmUsageRow{{
-		Name:      "vm1",
-		Status:    "running",
-		MemBytes:  1024 * 1024 * 1024, // 1G RSS
-		SwapBytes: 1024 * 1024 * 1024, // 1G swap
+		Name:             "vm1",
+		Status:           "running",
+		DiskBytes:        1 * 1024 * 1024 * 1024,
+		DiskLogicalBytes: 2 * 1024 * 1024 * 1024,
+		DiskCapacity:     20 * 1024 * 1024 * 1024,
 	}}
 	m := newTestModel(rows, nil)
 	out := m.View()
-	// Should show 2.0G (RSS+swap combined)
+	if !strings.Contains(out, "20.0G") {
+		t.Errorf("View() should show allocated disk capacity 20.0G, got %q", out)
+	}
+	if strings.Contains(out, "/") {
+		t.Errorf("View() should not show used/capacity composite, got %q", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestTopViewMemSwapColumnsSeparate
+// ---------------------------------------------------------------------------
+
+func TestTopViewMemSwapColumnsSeparate(t *testing.T) {
+	rows := []vmUsageRow{{
+		Name:      "vm1",
+		Status:    "running",
+		MemBytes:  1024 * 1024 * 1024,     // 1G active
+		SwapBytes: 2 * 1024 * 1024 * 1024, // 2G swap
+	}}
+	m := newTestModel(rows, nil)
+	out := m.View()
+	// MEM = 1.0G, SWAP = 2.0G — must be reported as distinct values.
+	if !strings.Contains(out, "1.0G") {
+		t.Errorf("View() should show active memory 1.0G, got %q", out)
+	}
 	if !strings.Contains(out, "2.0G") {
-		t.Errorf("View() should show combined RSS+swap memory (2.0G), got %q", out)
+		t.Errorf("View() should show swap 2.0G, got %q", out)
+	}
+}
+
+// TestTopSortByCycles verifies the 's' key cycles the sort column
+// and that running rows always sort before stopped ones.
+func TestTopSortByCycles(t *testing.T) {
+	rows := []vmUsageRow{
+		{Name: "a", Status: "running", CPUPercent: 10, MemBytes: 100, MemCapacity: 1000, DiskCapacity: 5000, SwapBytes: 0},
+		{Name: "b", Status: "running", CPUPercent: 90, MemBytes: 50, MemCapacity: 4000, DiskCapacity: 1000, SwapBytes: 200},
+		{Name: "c", Status: "stopped", CPUPercent: 100, MemBytes: 999},
+	}
+	m := newTestModel(rows, nil)
+	m.sortRows()
+	if m.rows[0].Name != "b" || m.rows[2].Name != "c" {
+		t.Errorf("sort by CPU: want [b a c], got %v", names(m.rows))
+	}
+	// 's' should advance to MEM.
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if m.sortBy != sortMem {
+		t.Errorf("after one 's': sortBy=%v want sortMem", m.sortBy)
+	}
+	if m.rows[0].Name != "a" {
+		t.Errorf("sort by MEM: want a first, got %v", names(m.rows))
+	}
+	// Cycle through all columns; should end up back at sortCPU.
+	for i := 0; i < int(sortColumnCount)-1; i++ {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	}
+	if m.sortBy != sortCPU {
+		t.Errorf("after %d 's' presses: sortBy=%v want sortCPU", sortColumnCount, m.sortBy)
+	}
+	// Stopped rows must always sort last regardless of column.
+	if m.rows[len(m.rows)-1].Name != "c" {
+		t.Errorf("stopped row should be last, got %v", names(m.rows))
+	}
+}
+
+func names(rows []vmUsageRow) []string {
+	ns := make([]string, len(rows))
+	for i, r := range rows {
+		ns[i] = r.Name
+	}
+	return ns
+}
+
+// TestTopViewTruncatesToTerminalHeight verifies that when there are more
+// VMs than fit on the terminal, only height-3 rows are shown plus a note.
+func TestTopViewTruncatesToTerminalHeight(t *testing.T) {
+	var rows []vmUsageRow
+	for i := 0; i < 50; i++ {
+		rows = append(rows, vmUsageRow{
+			Name:   fmt.Sprintf("vm-%02d", i),
+			Status: "running",
+		})
+	}
+	m := newTestModel(rows, nil)
+	m.height = 10 // expect 10-3 = 7 rows visible
+	out := m.View()
+	lines := strings.Split(out, "\n")
+	if len(lines) > 12 { // header + col header + 7 rows + note + trailing newline
+		t.Errorf("View() with height=10 produced %d lines, want <=12; got:\n%s", len(lines), out)
+	}
+	if !strings.Contains(out, "more not shown") {
+		t.Errorf("View() should mention truncation when rows exceed height, got %q", out)
+	}
+	if !strings.Contains(out, "vm-00") {
+		t.Errorf("View() should show first row 'vm-00', got %q", out)
+	}
+	if strings.Contains(out, "vm-49") {
+		t.Errorf("View() should not show last row 'vm-49' when truncated, got %q", out)
 	}
 }
 

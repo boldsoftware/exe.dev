@@ -60,6 +60,43 @@ func (r vmUsageRow) DisplayMemBytes() uint64 {
 	return r.MemBytes - r.MemFileBytes
 }
 
+// sortColumn enumerates the columns the user can sort by via 's'.
+type sortColumn int
+
+const (
+	sortCPU sortColumn = iota
+	sortMem
+	sortSwap
+	sortRAM
+	sortDisk
+	sortNetRx
+	sortNetTx
+	sortName
+	sortColumnCount
+)
+
+func (s sortColumn) header() string {
+	switch s {
+	case sortCPU:
+		return "CPU%"
+	case sortMem:
+		return "MEM"
+	case sortSwap:
+		return "SWAP"
+	case sortRAM:
+		return "RAM"
+	case sortDisk:
+		return "DISK"
+	case sortNetRx:
+		return "NET RX"
+	case sortNetTx:
+		return "NET TX"
+	case sortName:
+		return "VM"
+	}
+	return ""
+}
+
 // topModel is the bubbletea model for the "top" command.
 type topModel struct {
 	rows      []vmUsageRow
@@ -69,6 +106,7 @@ type topModel struct {
 	quitting  bool
 	startTime time.Time
 	lastPoll  time.Time
+	sortBy    sortColumn
 
 	// Previous poll data for computing network rates.
 	prevRows map[string]vmUsageRow
@@ -116,6 +154,9 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
+		case "s":
+			m.sortBy = (m.sortBy + 1) % sortColumnCount
+			m.sortRows()
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -159,8 +200,56 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rows = msg.rows
 		m.err = msg.err
 		m.lastPoll = now
+		m.sortRows()
 	}
 	return m, nil
+}
+
+// sortRows sorts m.rows: running VMs first, then by the active sort column.
+func (m *topModel) sortRows() {
+	sort.SliceStable(m.rows, func(i, j int) bool {
+		ri := m.rows[i].Status == string(container.StatusRunning)
+		rj := m.rows[j].Status == string(container.StatusRunning)
+		if ri != rj {
+			return ri
+		}
+		a, b := m.rows[i], m.rows[j]
+		switch m.sortBy {
+		case sortCPU:
+			if a.CPUPercent != b.CPUPercent {
+				return a.CPUPercent > b.CPUPercent
+			}
+		case sortMem:
+			if a.DisplayMemBytes() != b.DisplayMemBytes() {
+				return a.DisplayMemBytes() > b.DisplayMemBytes()
+			}
+		case sortSwap:
+			if a.SwapBytes != b.SwapBytes {
+				return a.SwapBytes > b.SwapBytes
+			}
+		case sortRAM:
+			if a.MemCapacity != b.MemCapacity {
+				return a.MemCapacity > b.MemCapacity
+			}
+		case sortDisk:
+			if a.DiskCapacity != b.DiskCapacity {
+				return a.DiskCapacity > b.DiskCapacity
+			}
+		case sortNetRx:
+			ar := m.netRxRate[a.Name]
+			br := m.netRxRate[b.Name]
+			if ar != br {
+				return ar > br
+			}
+		case sortNetTx:
+			at := m.netTxRate[a.Name]
+			bt := m.netTxRate[b.Name]
+			if at != bt {
+				return at > bt
+			}
+		}
+		return a.Name < b.Name
+	})
 }
 
 func (m *topModel) View() string {
@@ -176,7 +265,7 @@ func (m *topModel) View() string {
 	if remaining < 0 {
 		remaining = 0
 	}
-	b.WriteString(fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  press q to exit\n", elapsed, remaining))
+	b.WriteString(fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  sort:%s  [s] cycle sort  [q] quit\n", elapsed, remaining, m.sortBy.header()))
 
 	if m.err != nil {
 		b.WriteString(fmt.Sprintf("\033[1;31merror: %v\033[0m\n", m.err))
@@ -191,23 +280,52 @@ func (m *topModel) View() string {
 	// Column header. ANSI-aware padding keeps columns aligned
 	// regardless of color escape code lengths.
 	// CPU% = percent of one core (200% = 2 cores fully used).
+	// MEM  = active (anon+kernel) guest memory, swap excluded.
+	// SWAP = bytes the guest has paged out via host swap.
+	// RAM  = allocated memory configured for the VM.
+	// DISK = provisioned (allocated) disk capacity for the VM.
+	hdr := func(label string, width int, col sortColumn, leftAlign bool) {
+		text := label
+		if m.sortBy == col {
+			text = label + "\u25BC"
+		}
+		if leftAlign {
+			b.WriteString(ansiPadRight(text, width))
+		} else {
+			b.WriteString(ansiPadLeft(text, width))
+		}
+	}
 	b.WriteString("\033[1;37m")
-	b.WriteString(ansiPadRight("VM", 20))
+	hdr("VM", 20, sortName, true)
 	b.WriteString(" ")
 	b.WriteString(ansiPadRight("STATUS", 10))
 	b.WriteString(" ")
-	b.WriteString(ansiPadLeft("CPU%", 8))
+	hdr("CPU%", 8, sortCPU, false)
 	b.WriteString(" ")
-	b.WriteString(ansiPadLeft("MEM", 10))
+	hdr("MEM", 9, sortMem, false)
 	b.WriteString(" ")
-	b.WriteString(ansiPadLeft("DISK", 12))
+	hdr("SWAP", 8, sortSwap, false)
 	b.WriteString(" ")
-	b.WriteString(ansiPadLeft("NET RX", 10))
+	hdr("RAM", 8, sortRAM, false)
 	b.WriteString(" ")
-	b.WriteString(ansiPadLeft("NET TX", 10))
+	hdr("DISK", 8, sortDisk, false)
+	b.WriteString(" ")
+	hdr("NET RX", 10, sortNetRx, false)
+	b.WriteString(" ")
+	hdr("NET TX", 10, sortNetTx, false)
 	b.WriteString("\033[0m\n")
 
-	for _, row := range m.rows {
+	// Limit visible rows to fit the terminal. Reserve 2 lines for the
+	// header + column header, plus 1 for an optional truncation note.
+	visibleRows := m.rows
+	maxRows := m.height - 3
+	truncated := 0
+	if m.height > 0 && maxRows > 0 && len(visibleRows) > maxRows {
+		truncated = len(visibleRows) - maxRows
+		visibleRows = visibleRows[:maxRows]
+	}
+
+	for _, row := range visibleRows {
 		name := row.Name
 		if len(name) > 19 {
 			name = name[:19] + "…"
@@ -215,19 +333,10 @@ func (m *topModel) View() string {
 
 		statusStr := colorizeStatus(row.Status)
 		cpuStr := colorizeCPU(row.CPUPercent)
-		memStr := colorizeMemory(row.DisplayMemBytes() + row.SwapBytes)
-
-		// Disk: logical-used/capacity (use logical bytes so the number matches df -h)
-		var diskStr string
-		diskUsed := row.DiskLogicalBytes
-		if diskUsed == 0 {
-			diskUsed = row.DiskBytes // fallback to compressed if logical not available
-		}
-		if row.DiskCapacity > 0 {
-			diskStr = fmt.Sprintf("%s/%s", topFmtBytes(diskUsed), topFmtBytes(row.DiskCapacity))
-		} else {
-			diskStr = topFmtBytes(diskUsed)
-		}
+		memStr := colorizeMemory(row.DisplayMemBytes())
+		swapStr := topFmtBytes(row.SwapBytes)
+		ramStr := topFmtBytes(row.MemCapacity)
+		diskStr := topFmtBytes(row.DiskCapacity)
 
 		// Network: rates in Mbps (bits per second).
 		var rxStr, txStr string
@@ -245,14 +354,22 @@ func (m *topModel) View() string {
 		b.WriteString(" ")
 		b.WriteString(ansiPadLeft(cpuStr, 8))
 		b.WriteString(" ")
-		b.WriteString(ansiPadLeft(memStr, 10))
+		b.WriteString(ansiPadLeft(memStr, 9))
 		b.WriteString(" ")
-		b.WriteString(ansiPadLeft(diskStr, 12))
+		b.WriteString(ansiPadLeft(swapStr, 8))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(ramStr, 8))
+		b.WriteString(" ")
+		b.WriteString(ansiPadLeft(diskStr, 8))
 		b.WriteString(" ")
 		b.WriteString(ansiPadLeft(rxStr, 10))
 		b.WriteString(" ")
 		b.WriteString(ansiPadLeft(txStr, 10))
 		b.WriteString("\n")
+	}
+
+	if truncated > 0 {
+		b.WriteString(fmt.Sprintf("\033[2m… %d more not shown (resize terminal to see all)\033[0m\n", truncated))
 	}
 
 	return b.String()
