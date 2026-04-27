@@ -1088,13 +1088,42 @@ const filteredProxyAttachOptions = computed(() => {
 const filteredGhTagVMOptions = computed(() => filterVMOptions(ghTagVMSearch.value, ghModal.tagVMs))
 const filteredProxyTagVMOptions = computed(() => filterVMOptions(proxyTagVMSearch.value, proxyModal.tagVMs))
 
+function fuzzyScore(query: string, text: string): number {
+  if (!text) return -1
+  const q = query.toLowerCase()
+  const t = text.toLowerCase()
+  if (t === q) return 1000
+  if (t.startsWith(q)) return 500 + (q.length / t.length) * 100
+  if (t.includes(q)) return 100 + (q.length / t.length) * 50
+  // Fuzzy: all query chars must appear in order
+  let qi = 0
+  let score = 0
+  let consecutive = 0
+  for (let i = 0; i < t.length && qi < q.length; i++) {
+    if (t[i] === q[qi]) {
+      score += 1 + consecutive
+      consecutive += 0.5
+      qi++
+    } else {
+      consecutive = 0
+    }
+  }
+  if (qi !== q.length) return -1
+  return score
+}
+
 const filteredRepos = computed(() => {
-  const q = repoSearch.value.toLowerCase().trim()
+  const q = repoSearch.value.trim()
   if (!q) return githubRepos.value.slice(0, 50)
-  return githubRepos.value.filter(r =>
-    r.full_name.toLowerCase().includes(q) ||
-    (r.description || '').toLowerCase().includes(q)
-  ).slice(0, 50)
+  const scored: Array<{ repo: typeof githubRepos.value[number]; score: number }> = []
+  for (const r of githubRepos.value) {
+    const nameScore = fuzzyScore(q, r.full_name)
+    const descScore = r.description ? fuzzyScore(q, r.description) : -1
+    const score = Math.max(nameScore, descScore === -1 ? -1 : descScore * 0.5)
+    if (score > 0) scored.push({ repo: r, score })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  return scored.slice(0, 50).map(s => s.repo)
 })
 
 // GitHub modal: effective name for tag
