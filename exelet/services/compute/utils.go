@@ -134,18 +134,36 @@ func (s *Service) StartInstanceByID(ctx context.Context, id string) error {
 // It returns the instance ID, name, and the VM's internal IP (which may
 // differ from the lookup IP in netns mode where the metadata service sees
 // the ext bridge IP but the VM itself uses a fixed internal IP).
+//
+// This is on the metadata-service hot path (every guest call to the magic
+// 169.254.169.254 endpoint hits it), so it intentionally reads from the
+// persisted JSON configs only — no VMM socket dials, no `zfs` subprocess
+// execs for live volsize. The fields needed here (ID, Name, NetworkInterface)
+// are written to config.json before the IPAM lease is granted and rewritten
+// during stop, so persisted state is sufficient. Callers that need live VM
+// state or live disk size must use listInstances.
 func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, string, string, error) {
-	// TODO(philip): This is linear in number of instances,
-	// and those are read from JSON files at the moment.
-	instances, err := s.listInstances(ctx)
+	instances, err := s.listInstanceConfigs(ctx)
 	if err != nil {
-		return "", "", "", err
+		if instances == nil {
+			// Total enumeration failure (Glob or context error). Surface
+			// it so callers can distinguish "no such IP" from "backend
+			// unhealthy" — otherwise a disk/perms problem looks like
+			// every VM disappeared.
+			return "", "", "", err
+		}
+		// Partial-load: some configs failed but others loaded. Search the
+		// rest; a missing-config false-negative is preferable to making
+		// the metadata service unavailable for healthy VMs.
+		s.log.WarnContext(ctx, "GetInstanceByIP: partial instance config load", "error", err)
 	}
 
 	for _, instance := range instances {
 		// Skip instances that are not actively using an IP. Stale config
 		// files can linger briefly during deletion; only RUNNING and
-		// STARTING instances have a valid IP lease.
+		// STARTING instances have a valid IP lease. Persisted State lags
+		// the live VMM state at most by the duration of a single state
+		// transition, which is acceptable here.
 		if instance.State != api.VMState_RUNNING && instance.State != api.VMState_STARTING {
 			continue
 		}
