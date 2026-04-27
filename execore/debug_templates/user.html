@@ -317,7 +317,7 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 {{if .BillingAccounts}}
 <table class="info">
 <thead>
-<tr><th>Account ID</th><th>Plan</th><th>Billing Dashboard</th></tr>
+<tr><th>Account ID</th><th>Plan</th><th>Billing Dashboard</th><th>Stripe Dashboard</th></tr>
 </thead>
 <tbody>
 {{range .BillingAccounts}}
@@ -325,6 +325,7 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 <td>{{.AccountID}}</td>
 <td><code>{{if .PlanID}}{{.PlanID}}{{else}}—{{end}}</code></td>
 <td><a href="{{.BillingURL}}">billing</a></td>
+<td><a href="{{.StripeURL}}" target="_blank">stripe &#x2197;</a></td>
 </tr>
 {{end}}
 </tbody>

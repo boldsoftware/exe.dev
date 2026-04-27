@@ -5567,6 +5567,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		AccountID  string
 		PlanID     string
 		BillingURL string
+		StripeURL  string
 	}
 
 	var userAccounts []exedb.Account
@@ -5588,6 +5589,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		billingAccounts = append(billingAccounts, billingAccountInfo{
 			AccountID:  a.ID,
 			PlanID:     planID,
+			StripeURL:  billing.MakeCustomerDashboardURL(a.ID),
 			BillingURL: "/debug/billing?userId=" + url.QueryEscape(userID),
 		})
 	}
