@@ -102,7 +102,7 @@
                   <div v-if="data.billingPeriodEnd" class="billing-plan-renewal">Your subscription will auto renew on {{ formatRenewalDate(data.billingPeriodEnd) }}.</div>
                 </div>
                 <div class="billing-plan-action">
-                  <a v-if="canManageBilling && (data.credits.selfServeBilling || data.trial || data.basicUser)" href="/billing/update?source=profile" :class="['btn', data.credits.selfServeBilling ? 'btn-secondary' : 'btn-upgrade']">{{ data.credits.selfServeBilling ? 'Manage plan' : 'Upgrade' }}</a>
+                  <a v-if="canManageBilling && (data.credits.selfServeBilling || data.trial || data.basicUser)" href="/billing/update?source=profile" :class="['btn', data.credits.selfServeBilling ? 'btn-secondary' : 'btn-upgrade']">{{ data.credits.selfServeBilling ? 'Manage subscription' : 'Upgrade' }}</a>
                   <a href="/pricing" target="_blank" rel="noopener noreferrer" class="billing-pricing-link">View Pricing &#x2197;</a>
                 </div>
               </div>
