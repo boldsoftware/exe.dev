@@ -107,17 +107,14 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchDashboard: vi.fn(),
     fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
-    fetchPoolHistory: vi.fn(),
-    fetchVMsPool: vi.fn(),
+
   }
 })
 
-import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchPoolHistory, fetchVMsPool } from '../api/client'
+import { fetchDashboard, fetchBoxLLMUsage, fetchProfile } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
-const mockFetchPoolHistory = vi.mocked(fetchPoolHistory)
-const mockFetchVMsPool = vi.mocked(fetchVMsPool)
 
 // ---------------------------------------------------------------------------
 // Mount helper
@@ -152,8 +149,7 @@ describe('VMDetail', () => {
     // Default: LLM usage and profile never resolve (test loading states separately)
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
-    mockFetchPoolHistory.mockResolvedValue({ points: [] })
-    mockFetchVMsPool.mockResolvedValue({ plan_name: '', tier_name: '', cpu_max: 0, mem_max_bytes: 0, max_vms: 0, vms_total: 0, vms_running: 0 })
+
   })
 
   afterEach(() => {
@@ -413,16 +409,6 @@ describe('VMDetail', () => {
     const url = wrapper.find('.editor-url').text()
     expect(url).toContain('cursor://vscode-remote/ssh-remote+my-vm')
   })
-
-  // --- Pool charts section ---
-
-  it('renders PoolCharts component', async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboard())
-    const wrapper = await mountVMDetail()
-    expect(wrapper.find('.pool-charts-section').exists()).toBe(true)
-  })
-
-
 
   // --- Charts placeholder still hidden ---
 

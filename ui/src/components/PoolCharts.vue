@@ -51,9 +51,7 @@ import {
 
 Chart.register(...registerables)
 
-const props = defineProps<{
-  vmName: string
-}>()
+
 
 const ranges = [
   { hours: 1, label: '1h' },

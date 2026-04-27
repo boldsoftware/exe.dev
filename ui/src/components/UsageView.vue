@@ -23,6 +23,9 @@
       </div>
     </div>
 
+    <!-- Pool Charts -->
+    <PoolCharts v-if="pool && pool.cpu_max > 0" />
+
     <!-- Loading -->
     <div v-if="historyLoading" class="usage-loading">
       <i class="pi pi-spin pi-spinner"></i> Loading usage data...
@@ -90,6 +93,7 @@ import {
   type BoxInfo,
 } from '../api/client'
 import StatusDot from './StatusDot.vue'
+import PoolCharts from './PoolCharts.vue'
 
 const GB = 1024 * 1024 * 1024
 

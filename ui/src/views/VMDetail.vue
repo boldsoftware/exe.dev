@@ -65,8 +65,7 @@
         <button class="btn btn-secondary" @click="showCreationLog = true">View Creation Log</button>
       </div>
 
-      <!-- Resource Pool Charts -->
-      <PoolCharts :vm-name="vmName" />
+
 
 
 
@@ -175,7 +174,6 @@ import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import VMDetailSections from '../components/VMDetailSections.vue'
-import PoolCharts from '../components/PoolCharts.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
 const route = useRoute()
