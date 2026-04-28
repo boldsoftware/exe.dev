@@ -42,8 +42,19 @@ def discover_vms(key_path):
             [
                 "ssh",
                 "-i", key_path,
+                "-F", "/dev/null",
+                "-o", "IdentityAgent=none",
                 "-o", "IdentitiesOnly=yes",
+                "-o", "PreferredAuthentications=publickey",
+                "-o", "PubkeyAuthentication=yes",
+                "-o", "PasswordAuthentication=no",
+                "-o", "KbdInteractiveAuthentication=no",
+                "-o", "ChallengeResponseAuthentication=no",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+                "-o", "GlobalKnownHostsFile=/dev/null",
                 "-o", "BatchMode=yes",
+                "-o", "LogLevel=ERROR",
                 "exe.dev", "ls", "--json",
             ],
             capture_output=True,
@@ -120,10 +131,15 @@ def generate_config(vm_key_map, have_known_hosts):
 
     for vm_name in sorted(vm_key_map):
         ssh_dest, key_path = vm_key_map[vm_name]
-        lines.append(f"Host {vm_name}")
+        lines.append(f"Host {vm_name} {ssh_dest}")
         lines.append(f"    HostName {ssh_dest}")
         lines.append(f"    IdentityFile {key_path}")
         lines.append(f"    IdentitiesOnly yes")
+        lines.append(f"    IdentityAgent none")
+        lines.append(f"    PreferredAuthentications publickey")
+        lines.append(f"    PubkeyAuthentication yes")
+        lines.append(f"    PasswordAuthentication no")
+        lines.append(f"    KbdInteractiveAuthentication no")
         if have_known_hosts:
             lines.append(f"    UserKnownHostsFile {KNOWN_HOSTS_FILE}")
             lines.append(f"    StrictHostKeyChecking yes")
