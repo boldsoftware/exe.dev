@@ -68,6 +68,57 @@
 
 
 
+      <!-- Attached Integrations -->
+      <template v-if="attachedIntegrations.length > 0">
+        <div class="section-divider"></div>
+        <div class="integrations-section">
+          <div class="section-heading">
+            Integrations
+            <router-link class="section-heading-link" to="/integrations" title="Manage integrations">Manage →</router-link>
+          </div>
+          <table class="vm-integrations-table">
+            <thead>
+              <tr>
+                <th class="col-int-name">Integration</th>
+                <th class="col-int-cmd">Use it</th>
+                <th class="col-int-attach hide-mobile">Attached via</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ig in attachedIntegrations" :key="`${ig.isTeam ? 'team' : 'user'}-${ig.name}`">
+                <td class="col-int-name">
+                  <div class="int-name-cell">
+                    <i :class="ig.iconClass" class="int-icon" aria-hidden="true"></i>
+                    <div class="int-name-info">
+                      <router-link :to="`/integrations#integration-${ig.name}`" class="int-name-link">{{ ig.name }}</router-link>
+                      <div class="int-name-meta">
+                        <span class="badge" :class="ig.badgeClass">{{ ig.badge }}</span>
+                        <span v-if="ig.isTeam" class="badge badge-team">team</span>
+                      </div>
+                      <div v-if="ig.comment" class="int-comment">{{ ig.comment }}</div>
+                      <!-- Mobile-only: show attach reason inline -->
+                      <div class="int-attach-mobile show-mobile">
+                        <span class="int-attach-label">via</span>
+                        <span class="attach-tag">{{ ig.matchedSpec }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td class="col-int-cmd">
+                  <div class="int-cmd-cell">
+                    <code class="int-cmd-code">{{ ig.command }}</code>
+                    <CopyButton :text="ig.command" title="Copy" />
+                  </div>
+                </td>
+                <td class="col-int-attach hide-mobile">
+                  <span class="attach-tag" :title="`Attached via ${ig.matchedSpec}`">{{ ig.matchedSpec }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
       <div class="section-divider"></div>
 
       <!-- Shelley Usage for this VM -->
@@ -163,8 +214,11 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   fetchDashboard,
   fetchBoxLLMUsage,
+  fetchIntegrations,
   type BoxInfo,
   type BoxLLMUsageResponse,
+  type IntegrationInfo,
+  type IntegrationsData,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
@@ -222,6 +276,94 @@ async function onEmojiPick(emoji: string) {
 
 // LLM usage
 const llmUsage = ref<BoxLLMUsageResponse | null>(null)
+
+// Attached integrations
+const integrationsData = ref<IntegrationsData | null>(null)
+
+interface AttachedIntegrationRow {
+  name: string
+  type: string
+  isTeam: boolean
+  matchedSpec: string // 'auto:all', 'vm:<name>', or 'tag:<tag>'
+  hostSegment: string // 'int' or 'team'
+  proxyURL: string
+  command: string
+  iconClass: string
+  badge: string
+  badgeClass: string
+  comment: string
+}
+
+function matchedAttachmentSpec(ig: IntegrationInfo, b: BoxInfo): string {
+  // Precedence: vm:<name> > tag:<tag> > auto:all (most specific reason first)
+  let tagMatch = ''
+  let autoMatch = ''
+  for (const a of ig.attachments || []) {
+    if (a.startsWith('vm:') && a.slice(3) === b.name) return a
+    if (a.startsWith('tag:') && !tagMatch) {
+      const t = a.slice(4)
+      if ((b.displayTags || []).includes(t)) tagMatch = a
+    } else if (a === 'auto:all' && !autoMatch) {
+      autoMatch = a
+    }
+  }
+  return tagMatch || autoMatch
+}
+
+const attachedIntegrations = computed<AttachedIntegrationRow[]>(() => {
+  const d = integrationsData.value
+  const b = box.value
+  if (!d || !b) return []
+  const scheme = d.integrationScheme || 'https'
+  const host = d.boxHost || window.location.hostname
+  const all: IntegrationInfo[] = [
+    ...(d.githubIntegrations || []),
+    ...(d.proxyIntegrations || []),
+    ...(d.reflectionIntegrations || []),
+  ]
+  const rows: AttachedIntegrationRow[] = []
+  for (const ig of all) {
+    const spec = matchedAttachmentSpec(ig, b)
+    if (!spec) continue
+    const seg = ig.isTeam ? 'team' : 'int'
+    const proxyURL = `${scheme}://${ig.name}.${seg}.${host}/`
+    let command = proxyURL
+    let iconClass = 'pi pi-globe'
+    let badge = 'HTTP proxy'
+    let badgeClass = 'badge-http'
+    if (ig.type === 'github') {
+      iconClass = 'pi pi-github'
+      badge = 'GitHub'
+      badgeClass = 'badge-github'
+      const repo = (ig.repositories && ig.repositories[0]) || ''
+      if (repo) {
+        command = `git clone ${scheme}://${ig.name}.${seg}.${host}/${repo}.git`
+      }
+    } else if (ig.type === 'reflection') {
+      iconClass = 'pi pi-eye'
+      badge = 'Reflection'
+      badgeClass = 'badge-reflection'
+      command = `curl ${proxyURL}`
+    } else {
+      command = `curl ${proxyURL}`
+    }
+    rows.push({
+      name: ig.name,
+      type: ig.type,
+      isTeam: ig.isTeam,
+      matchedSpec: spec,
+      hostSegment: seg,
+      proxyURL,
+      command,
+      iconClass,
+      badge,
+      badgeClass,
+      comment: ig.comment || '',
+    })
+  }
+  rows.sort((a, b) => a.name.localeCompare(b.name))
+  return rows
+})
 
 
 // Creation log
@@ -286,6 +428,12 @@ async function load() {
         llmUsage.value = u
       }).catch(err => {
         console.error('Failed to load VM LLM usage:', err)
+      })
+
+      fetchIntegrations().then(d => {
+        integrationsData.value = d
+      }).catch(err => {
+        console.error('Failed to load integrations:', err)
       })
 
     }
@@ -863,4 +1011,158 @@ onBeforeUnmount(() => {
 
 
 
+
+/* Attached integrations table */
+.integrations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.section-heading-link {
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 12px;
+  color: var(--text-color-secondary);
+  text-decoration: none;
+}
+.section-heading-link:hover { text-decoration: underline; }
+
+.vm-integrations-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: auto;
+}
+.vm-integrations-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 8px 8px 8px;
+  border-bottom: 1px solid var(--surface-border);
+}
+.vm-integrations-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--surface-subtle);
+  vertical-align: top;
+}
+.vm-integrations-table tbody tr:last-child td { border-bottom: none; }
+.col-int-name { white-space: nowrap; }
+.col-int-cmd  { width: 100%; }
+.col-int-attach { white-space: nowrap; text-align: right; }
+
+.int-name-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.int-icon {
+  font-size: 16px;
+  line-height: 20px;
+  flex-shrink: 0;
+  color: var(--text-color-secondary);
+}
+.int-name-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.int-name-link {
+  font-weight: 600;
+  color: var(--text-color);
+  text-decoration: none;
+  word-break: break-all;
+}
+.int-name-link:hover { text-decoration: underline; }
+.int-name-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.int-comment {
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+
+.int-cmd-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.int-cmd-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--surface-ground);
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--surface-border);
+  overflow-x: auto;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.attach-tag {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--tag-bg, rgba(127, 127, 127, 0.15));
+  color: var(--text-color-secondary);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.badge-github     { background: rgba(127, 127, 127, 0.18); color: var(--text-color-secondary); }
+.badge-http       { background: rgba(96, 165, 250, 0.18); color: #1d4ed8; }
+.badge-reflection { background: rgba(168, 85, 247, 0.18); color: #6d28d9; }
+.badge-team       { background: #e0e7ff; color: #3730a3; }
+@media (prefers-color-scheme: dark) {
+  .badge-http       { color: #93c5fd; }
+  .badge-reflection { color: #d8b4fe; }
+  .badge-team       { background: #312e81; color: #c7d2fe; }
+}
+
+.show-mobile { display: none; }
+.int-attach-mobile {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-color-muted);
+}
+.int-attach-label { font-style: italic; }
+
+@media (max-width: 768px) {
+  .vm-integrations-table thead { display: none; }
+  .vm-integrations-table,
+  .vm-integrations-table tbody,
+  .vm-integrations-table tr,
+  .vm-integrations-table td { display: block; width: auto; }
+  .vm-integrations-table tr {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--surface-subtle);
+  }
+  .vm-integrations-table tr:last-child { border-bottom: none; }
+  .vm-integrations-table td {
+    border-bottom: none;
+    padding: 4px 0;
+  }
+  .col-int-name { white-space: normal; }
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: flex !important; }
+  .int-attach-mobile { display: inline-flex !important; }
+}
 </style>

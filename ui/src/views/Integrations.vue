@@ -66,7 +66,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in allActiveIntegrations" :key="row.name">
+            <tr v-for="row in allActiveIntegrations" :key="row.name" :id="`integration-${row.name}`" :class="{ 'integration-row-highlight': highlightedIntegration === row.name }">
               <td class="col-name">
                 <div class="table-name-cell">
                   <span v-if="row.iconSvg" class="table-icon" v-html="row.iconSvg"></span>
@@ -852,7 +852,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchIntegrations, shellQuote, runCommand, type IntegrationsData, type IntegrationInfo } from '../api/client'
+
+const route = useRoute()
 import CommandModal from '../components/CommandModal.vue'
 import CopyButton from '../components/CopyButton.vue'
 
@@ -885,6 +888,37 @@ function showError(msg: string) {
 
 const integrationScheme = ref('https')
 const boxHost = ref(window.location.hostname)
+const highlightedIntegration = ref('')
+
+function maybeScrollToHash() {
+  const hash = window.location.hash
+  if (!hash || !hash.startsWith('#integration-')) return
+  let name = ''
+  try { name = decodeURIComponent(hash.slice('#integration-'.length)) } catch { name = hash.slice('#integration-'.length) }
+  if (!name) return
+  // Poll briefly: the row may not be rendered yet when we arrive (v-router
+  // navigation, async data fetch).
+  const start = Date.now()
+  const tryScroll = () => {
+    const el = document.getElementById(`integration-${name}`)
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'auto' })
+      highlightedIntegration.value = name
+      setTimeout(() => {
+        if (highlightedIntegration.value === name) highlightedIntegration.value = ''
+      }, 3200)
+      return
+    }
+    if (Date.now() - start < 3000) {
+      setTimeout(tryScroll, 50)
+    }
+  }
+  nextTick(tryScroll)
+}
+
+function onHashChange() { maybeScrollToHash() }
+
+watch(() => route.hash, () => maybeScrollToHash())
 
 // GitHub setup modal
 const ghSetupModal = reactive({ visible: false })
@@ -1984,12 +2018,14 @@ function onDocClick(e: MouseEvent) {
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onEscapeKey)
+  window.addEventListener('hashchange', onHashChange)
   loadIntegrations()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onEscapeKey)
+  window.removeEventListener('hashchange', onHashChange)
 })
 
 async function reload() {
@@ -2007,6 +2043,7 @@ async function loadIntegrations() {
     data.value = await fetchIntegrations()
     if (data.value.integrationScheme) integrationScheme.value = data.value.integrationScheme
     if (data.value.boxHost) boxHost.value = data.value.boxHost
+    maybeScrollToHash()
 
     // After GitHub OAuth callback, auto-open the add-repo modal
     const params = new URLSearchParams(window.location.search)
@@ -2530,6 +2567,16 @@ function confirmUnlinkGitHub(installationID: number) {
 
 .integrations-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+.integration-row-highlight td {
+  animation: integration-row-pulse 3s ease-out;
+}
+
+@keyframes integration-row-pulse {
+  0%   { background-color: rgba(96, 165, 250, 0.45); }
+  60%  { background-color: rgba(96, 165, 250, 0.45); }
+  100% { background-color: transparent; }
 }
 
 .col-name {

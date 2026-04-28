@@ -108,14 +108,16 @@ vi.mock('../api/client', async (importOriginal) => {
     fetchDashboard: vi.fn(),
     fetchBoxLLMUsage: vi.fn(),
     fetchProfile: vi.fn(),
+    fetchIntegrations: vi.fn(),
 
   }
 })
 
-import { fetchDashboard, fetchBoxLLMUsage, fetchProfile } from '../api/client'
+import { fetchDashboard, fetchBoxLLMUsage, fetchProfile, fetchIntegrations } from '../api/client'
 const mockFetchDashboard = vi.mocked(fetchDashboard)
 const mockFetchBoxLLMUsage = vi.mocked(fetchBoxLLMUsage)
 const mockFetchProfile = vi.mocked(fetchProfile)
+const mockFetchIntegrations = vi.mocked(fetchIntegrations)
 
 // ---------------------------------------------------------------------------
 // Mount helper
@@ -150,6 +152,22 @@ describe('VMDetail', () => {
     // Default: LLM usage and profile never resolve (test loading states separately)
     mockFetchBoxLLMUsage.mockResolvedValue(makeBoxLLMUsage({ models: [], totalCost: '$0.00' }))
     mockFetchProfile.mockReturnValue(new Promise(() => {}))
+    mockFetchIntegrations.mockResolvedValue({
+      integrations: [],
+      githubIntegrations: [],
+      proxyIntegrations: [],
+      reflectionIntegrations: [],
+      githubAccounts: [],
+      githubEnabled: false,
+      githubAppSlug: '',
+      hasPushTokens: false,
+      allTags: [],
+      tagVMs: {},
+      boxes: [],
+      integrationScheme: 'https',
+      boxHost: 'example.com',
+      hasTeam: false,
+    })
 
   })
 
@@ -303,6 +321,65 @@ describe('VMDetail', () => {
     const wrapper = await mountVMDetail()
     expect(wrapper.find('.badge-public').exists()).toBe(false)
     expect(wrapper.find('.badge-team').exists()).toBe(false)
+  })
+
+  // --- Attached integrations table ---
+
+  it('renders attached integrations matching this VM', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({
+      boxes: [makeBox({ displayTags: ['prod'] })],
+    }))
+    mockFetchIntegrations.mockResolvedValue({
+      integrations: [],
+      githubIntegrations: [{
+        name: 'my-repo', type: 'github', target: '', hasHeader: false, hasBasicAuth: false,
+        repositories: ['octo/hello'], attachments: ['vm:my-vm'], isTeam: false, comment: '',
+      }],
+      proxyIntegrations: [{
+        name: 'tagged-svc', type: 'http-proxy', target: 'https://upstream.example.com',
+        hasHeader: false, hasBasicAuth: false, repositories: [], attachments: ['tag:prod'],
+        isTeam: false, comment: '',
+      }, {
+        name: 'unmatched', type: 'http-proxy', target: 'https://elsewhere.example.com',
+        hasHeader: false, hasBasicAuth: false, repositories: [], attachments: ['vm:other'],
+        isTeam: false, comment: '',
+      }],
+      reflectionIntegrations: [],
+      githubAccounts: [],
+      githubEnabled: false,
+      githubAppSlug: '',
+      hasPushTokens: false,
+      allTags: [],
+      tagVMs: {},
+      boxes: [],
+      integrationScheme: 'https',
+      boxHost: 'exe.dev',
+      hasTeam: false,
+    })
+    const wrapper = await mountVMDetail()
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('my-repo')
+    expect(text).toContain('tagged-svc')
+    expect(text).not.toContain('unmatched')
+    // matchedSpec rendered (desktop)
+    expect(text).toContain('vm:my-vm')
+    expect(text).toContain('tag:prod')
+    // Link to integrations page anchor
+    const links = wrapper.findAll('a.int-name-link')
+    const hrefs = links.map(l => l.attributes('href'))
+    expect(hrefs).toContain('/integrations#integration-my-repo')
+    expect(hrefs).toContain('/integrations#integration-tagged-svc')
+    // Command text contains git clone URL
+    expect(text).toContain('git clone https://my-repo.int.exe.dev/octo/hello.git')
+    expect(text).toContain('curl https://tagged-svc.int.exe.dev/')
+  })
+
+  it('hides integrations section when none attached', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard())
+    const wrapper = await mountVMDetail()
+    await flushPromises()
+    expect(wrapper.find('.vm-integrations-table').exists()).toBe(false)
   })
 
   // --- Team sharing action button ---
