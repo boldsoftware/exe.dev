@@ -7,6 +7,7 @@ option go_package = "exe.dev/api/compute/v1";
 service ComputeService {
   rpc CreateInstance(CreateInstanceRequest) returns (stream CreateInstanceResponse);
   rpc ListInstances(ListInstancesRequest) returns (stream ListInstancesResponse);
+  rpc CountInstances(CountInstancesRequest) returns (CountInstancesResponse);
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   rpc GetInstanceLogs(GetInstanceLogsRequest) returns (stream GetInstanceLogsResponse);
   rpc StartInstance(StartInstanceRequest) returns (StartInstanceResponse);
@@ -137,6 +138,12 @@ message ListInstancesRequest {}
 
 message ListInstancesResponse {
   Instance instance = 1;
+}
+
+message CountInstancesRequest {}
+
+message CountInstancesResponse {
+  int32 count = 1;
 }
 
 message GetInstanceRequest {

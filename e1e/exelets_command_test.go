@@ -6,14 +6,22 @@ import (
 	"exe.dev/e1e/testinfra"
 )
 
-func TestExeletsCommand(t *testing.T) {
+// This can't be called TestExeletsCommad because the infrastructure
+// will try to create boxes with "exelet" in the name,
+// which is forbidden by boxname.denySubstrings.
+func TestExltsCommand(t *testing.T) {
 	t.Parallel()
-	reserveVMs(t, 0)
+	reserveVMs(t, 4)
 	noGolden(t)
 
 	// Create two users: a regular user and a support user
 	regularPTY, _, _, _ := registerForExeDevWithEmail(t, "regular@test-exelets-cmd.example")
 	supportPTY, _, supportKeyFile, supportEmail := registerForExeDevWithEmail(t, "support@test-exelets-cmd.example")
+
+	boxName1 := newBox(t, regularPTY)
+	boxName2 := newBox(t, regularPTY)
+	boxName3 := newBox(t, regularPTY)
+	boxName4 := newBox(t, regularPTY)
 
 	// Test that regular user without root_support gets the sudoers joke error
 	t.Run("denied_without_root_support", func(t *testing.T) {
@@ -61,6 +69,7 @@ func TestExeletsCommand(t *testing.T) {
 		}
 
 		// Check that we have an address, host, and status
+		boxCount := 0
 		for _, e := range result.Exelets {
 			if e.Address == "" {
 				t.Error("expected exelet address to be non-empty")
@@ -71,6 +80,14 @@ func TestExeletsCommand(t *testing.T) {
 			if e.Status != "healthy" && e.Status != "error" {
 				t.Errorf("unexpected exelet status: %q", e.Status)
 			}
+			boxCount += e.InstanceCount
+		}
+
+		// We've created four boxes. We don't know how many
+		// boxes other tests running in parallel have created,
+		// but we should see at least four.
+		if boxCount < 4 {
+			t.Errorf("box count %d too low; want at lesat 4", boxCount)
 		}
 	})
 
@@ -80,6 +97,11 @@ func TestExeletsCommand(t *testing.T) {
 		regularPTY.Reject("exelets")
 		regularPTY.WantPrompt()
 	})
+
+	regularPTY.deleteBox(boxName1)
+	regularPTY.deleteBox(boxName2)
+	regularPTY.deleteBox(boxName3)
+	regularPTY.deleteBox(boxName4)
 
 	regularPTY.Disconnect()
 	supportPTY.Disconnect()

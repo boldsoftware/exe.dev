@@ -535,19 +535,11 @@ func (ec *exeletClient) updateVMLimits(memTotalKiB int64) {
 
 // countInstances returns the number of instances on this exelet.
 func (ec *exeletClient) countInstances(ctx context.Context) (int, error) {
-	stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
+	resp, err := ec.client.CountInstances(ctx, &computeapi.CountInstancesRequest{})
 	if err != nil {
 		return 0, err
 	}
-	count := 0
-	for {
-		_, err := stream.Recv()
-		if err != nil {
-			break
-		}
-		count++
-	}
-	return count, nil
+	return int(resp.Count), nil
 }
 
 // updateUsage updates the current exelet machine usage.

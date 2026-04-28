@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	ComputeService_CreateInstance_FullMethodName          = "/exe.compute.v1.ComputeService/CreateInstance"
 	ComputeService_ListInstances_FullMethodName           = "/exe.compute.v1.ComputeService/ListInstances"
+	ComputeService_CountInstances_FullMethodName          = "/exe.compute.v1.ComputeService/CountInstances"
 	ComputeService_GetInstance_FullMethodName             = "/exe.compute.v1.ComputeService/GetInstance"
 	ComputeService_GetInstanceLogs_FullMethodName         = "/exe.compute.v1.ComputeService/GetInstanceLogs"
 	ComputeService_StartInstance_FullMethodName           = "/exe.compute.v1.ComputeService/StartInstance"
@@ -56,6 +57,7 @@ const (
 type ComputeServiceClient interface {
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CreateInstanceResponse], error)
 	ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListInstancesResponse], error)
+	CountInstances(ctx context.Context, in *CountInstancesRequest, opts ...grpc.CallOption) (*CountInstancesResponse, error)
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	GetInstanceLogs(ctx context.Context, in *GetInstanceLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetInstanceLogsResponse], error)
 	StartInstance(ctx context.Context, in *StartInstanceRequest, opts ...grpc.CallOption) (*StartInstanceResponse, error)
@@ -148,6 +150,16 @@ func (c *computeServiceClient) ListInstances(ctx context.Context, in *ListInstan
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_ListInstancesClient = grpc.ServerStreamingClient[ListInstancesResponse]
+
+func (c *computeServiceClient) CountInstances(ctx context.Context, in *CountInstancesRequest, opts ...grpc.CallOption) (*CountInstancesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CountInstancesResponse)
+	err := c.cc.Invoke(ctx, ComputeService_CountInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *computeServiceClient) GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -443,6 +455,7 @@ func (c *computeServiceClient) CancelTierMigration(ctx context.Context, in *Canc
 type ComputeServiceServer interface {
 	CreateInstance(*CreateInstanceRequest, grpc.ServerStreamingServer[CreateInstanceResponse]) error
 	ListInstances(*ListInstancesRequest, grpc.ServerStreamingServer[ListInstancesResponse]) error
+	CountInstances(context.Context, *CountInstancesRequest) (*CountInstancesResponse, error)
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	GetInstanceLogs(*GetInstanceLogsRequest, grpc.ServerStreamingServer[GetInstanceLogsResponse]) error
 	StartInstance(context.Context, *StartInstanceRequest) (*StartInstanceResponse, error)
@@ -503,6 +516,9 @@ func (UnimplementedComputeServiceServer) CreateInstance(*CreateInstanceRequest, 
 }
 func (UnimplementedComputeServiceServer) ListInstances(*ListInstancesRequest, grpc.ServerStreamingServer[ListInstancesResponse]) error {
 	return status.Error(codes.Unimplemented, "method ListInstances not implemented")
+}
+func (UnimplementedComputeServiceServer) CountInstances(context.Context, *CountInstancesRequest) (*CountInstancesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CountInstances not implemented")
 }
 func (UnimplementedComputeServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInstance not implemented")
@@ -627,6 +643,24 @@ func _ComputeService_ListInstances_Handler(srv interface{}, stream grpc.ServerSt
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type ComputeService_ListInstancesServer = grpc.ServerStreamingServer[ListInstancesResponse]
+
+func _ComputeService_CountInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CountInstancesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).CountInstances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_CountInstances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).CountInstances(ctx, req.(*CountInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _ComputeService_GetInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetInstanceRequest)
@@ -1107,6 +1141,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "exe.compute.v1.ComputeService",
 	HandlerType: (*ComputeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CountInstances",
+			Handler:    _ComputeService_CountInstances_Handler,
+		},
 		{
 			MethodName: "GetInstance",
 			Handler:    _ComputeService_GetInstance_Handler,

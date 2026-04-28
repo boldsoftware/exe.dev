@@ -377,6 +377,14 @@ func TestListInstancesSkipsRaceRemovedConfigs(t *testing.T) {
 	if len(instances) != 1 || instances[0].ID != "inst-ok" {
 		t.Errorf("expected only inst-ok, got %+v", instances)
 	}
+
+	count, err := svc.countInstances(context.Background())
+	if err != nil {
+		t.Fatalf("countInstances failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("got %d instances, want 1", count)
+	}
 }
 
 func TestReconcileIPLeasesAbortsAfterShutdown(t *testing.T) {
