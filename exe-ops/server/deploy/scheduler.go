@@ -2,8 +2,10 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 )
@@ -26,9 +28,10 @@ type Scheduler struct {
 	inventory InventoryProvider
 	log       *slog.Logger
 
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	wakeC  chan struct{} // signals the Run loop to re-evaluate immediately
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	wakeC     chan struct{} // signals the Run loop to re-evaluate immediately
+	stateFile string        // path to persist enabled/disabled state
 
 	// nowFunc allows tests to override the current time.
 	nowFunc func() time.Time
@@ -89,15 +92,24 @@ const (
 	maxCommitsPerDeploy = 20
 )
 
-// NewScheduler creates a new CD scheduler.
+// cdState is the JSON structure persisted to disk.
+type cdState struct {
+	Enabled        bool   `json:"enabled"`
+	DisabledReason string `json:"disabled_reason,omitempty"`
+}
+
+// NewScheduler creates a new CD scheduler. stateFile is the path to
+// persist enabled/disabled state across restarts. If empty, state is
+// not persisted (resets to disabled on restart).
 func NewScheduler(
 	manager *Manager,
 	gitSHA GitSHAProvider,
 	notifier CDNotifier,
 	inventory InventoryProvider,
 	log *slog.Logger,
+	stateFile string,
 ) *Scheduler {
-	return &Scheduler{
+	s := &Scheduler{
 		manager:   manager,
 		gitSHA:    gitSHA,
 		notifier:  notifier,
@@ -105,7 +117,10 @@ func NewScheduler(
 		log:       log,
 		nowFunc:   time.Now,
 		wakeC:     make(chan struct{}, 1),
+		stateFile: stateFile,
 	}
+	s.loadState()
+	return s
 }
 
 // Enable starts the CD scheduler. If already enabled, this is a no-op.
@@ -117,6 +132,7 @@ func (s *Scheduler) Enable() {
 	}
 	s.enabled = true
 	s.disabledReason = ""
+	s.saveStateLocked()
 	s.log.Info("CD scheduler enabled")
 	if s.notifier != nil {
 		now := s.nowFunc()
@@ -139,6 +155,7 @@ func (s *Scheduler) Disable() {
 	}
 	s.enabled = false
 	s.disabledReason = "manually disabled"
+	s.saveStateLocked()
 	s.log.Info("CD scheduler disabled")
 	if s.notifier != nil {
 		s.notifier.CDPostMessage("🔴 exed CD disabled")
@@ -306,6 +323,7 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 			s.mu.Lock()
 			s.enabled = false
 			s.disabledReason = fmt.Sprintf("%d commits in next release (max %d)", count, maxCommitsPerDeploy)
+			s.saveStateLocked()
 			s.mu.Unlock()
 			if s.notifier != nil {
 				s.notifier.CDPostMessage(fmt.Sprintf(
@@ -406,6 +424,7 @@ func (s *Scheduler) disableOnFailure(reason string) {
 	s.mu.Lock()
 	s.enabled = false
 	s.disabledReason = reason
+	s.saveStateLocked()
 	s.mu.Unlock()
 
 	s.log.Warn("CD scheduler auto-disabled", "reason", reason)
@@ -450,6 +469,48 @@ func (s *Scheduler) updateTopic() {
 		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 	} else {
 		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
+	}
+}
+
+// loadState reads the persisted CD state from disk.
+func (s *Scheduler) loadState() {
+	if s.stateFile == "" {
+		return
+	}
+	data, err := os.ReadFile(s.stateFile)
+	if err != nil {
+		return // file doesn't exist yet, start disabled
+	}
+	var st cdState
+	if err := json.Unmarshal(data, &st); err != nil {
+		s.log.Warn("CD state file corrupt, starting disabled", "error", err)
+		return
+	}
+	s.enabled = st.Enabled
+	s.disabledReason = st.DisabledReason
+	if s.enabled {
+		s.log.Info("CD scheduler restored to enabled from state file")
+	} else if st.DisabledReason != "" {
+		s.log.Info("CD scheduler restored to disabled", "reason", st.DisabledReason)
+	}
+}
+
+// saveStateLocked writes the current CD state to disk. Caller must hold mu.
+func (s *Scheduler) saveStateLocked() {
+	if s.stateFile == "" {
+		return
+	}
+	st := cdState{
+		Enabled:        s.enabled,
+		DisabledReason: s.disabledReason,
+	}
+	data, err := json.Marshal(st)
+	if err != nil {
+		s.log.Warn("CD state marshal failed", "error", err)
+		return
+	}
+	if err := os.WriteFile(s.stateFile, data, 0o644); err != nil {
+		s.log.Warn("CD state write failed", "error", err)
 	}
 }
 
