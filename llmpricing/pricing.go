@@ -240,8 +240,9 @@ var allowedModels = map[Provider]map[string]ModelCost{
 		"accounts/fireworks/models/kimi-k2p5": {Input: 60, Output: 300, CacheRead: 10},
 
 		// DeepSeek models
-		"accounts/fireworks/models/deepseek-v3p2": {Input: 56, Output: 168, CacheRead: 28},
-		"accounts/fireworks/models/deepseek-v3p1": {Input: 56, Output: 168, CacheRead: 28},
+		"accounts/fireworks/models/deepseek-v4-pro": {Input: 174, Output: 348, CacheRead: 14},
+		"accounts/fireworks/models/deepseek-v3p2":   {Input: 56, Output: 168, CacheRead: 28},
+		"accounts/fireworks/models/deepseek-v3p1":   {Input: 56, Output: 168, CacheRead: 28},
 
 		// MiniMax models
 		"accounts/fireworks/models/minimax-m2p5": {Input: 30, Output: 120, CacheRead: 3},

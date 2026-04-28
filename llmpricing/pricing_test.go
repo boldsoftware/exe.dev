@@ -190,6 +190,28 @@ func TestCalculateCost_Fireworks(t *testing.T) {
 			// 800K cache read @ $0.28 = $0.224
 			wantUSD: 0.504,
 		},
+		{
+			name:  "deepseek-v4-pro",
+			model: "accounts/fireworks/models/deepseek-v4-pro",
+			usage: Usage{
+				InputTokens:  1_000_000,
+				OutputTokens: 1_000_000,
+			},
+			wantUSD: 5.22, // $1.74 + $3.48
+		},
+		{
+			name:  "deepseek-v4-pro with cache",
+			model: "accounts/fireworks/models/deepseek-v4-pro",
+			usage: Usage{
+				InputTokens:          250_000,
+				OutputTokens:         100_000,
+				CacheReadInputTokens: 750_000,
+			},
+			// 250K input @ $1.74 = $0.435
+			// 100K output @ $3.48 = $0.348
+			// 750K cache read @ $0.14 = $0.105
+			wantUSD: 0.888,
+		},
 	}
 
 	for _, tt := range tests {
@@ -267,6 +289,7 @@ func TestIsModelAllowed(t *testing.T) {
 		{ProviderOpenAI, "gpt-4o", true},
 		{ProviderOpenAI, "gpt-5.2-codex", true},
 		{ProviderOpenAI, "unknown-model", false},
+		{ProviderFireworks, "accounts/fireworks/models/deepseek-v4-pro", true},
 		{ProviderFireworks, "accounts/fireworks/models/glm-5", true},
 		{ProviderFireworks, "unknown-model", false},
 		{"unknown-provider", "any-model", false},
