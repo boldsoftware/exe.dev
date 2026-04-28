@@ -66,6 +66,10 @@ else
     git submodule update --init --recursive --force 2>/dev/null || true
   else
     # Fresh clone from the git mirror if available.
+    # cd to a stable dir first because the agent already cd'd into
+    # ${CHECKOUT} and rm -rf'ing your own cwd makes getcwd() fail in
+    # subsequent commands (e.g. git clone).
+    cd /
     rm -rf "${CHECKOUT}"
     MIRROR_DIR="/data/buildkite/git-mirrors"
     MIRROR=""

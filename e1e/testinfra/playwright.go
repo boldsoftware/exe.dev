@@ -5,10 +5,44 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/playwright-community/playwright-go"
 )
+
+// acquireInstallLock takes an exclusive flock on a host-wide file so that
+// concurrent e1e shards don't race in playwright.Install(). Returns a release
+// function. Safe even when the lock dir is not writable: the function falls
+// back to a no-op.
+func acquireInstallLock() (func(), error) {
+	lockDir := os.Getenv("XDG_CACHE_HOME")
+	if lockDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			lockDir = filepath.Join(home, ".cache")
+		} else {
+			lockDir = os.TempDir()
+		}
+	}
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		return func() {}, nil // can't lock; proceed best-effort
+	}
+	path := filepath.Join(lockDir, ".playwright-install.lock")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return func() {}, nil
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return func() {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
+}
 
 var (
 	playwrightOnce    sync.Once
@@ -22,6 +56,17 @@ var (
 // subsequent calls are no-ops.
 func StartPlaywright() error {
 	playwrightOnce.Do(func() {
+		// playwright.Install() writes to a shared cache (~/.cache/ms-playwright-go).
+		// When multiple e1e shards run in parallel on the same host, they race
+		// to write the same `node` binary; if one shard is currently exec'ing it
+		// while another rewrites it, Linux returns ETXTBSY ("text file busy").
+		// Serialize across shards with a host-wide flock.
+		unlock, lockErr := acquireInstallLock()
+		if lockErr != nil {
+			playwrightErr = fmt.Errorf("failed to acquire playwright install lock: %w", lockErr)
+			return
+		}
+		defer unlock()
 		// Install browsers if needed (this is a no-op if already installed)
 		installErr := playwright.Install()
 		if installErr != nil {

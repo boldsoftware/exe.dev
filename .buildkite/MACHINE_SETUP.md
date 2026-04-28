@@ -1,28 +1,70 @@
-# exe-ci-01 Buildkite Agent Setup Notes
+# Buildkite Agent Setup Notes
 
-This document describes how `exe-ci-01` was configured as a Buildkite CI agent
-for the `exe` repo. Recreating it from a fresh Ubuntu 24.04 machine requires
-these steps.
+This document describes how the `exe-ci-*` machines were configured as Buildkite
+CI agents for the `exe` repo. Recreating from a fresh Ubuntu 24.04 machine
+requires the steps below.
+
+There is an idempotent setup script at `.buildkite/setup-ci.sh` (run as
+`ubuntu` with passwordless sudo and a Buildkite cluster agent token in
+`~/token`) that performs steps 1–14 below.
+
+## Pre-flight: BIOS
+
+**AMD-V / SVM must be enabled in the BIOS** on AMD bare-metal hosts (Latitude,
+etc.). Symptom of it being disabled: `/dev/kvm` is missing and `dmesg | grep
+svm` shows `SVM disabled (by BIOS) in MSR_VM_CR`. This blocks every e1e test
+(they all spawn cloud-hypervisor VMs). On Latitude this can be flipped from
+the provider portal; sometimes a reinstall changes the host key, so reset
+your `~/.ssh/known_hosts` entry afterwards.
 
 ## Machine specs
 
+### exe-ci-01 (VMware guest)
 - AMD EPYC 9254 24-Core (48 threads)
 - 377 GiB RAM
 - 2× 447 GB NVMe (OS on nvme0, nvme1 spare)
 - 3× 3.5 TB NVMe in ZFS pool `tank` (7.4 TiB usable)
 - `/dev/kvm` present — nested KVM works (host is VMware)
+- 16 spawn agents on `queue=exe-ci`
 
-## 1. ZFS pool
+### exe-ci-03 (bare-metal Latitude)
+- AMD EPYC 9455 48-Core (48 threads, no SMT)
+- 755 GiB RAM
+- 2× 447 GB NVMe in md-raid1 mirror → `/`
+- 2× 3.5 TB NVMe in md-raid0 stripe → `/data` (ext4, 7 TiB usable)
+- `/dev/kvm` present (after enabling SVM in BIOS — see pre-flight)
+- 24 spawn agents on `queue=exe-ci-test` while shaking down
+- Note: this host runs ext4 on md-raid, not ZFS. Anything that wanted
+  `zfs set mountpoint=...` is a no-op; `/data` is the provider-mounted ext4.
 
-The three large NVMe drives were already in a ZFS pool named `tank` with
-`mountpoint=none`. Mount it at `/data`:
+## 0. Disable IPv6 (recommended on bare-metal)
+
+No CI step needs IPv6, and on some Latitude hosts IPv6 makes systemd-resolved
+delay startup. Disable at runtime + boot:
+
+```bash
+cat <<'EOF' | sudo tee /etc/sysctl.d/99-disable-ipv6.conf
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+EOF
+sudo sysctl --system
+sudo sed -i 's|GRUB_CMDLINE_LINUX_DEFAULT="|GRUB_CMDLINE_LINUX_DEFAULT="ipv6.disable=1 |' /etc/default/grub
+sudo update-grub
+```
+
+## 1. Storage
+
+On exe-ci-01 (ZFS pool `tank` from VMware-provisioned disks):
 
 ```bash
 sudo zfs set mountpoint=/data tank
 sudo zfs mount tank
 ```
 
-Create the libvirt image store on fast ZFS storage and symlink it:
+On exe-ci-03 (md-raid0 ext4): the provider already mounts `/data`, nothing to do.
+
+Create the libvirt image store on the fast volume and symlink it:
 
 ```bash
 sudo zfs create tank/libvirt
@@ -102,8 +144,11 @@ hooks-path="/etc/buildkite-agent/hooks"
 plugins-path="/etc/buildkite-agent/plugins"
 ```
 
-`spawn=16` runs 16 agent processes — covers: 1 pipeline-upload + 1 checks +
-2 unit-test shards + 6 e1e shards (A–F) + 1 exelets + spare headroom.
+`spawn=16` runs 16 agent processes on the 48-core exe-ci-01 — covers:
+1 pipeline-upload + 1 checks + 2 unit-test shards + 6 e1e shards (A–F) +
+1 exelets + spare headroom. On exe-ci-03 (also 48 cores, but 755 GiB RAM and
+faster NVMe) we run `spawn=24` while shaking down, since several builds may
+overlap before promotion.
 
 ### Environment hook
 
@@ -245,6 +290,43 @@ This step needs to be repeated when `CLOUD_HYPERVISOR_VERSION` or
 agent do it (it will succeed once the agent runs as a user with docker group
 access, since it uses `sudo rm`).
 
+## 8b. cloud-hypervisor host binaries
+
+The e1e jobs invoke `cloud-hypervisor` directly from PATH (via `setsid`).
+The setup script builds it from `ops/cloud-hypervisor/Dockerfile` (~5 min the
+first time) and installs it to `/usr/local/bin/{cloud-hypervisor,virtiofsd,ch-remote}`,
+plus pre-populates `~/.cache/exedops/cloud-hypervisor-<ver>-<arch>.tar.gz` so
+the first snapshot job doesn't have to rebuild.
+
+## 8c. Docker Hub credentials (the only secret you need to provide)
+
+The rootfs-snapshot step (`ensure-snapshot`) requires `~/.docker/config.json`
+for the buildkite-agent user (Docker Hub auth, to avoid rate limits). The
+setup script does NOT bake the credentials in. Drop a copy at
+`/tmp/docker-config.json` before running the script and it will install it
+at `/data/buildkite/.docker/config.json` with the right perms. From an
+existing CI host:
+
+```bash
+ssh ci-host 'sudo cat /data/buildkite/.docker/config.json' > /tmp/docker-config.json
+scp /tmp/docker-config.json new-host:/tmp/docker-config.json
+```
+
+## 8d. psimon (machine pressure monitor)
+
+The `collect-psimon` step in the pipeline queries `http://localhost:9101`.
+The setup script builds psimon from `cmd/psimon` and installs it as a systemd
+service (unit file at `cmd/psimon/psimon.service`). Verify with
+`systemctl status psimon` and `curl localhost:9101/health`.
+
+## 8e. Caches (auto-bootstrapped)
+
+Everything else — Go module cache, UI build cache, exelet-fs tarballs,
+Playwright browsers — is auto-populated by the build steps themselves on
+first run. The first build of the day will be slower (~10–12 min) than
+warm runs (~4–6 min). To skip that warm-up, you may copy `/data/buildkite/.cache/`
+selectively from an existing CI host, but it's not required.
+
 ## 9. Buildkite pipeline
 
 The pipeline definition lives in `.buildkite/pipeline.yml` (in this repo).
@@ -276,6 +358,21 @@ curl -X POST \
 tests. Set it as a Buildkite secret in the pipeline or cluster, then reference
 it in the step env. Tests skip gracefully if it is absent.
 
+## 10b. Firewall (ufw)
+
+Latitude bare-metal hosts have public IPs and are not firewalled by default.
+Lock down inbound to SSH only (use the `OpenSSH` profile, not `22/tcp`, so
+your SSH session reliably stays up across `ufw enable`):
+
+```bash
+sudo apt-get install -y ufw
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow OpenSSH
+sudo ufw enable
+sudo ufw status verbose
+```
+
 ## 11. Monitoring (netdata)
 
 ```bash
@@ -285,8 +382,50 @@ sudo apt-get install -y netdata
 The default config (`/etc/netdata/netdata.conf`) binds to `127.0.0.1:19999`,
 so the dashboard is only accessible from localhost. No changes needed.
 
+## Bringing a new host onto its own queue (shake-down)
+
+While shaking down a new host, point it at a separate Buildkite queue
+(e.g. `exe-ci-test`) so production traffic stays on `exe-ci`:
+
+1. Create the queue under Organization → Clusters → Default cluster.
+2. Create a cluster agent token. Buildkite's REST API does not let you
+   restrict a token to a queue, but the agent's `tags="queue=..."` is a
+   tighter contract than the queue-allowlist would be: the agent will
+   only register with that tag, and other queues' steps will not match.
+3. Set the agent's `tags="queue=exe-ci-test"` in `buildkite-agent.cfg`.
+4. Temporarily patch the pipeline to dispatch on `exe-ci-test`:
+   ```bash
+   curl -s -X PATCH \
+     "https://buildkite.int.exe.xyz/v2/organizations/bold-software/pipelines/exe-kite-queue" \
+     -H "Content-Type: application/json" \
+     --data '{"configuration":"agents:\n  queue: exe-ci-test\nenv:\n  EXE_CI_QUEUE: exe-ci-test\nsteps:\n  - label: \":pipeline: Generate pipeline\"\n    command: python3 .buildkite/steps/generate-pipeline.py | buildkite-agent pipeline upload\n    timeout_in_minutes: 5\n"}'
+   ```
+   `generate-pipeline.py` honors `EXE_CI_QUEUE` so child steps target the
+   same queue.
+5. Push a `kite-test-*` branch via `bin/t --dry-run` and iterate.
+6. When green, restore the pipeline configuration to point back at
+   `exe-ci` and switch the agent's tag to `queue=exe-ci`.
+
 ## Notes / gotchas
 
+- **First-clone bug in the checkout hook**: when `BUILDKITE_BUILD_CHECKOUT_PATH`
+  doesn't exist yet, the agent `cd`'s into a freshly-created empty checkout
+  directory before invoking the hook. The hook then `rm -rf`'s its own cwd,
+  which makes `getcwd()` fail in the next `git clone`. The hook now `cd /`
+  first; see commit history of `.buildkite/agent/hooks/checkout`.
+- **`pipeline upload --async`**: this flag does not exist in any released
+  buildkite-agent (3.124 confirmed). A previous commit added it to
+  `pipeline.yml` based on a misreading of the help; jobs that landed on it
+  failed with `flag provided but not defined: -async`. Removed.
+- **ui/Makefile PATH bug** (fixed): `export PATH := $(CURDIR)/$(NODE_BIN):$(PATH)`
+  used to produce `ui//absolute/path/...` when `NODE_BIN` was absolute.
+  Now the makefile branches on whether `CI_CACHE` is set and only prepends
+  `$(CURDIR)/` when `NODE_BIN` is relative.
+- **Playwright `text file busy`** (fixed): parallel e1e shards racing to
+  install Playwright into a shared `~/.cache/ms-playwright-go/<ver>/node`
+  triggered ETXTBSY on Linux. `e1e/testinfra/playwright.go` now takes a
+  host-wide `flock` around `playwright.Install()` so concurrent shards
+  serialize.
 - **Polling mode**: The agent falls back to polling (not streaming) — this is
   normal; Buildkite streaming requires a specific enterprise feature.
 - **`make protos`** runs Docker inside the CI job. The `buildkite-agent` user

@@ -570,7 +570,8 @@ def main():
     segments.append(psimon_text)
 
     # Emit the pipeline (stdout for upload, stderr for build log)
-    lines = ["agents:", "  queue: exe-ci", ""]
+    queue = os.environ.get("EXE_CI_QUEUE", "exe-ci")
+    lines = ["agents:", f"  queue: {queue}", ""]
     if not test_race:
         lines += ["env:", '  EXE_TEST_RACE: "false"', ""]
     lines.append("steps:")

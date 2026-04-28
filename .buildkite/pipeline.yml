@@ -6,8 +6,5 @@ agents:
 
 steps:
   - label: ":pipeline: Generate pipeline"
-    # --async returns immediately; child steps get scheduled as soon as the
-    # agent's pipeline processor picks them up, saving ~5s of "processing"
-    # poll wait on the critical path.
-    command: python3 .buildkite/steps/generate-pipeline.py | buildkite-agent pipeline upload --async
+    command: python3 .buildkite/steps/generate-pipeline.py | buildkite-agent pipeline upload
     timeout_in_minutes: 5

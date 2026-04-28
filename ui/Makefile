@@ -17,15 +17,18 @@ NODE_URL     := https://nodejs.org/dist/v$(NODE_VERSION)/$(NODE_TARBALL)
 # In CI, CI_CACHE points to a persistent cache dir on the same filesystem as
 # the build directory. Keep Node.js there so git-clean between builds is free.
 # Locally, fall back to .node/ inside the working tree.
+# When CI_CACHE is set, NODE_DIR is absolute; otherwise it's a path relative
+# to ui/ (.node/) which we anchor with $(CURDIR)/.
 ifdef CI_CACHE
   NODE_DIR := $(CI_CACHE)/node
+  NODE_BIN := $(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin
 else
   NODE_DIR := .node
+  NODE_BIN := $(CURDIR)/$(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin
 endif
 
-NODE_BIN     := $(NODE_DIR)/node-v$(NODE_VERSION)-$(NODE_OS)-$(NODE_ARCH)/bin
 PNPM         := $(NODE_BIN)/pnpm
-export PATH  := $(CURDIR)/$(NODE_BIN):$(PATH)
+export PATH  := $(NODE_BIN):$(PATH)
 
 # UI build cache: keyed on the git tree hash of ui/.
 # Set UI_CACHE_DIR to override the default cache location.
