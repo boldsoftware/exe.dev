@@ -96,6 +96,16 @@ export default function (pi: ExtensionAPI) {
 
       // DeepSeek
       {
+        id: "accounts/fireworks/models/deepseek-v4-pro",
+        name: "DeepSeek V4 Pro (Fireworks)",
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 1048576,
+        maxTokens: 16384,
+        cost: { input: 1.74, output: 3.48, cacheRead: 0.14, cacheWrite: 0 },
+        compat: fwCompat,
+      },
+      {
         id: "accounts/fireworks/models/deepseek-v3p2",
         name: "DeepSeek V3p2 (Fireworks)",
         reasoning: false,
