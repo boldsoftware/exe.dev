@@ -453,3 +453,16 @@ func isHex(s string) bool {
 	}
 	return true
 }
+
+// ExedHost returns the deploy target info for the exed process.
+// Used by the CD scheduler to know where to deploy exed.
+func (inv *Inventory) ExedHost() (host, dnsName, stage, role string, ok bool) {
+	inv.mu.RLock()
+	defer inv.mu.RUnlock()
+	for _, p := range inv.procs {
+		if p.Process == "exed" {
+			return p.Hostname, p.DNSName, p.Stage, p.Role, true
+		}
+	}
+	return "", "", "", "", false
+}

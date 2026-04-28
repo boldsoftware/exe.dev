@@ -18,12 +18,13 @@ type Handlers struct {
 	environment string
 	inventory   *inventory.Inventory
 	deployer    *deploy.Manager
+	scheduler   *deploy.Scheduler
 }
 
 // NewHandlers creates a new Handlers. environment is surfaced on
 // /api/v1/version for UI display; empty means unset.
-func NewHandlers(log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager) *Handlers {
-	return &Handlers{log: log, environment: environment, inventory: inv, deployer: deployer}
+func NewHandlers(log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager, scheduler *deploy.Scheduler) *Handlers {
+	return &Handlers{log: log, environment: environment, inventory: inv, deployer: deployer, scheduler: scheduler}
 }
 
 // HandleServerVersion handles GET /api/v1/version.

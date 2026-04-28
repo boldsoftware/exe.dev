@@ -106,7 +106,9 @@ func main() {
 			deployer := deploy.NewManager(ctx, log, gitRepoDir, "deploy-cache")
 
 			// Optionally attach Slack notifications for deploys.
+			var slackNotifier *deploy.SlackNotifier
 			if sn := deploy.NewSlackNotifier(c.String("slack-bot-token"), log); sn != nil {
+				slackNotifier = sn
 				deployer.SetNotifier(sn)
 				log.Info("slack deploy notifications enabled")
 			}
@@ -120,10 +122,16 @@ func main() {
 				deployer.Prebuild(ctx, sha, []string{"exed"})
 			})
 
+			// Initialize CD scheduler for exed (prod only, disabled by default).
+			var scheduler *deploy.Scheduler
+			if environment == "prod" {
+				scheduler = deploy.NewScheduler(deployer, gitRepo, slackNotifier, inv, log)
+			}
+
 			// When TLS is on we're serving over Tailscale, which is also
 			// the only way we can identify the peer. Require human-user
 			// auth iff TLS is on; local dev (--tls=false) stays open.
-			handler := server.New(uiFS, log, environment, inv, deployer, useTLS)
+			handler := server.New(uiFS, log, environment, inv, deployer, scheduler, useTLS)
 
 			srv := &http.Server{
 				Addr:        c.String("addr"),
@@ -142,9 +150,12 @@ func main() {
 				}
 			}
 
-			// Start git repo and inventory services.
+			// Start git repo, inventory, and CD scheduler services.
 			go gitRepo.Run(ctx)
 			go inv.Run(ctx)
+			if scheduler != nil {
+				go scheduler.Run(ctx)
+			}
 
 			// Start server in goroutine.
 			go func() {

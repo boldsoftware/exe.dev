@@ -22,8 +22,8 @@ import (
 // users (not tagged devices or non-Tailscale peers) can reach them.
 // Production deployments must set this to true; it should be disabled
 // only for local development where tailscaled is not available.
-func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager, requireHumanAuth bool) http.Handler {
-	h := NewHandlers(log, environment, inv, deployer)
+func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Inventory, deployer *deploy.Manager, scheduler *deploy.Scheduler, requireHumanAuth bool) http.Handler {
+	h := NewHandlers(log, environment, inv, deployer, scheduler)
 
 	// Authenticated routes: the UI and every API endpoint. These are
 	// gated behind Tailscale peer identity in production.
@@ -36,6 +36,11 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 	authed.HandleFunc("/api/v1/deploys/", h.HandleDeployStatus)
 	authed.HandleFunc("/api/v1/rollouts", h.HandleRollouts)
 	authed.HandleFunc("/api/v1/rollouts/", h.HandleRolloutByID)
+
+	// Continuous Deployment scheduler.
+	authed.HandleFunc("/api/v1/cd/status", h.HandleCDStatus)
+	authed.HandleFunc("/api/v1/cd/enable", h.HandleCDEnable)
+	authed.HandleFunc("/api/v1/cd/disable", h.HandleCDDisable)
 
 	// Host metrics from Prometheus.
 	authed.HandleFunc("/api/v1/hosts", h.HandleHosts)

@@ -30,6 +30,59 @@
         <span v-if="headDate" class="head-commit-date">{{ formatDate(headDate) }}</span>
       </div>
 
+      <!-- CD Banner -->
+      <div v-if="cdStatus" class="cd-banner" :class="cdBannerClass">
+        <div class="cd-banner-content">
+          <template v-if="cdStatus.enabled && !cdStatus.deploying">
+            <span class="cd-status-icon">🟢</span>
+            <span class="cd-status-text">
+              CD Active
+              <template v-if="cdStatus.last_deploy">
+                — {{ cdStatus.last_deploy.sha.slice(0, 7) }}
+              </template>
+              <template v-if="cdNextDeployCountdown">
+                — Next deploy in {{ cdNextDeployCountdown }}
+              </template>
+            </span>
+          </template>
+          <template v-else-if="cdStatus.deploying">
+            <span class="cd-status-icon">🟡</span>
+            <span class="cd-status-text">
+              Deploying
+              <template v-if="cdStatus.last_deploy">
+                {{ cdStatus.last_deploy.sha.slice(0, 7) }}
+              </template>
+              ...
+            </span>
+          </template>
+          <template v-else>
+            <span class="cd-status-icon">🔴</span>
+            <span class="cd-status-text">
+              CD Disabled
+              <template v-if="cdStatus.disabled_reason">
+                — {{ cdStatus.disabled_reason }}
+              </template>
+            </span>
+          </template>
+        </div>
+        <button
+          v-if="cdStatus.enabled"
+          class="cd-action-btn"
+          @click="handleDisableCD"
+          :disabled="cdActionPending"
+        >
+          Disable CD
+        </button>
+        <button
+          v-else
+          class="cd-action-btn cd-action-btn-enable"
+          @click="handleEnableCD"
+          :disabled="cdActionPending"
+        >
+          Enable CD
+        </button>
+      </div>
+
       <!-- Toolbar: filters + search -->
       <div class="toolbar-row">
         <div class="search-box">
@@ -662,6 +715,9 @@ import {
   cancelRollout,
   pauseRollout,
   resumeRollout,
+  fetchCDStatus,
+  enableCD,
+  disableCD,
   type DeployProcess,
   type DeployStatus,
   type DeployCommit,
@@ -670,6 +726,7 @@ import {
   fetchDaemonHealthInstances,
   type DaemonHealth,
   type InstanceDaemonHealth,
+  type CDStatus,
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops', 'exepipe'])
@@ -756,6 +813,11 @@ function grafanaDaemonURL(grafanaExpr: string | undefined, hostname: string): st
   return `${GRAFANA_BASE}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify(panes))}&orgId=1`
 }
 
+// CD state
+const cdStatus = ref<CDStatus | null>(null)
+const cdActionPending = ref(false)
+const cdCountdownNow = ref(Date.now())
+
 // Multi-select state
 const selectedProcs = reactive(new Set<string>())
 const bulkConfirmProcs = ref<DeployProcess[] | null>(null)
@@ -832,6 +894,25 @@ const allVisibleSelected = computed(() => {
 
 const someVisibleSelected = computed(() => {
   return filteredProcs.value.some(p => selectedProcs.has(procKey(p)))
+})
+
+// CD computed properties
+const cdBannerClass = computed(() => {
+  if (!cdStatus.value) return ''
+  if (cdStatus.value.enabled && !cdStatus.value.deploying) return 'cd-banner-active'
+  if (cdStatus.value.deploying) return 'cd-banner-deploying'
+  return 'cd-banner-disabled'
+})
+
+const cdNextDeployCountdown = computed(() => {
+  if (!cdStatus.value || !cdStatus.value.next_deploy_at) return null
+  const next = new Date(cdStatus.value.next_deploy_at).getTime()
+  const now = cdCountdownNow.value
+  const diff = next - now
+  if (diff < 0) return '0:00'
+  const mins = Math.floor(diff / 60000)
+  const secs = Math.floor((diff % 60000) / 1000)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 })
 
 function toggleSelect(p: DeployProcess, e: Event) {
@@ -1635,12 +1716,69 @@ watch(hasActiveDeploys, (active, wasActive) => {
   }
 })
 
+// CD functions
+async function loadCDStatus() {
+  try {
+    cdStatus.value = await fetchCDStatus()
+  } catch (err) {
+    console.error('Failed to fetch CD status:', err)
+  }
+}
+
+async function handleEnableCD() {
+  cdActionPending.value = true
+  try {
+    cdStatus.value = await enableCD()
+  } catch (err) {
+    console.error('Failed to enable CD:', err)
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    cdActionPending.value = false
+  }
+}
+
+async function handleDisableCD() {
+  cdActionPending.value = true
+  try {
+    cdStatus.value = await disableCD()
+  } catch (err) {
+    console.error('Failed to disable CD:', err)
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    cdActionPending.value = false
+  }
+}
+
+let cdPollTimer: ReturnType<typeof setInterval> | null = null
+let cdCountdownTimer: ReturnType<typeof setInterval> | null = null
+
+function startCDPolling() {
+  if (cdPollTimer) return
+  loadCDStatus()
+  cdPollTimer = setInterval(loadCDStatus, 10000)  // Poll every 10 seconds
+  cdCountdownTimer = setInterval(() => {
+    cdCountdownNow.value = Date.now()
+  }, 1000)  // Update countdown every second
+}
+
+function stopCDPolling() {
+  if (cdPollTimer) {
+    clearInterval(cdPollTimer)
+    cdPollTimer = null
+  }
+  if (cdCountdownTimer) {
+    clearInterval(cdCountdownTimer)
+    cdCountdownTimer = null
+  }
+}
+
 onMounted(async () => {
   await Promise.all([load(), loadDeploys()])
   pollTimer = setInterval(load, 30000)
   startDeployPolling()
   loadDaemonHealth()
   daemonHealthTimer = setInterval(loadDaemonHealth, 60_000)
+  startCDPolling()
   nextTick(() => searchInputEl.value?.focus())
 
   // Auto-trigger exed deploy when navigated from dashboard
@@ -1667,6 +1805,7 @@ onUnmounted(() => {
   if (daemonHealthAbort) daemonHealthAbort.abort()
   stopDeployPolling()
   stopActiveRolloutPolling()
+  stopCDPolling()
 })
 </script>
 
@@ -3530,5 +3669,79 @@ a.health-grafana-link {
 a.health-grafana-link:hover {
   color: var(--primary-color);
   text-decoration: underline;
+}
+
+/* CD Banner */
+.cd-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 6px;
+  border: 1px solid;
+  font-size: 0.9rem;
+}
+
+.cd-banner-active {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: var(--green-400);
+}
+
+.cd-banner-deploying {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: var(--yellow-400);
+}
+
+.cd-banner-disabled {
+  background: rgba(107, 114, 128, 0.08);
+  border-color: var(--surface-border);
+}
+
+.cd-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cd-status-icon {
+  font-size: 1.1rem;
+}
+
+.cd-status-text {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.cd-action-btn {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cd-action-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+}
+
+.cd-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cd-action-btn-enable {
+  background: var(--green-400);
+  color: white;
+  border-color: var(--green-400);
+}
+
+.cd-action-btn-enable:hover:not(:disabled) {
+  background: var(--green-500);
+  border-color: var(--green-500);
 }
 </style>

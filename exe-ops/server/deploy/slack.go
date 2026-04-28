@@ -221,3 +221,35 @@ func (s *SlackNotifier) addReaction(channelID, ts, emoji string) error {
 	})
 	return err
 }
+
+// SetChannelTopic updates the topic of a Slack channel.
+func (s *SlackNotifier) SetChannelTopic(channel, topic string) error {
+	channelID, err := s.findChannelID(channel)
+	if err != nil {
+		return err
+	}
+	_, err = s.slackAPI("conversations.setTopic", map[string]any{
+		"channel": channelID,
+		"topic":   topic,
+	})
+	return err
+}
+
+// CDSetTopic updates the #ship channel topic (for CD status).
+func (s *SlackNotifier) CDSetTopic(topic string) {
+	if err := s.SetChannelTopic(slackChannelProd, topic); err != nil {
+		s.log.Warn("slack: set topic", "topic", topic, "error", err)
+	}
+}
+
+// CDPostMessage posts a CD-related message to #ship.
+func (s *SlackNotifier) CDPostMessage(text string) {
+	channelID, err := s.findChannelID(slackChannelProd)
+	if err != nil {
+		s.log.Warn("slack: find channel for CD message", "error", err)
+		return
+	}
+	if _, err := s.postMessage(channelID, text, nil); err != nil {
+		s.log.Warn("slack: post CD message", "error", err)
+	}
+}

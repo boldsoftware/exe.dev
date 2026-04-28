@@ -293,3 +293,44 @@ func (h *Handlers) HandleDeployStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, status)
 }
+
+// HandleCDStatus handles GET /api/v1/cd/status.
+func (h *Handlers) HandleCDStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.scheduler == nil {
+		http.Error(w, "CD scheduler not configured", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, h.scheduler.Status())
+}
+
+// HandleCDEnable handles POST /api/v1/cd/enable.
+func (h *Handlers) HandleCDEnable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.scheduler == nil {
+		http.Error(w, "CD scheduler not configured", http.StatusNotFound)
+		return
+	}
+	h.scheduler.Enable()
+	writeJSON(w, h.scheduler.Status())
+}
+
+// HandleCDDisable handles POST /api/v1/cd/disable.
+func (h *Handlers) HandleCDDisable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.scheduler == nil {
+		http.Error(w, "CD scheduler not configured", http.StatusNotFound)
+		return
+	}
+	h.scheduler.Disable()
+	writeJSON(w, h.scheduler.Status())
+}

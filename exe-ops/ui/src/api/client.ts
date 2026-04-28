@@ -320,3 +320,44 @@ export async function fetchDaemonSummary(): Promise<DaemonSummary[]> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   return resp.json()
 }
+
+// Continuous Deployment types and functions
+export interface ScheduledDeploy {
+  sha: string
+  deploy_id: string
+  started_at: string
+  state: string  // success, failed
+}
+
+export interface CDStatus {
+  enabled: boolean
+  deploying: boolean
+  disabled_reason?: string
+  next_deploy_at?: string
+  last_deploy?: ScheduledDeploy
+  window_open: boolean
+}
+
+export async function fetchCDStatus(): Promise<CDStatus> {
+  const resp = await fetch('/api/v1/cd/status')
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export async function enableCD(): Promise<CDStatus> {
+  const resp = await fetch('/api/v1/cd/enable', { method: 'POST' })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function disableCD(): Promise<CDStatus> {
+  const resp = await fetch('/api/v1/cd/disable', { method: 'POST' })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(text || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
