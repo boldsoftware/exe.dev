@@ -17,15 +17,16 @@ prod is k8s.
 For some use cases, you need not bother with the complexity; use one exe.dev vm
 for all three. A blog, a dashboard, a link shortener, a bot, and so on: these
 work well with the environments collapsed. Add features by asking Shelley to do
-so. Setup continuous deployment by asking Shelley to poll every hour. Use git
+so. Set up continuous deployment by asking Shelley to poll every hour. Use git
 for a backup if it calls for it. Voila!
 
 Our internal tools sport an "Edit with Shelley" ribbon.
-[TODO: add ribbon right here as ane example]
+[TODO: add ribbon right here as an example]
+[TODO: add Shelley links]
 
 # Just Dev
 
-Use an exe.dev vm (or many) to work on your software. Setup the GitHub
+Use an exe.dev vm (or many) to work on your software. Set up the GitHub
 integration ([docs](integrations-github)) to make cloning easy. Some people work
 serially. Some people work using multiple worktrees on one vm. Some people have
 one vm per task or project. Clone your VMs using ‘cp’ or configure them using
@@ -42,7 +43,7 @@ agents. If your development is increasingly chat-based, the old arguments about
 getting your environment and dot-rc files just right fade away. The convenience
 of starting a task from your phone overwhelms the decades-old bashrc file and
 finely crafted PS1. As a bonus, you get the ability to share with your co-workers.
-Pull requests are so yesterday; send them a link to the working product instead.
+Pull requests are so yesterday; send them a link to a working demo instead.
 
 # Just Test
 
@@ -67,5 +68,3 @@ ran on [just a few
 machines](https://nickcraver.com/blog/2016/02/17/stack-overflow-the-architecture-2016-edition/).
 Reach out to us, if you want to enlarge your VM as far as modern hardware can
 go.
-
-
