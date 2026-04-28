@@ -1,28 +1,17 @@
 import { test, expect } from '@playwright/test';
+import { createConversationViaAPIWithDetails, stabilizeConversationSlug, waitForConversationSlug } from './helpers';
 
 test.describe('Distill conversation', () => {
   test('spinner transitions to complete after distillation finishes', async ({ page, request }) => {
-    // 1. Create a source conversation by sending a message through the API
-    const newResp = await request.post('/api/conversations/new', {
-      data: { message: 'Hello', model: 'predictable' },
-    });
-    expect(newResp.ok()).toBeTruthy();
-    const { conversation_id: sourceId } = await newResp.json();
-
-    // Wait for the agent to finish responding
-    await expect(async () => {
-      const conv = await request.get(`/api/conversation/${sourceId}`);
-      const body = await conv.json();
-      const hasAgent = body.messages?.some((m: { type: string }) => m.type === 'agent');
-      expect(hasAgent).toBeTruthy();
-    }).toPass({ timeout: 15000 });
+    // 1. Create a source conversation through the API with a stable route.
+    const { conversationId: sourceId } = await createConversationViaAPIWithDetails(request, 'Hello');
 
     // 2. Distill the conversation via the API
     const distillResp = await request.post('/api/conversations/distill', {
       data: {
         source_conversation_id: sourceId,
-        model: 'predictable',
-      },
+        model: 'predictable'
+      }
     });
     expect(distillResp.ok()).toBeTruthy();
     const { conversation_id: distilledId } = await distillResp.json();
@@ -30,13 +19,8 @@ test.describe('Distill conversation', () => {
 
     // 3. Wait for the distilled conversation to get a slug, then navigate
     //    directly to it (auto-selection may pick the source conversation).
-    let slug = '';
-    await expect(async () => {
-      const conv = await request.get(`/api/conversation/${distilledId}`);
-      const body = await conv.json();
-      slug = body.conversation?.slug || '';
-      expect(slug).toBeTruthy();
-    }).toPass({ timeout: 15000 });
+    const initialSlug = await waitForConversationSlug(request, distilledId, 15000);
+    const slug = await stabilizeConversationSlug(request, distilledId, initialSlug);
 
     await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
@@ -52,8 +36,6 @@ test.describe('Distill conversation', () => {
     await expect(page.getByTestId('distill-in-progress')).toHaveCount(0);
 
     // 6. Verify the distilled user message appeared
-    await expect(
-      page.locator('text=edit predictable.go to add a response for that one...'),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=edit predictable.go to add a response for that one...')).toBeVisible({ timeout: 10000 });
   });
 });

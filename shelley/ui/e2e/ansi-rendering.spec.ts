@@ -1,41 +1,10 @@
 import { test, expect } from '@playwright/test';
-
-// Create a conversation via the API, wait for the agent to finish,
-// then return the conversation slug for direct navigation.
-async function createConversation(
-  request: any,
-  message: string,
-  agentTimeout: number = 30000,
-): Promise<string> {
-  const newResp = await request.post('/api/conversations/new', {
-    data: { message, model: 'predictable', cwd: '/tmp' },
-  });
-  expect(newResp.ok()).toBeTruthy();
-  const { conversation_id } = await newResp.json();
-
-  let slug = '';
-  await expect(async () => {
-    const resp = await request.get(`/api/conversation/${conversation_id}`);
-    const body = await resp.json();
-    const done = body.messages?.some(
-      (m: { type: string; end_of_turn?: boolean }) =>
-        m.type === 'agent' && m.end_of_turn === true,
-    );
-    expect(done).toBeTruthy();
-    slug = body.conversation?.slug || '';
-    expect(slug).toBeTruthy();
-  }).toPass({ timeout: agentTimeout });
-
-  return slug;
-}
+import { createConversationViaAPI } from './helpers';
 
 test.describe('ANSI escape sequence rendering', () => {
   test('bash output with ANSI colors renders styled text, not raw escapes', async ({ page, request }) => {
     // Run a command that produces ANSI-colored output
-    const slug = await createConversation(
-      request,
-      `bash: printf '\\033[32mGreen\\033[0m \\033[31mRed\\033[0m \\033[1mBold\\033[0m \\033[33mYellow\\033[0m plain'`,
-    );
+    const slug = await createConversationViaAPI(request, `bash: printf '\\033[32mGreen\\033[0m \\033[31mRed\\033[0m \\033[1mBold\\033[0m \\033[33mYellow\\033[0m plain'`);
 
     await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
@@ -98,10 +67,7 @@ test.describe('ANSI escape sequence rendering', () => {
   });
 
   test('bash output without ANSI codes renders as plain text', async ({ page, request }) => {
-    const slug = await createConversation(
-      request,
-      'bash: echo "just plain text with no escapes"',
-    );
+    const slug = await createConversationViaAPI(request, 'bash: echo "just plain text with no escapes"');
 
     await page.goto(`/c/${slug}`);
     await page.waitForLoadState('domcontentloaded');
@@ -109,10 +75,7 @@ test.describe('ANSI escape sequence rendering', () => {
     // Scope to the specific bash tool for this test's echo command to avoid
     // strict-mode violations if the shared test server ends up showing more
     // than one bash invocation.
-    const bashTool = page
-      .locator('.bash-tool[data-testid="tool-call-completed"]')
-      .filter({ hasText: 'just plain text with no escapes' })
-      .first();
+    const bashTool = page.locator('.bash-tool[data-testid="tool-call-completed"]').filter({ hasText: 'just plain text with no escapes' }).first();
     await expect(bashTool).toBeVisible({ timeout: 15000 });
 
     // Expand

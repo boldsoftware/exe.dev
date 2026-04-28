@@ -1,37 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { createConversationViaAPIWithDetails } from "./helpers";
 
-async function getGitRoot(
-  request: import("@playwright/test").APIRequestContext,
-): Promise<string> {
+async function getGitRoot(request: import("@playwright/test").APIRequestContext): Promise<string> {
   const resp = await request.get("/api/git/diffs?cwd=.");
   expect(resp.ok()).toBeTruthy();
   const data = await resp.json();
   expect(data.gitRoot).toBeTruthy();
   return data.gitRoot;
-}
-
-async function createConversation(
-  request: import("@playwright/test").APIRequestContext,
-  message: string,
-  cwd: string,
-): Promise<{ conversation_id: string; slug: string }> {
-  const resp = await request.post("/api/conversations/new", {
-    data: { message, model: "predictable", cwd },
-  });
-  expect(resp.ok()).toBeTruthy();
-  const { conversation_id } = await resp.json();
-
-  let slug = "";
-  await expect(async () => {
-    const conv = await request.get(`/api/conversation/${conversation_id}`);
-    const body = await conv.json();
-    const hasAgent = body.messages?.some((m: { type: string }) => m.type === "agent");
-    expect(hasAgent).toBeTruthy();
-    slug = body.conversation?.slug || "";
-    expect(slug).toBeTruthy();
-  }).toPass({ timeout: 15000 });
-
-  return { conversation_id, slug };
 }
 
 test.describe("Conversation grouping", () => {
@@ -40,8 +15,12 @@ test.describe("Conversation grouping", () => {
     request,
   }) => {
     const gitRoot = await getGitRoot(request);
-    await createConversation(request, "Hello from conversation A", gitRoot);
-    const active = await createConversation(request, "Hello from conversation B", gitRoot);
+    await createConversationViaAPIWithDetails(request, "Hello from conversation A", {
+      cwd: gitRoot,
+    });
+    const active = await createConversationViaAPIWithDetails(request, "Hello from conversation B", {
+      cwd: gitRoot,
+    });
 
     await page.goto(`/c/${active.slug}`);
     await expect(page.getByTestId("message-input")).toBeVisible({ timeout: 30000 });
@@ -58,7 +37,9 @@ test.describe("Conversation grouping", () => {
     });
     await expect(activeGroup).toHaveCount(1);
 
-    const activeGroupLabel = (await activeGroup.locator(".conversation-group-label").innerText()).trim();
+    const activeGroupLabel = (
+      await activeGroup.locator(".conversation-group-label").innerText()
+    ).trim();
     expect(activeGroupLabel).not.toBe("Other");
   });
 });

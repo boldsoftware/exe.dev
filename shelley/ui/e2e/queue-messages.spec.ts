@@ -1,39 +1,23 @@
 import { test, expect } from '@playwright/test';
+import { createConversationViaAPI } from './helpers';
 
-// Helper: navigate to root, start a fresh conversation
-async function newConversation(page: import('@playwright/test').Page) {
-  await page.goto('/new');
+// Seed a stable conversation route so reload-based checks don't depend on /new.
+async function openConversation(page: import('@playwright/test').Page, request: import('@playwright/test').APIRequestContext) {
+  const slug = await createConversationViaAPI(request, 'echo: queue seed');
+  await page.goto(`/c/${slug}`);
   await page.waitForLoadState('domcontentloaded');
   const messageInput = page.getByTestId('message-input');
   await expect(messageInput).toBeVisible({ timeout: 30000 });
-
-  // Click the "+" button in the top header bar (always visible on mobile)
-  // to ensure a clean conversation. There may be two, pick the one in the main area.
-  const newBtn = page.locator('button[aria-label="New Conversation"]');
-  // Only click if it exists (first load has no conversations, so already fresh)
-  const count = await newBtn.count();
-  if (count > 0) {
-    // Click the last one (main header, not sidebar)
-    await newBtn.last().click();
-    await expect(messageInput).toBeVisible({ timeout: 10000 });
-  }
-
   return messageInput;
 }
 
-// Helper: fill input and click send, then wait for the "working..." status.
-// On narrow viewports the status text is "working..." (no "Agent " prefix).
 async function sendAndWaitForWorking(page: import('@playwright/test').Page, text: string) {
   const messageInput = page.getByTestId('message-input');
   await messageInput.fill(text);
   const sendButton = page.getByTestId('send-button');
   await expect(sendButton).toBeEnabled({ timeout: 5000 });
   await sendButton.tap();
-  await page.waitForFunction(
-    () => document.body.textContent?.includes('working...') ?? false,
-    undefined,
-    { timeout: 30000 },
-  );
+  await expect(page.getByTestId('agent-thinking')).toBeVisible({ timeout: 30000 });
 }
 
 // Helper: queue a message via the split-button dropdown
@@ -41,6 +25,7 @@ async function queueMessage(page: import('@playwright/test').Page, text: string)
   const messageInput = page.getByTestId('message-input');
   await messageInput.fill(text);
   const chevron = page.getByTestId('send-options-button');
+  await expect(chevron).toBeEnabled({ timeout: 5000 });
   await expect(chevron).toBeVisible({ timeout: 5000 });
   await chevron.tap();
   const queueOption = page.getByTestId('queue-option');
@@ -49,8 +34,8 @@ async function queueMessage(page: import('@playwright/test').Page, text: string)
 }
 
 test.describe('Queue Messages', () => {
-  test('split button appears when agent is working', async ({ page }) => {
-    await newConversation(page);
+  test('split button appears when agent is working', async ({ page, request }) => {
+    await openConversation(page, request);
 
     // Send a slow message so the agent stays working
     await sendAndWaitForWorking(page, 'delay: 15');
@@ -60,8 +45,8 @@ test.describe('Queue Messages', () => {
     await expect(chevron).toBeVisible({ timeout: 5000 });
   });
 
-  test('chevron becomes inactive when agent finishes', async ({ page }) => {
-    await newConversation(page);
+  test('chevron becomes inactive when agent finishes', async ({ page, request }) => {
+    await openConversation(page, request);
 
     // Use a short delay so it finishes quickly
     await sendAndWaitForWorking(page, 'delay: 2');
@@ -69,11 +54,7 @@ test.describe('Queue Messages', () => {
     const chevron = page.getByTestId('send-options-button');
 
     // Wait for agent to finish ("Delayed for 2 seconds" response)
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('Delayed for 2 seconds') ?? false,
-      undefined,
-      { timeout: 30000 },
-    );
+    await page.waitForFunction(() => document.body.textContent?.includes('Delayed for 2 seconds') ?? false, undefined, { timeout: 30000 });
 
     // Type something so the send button is enabled
     const input = page.getByTestId('message-input');
@@ -90,8 +71,8 @@ test.describe('Queue Messages', () => {
     await expect(sendButton).toBeEnabled();
   });
 
-  test('can queue a message via dropdown', async ({ page }) => {
-    await newConversation(page);
+  test('can queue a message via dropdown', async ({ page, request }) => {
+    await openConversation(page, request);
     await sendAndWaitForWorking(page, 'delay: 15');
 
     // Queue a message
@@ -102,8 +83,8 @@ test.describe('Queue Messages', () => {
     await expect(queuedBadge).toBeVisible({ timeout: 10000 });
   });
 
-  test('queued message has cancel button', async ({ page }) => {
-    await newConversation(page);
+  test('queued message has cancel button', async ({ page, request }) => {
+    await openConversation(page, request);
     await sendAndWaitForWorking(page, 'delay: 15');
 
     await queueMessage(page, 'echo: test cancel');
@@ -115,8 +96,8 @@ test.describe('Queue Messages', () => {
     await expect(cancelButton).toBeVisible();
   });
 
-  test('can cancel a queued message', async ({ page }) => {
-    await newConversation(page);
+  test('can cancel a queued message', async ({ page, request }) => {
+    await openConversation(page, request);
     await sendAndWaitForWorking(page, 'delay: 60');
 
     await queueMessage(page, 'echo: to be cancelled');
@@ -127,13 +108,7 @@ test.describe('Queue Messages', () => {
     // Click cancel and wait for the server to acknowledge deletion
     const cancelButton = page.getByTestId('cancel-queued');
     await expect(cancelButton).toBeVisible();
-    const [cancelResp] = await Promise.all([
-      page.waitForResponse(
-        (resp) => resp.url().includes('/cancel-queued') && resp.status() === 200,
-        { timeout: 10000 },
-      ),
-      cancelButton.tap(),
-    ]);
+    const [cancelResp] = await Promise.all([page.waitForResponse((resp) => resp.url().includes('/cancel-queued') && resp.status() === 200, { timeout: 10000 }), cancelButton.tap()]);
 
     // The server deleted the message from the DB.
     // Reload the page to pick up the new state (the SSE stream sends
@@ -147,8 +122,8 @@ test.describe('Queue Messages', () => {
     await expect(page.locator('text=to be cancelled')).toHaveCount(0, { timeout: 10000 });
   });
 
-  test('queued message drains after agent finishes', async ({ page }) => {
-    await newConversation(page);
+  test('queued message drains after agent finishes', async ({ page, request }) => {
+    await openConversation(page, request);
 
     // Agent busy for ~10s
     await sendAndWaitForWorking(page, 'delay: 10');
@@ -160,25 +135,17 @@ test.describe('Queue Messages', () => {
     await expect(queuedBadge).toBeVisible({ timeout: 10000 });
 
     // Wait for the first agent response (delay finishes)
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('Delayed for 10 seconds') ?? false,
-      undefined,
-      { timeout: 30000 },
-    );
+    await page.waitForFunction(() => document.body.textContent?.includes('Delayed for 10 seconds') ?? false, undefined, { timeout: 30000 });
 
     // After drain, queued badge should disappear
     await expect(queuedBadge).toBeHidden({ timeout: 15000 });
 
     // The agent processes the queued message — predictable echoes it back
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('queued drain test') ?? false,
-      undefined,
-      { timeout: 30000 },
-    );
+    await page.waitForFunction(() => document.body.textContent?.includes('queued drain test') ?? false, undefined, { timeout: 30000 });
   });
 
-  test('send button still works normally during agent working', async ({ page }) => {
-    await newConversation(page);
+  test('send button still works normally during agent working', async ({ page, request }) => {
+    await openConversation(page, request);
     await sendAndWaitForWorking(page, 'delay: 15');
 
     // Type text and click the MAIN send button (not the dropdown)
@@ -188,11 +155,7 @@ test.describe('Queue Messages', () => {
     await sendButton.tap();
 
     // Message appears as a normal user message
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('echo: immediate send') ?? false,
-      undefined,
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.textContent?.includes('echo: immediate send') ?? false, undefined, { timeout: 10000 });
 
     // No queued badge should exist
     const queuedBadges = page.getByTestId('queued-badge');
