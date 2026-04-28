@@ -155,8 +155,21 @@ func (ss *SSHServer) handleSSHKeyGenerateAPIKeyCmd(ctx context.Context, cc *exem
 		return fmt.Errorf("marshaling permissions: %w", err)
 	}
 
+	// The strict token parser only accepts cmds/exp/nbf in the signed payload.
+	// Tag/vm scope restrictions live on the DB row and are enforced via
+	// fingerprint lookup at validation time, so strip them out of the map
+	// before signing. Yes, it's silly to add them just to remove them — but
+	// inheritCallerRestrictions wants to operate on a single perms map, and
+	// this is cheaper than splitting it.
+	delete(perms, "tag")
+	delete(perms, "vm")
+	signedJSON, err := json.Marshal(perms)
+	if err != nil {
+		return fmt.Errorf("marshaling signed claims: %w", err)
+	}
+
 	// Generate the token (key pair + exe0).
-	gt, err := sshkey.GenerateToken(permsJSON, namespace)
+	gt, err := sshkey.GenerateToken(signedJSON, namespace)
 	if err != nil {
 		return fmt.Errorf("generating token: %w", err)
 	}

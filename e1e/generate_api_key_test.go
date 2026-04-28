@@ -101,6 +101,28 @@ func TestGenerateAPIKey(t *testing.T) {
 		}
 	})
 
+	t.Run("tag_restriction", func(t *testing.T) {
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile,
+			"ssh-key", "generate-api-key", "--json", "--label=e1e-tag", "--tag=ci")
+		if err != nil {
+			t.Fatalf("generate-api-key --tag=ci: %v\n%s", err, out)
+		}
+		var result struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("parse JSON: %v\n%s", err, out)
+		}
+
+		// Tag scope is enforced via DB lookup by fingerprint, not from the
+		// signed token payload. The token must remain usable for commands
+		// allowed under tag scope (e.g. whoami).
+		resp, body := execWithToken(t, result.Token, "whoami")
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("whoami with tag-scoped token: %d: %s", resp.StatusCode, body)
+		}
+	})
+
 	t.Run("cannot_create_tokens", func(t *testing.T) {
 		// Generate a token with default permissions.
 		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile,
