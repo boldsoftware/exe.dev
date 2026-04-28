@@ -1,5 +1,6 @@
 [
     {"name": "Philip Zeyliger",   "github": "philz",           "slack_member_id": "U09RYSZS685", "aliases": ["philip", "philz"]},
+    {"name": "Maisem Ali",        "github": "maisem",          "slack_member_id": "U0AQB481R8S", "aliases": ["maisem", "maisem+bots"]},
     {"name": "Josh Snyder",       "github": "josharian",       "slack_member_id": "U09SF83994H", "aliases": ["josh"]},
     {"name": "David Crawshaw",    "github": "crawshaw",        "slack_member_id": "U09RLSMG2LX", "aliases": ["crawshaw"]},
     {"name": "Shaun Loo",         "github": "zackerthescar",   "slack_member_id": "U0A8G92NNG1", "aliases": ["sean"]},
