@@ -795,6 +795,16 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		return fmt.Errorf("load config for early save: %w", loadErr)
 	}
 
+	// Past this point, the next call into the VMM (RestoreFromSnapshot or
+	// the cold-boot fallback's startInstance) will go through
+	// startCHProcess -> applyCgroupPlacement -> PrepareVMCgroup, which
+	// re-creates the per-VM cgroup scope. In practice GroupID does not
+	// change across a tier migration so the scope path is identical to
+	// what the source CH was already using; but if both restore and the
+	// cold-boot fallback fail, we must release the scope to avoid leaking
+	// it on hosts where GroupID does diverge between source and dest.
+	cgroupTouched := true
+
 	// Restore from snapshot with new disk path
 	s.log.InfoContext(ctx, "tier migration: restoring VM", "instance", instanceID)
 	if err := s.vmm.RestoreFromSnapshot(ctx, instanceID, snapshotDir); err != nil {
@@ -828,6 +838,16 @@ func (s *Service) migrateTierLive(ctx context.Context, tiered *storage.TieredSto
 		s.lockForMigration(instanceID) //nolint:errcheck
 
 		if startErr != nil {
+			// Both restore and cold-boot failed: no CH process is alive
+			// for this VM. Release the per-VM cgroup scope so we do not
+			// leak an empty vm-<id>.scope on dest if its slice differs
+			// from source. Best-effort.
+			if cgroupTouched && s.context != nil && s.context.CgroupPreparer != nil {
+				if relErr := s.context.CgroupPreparer.ReleaseVMCgroup(ctx, instanceID, instance.GroupID); relErr != nil {
+					s.log.DebugContext(ctx, "tier migration: failed to release VM cgroup after dual failure",
+						"instance", instanceID, "error", relErr)
+				}
+			}
 			return fmt.Errorf("restore from snapshot failed (%w) and cold boot recovery also failed: %v", err, startErr)
 		}
 		s.log.WarnContext(ctx, "tier migration: cold-booted VM from source disk after restore failure",
