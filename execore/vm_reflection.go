@@ -21,6 +21,7 @@ import (
 //	/email          the owner's email address
 //	/integrations   list of the owner's integrations attached to the VM
 //	/tags           the VM's tags
+//	/comment        the VM's comment
 //
 // Authentication: trusted via X-Exedev-Box (requires Tailscale IP, enforced
 // by the route wrapper) and X-Exedev-Integration identifies which reflection
@@ -109,6 +110,12 @@ func (s *Server) handleVMReflection(w http.ResponseWriter, r *http.Request) {
 			tags = []string{}
 		}
 		writeReflectionJSON(w, map[string]any{"tags": tags})
+	case "/comment":
+		if !fieldEnabled(reflectionFieldComment) {
+			http.Error(w, "comment field not enabled", http.StatusForbidden)
+			return
+		}
+		writeReflectionJSON(w, map[string]any{"comment": box.Comment})
 	case "/integrations":
 		if !fieldEnabled(reflectionFieldIntegrations) {
 			http.Error(w, "integrations field not enabled", http.StatusForbidden)
@@ -229,6 +236,8 @@ func (s *Server) writeReflectionIndex(w http.ResponseWriter, fields []string) {
 			paths = append(paths, map[string]string{"path": "/integrations", "description": "integrations available to this VM"})
 		case reflectionFieldTags:
 			paths = append(paths, map[string]string{"path": "/tags", "description": "tags set on this VM"})
+		case reflectionFieldComment:
+			paths = append(paths, map[string]string{"path": "/comment", "description": "comment set on this VM"})
 		}
 	}
 	writeReflectionJSON(w, map[string]any{"paths": paths})

@@ -31,8 +31,12 @@ func TestIntegrationsReflection(t *testing.T) {
 	pty.SendLine(fmt.Sprintf("tag %s role-api", bn))
 	pty.WantPrompt()
 
+	// Set a comment on the VM so /comment has meaningful content.
+	pty.SendLine(fmt.Sprintf("comment %s hello world", bn))
+	pty.WantPrompt()
+
 	// Add a reflection integration with a comment.
-	pty.SendLine(`integrations add reflection --name=me --comment="who am i" --fields=email,integrations,tags`)
+	pty.SendLine(`integrations add reflection --name=me --comment="who am i" --fields=email,integrations,tags,comment`)
 	pty.Want("Added integration me")
 	pty.WantPrompt()
 	pty.SendLine(fmt.Sprintf("integrations attach me vm:%s", bn))
@@ -130,10 +134,23 @@ func TestIntegrationsReflection(t *testing.T) {
 		}
 	})
 
+	t.Run("comment", func(t *testing.T) {
+		resp := curlRetry(t, "/comment", "comment")
+		var got map[string]any
+		if err := json.Unmarshal([]byte(resp), &got); err != nil {
+			t.Fatalf("not JSON: %v\n%s", err, resp)
+		}
+		if got["comment"] != "hello world" {
+			t.Errorf("comment: got %v, want %q", got["comment"], "hello world")
+		}
+	})
+
 	t.Run("index", func(t *testing.T) {
 		resp := curlRetry(t, "/", "/email")
-		if !strings.Contains(resp, "/email") || !strings.Contains(resp, "/integrations") || !strings.Contains(resp, "/tags") {
-			t.Errorf("index missing endpoints:\n%s", resp)
+		for _, p := range []string{"/email", "/integrations", "/tags", "/comment"} {
+			if !strings.Contains(resp, p) {
+				t.Errorf("index missing %s:\n%s", p, resp)
+			}
 		}
 	})
 

@@ -24,12 +24,14 @@ const (
 	reflectionFieldEmail        = "email"
 	reflectionFieldIntegrations = "integrations"
 	reflectionFieldTags         = "tags"
+	reflectionFieldComment      = "comment"
 )
 
 var reflectionFieldsAll = []string{
 	reflectionFieldEmail,
 	reflectionFieldIntegrations,
 	reflectionFieldTags,
+	reflectionFieldComment,
 }
 
 func isValidReflectionField(f string) bool {
