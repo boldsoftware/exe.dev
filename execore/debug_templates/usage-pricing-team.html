@@ -1,0 +1,210 @@
+<!doctype html>
+<html><head>
+{{template "base-head"}}
+<title>Usage Pricing — Team</title>
+<script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+<style>
+  .controls { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .controls select, .controls input, .controls button {
+    padding: 6px 10px; font-size: 14px;
+  }
+  .controls label { font-size: 13px; color: #888; }
+  .charts { display: flex; flex-direction: column; gap: 32px; }
+  .chart-container { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  .chart-container h3 { margin: 0 0 12px; font-size: 15px; color: #333; }
+  #status { font-size: 13px; color: #888; margin-bottom: 16px; }
+  .summary { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  .summary .stat { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; }
+  .summary .stat .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary .stat .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h2>Usage Pricing — Team</h2>
+
+{{if not .HasMetricsd}}
+<p style="color:red">metricsd not configured</p>
+{{else}}
+
+<div class="controls">
+  <div>
+    <label for="team">Team</label><br>
+    <select id="team">
+      <option value="">— select —</option>
+      {{range .Teams}}
+      <option value="{{.TeamID}}">{{.DisplayName}} ({{.MemberCount}} members)</option>
+      {{end}}
+    </select>
+  </div>
+  <div>
+    <label for="hours">Hours</label><br>
+    <input type="number" id="hours" value="24" min="1" max="744" style="width:80px">
+  </div>
+  <div>
+    <label for="days">or Days</label><br>
+    <input type="number" id="days" value="" min="1" max="31" style="width:80px" placeholder="—">
+  </div>
+  <div style="align-self:end">
+    <button id="load" onclick="loadData()">Load</button>
+  </div>
+</div>
+
+<div id="status"></div>
+<div class="summary" id="summary" style="display:none"></div>
+<div class="charts">
+  <div class="chart-container"><h3>CPU (cores, hourly high-water sum)</h3><div id="chart-cpu"></div></div>
+  <div class="chart-container"><h3>Active Memory (GiB, hourly high-water sum)</h3><div id="chart-mem"></div></div>
+  <div class="chart-container"><h3>Swap Memory (GiB, hourly high-water sum)</h3><div id="chart-swap"></div></div>
+  <div class="chart-container"><h3>Disk Provisioned (GiB, hourly high-water sum)</h3><div id="chart-disk"></div></div>
+  <div class="chart-container"><h3>Estimated Hourly Cost (USD)</h3><div id="chart-cost"></div></div>
+</div>
+
+<script>
+var daysInput = document.getElementById('days');
+var hoursInput = document.getElementById('hours');
+daysInput.addEventListener('input', function() {
+  if (this.value) hoursInput.value = '';
+});
+hoursInput.addEventListener('input', function() {
+  if (this.value) daysInput.value = '';
+});
+
+function getHours() {
+  var d = parseInt(daysInput.value);
+  if (d > 0) return d * 24;
+  var h = parseInt(hoursInput.value);
+  return h > 0 ? h : 24;
+}
+
+async function loadData() {
+  var teamId = document.getElementById('team').value;
+  if (!teamId) { alert('Select a team'); return; }
+  var hours = getHours();
+  var status = document.getElementById('status');
+  status.textContent = 'Loading ' + hours + 'h of data...';
+  document.getElementById('load').disabled = true;
+  try {
+    var resp = await fetch('/debug/usage-pricing-team-api?team_id=' + encodeURIComponent(teamId) + '&hours=' + hours);
+    if (!resp.ok) { status.textContent = 'Error: ' + resp.status + ' ' + (await resp.text()); return; }
+    var data = await resp.json();
+    renderCharts(data);
+    status.textContent = data.buckets.length + ' hourly buckets loaded.';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('load').disabled = false;
+  }
+}
+
+function renderCharts(data) {
+  var buckets = data.buckets || [];
+  if (buckets.length === 0) {
+    document.getElementById('status').textContent = 'No data for this period.';
+    return;
+  }
+
+  // Summary stats
+  var totalCost = 0, peakCPU = 0, peakMem = 0, peakVMs = 0;
+  for (var i = 0; i < buckets.length; i++) {
+    var b = buckets[i];
+    totalCost += b.total_cost_usd;
+    if (b.cpu_cores > peakCPU) peakCPU = b.cpu_cores;
+    if (b.memory_rss_gib > peakMem) peakMem = b.memory_rss_gib;
+    if (b.vm_count > peakVMs) peakVMs = b.vm_count;
+  }
+  var summaryEl = document.getElementById('summary');
+  summaryEl.style.display = 'flex';
+  summaryEl.innerHTML =
+    '<div class="stat"><div class="label">Total Cost</div><div class="value">$' + totalCost.toFixed(2) + '</div></div>' +
+    '<div class="stat"><div class="label">Peak CPU</div><div class="value">' + peakCPU.toFixed(1) + ' cores</div></div>' +
+    '<div class="stat"><div class="label">Peak Memory</div><div class="value">' + peakMem.toFixed(1) + ' GiB</div></div>' +
+    '<div class="stat"><div class="label">Peak VMs</div><div class="value">' + peakVMs + '</div></div>' +
+    '<div class="stat"><div class="label">Hours</div><div class="value">' + buckets.length + '</div></div>';
+
+  renderBar('chart-cpu', buckets, 'cpu_cores', 'CPU Cores', '#4c78a8');
+  renderBar('chart-mem', buckets, 'memory_rss_gib', 'Active Memory (GiB)', '#72b7b2');
+  renderBar('chart-swap', buckets, 'memory_swap_gib', 'Swap (GiB)', '#e45756');
+  renderBar('chart-disk', buckets, 'disk_gib', 'Disk (GiB)', '#f58518');
+  renderStackedCost('chart-cost', buckets);
+}
+
+function renderBar(elementId, buckets, field, title, color) {
+  var spec = {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    width: 'container',
+    height: 200,
+    data: { values: buckets },
+    mark: { type: 'bar', tooltip: true },
+    encoding: {
+      x: {
+        field: 'hour', type: 'temporal',
+        axis: { title: null, format: '%m/%d %H:%M' }
+      },
+      y: {
+        field: field, type: 'quantitative',
+        axis: { title: title }
+      },
+      color: { value: color },
+      tooltip: [
+        { field: 'hour', type: 'temporal', title: 'Hour' },
+        { field: field, type: 'quantitative', title: title, format: '.2f' },
+        { field: 'vm_count', type: 'quantitative', title: 'VMs' }
+      ]
+    },
+    config: {
+      view: { stroke: null }
+    }
+  };
+  vegaEmbed('#' + elementId, spec, { actions: false, renderer: 'svg' });
+}
+
+function renderStackedCost(elementId, buckets) {
+  var rows = [];
+  for (var i = 0; i < buckets.length; i++) {
+    var b = buckets[i];
+    rows.push({ hour: b.hour, component: 'CPU',    cost: b.cpu_cost_usd });
+    rows.push({ hour: b.hour, component: 'Memory', cost: b.memory_cost_usd });
+    rows.push({ hour: b.hour, component: 'Disk',   cost: b.disk_cost_usd });
+    rows.push({ hour: b.hour, component: 'Swap',   cost: b.swap_cost_usd });
+  }
+  var spec = {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    width: 'container',
+    height: 250,
+    data: { values: rows },
+    mark: { type: 'bar', tooltip: true },
+    encoding: {
+      x: {
+        field: 'hour', type: 'temporal',
+        axis: { title: null, format: '%m/%d %H:%M' }
+      },
+      y: {
+        field: 'cost', type: 'quantitative', aggregate: 'sum',
+        axis: { title: 'USD' }
+      },
+      color: {
+        field: 'component', type: 'nominal',
+        scale: {
+          domain: ['CPU', 'Memory', 'Disk', 'Swap'],
+          range: ['#4c78a8', '#72b7b2', '#f58518', '#e45756']
+        }
+      },
+      tooltip: [
+        { field: 'hour', type: 'temporal', title: 'Hour' },
+        { field: 'component', type: 'nominal', title: 'Component' },
+        { field: 'cost', type: 'quantitative', title: 'Cost ($)', format: '.4f' }
+      ]
+    },
+    config: {
+      view: { stroke: null }
+    }
+  };
+  vegaEmbed('#' + elementId, spec, { actions: false, renderer: 'svg' });
+}
+</script>
+
+{{end}}
+</body>
+</html>

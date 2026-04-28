@@ -166,6 +166,41 @@ func (c *metricsClient) queryMonthly(ctx context.Context, resourceGroups []strin
 	return result.Metrics, nil
 }
 
+// queryHourly fetches hourly metrics for the given resource groups over the specified period.
+func (c *metricsClient) queryHourly(ctx context.Context, resourceGroups []string, start, end time.Time) ([]types.HourlyMetric, error) {
+	reqBody := types.QueryHourlyRequest{
+		ResourceGroups: resourceGroups,
+		Start:          start,
+		End:            end,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/query/hourly", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("query metricsd hourly: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metricsd returned status %d", resp.StatusCode)
+	}
+
+	var result types.QueryHourlyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return result.Metrics, nil
+}
+
 // queryVMsOverLimit fetches VMs that exceed included disk or bandwidth thresholds for the current month.
 func (c *metricsClient) queryVMsOverLimit(ctx context.Context, vmIDs []string, diskIncludedBytes, bandwidthIncludedBytes int64) ([]types.VMOverLimit, error) {
 	reqBody := types.QueryVMsOverLimitRequest{

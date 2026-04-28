@@ -954,8 +954,8 @@ func (s *Server) handleQueryHourly(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "start and end must be valid and start must be before end", http.StatusBadRequest)
 		return
 	}
-	if req.End.Sub(req.Start) > 24*time.Hour {
-		http.Error(w, "period cannot exceed 24 hours", http.StatusBadRequest)
+	if req.End.Sub(req.Start) > 31*24*time.Hour {
+		http.Error(w, "period cannot exceed 31 days", http.StatusBadRequest)
 		return
 	}
 

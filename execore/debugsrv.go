@@ -167,6 +167,8 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/ideas", s.handleDebugTemplateReviewPost)
 	mux.HandleFunc("GET /debug/regions", s.handleDebugRegions)
 	mux.HandleFunc("GET /debug/usage-api", s.handleDebugUsageAPI)
+	mux.HandleFunc("GET /debug/usage-pricing-team", s.handleDebugUsagePricingTeam)
+	mux.HandleFunc("GET /debug/usage-pricing-team-api", s.handleDebugUsagePricingTeamAPI)
 
 	// SQL query tool & stream
 	mux.HandleFunc("GET /debug/sql-query", s.handleDebugSQLQueryForm)
