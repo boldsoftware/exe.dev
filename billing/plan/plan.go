@@ -367,6 +367,7 @@ var plans = map[Category]Plan{
 			DiskResize:         true,
 			BillingSelfServe:   true,
 			BillingTrialAccess: true,
+			AccountDelete:      true,
 		},
 	},
 	CategoryBasic: {

@@ -13,7 +13,7 @@ All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a v
 | Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize, self-serve billing |
 | Friend | `friend` | No | LLM, VM create/run, disk resize |
 | Grandfathered | `grandfathered` | No | LLM, invite claim, VM create/run, disk resize |
-| Trial | `trial:monthly:20260106` | No | LLM, VM create/run, disk resize, self-serve billing, trial access |
+| Trial | `trial:monthly:20260106` | No | LLM, VM create/run, disk resize, self-serve billing, trial access, account delete |
 | Basic | `basic:monthly:20260106` | No | LLM, invite claim, self-serve billing, trial access, account delete |
 | Restricted | `restricted` | No | Account delete only |
 

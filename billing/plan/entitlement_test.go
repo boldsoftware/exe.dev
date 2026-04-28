@@ -141,7 +141,7 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 		CategoryIndividual:    false,
 		CategoryFriend:        false,
 		CategoryGrandfathered: false,
-		CategoryTrial:         false,
+		CategoryTrial:         true,
 		CategoryBasic:         true,
 		CategoryRestricted:    true,
 	}
