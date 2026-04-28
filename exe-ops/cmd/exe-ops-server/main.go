@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +23,20 @@ import (
 	"github.com/tailscale/tscert"
 	"github.com/urfave/cli/v2"
 )
+
+// portHolder returns the PID(s) listening on addr (e.g. ":5555") using lsof.
+// Returns "" if it can't determine the holder.
+func portHolder(addr string) string {
+	port := addr
+	if i := strings.LastIndex(addr, ":"); i >= 0 {
+		port = addr[i+1:]
+	}
+	out, err := exec.Command("lsof", "-ti", "tcp:"+port).Output()
+	if err != nil || len(out) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -139,7 +156,17 @@ func main() {
 					err = srv.ListenAndServe()
 				}
 				if err != nil && err != http.ErrServerClosed {
-					log.Error("server error", "error", err)
+					attrs := []any{"error", err}
+					var opErr *net.OpError
+					if errors.As(err, &opErr) {
+						if se := new(os.SyscallError); errors.As(opErr.Err, &se) && se.Err == syscall.EADDRINUSE {
+							if pid := portHolder(c.String("addr")); pid != "" {
+								attrs = append(attrs, "held_by_pid", pid)
+							}
+						}
+					}
+					log.Error("server error", attrs...)
+					cancel()
 				}
 			}()
 
