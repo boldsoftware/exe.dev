@@ -62,76 +62,75 @@
 </div>
 
 <script>
-var daysInput = document.getElementById('days');
-var hoursInput = document.getElementById('hours');
-daysInput.addEventListener('input', function() {
-  if (this.value) hoursInput.value = '';
-});
-hoursInput.addEventListener('input', function() {
-  if (this.value) daysInput.value = '';
-});
+const daysInput = document.getElementById('days');
+const hoursInput = document.getElementById('hours');
+const statusEl = document.getElementById('status');
+const teamSelect = document.getElementById('team');
+const loadBtn = document.getElementById('load');
+
+daysInput.addEventListener('input', () => { if (daysInput.value) hoursInput.value = ''; });
+hoursInput.addEventListener('input', () => { if (hoursInput.value) daysInput.value = ''; });
 
 function getHours() {
-  var d = parseInt(daysInput.value);
+  const d = parseInt(daysInput.value);
   if (d > 0) return d * 24;
-  var h = parseInt(hoursInput.value);
+  const h = parseInt(hoursInput.value);
   return h > 0 ? h : 24;
 }
 
 async function loadData() {
-  var teamId = document.getElementById('team').value;
-  if (!teamId) { alert('Select a team'); return; }
-  var hours = getHours();
-  var status = document.getElementById('status');
-  status.textContent = 'Loading ' + hours + 'h of data...';
-  document.getElementById('load').disabled = true;
+  const teamId = teamSelect.value;
+  if (!teamId) { statusEl.textContent = 'Select a team first.'; return; }
+  const hours = getHours();
+  statusEl.textContent = `Loading ${hours}h of data...`;
+  loadBtn.disabled = true;
   try {
-    var resp = await fetch('/debug/usage-pricing-team-api?team_id=' + encodeURIComponent(teamId) + '&hours=' + hours);
-    if (!resp.ok) { status.textContent = 'Error: ' + resp.status + ' ' + (await resp.text()); return; }
-    var data = await resp.json();
-    renderCharts(data);
-    status.textContent = data.buckets.length + ' hourly buckets loaded.';
+    const resp = await fetch(`/debug/usage-pricing-team-api?team_id=${encodeURIComponent(teamId)}&hours=${hours}`);
+    if (!resp.ok) { statusEl.textContent = `Error: ${resp.status} ${await resp.text()}`; return; }
+    const data = await resp.json();
+    await renderCharts(data);
+    statusEl.textContent = `${data.buckets.length} hourly buckets loaded.`;
   } catch(e) {
-    status.textContent = 'Error: ' + e.message;
+    statusEl.textContent = `Error: ${e.message}`;
   } finally {
-    document.getElementById('load').disabled = false;
+    loadBtn.disabled = false;
   }
 }
 
-function renderCharts(data) {
-  var buckets = data.buckets || [];
+async function renderCharts(data) {
+  const buckets = data.buckets || [];
   if (buckets.length === 0) {
-    document.getElementById('status').textContent = 'No data for this period.';
+    statusEl.textContent = 'No data for this period.';
     return;
   }
 
-  // Summary stats
-  var totalCost = 0, peakCPU = 0, peakMem = 0, peakVMs = 0;
-  for (var i = 0; i < buckets.length; i++) {
-    var b = buckets[i];
+  let totalCost = 0, peakCPU = 0, peakMem = 0, peakVMs = 0;
+  for (const b of buckets) {
     totalCost += b.total_cost_usd;
     if (b.cpu_cores > peakCPU) peakCPU = b.cpu_cores;
     if (b.memory_rss_gib > peakMem) peakMem = b.memory_rss_gib;
     if (b.vm_count > peakVMs) peakVMs = b.vm_count;
   }
-  var summaryEl = document.getElementById('summary');
+  const summaryEl = document.getElementById('summary');
   summaryEl.style.display = 'flex';
   summaryEl.innerHTML =
-    '<div class="stat"><div class="label">Total Cost</div><div class="value">$' + totalCost.toFixed(2) + '</div></div>' +
-    '<div class="stat"><div class="label">Peak CPU</div><div class="value">' + peakCPU.toFixed(1) + ' cores</div></div>' +
-    '<div class="stat"><div class="label">Peak Memory</div><div class="value">' + peakMem.toFixed(1) + ' GiB</div></div>' +
-    '<div class="stat"><div class="label">Peak VMs</div><div class="value">' + peakVMs + '</div></div>' +
-    '<div class="stat"><div class="label">Hours</div><div class="value">' + buckets.length + '</div></div>';
+    `<div class="stat"><div class="label">Total Cost</div><div class="value">$${totalCost.toFixed(2)}</div></div>` +
+    `<div class="stat"><div class="label">Peak CPU</div><div class="value">${peakCPU.toFixed(1)} cores</div></div>` +
+    `<div class="stat"><div class="label">Peak Memory</div><div class="value">${peakMem.toFixed(1)} GiB</div></div>` +
+    `<div class="stat"><div class="label">Peak VMs</div><div class="value">${peakVMs}</div></div>` +
+    `<div class="stat"><div class="label">Hours</div><div class="value">${buckets.length}</div></div>`;
 
-  renderBar('chart-cpu', buckets, 'cpu_cores', 'CPU Cores', '#4c78a8');
-  renderBar('chart-mem', buckets, 'memory_rss_gib', 'Active Memory (GiB)', '#72b7b2');
-  renderBar('chart-swap', buckets, 'memory_swap_gib', 'Swap (GiB)', '#e45756');
-  renderBar('chart-disk', buckets, 'disk_gib', 'Disk (GiB)', '#f58518');
-  renderStackedCost('chart-cost', buckets);
+  await Promise.all([
+    renderBar('chart-cpu', buckets, 'cpu_cores', 'CPU Cores', '#4c78a8'),
+    renderBar('chart-mem', buckets, 'memory_rss_gib', 'Active Memory (GiB)', '#72b7b2'),
+    renderBar('chart-swap', buckets, 'memory_swap_gib', 'Swap (GiB)', '#e45756'),
+    renderBar('chart-disk', buckets, 'disk_gib', 'Disk (GiB)', '#f58518'),
+    renderStackedCost('chart-cost', buckets),
+  ]);
 }
 
 function renderBar(elementId, buckets, field, title, color) {
-  var spec = {
+  const spec = {
     $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
     width: 'container',
     height: 200,
@@ -153,23 +152,19 @@ function renderBar(elementId, buckets, field, title, color) {
         { field: 'vm_count', type: 'quantitative', title: 'VMs' }
       ]
     },
-    config: {
-      view: { stroke: null }
-    }
   };
-  vegaEmbed('#' + elementId, spec, { actions: false, renderer: 'svg' });
+  return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' });
 }
 
 function renderStackedCost(elementId, buckets) {
-  var rows = [];
-  for (var i = 0; i < buckets.length; i++) {
-    var b = buckets[i];
+  const rows = [];
+  for (const b of buckets) {
     rows.push({ hour: b.hour, component: 'CPU',    cost: b.cpu_cost_usd });
     rows.push({ hour: b.hour, component: 'Memory', cost: b.memory_cost_usd });
     rows.push({ hour: b.hour, component: 'Disk',   cost: b.disk_cost_usd });
     rows.push({ hour: b.hour, component: 'Swap',   cost: b.swap_cost_usd });
   }
-  var spec = {
+  const spec = {
     $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
     width: 'container',
     height: 250,
@@ -197,12 +192,16 @@ function renderStackedCost(elementId, buckets) {
         { field: 'cost', type: 'quantitative', title: 'Cost ($)', format: '.4f' }
       ]
     },
-    config: {
-      view: { stroke: null }
-    }
   };
-  vegaEmbed('#' + elementId, spec, { actions: false, renderer: 'svg' });
+  return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' });
 }
+
+// Auto-select first team and load on page ready.
+if (teamSelect.options.length > 1) {
+  teamSelect.selectedIndex = 1;
+  loadData();
+}
+teamSelect.addEventListener('change', loadData);
 </script>
 
 {{end}}
