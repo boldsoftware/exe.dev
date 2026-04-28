@@ -1,0 +1,9 @@
+[Unit]
+Description=Discover exelet hosts from tailscale for Prometheus file_sd
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/discover-exelets.py
+Environment=TARGET_DIR=/etc/prometheus/targets

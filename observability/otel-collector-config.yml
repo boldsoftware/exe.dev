@@ -19,7 +19,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
   # Prometheus receiver for staging metrics
-  # NOTE: Keep staging scrape_configs in sync with prometheus.yml
+  # Exelet targets are auto-discovered via file_sd from /etc/prometheus/targets/
   prometheus/staging:
     config:
       scrape_configs:
@@ -31,11 +31,8 @@ receivers:
               labels:
                 stage: 'staging'
                 role: 'exed'
-            - targets:
-                - 'exe-ctr-staging-01:9100'
-              labels:
-                stage: 'staging'
-                role: 'exelet'
+          file_sd_configs:
+            - files: ['/etc/prometheus/targets/node-exelets-staging.json']
 
         - job_name: 'exed-staging'
           scrape_interval: 60s
@@ -68,14 +65,12 @@ receivers:
         - job_name: 'exelet-staging'
           scrape_interval: 60s
           scheme: http
-          static_configs:
-            - targets: ["exe-ctr-staging-01:9081"]
-              labels:
-                stage: 'staging'
+          file_sd_configs:
+            - files: ['/etc/prometheus/targets/exelet-staging.json']
           metrics_path: '/metrics'
 
   # Prometheus receiver for production metrics
-  # NOTE: Keep production scrape_configs in sync with prometheus.yml
+  # Exelet targets are auto-discovered via file_sd from /etc/prometheus/targets/
   prometheus/production:
     config:
       scrape_configs:
@@ -91,19 +86,6 @@ receivers:
               labels:
                 stage: 'production'
                 role: 'exed'
-            - targets:
-                - 'exe-ctr-02:9100'
-                - 'exe-ctr-03:9100'
-                - 'exe-ctr-04:9100'
-                - 'exe-ctr-05:9100'
-                - 'exe-ctr-07:9100'
-                - 'exe-ctr-08:9100'
-                - 'exe-ctr-09:9100'
-                - 'exe-ctr-10:9100'
-                - 'exe-ctr-11:9100'
-              labels:
-                stage: 'production'
-                role: 'exelet'
             - targets:
                 - 'exeprox-atl-na-01:19100'  # exeprox listens on 3000-9999 for proxy, so use 10000+9100
                 - 'exeprox-dxb-na-01:19100'
@@ -129,6 +111,8 @@ receivers:
               labels:
                 stage: 'production'
                 role: 'exeprox'
+          file_sd_configs:
+            - files: ['/etc/prometheus/targets/node-exelets-prod.json']
 
         - job_name: 'grafana-production'
           scrape_interval: 60s
@@ -193,10 +177,8 @@ receivers:
         - job_name: 'exelet-production'
           scrape_interval: 60s
           scheme: http
-          static_configs:
-            - targets: ["exe-ctr-02:9081", "exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081"]
-              labels:
-                stage: 'production'
+          file_sd_configs:
+            - files: ['/etc/prometheus/targets/exelet-prod.json']
           metrics_path: '/metrics'
 
         - job_name: 'exeprox-production'
@@ -228,6 +210,27 @@ receivers:
           scheme: http
           static_configs:
             - targets: ["mon:9099"]
+          metrics_path: '/metrics'
+
+        - job_name: 'rollcalld-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["mon:9098"]
+          metrics_path: '/metrics'
+
+        - job_name: 'otel-collector-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["mon:8888"]
+          metrics_path: '/metrics'
+
+        - job_name: 'exe-ops-production'
+          scrape_interval: 60s
+          scheme: http
+          static_configs:
+            - targets: ["exe-ops:9100", "exe-ops-staging:9100"]
           metrics_path: '/metrics'
 
 processors:

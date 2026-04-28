@@ -1,13 +1,14 @@
 # THIS FILE IS UNDER SOURCE CONTROL at exe.git/observability/...
 #
-# NOTE: Scrape configs are duplicated in otel-collector-config.yml for
-# forwarding metrics to S3. When updating targets, update both files to
-# keep them in sync.
+# NOTE: Exelet/replica/exe-ctr targets are auto-discovered from tailscale
+# by discover-exelets.py (runs every 5min via systemd timer) and written
+# to /etc/prometheus/targets/*.json. Both this file and otel-collector-config.yml
+# reference the same file_sd target files.
 
 global:
-  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  scrape_interval: 30s
   scrape_timeout: 30s # Heavy nodes can stall on /proc/net/dev due to RTNL lock contention.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  evaluation_interval: 30s
 
 scrape_configs:
   - job_name: "grafana"
@@ -31,79 +32,6 @@ scrape_configs:
         labels:
           stage: 'production'
           role: 'exed'
-      - targets:
-        - 'exe-ctr-03:9100'
-        - 'exe-ctr-04:9100'
-        - 'exe-ctr-05:9100'
-        - 'exe-ctr-07:9100'
-        - 'exe-ctr-08:9100'
-        - 'exe-ctr-09:9100'
-        - 'exe-ctr-10:9100'
-        - 'exe-ctr-11:9100'
-        - 'exe-ctr-12:9100'
-        - 'exe-ctr-13:9100'
-        - 'exe-ctr-14:9100'
-        - 'exe-ctr-15:9100'
-        - 'exe-ctr-16:9100'
-        - 'exe-ctr-18:9100'
-        - 'exe-ctr-19:9100'
-        - 'exelet-pdx-prod-01:9100'
-        - 'exelet-iad-prod-01:9100'
-        - 'exelet-lax2-prod-01:9100'
-        - 'exelet-lax2-prod-01-replica:9100'
-        - 'exelet-lax2-prod-02:9100'
-        - 'exelet-lax2-prod-02-replica:9100'
-        - 'exelet-lax2-prod-03:9100'
-        - 'exelet-lax2-prod-03-replica:9100'
-        - 'exelet-lax2-prod-04:9100'
-        - 'exelet-lax2-prod-04-replica:9100'
-        - 'exelet-lax2-prod-05:9100'
-        - 'exelet-lax2-prod-05-replica:9100'
-        - 'exelet-lax2-prod-06:9100'
-        - 'exelet-lax2-prod-06-replica:9100'
-        - 'exelet-lax-prod-03:9100'
-        - 'exelet-lax-prod-03-replica:9100'
-        - 'exelet-lax-prod-04:9100'
-        - 'exelet-lax-prod-04-replica:9100'
-        - 'exelet-lax-prod-05:9100'
-        - 'exelet-lax-prod-05-replica:9100'
-        - 'exelet-dal-prod-01:9100'
-        - 'exelet-dal-prod-01-replica:9100'
-        - 'exelet-dal-prod-02:9100'
-        - 'exelet-dal-prod-02-replica:9100'
-        - 'exelet-dal-prod-03:9100'
-        - 'exelet-dal-prod-03-replica:9100'
-        - 'exelet-dal-prod-04:9100'
-        - 'exelet-dal-prod-04-replica:9100'
-        - 'exelet-nyc-prod-01:9100'
-        - 'exelet-nyc-prod-01-replica:9100'
-        - 'exelet-nyc-prod-02:9100'
-        - 'exelet-nyc-prod-02-replica:9100'
-        - 'exelet-nyc-prod-03:9100'
-        - 'exelet-nyc-prod-03-replica:9100'
-        - 'exelet-nyc-prod-04:9100'
-        - 'exelet-nyc-prod-04-replica:9100'
-        - 'exelet-tyo4-prod-01:9100'
-        - 'exelet-tyo4-prod-01-replica:9100'
-        - 'exelet-tyo4-prod-02:9100'
-        - 'exelet-tyo4-prod-02-replica:9100'
-        - 'exelet-tyo4-prod-03:9100'
-        - 'exelet-tyo4-prod-03-replica:9100'
-        - 'exelet-lon2-prod-01:9100'
-        - 'exelet-lon2-prod-01-replica:9100'
-        - 'exelet-fra2-prod-01:9100'
-        - 'exelet-fra2-prod-01-replica:9100'
-        - 'exelet-fra2-prod-02:9100'
-        - 'exelet-fra2-prod-02-replica:9100'
-        - 'exelet-fra2-prod-03:9100'
-        - 'exelet-fra2-prod-03-replica:9100'
-        - 'exelet-syd2-prod-01:9100'
-        - 'exelet-syd2-prod-01-replica:9100'
-        - 'exelet-sgp-prod-01:9100'
-        - 'exelet-sgp-prod-01-replica:9100'
-        labels:
-          stage: 'production'
-          role: 'exelet'
       - targets:
         - 'exeprox-atl-na-01:19100'  # exeprox listens on 3000-9999 for proxy, so use 10000+9100
         - 'exeprox-dxb-na-01:19100'
@@ -134,15 +62,10 @@ scrape_configs:
         labels:
           stage: 'staging'
           role: 'exed'
-      - targets:
-        - 'exelet-lax2-staging-01:9100'
-        - 'exelet-lax2-staging-01-replica:9100'
-        - 'exelet-nyc-staging-01:9100'
-        - 'exelet-pdx-staging-01:9100'
-        - 'exelet-pdx-staging-02:9100'
-        labels:
-          stage: 'staging'
-          role: 'exelet'
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/node-exelets-prod.json'
+          - '/etc/prometheus/targets/node-exelets-staging.json'
 
   - job_name: 'exed'
     scheme: https
@@ -203,13 +126,10 @@ scrape_configs:
 
   - job_name: 'exelet'
     scheme: http
-    static_configs:
-      - targets: ["exe-ctr-03:9081", "exe-ctr-04:9081", "exe-ctr-05:9081", "exe-ctr-07:9081", "exe-ctr-08:9081", "exe-ctr-09:9081", "exe-ctr-10:9081", "exe-ctr-11:9081", "exe-ctr-12:9081", "exe-ctr-13:9081", "exe-ctr-14:9081", "exe-ctr-15:9081", "exe-ctr-16:9081", "exe-ctr-18:9081", "exe-ctr-19:9081", "exelet-pdx-prod-01:9081", "exelet-iad-prod-01:9081", "exelet-lax2-prod-01:9081", "exelet-lax2-prod-02:9081", "exelet-lax2-prod-03:9081", "exelet-lax2-prod-04:9081", "exelet-lax2-prod-05:9081", "exelet-lax2-prod-06:9081", "exelet-lax-prod-03:9081", "exelet-lax-prod-04:9081", "exelet-lax-prod-05:9081", "exelet-dal-prod-01:9081", "exelet-dal-prod-02:9081", "exelet-dal-prod-03:9081", "exelet-dal-prod-04:9081", "exelet-nyc-prod-01:9081", "exelet-nyc-prod-02:9081", "exelet-nyc-prod-03:9081", "exelet-nyc-prod-04:9081", "exelet-tyo4-prod-01:9081", "exelet-tyo4-prod-02:9081", "exelet-tyo4-prod-03:9081", "exelet-lon2-prod-01:9081", "exelet-fra2-prod-01:9081", "exelet-fra2-prod-02:9081", "exelet-fra2-prod-03:9081", "exelet-syd2-prod-01:9081", "exelet-sgp-prod-01:9081"]
-        labels:
-          stage: 'production'
-      - targets: ["exelet-lax2-staging-01:9081", "exelet-nyc-staging-01:9081", "exelet-pdx-staging-01:9081", "exelet-pdx-staging-02:9081"]
-        labels:
-          stage: 'staging'
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/exelet-prod.json'
+          - '/etc/prometheus/targets/exelet-staging.json'
     metrics_path: '/metrics'
 
   - job_name: 'exeprox'

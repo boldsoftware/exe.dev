@@ -98,6 +98,14 @@ echo "Installed: \$(/usr/local/bin/${OTEL_BINARY_NAME} --version | head -1)"
 EOF
 fi
 
+# Ensure exelet discovery target files exist (shared with prometheus)
+echo "Ensuring exelet discovery targets exist..."
+ssh ubuntu@mon "sudo mkdir -p /etc/prometheus/targets"
+scp "${SCRIPT_DIR}/scripts/discover-exelets.py" ubuntu@mon:/tmp/discover-exelets.py
+ssh ubuntu@mon "sudo mv /tmp/discover-exelets.py /usr/local/bin/discover-exelets.py && sudo chmod 755 /usr/local/bin/discover-exelets.py"
+# Seed target files if they don't exist yet
+ssh ubuntu@mon "test -f /etc/prometheus/targets/exelet-prod.json || sudo python3 /usr/local/bin/discover-exelets.py"
+
 # Create log directories
 echo "Creating log directories..."
 ssh ubuntu@mon "sudo mkdir -p /var/log/otel/{staging,production,unknown} && sudo chmod -R 755 /var/log/otel"
