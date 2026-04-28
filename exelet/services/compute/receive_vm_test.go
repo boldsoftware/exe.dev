@@ -102,7 +102,8 @@ func (m *mockDeleteNetworkManager) DeleteInterface(_ context.Context, _, _, _ st
 
 type testLogger struct{}
 
-func (l *testLogger) WarnContext(_ context.Context, _ string, _ ...any) {}
+func (l *testLogger) WarnContext(_ context.Context, _ string, _ ...any)  {}
+func (l *testLogger) DebugContext(_ context.Context, _ string, _ ...any) {}
 
 // TestRollbackClosesRecvWritersBeforeDelete verifies that Rollback terminates
 // in-flight zfs recv pipe writers before calling storageManager.Delete.

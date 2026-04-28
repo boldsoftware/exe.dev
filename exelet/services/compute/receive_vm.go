@@ -57,7 +57,13 @@ func (s *Service) finalizeLiveReceive(ctx context.Context, instanceID, instanceD
 		return nil, false, status.Errorf(codes.Internal, "failed to save early instance config: %v", err)
 	}
 
-	// Restore from snapshot (starts CH daemon, restores, resumes)
+	// Restore from snapshot (starts CH daemon, restores, resumes). Mark
+	// the cgroup as created up-front: RestoreFromSnapshot goes through
+	// startCHProcess -> applyCgroupPlacement -> PrepareVMCgroup, which
+	// creates vm-<id>.scope unconditionally on cgroup-v2 hosts. Even if
+	// RestoreFromSnapshot itself fails, the scope dir is already on disk
+	// and must be released by rollback.
+	rb.cgroupCreated = true
 	s.log.InfoContext(ctx, "live: restoring VM from snapshot", "instance", instanceID)
 	restoreErr := s.vmm.RestoreFromSnapshot(ctx, instanceID, snapshotDir)
 
@@ -385,6 +391,7 @@ type receiveVMRollback struct {
 	ctx context.Context
 	log interface {
 		WarnContext(ctx context.Context, msg string, args ...any)
+		DebugContext(ctx context.Context, msg string, args ...any)
 	}
 	storageManager interface {
 		Delete(ctx context.Context, id string) error
@@ -392,11 +399,25 @@ type receiveVMRollback struct {
 	networkManager interface {
 		DeleteInterface(ctx context.Context, id, ip, mac string) error
 	}
-	instanceID           string
-	instanceDir          string
-	baseImageID          string
-	targetNetwork        *api.NetworkInterface
-	stopVM               func() // set after successful live restore to stop CH process on rollback
+	// cgroupPreparer releases the per-VM cgroup scope created during the
+	// live-receive's startCHProcess (RestoreFromSnapshot or cold-boot
+	// fallback). Without it, an aborted or failed receive leaves an empty
+	// vm-<id>.scope behind under exelet.slice forever — same bug class as
+	// create/clone rollback, just on the receive path. nil in tests where
+	// no preparer is wired in.
+	cgroupPreparer interface {
+		ReleaseVMCgroup(ctx context.Context, id, groupID string) error
+	}
+	instanceID    string
+	instanceDir   string
+	baseImageID   string
+	groupID       string
+	targetNetwork *api.NetworkInterface
+	stopVM        func() // set after successful live restore to stop CH process on rollback
+	// cgroupCreated is set once a code path has caused PrepareVMCgroup to
+	// run (i.e. startCHProcess has been entered). Keeping it explicit means
+	// we never call ReleaseVMCgroup on the no-op pre-restore path.
+	cgroupCreated        bool
 	encryptionKeyCreated bool
 	baseImageCreated     bool
 	zfsDatasetCreated    bool
@@ -474,10 +495,23 @@ func (r *receiveVMRollback) Rollback() {
 		}
 	}
 
-	// Remove instance directory (includes snapshot dir)
+	// Remove instance directory (includes snapshot dir) BEFORE releasing
+	// the cgroup scope. Same reason as create/clone rollback: the resource
+	// manager's poll loop reads on-disk configs and would otherwise re-
+	// create the scope we are about to remove.
 	if r.instanceDirCreated || r.snapshotDirCreated {
 		if err := os.RemoveAll(r.instanceDir); err != nil {
 			r.log.WarnContext(ctx, "failed to remove instance dir during rollback", "instance", r.instanceID, "error", err)
+		}
+	}
+
+	// Release the per-VM cgroup scope created by startCHProcess (via
+	// RestoreFromSnapshot or the cold-boot fallback). Skip if no scope was
+	// ever created on this code path — the receive may have failed before
+	// finalizeLiveReceive even ran.
+	if r.cgroupCreated && r.cgroupPreparer != nil {
+		if err := r.cgroupPreparer.ReleaseVMCgroup(ctx, r.instanceID, r.groupID); err != nil {
+			r.log.DebugContext(ctx, "failed to release VM cgroup during rollback", "instance", r.instanceID, "error", err)
 		}
 	}
 

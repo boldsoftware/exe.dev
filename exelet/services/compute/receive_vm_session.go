@@ -189,9 +189,11 @@ func (m *receiveVMSessionManager) create(_ context.Context, req *api.InitReceive
 		log:            m.log,
 		storageManager: m.service.context.StorageManager,
 		networkManager: m.service.context.NetworkManager,
+		cgroupPreparer: m.service.context.CgroupPreparer,
 		instanceID:     req.InstanceID,
 		instanceDir:    m.service.getInstanceDir(req.InstanceID),
 		baseImageID:    req.BaseImageID,
+		groupID:        req.GroupID,
 	}
 	return sess, false, nil
 }
