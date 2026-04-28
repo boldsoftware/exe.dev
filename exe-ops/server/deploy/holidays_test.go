@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+func TestUSFederalHolidayName(t *testing.T) {
+	loc, _ := time.LoadLocation("America/New_York")
+	date := func(y, m, d int) time.Time {
+		return time.Date(y, time.Month(m), d, 12, 0, 0, 0, loc)
+	}
+
+	// Spot-check that names come back.
+	if name := USFederalHolidayName(date(2024, 12, 25)); name != "Christmas Day" {
+		t.Errorf("Christmas = %q", name)
+	}
+	if name := USFederalHolidayName(date(2024, 11, 28)); name != "Thanksgiving" {
+		t.Errorf("Thanksgiving = %q", name)
+	}
+	if name := USFederalHolidayName(date(2024, 3, 12)); name != "" {
+		t.Errorf("regular day = %q, want empty", name)
+	}
+}
+
 func TestIsUSFederalHoliday(t *testing.T) {
 	loc, _ := time.LoadLocation("America/New_York")
 	date := func(y, m, d int) time.Time {
@@ -34,7 +52,7 @@ func TestIsUSFederalHoliday(t *testing.T) {
 		{"Presidents Day 2024 (3rd Mon Feb)", date(2024, 2, 19), true},
 		{"Memorial Day 2024 (last Mon May)", date(2024, 5, 27), true},
 		{"Labor Day 2024 (1st Mon Sep)", date(2024, 9, 2), true},
-		{"Columbus Day 2024 (2nd Mon Oct)", date(2024, 10, 14), true},
+		{"Indigenous Peoples' Day 2024 (2nd Mon Oct)", date(2024, 10, 14), true},
 		{"Thanksgiving 2024 (4th Thu Nov)", date(2024, 11, 28), true},
 
 		// Not holidays

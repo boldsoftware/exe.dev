@@ -140,6 +140,25 @@ func (g *GitRepo) headSHALocked(ctx context.Context) string {
 	return string(bytes.TrimSpace(out))
 }
 
+// CommitCount returns the number of commits in (fromSHA, toSHA].
+// Returns -1 on error.
+func (g *GitRepo) CommitCount(fromSHA, toSHA string) int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", g.dir, "rev-list", "--count", fromSHA+".."+toSHA)
+	out, err := cmd.Output()
+	if err != nil {
+		return -1
+	}
+	n, err := strconv.Atoi(string(bytes.TrimSpace(out)))
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
 // CommitInfo holds resolved metadata for a commit.
 type CommitInfo struct {
 	Subject       string

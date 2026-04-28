@@ -52,9 +52,13 @@ type CDStatus struct {
 	WindowOpen     bool             `json:"window_open"`
 }
 
-// GitSHAProvider provides the HEAD SHA of the main branch.
+// GitSHAProvider provides the HEAD SHA of the main branch and commit
+// range counting.
 type GitSHAProvider interface {
 	HeadSHA() string
+	// CommitCount returns the number of commits in (fromSHA, toSHA].
+	// Returns -1 on error.
+	CommitCount(fromSHA, toSHA string) int
 }
 
 // CDNotifier handles CD-specific Slack notifications.
@@ -65,22 +69,24 @@ type CDNotifier interface {
 
 // InventoryProvider provides host information for exed.
 type InventoryProvider interface {
-	// ExedHost returns the deploy target info for exed (host, dnsName, stage, role).
-	ExedHost() (host, dnsName, stage, role string, ok bool)
+	// ExedHost returns the deploy target info for exed (host, dnsName, stage, role, deployedSHA).
+	ExedHost() (host, dnsName, stage, role, deployedSHA string, ok bool)
 }
 
 const (
 	deployInterval = 30 * time.Minute
 
 	// Time window: first deploy at 9:00 AM ET, last at 6:00 PM PT.
-	// In UTC:
-	//   9:00 AM ET = 14:00 UTC (standard) or 13:00 UTC (daylight)
-	//   6:00 PM PT = 02:00 UTC next day (standard) or 01:00 UTC next day (daylight)
-	// We'll use America/New_York and America/Los_Angeles to handle DST properly.
+	// We use America/New_York and America/Los_Angeles to handle DST properly.
 	windowStartHour   = 9 // 9 AM in America/New_York
 	windowStartMinute = 0
 	windowEndHour     = 18 // 6 PM in America/Los_Angeles
 	windowEndMinute   = 0
+
+	// maxCommitsPerDeploy is the threshold above which CD auto-disables.
+	// A deploy with more than this many commits is too risky for automated
+	// rollout and requires human review.
+	maxCommitsPerDeploy = 20
 )
 
 // NewScheduler creates a new CD scheduler.
@@ -115,7 +121,7 @@ func (s *Scheduler) Enable() {
 	if s.notifier != nil {
 		now := s.nowFunc()
 		next := s.nextDeployTime(now)
-		s.notifier.CDPostMessage(fmt.Sprintf("🟢 exed CD enabled — first deploy at %s", next.UTC().Format("15:04 UTC")))
+		s.notifier.CDPostMessage(fmt.Sprintf("🟢 exed CD enabled — first deploy at %s", formatTime(next)))
 	}
 	// Wake the Run loop so it picks up the new state immediately.
 	select {
@@ -195,8 +201,17 @@ func (s *Scheduler) Run(ctx context.Context) {
 		next := s.nextDeployTime(now)
 
 		s.mu.Lock()
+		prevNext := s.nextAt
 		s.nextAt = next
 		s.mu.Unlock()
+
+		// If the next deploy is on a different day and we haven't already
+		// announced it, explain why (holiday, weekend, end of day).
+		if s.notifier != nil && !next.IsZero() && (prevNext.IsZero() || prevNext.YearDay() != next.YearDay() || prevNext.Year() != next.Year()) {
+			if reason := s.skipReason(now); reason != "" {
+				s.notifier.CDPostMessage(fmt.Sprintf("💤 exed CD paused — %s. Resumes %s", reason, formatTimeWithDay(next)))
+			}
+		}
 
 		// Update topic with next deploy time.
 		if s.notifier != nil {
@@ -276,10 +291,30 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 	s.mu.Unlock()
 
 	// Get exed host info from inventory.
-	host, dnsName, stage, role, ok := s.inventory.ExedHost()
+	host, dnsName, stage, role, deployedSHA, ok := s.inventory.ExedHost()
 	if !ok {
 		s.log.Warn("CD deploy skipped: exed host not found in inventory")
 		return
+	}
+
+	// Safety valve: if the deploy would ship too many commits, disable CD
+	// and alert the team. Large changesets are risky for automated rollout.
+	if deployedSHA != "" && len(deployedSHA) == 40 {
+		count := s.gitSHA.CommitCount(deployedSHA, sha)
+		if count > maxCommitsPerDeploy {
+			s.log.Warn("CD disabled: too many commits", "count", count, "from", deployedSHA[:12], "to", sha[:12])
+			s.mu.Lock()
+			s.enabled = false
+			s.disabledReason = fmt.Sprintf("%d commits in next release (max %d)", count, maxCommitsPerDeploy)
+			s.mu.Unlock()
+			if s.notifier != nil {
+				s.notifier.CDPostMessage(fmt.Sprintf(
+					"<!here> 🔴 exed CD disabled — %d commits in the next release (%s → %s). Manual deploy required.",
+					count, shaLink(deployedSHA), shaLink(sha)))
+				s.notifier.CDSetTopic("exed: 🔴 CD disabled")
+			}
+			return
+		}
 	}
 
 	shaShort := sha[:12]
@@ -293,7 +328,7 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 		Host:        host,
 		DNSName:     dnsName,
 		SHA:         sha,
-		InitiatedBy: "CD scheduler",
+		InitiatedBy: "exe-ops",
 	}
 
 	status, err := s.manager.Start(req)
@@ -337,7 +372,7 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 					if next.Sub(now) > 12*time.Hour {
 						// Next deploy is tomorrow or later — this was the last one.
 						s.notifier.CDPostMessage(fmt.Sprintf("🌙 Last exed deploy of the day (%s). Next: %s",
-							shaShort, next.UTC().Format("Mon 15:04 UTC")))
+							shaLink(sha), formatTimeWithDay(next)))
 					}
 					s.updateTopic()
 				}
@@ -400,13 +435,9 @@ func (s *Scheduler) updateTopic() {
 	if !s.isWindowOpen(now) {
 		// Outside window: show when next deploy will happen.
 		next := s.nextDeployTime(now)
-		nextStr := next.UTC().Format("Mon 15:04 UTC")
+		nextStr := formatTimeWithDay(next)
 		if s.lastDeploy != nil {
-			shaShort := s.lastDeploy.SHA
-			if len(shaShort) > 12 {
-				shaShort = shaShort[:12]
-			}
-			s.notifier.CDSetTopic(fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaShort, nextStr))
+			s.notifier.CDSetTopic(fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 		} else {
 			s.notifier.CDSetTopic(fmt.Sprintf("exed: 💤 CD idle | Next: %s", nextStr))
 		}
@@ -414,17 +445,58 @@ func (s *Scheduler) updateTopic() {
 	}
 
 	// Within window, between deploys.
+	nextStr := formatTime(s.nextAt)
 	if s.lastDeploy != nil {
-		shaShort := s.lastDeploy.SHA
-		if len(shaShort) > 12 {
-			shaShort = shaShort[:12]
-		}
-		nextStr := s.nextAt.UTC().Format("15:04 UTC")
-		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 %s | Next: %s", shaShort, nextStr))
+		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 	} else {
-		nextStr := s.nextAt.UTC().Format("15:04 UTC")
 		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
 	}
+}
+
+// skipReason returns a human-readable explanation for why CD is not deploying
+// right now (e.g. holiday, weekend, outside hours). Returns "" if now is
+// within the deploy window.
+func (s *Scheduler) skipReason(now time.Time) string {
+	et, _ := time.LoadLocation("America/New_York")
+	nowET := now.In(et)
+
+	if name := USFederalHolidayName(now); name != "" {
+		return name
+	}
+	switch nowET.Weekday() {
+	case time.Saturday, time.Sunday:
+		return "weekend"
+	}
+	return "outside deploy window"
+}
+
+// formatTime renders t as "15:04 UTC | 11:04 ET | 08:04 PT" for Slack.
+func formatTime(t time.Time) string {
+	et, _ := time.LoadLocation("America/New_York")
+	pt, _ := time.LoadLocation("America/Los_Angeles")
+	return fmt.Sprintf("%s | %s ET | %s PT",
+		t.UTC().Format("15:04 UTC"),
+		t.In(et).Format("15:04"),
+		t.In(pt).Format("15:04"))
+}
+
+// formatTimeWithDay is like formatTime but includes the weekday.
+func formatTimeWithDay(t time.Time) string {
+	et, _ := time.LoadLocation("America/New_York")
+	pt, _ := time.LoadLocation("America/Los_Angeles")
+	return fmt.Sprintf("%s | %s ET | %s PT",
+		t.UTC().Format("Mon 15:04 UTC"),
+		t.In(et).Format("Mon 15:04"),
+		t.In(pt).Format("Mon 15:04"))
+}
+
+// shaLink returns a Slack mrkdwn link to the GitHub commit.
+func shaLink(sha string) string {
+	short := sha
+	if len(short) > 12 {
+		short = short[:12]
+	}
+	return fmt.Sprintf("<%s%s|%s>", githubCommitURL, sha, short)
 }
 
 // nextDeployTime computes the next time a deploy should run, given the
