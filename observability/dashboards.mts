@@ -1703,6 +1703,15 @@ function makeDevExeDashboard() {
       panelCustomization: (x) => x.min(0),
       gridPos: { w: 8, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{stage}} {{job}}"),
+      alertQueryOverride: `sum(rate(logs_total{level="ERROR",stage="production"}[5m]))`,
+      alert: {
+        threshold: 0.1,
+        condition: "gt",
+        forDuration: "5m",
+        summary: "Error log rate is elevated",
+        description: "Production services are logging errors at an elevated rate (>6/min sustained 5m). <https://hyperdx.clickhouse.cloud/search/69f12ff291bbdcd78be324b2?chcServiceId=3d718833-6a3d-46f4-90e3-329159975f64&source=69cc2aaa15bdab674da27769&where=&select=Timestamp%252C%2520ServiceName%2520as%2520service%252C%2520SeverityText%2520as%2520level%252C%2520Body&whereLanguage=lucene&filters=%255B%257B%2522type%2522%253A%2522sql%2522%252C%2522condition%2522%253A%2522SeverityText%2520IN%2520(%27ERROR%27)%2522%257D%255D&orderBy=|Error logs in HyperDX>",
+        labels: { channel: "buzz" },
+      },
     }
   );
 
