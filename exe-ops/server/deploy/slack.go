@@ -235,21 +235,21 @@ func (s *SlackNotifier) SetChannelTopic(channel, topic string) error {
 	return err
 }
 
-// CDSetTopic updates the #ship channel topic (for CD status).
-func (s *SlackNotifier) CDSetTopic(topic string) {
-	if err := s.SetChannelTopic(slackChannelProd, topic); err != nil {
-		s.log.Warn("slack: set topic", "topic", topic, "error", err)
+// CDSetTopic updates the channel topic for CD status.
+func (s *SlackNotifier) CDSetTopic(channel, topic string) {
+	if err := s.SetChannelTopic(channel, topic); err != nil {
+		s.log.Warn("slack: set topic", "channel", channel, "topic", topic, "error", err)
 	}
 }
 
-// CDPostMessage posts a CD-related message to #ship.
-func (s *SlackNotifier) CDPostMessage(text string) {
-	channelID, err := s.findChannelID(slackChannelProd)
+// CDPostMessage posts a CD-related message to a channel.
+func (s *SlackNotifier) CDPostMessage(channel, text string) {
+	channelID, err := s.findChannelID(channel)
 	if err != nil {
-		s.log.Warn("slack: find channel for CD message", "error", err)
+		s.log.Warn("slack: find channel for CD message", "channel", channel, "error", err)
 		return
 	}
 	if _, err := s.postMessage(channelID, text, nil); err != nil {
-		s.log.Warn("slack: post CD message", "error", err)
+		s.log.Warn("slack: post CD message", "channel", channel, "error", err)
 	}
 }

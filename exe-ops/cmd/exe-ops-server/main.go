@@ -122,10 +122,10 @@ func main() {
 				deployer.Prebuild(ctx, sha, []string{"exed"})
 			})
 
-			// Initialize CD scheduler for exed (prod only, disabled by default).
+			// Initialize CD scheduler for exed (disabled by default).
 			var scheduler *deploy.Scheduler
-			if environment == "prod" {
-				scheduler = deploy.NewScheduler(deployer, gitRepo, slackNotifier, inv, log, "cd-state.json")
+			if slackNotifier != nil {
+				scheduler = deploy.NewScheduler(deployer, gitRepo, slackNotifier, inv, log, environment, "cd-state.json")
 			}
 
 			// When TLS is on we're serving over Tailscale, which is also

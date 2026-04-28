@@ -36,6 +36,12 @@
               <span class="sidebar-label">Hosts</span>
             </router-link>
           </li>
+          <li>
+            <router-link to="/cd" class="nav-item" :class="{ active: $route.name === 'cd' }" :title="sidebarCollapsed ? 'CD' : undefined">
+              <i class="pi pi-sync nav-icon icon-cyan"></i>
+              <span class="sidebar-label">CD</span>
+            </router-link>
+          </li>
         </ul>
       </nav>
       <div class="sidebar-footer">

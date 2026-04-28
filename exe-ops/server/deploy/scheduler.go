@@ -27,6 +27,7 @@ type Scheduler struct {
 	notifier  CDNotifier
 	inventory InventoryProvider
 	log       *slog.Logger
+	channel   string // slack channel ("ship" for prod, "boat" for staging)
 
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
@@ -66,8 +67,8 @@ type GitSHAProvider interface {
 
 // CDNotifier handles CD-specific Slack notifications.
 type CDNotifier interface {
-	CDSetTopic(topic string)
-	CDPostMessage(text string)
+	CDSetTopic(channel, topic string)
+	CDPostMessage(channel, text string)
 }
 
 // InventoryProvider provides host information for exed.
@@ -107,14 +108,20 @@ func NewScheduler(
 	notifier CDNotifier,
 	inventory InventoryProvider,
 	log *slog.Logger,
+	environment string,
 	stateFile string,
 ) *Scheduler {
+	channel := "ship"
+	if environment == "staging" {
+		channel = "boat"
+	}
 	s := &Scheduler{
 		manager:   manager,
 		gitSHA:    gitSHA,
 		notifier:  notifier,
 		inventory: inventory,
 		log:       log,
+		channel:   channel,
 		nowFunc:   time.Now,
 		wakeC:     make(chan struct{}, 1),
 		stateFile: stateFile,
@@ -137,7 +144,7 @@ func (s *Scheduler) Enable() {
 	if s.notifier != nil {
 		now := s.nowFunc()
 		next := s.nextDeployTime(now)
-		s.notifier.CDPostMessage(fmt.Sprintf("🟢 exed CD enabled — first deploy at %s", formatTime(next)))
+		s.notifier.CDPostMessage(s.channel, fmt.Sprintf("🟢 exed CD enabled — first deploy at %s", formatTime(next)))
 	}
 	// Wake the Run loop so it picks up the new state immediately.
 	select {
@@ -158,8 +165,8 @@ func (s *Scheduler) Disable() {
 	s.saveStateLocked()
 	s.log.Info("CD scheduler disabled")
 	if s.notifier != nil {
-		s.notifier.CDPostMessage("🔴 exed CD disabled")
-		s.notifier.CDSetTopic("exed: 🔴 CD disabled")
+		s.notifier.CDPostMessage(s.channel, "🔴 exed CD disabled")
+		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
 	}
 	// Wake the Run loop.
 	select {
@@ -226,7 +233,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 		// announced it, explain why (holiday, weekend, end of day).
 		if s.notifier != nil && !next.IsZero() && (prevNext.IsZero() || prevNext.YearDay() != next.YearDay() || prevNext.Year() != next.Year()) {
 			if reason := s.skipReason(now); reason != "" {
-				s.notifier.CDPostMessage(fmt.Sprintf("💤 exed CD paused — %s. Resumes %s", reason, formatTimeWithDay(next)))
+				s.notifier.CDPostMessage(s.channel, fmt.Sprintf("💤 exed CD paused — %s. Resumes %s", reason, formatTimeWithDay(next)))
 			}
 		}
 
@@ -326,10 +333,10 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 			s.saveStateLocked()
 			s.mu.Unlock()
 			if s.notifier != nil {
-				s.notifier.CDPostMessage(fmt.Sprintf(
+				s.notifier.CDPostMessage(s.channel, fmt.Sprintf(
 					"<!here> 🔴 exed CD disabled — %d commits in the next release (%s → %s). Manual deploy required.",
 					count, shaLink(deployedSHA), shaLink(sha)))
-				s.notifier.CDSetTopic("exed: 🔴 CD disabled")
+				s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
 			}
 			return
 		}
@@ -389,7 +396,7 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 					next := s.nextDeployTime(now)
 					if next.Sub(now) > 12*time.Hour {
 						// Next deploy is tomorrow or later — this was the last one.
-						s.notifier.CDPostMessage(fmt.Sprintf("🌙 Last exed deploy of the day (%s). Next: %s",
+						s.notifier.CDPostMessage(s.channel, fmt.Sprintf("🌙 Last exed deploy of the day (%s). Next: %s",
 							shaLink(sha), formatTimeWithDay(next)))
 					}
 					s.updateTopic()
@@ -430,8 +437,8 @@ func (s *Scheduler) disableOnFailure(reason string) {
 	s.log.Warn("CD scheduler auto-disabled", "reason", reason)
 
 	if s.notifier != nil {
-		s.notifier.CDPostMessage(fmt.Sprintf("🔴 exed CD disabled — %s", reason))
-		s.notifier.CDSetTopic("exed: 🔴 CD disabled")
+		s.notifier.CDPostMessage(s.channel, fmt.Sprintf("🔴 exed CD disabled — %s", reason))
+		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
 	}
 }
 
@@ -441,7 +448,7 @@ func (s *Scheduler) updateTopic() {
 	defer s.mu.Unlock()
 
 	if !s.enabled {
-		s.notifier.CDSetTopic("exed: 🔴 CD disabled")
+		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
 		return
 	}
 
@@ -456,9 +463,9 @@ func (s *Scheduler) updateTopic() {
 		next := s.nextDeployTime(now)
 		nextStr := formatTimeWithDay(next)
 		if s.lastDeploy != nil {
-			s.notifier.CDSetTopic(fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
+			s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 		} else {
-			s.notifier.CDSetTopic(fmt.Sprintf("exed: 💤 CD idle | Next: %s", nextStr))
+			s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 💤 CD idle | Next: %s", nextStr))
 		}
 		return
 	}
@@ -466,9 +473,9 @@ func (s *Scheduler) updateTopic() {
 	// Within window, between deploys.
 	nextStr := formatTime(s.nextAt)
 	if s.lastDeploy != nil {
-		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
+		s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 	} else {
-		s.notifier.CDSetTopic(fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
+		s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
 	}
 }
 
