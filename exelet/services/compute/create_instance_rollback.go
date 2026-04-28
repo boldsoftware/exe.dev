@@ -190,6 +190,19 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
+	// Remove instance directory BEFORE releasing the cgroup scope. The
+	// resource manager's poll loop reads on-disk instance configs and, on
+	// any RUNNING VM with a cached PID, calls applyPriority -> ensureCgroup,
+	// which would re-create the very scope we are trying to drop. Removing
+	// the on-disk config first makes the apply path a no-op on the next
+	// poll. (The reaper, by contrast, removes scopes for instances no
+	// longer present, so ordering this way is also reaper-safe.)
+	if r.instanceDirCreated {
+		if err := os.RemoveAll(r.instanceDir); err != nil {
+			r.log.ErrorContext(r.ctx, "rollback: failed to remove instance directory", "dir", r.instanceDir, "error", err)
+		}
+	}
+
 	// Release the per-VM cgroup scope created by PrepareVMCgroup. Without
 	// this, every failed VM creation leaks an empty vm-<id>.scope dir under
 	// exelet.slice forever (the resource manager poll loop only reaps VMs
@@ -198,13 +211,6 @@ func (r *createInstanceRollback) Rollback() {
 	if r.serviceContext != nil && r.serviceContext.CgroupPreparer != nil {
 		if err := r.serviceContext.CgroupPreparer.ReleaseVMCgroup(r.ctx, r.instanceID, r.groupID); err != nil {
 			r.log.DebugContext(r.ctx, "rollback: failed to release VM cgroup", "id", r.instanceID, "error", err)
-		}
-	}
-
-	// Remove instance directory
-	if r.instanceDirCreated {
-		if err := os.RemoveAll(r.instanceDir); err != nil {
-			r.log.ErrorContext(r.ctx, "rollback: failed to remove instance directory", "dir", r.instanceDir, "error", err)
 		}
 	}
 }

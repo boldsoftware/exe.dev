@@ -66,10 +66,11 @@ func TestCgroupMemoryPlacement(t *testing.T) {
 		if err := ctx.Err(); err != nil {
 			t.Fatalf("context cancelled while scraping logs: %v", err)
 		}
-		matched, path, err := findPlacementEvent(logPath, instanceID)
+		matched, path, allMatches, err := findPlacementEvent(logPath, instanceID)
 		if err != nil {
 			t.Fatalf("read exelet log %s: %v", logPath, err)
 		}
+		lastMatches = allMatches
 		if matched {
 			if !strings.HasSuffix(path, expectedSuffix) {
 				t.Fatalf("cgroup placement event found for instance %s but path %q does not end with %q — VM was placed in the wrong cgroup",
@@ -94,13 +95,14 @@ func TestCgroupMemoryPlacement(t *testing.T) {
 // findPlacementEvent scans exelet.log for a JSON record whose msg is the
 // cgroup-placement event and whose id matches instanceID. Returns the path
 // field from that record so the caller can verify it names the VM scope.
-func findPlacementEvent(logPath, instanceID string) (bool, string, error) {
+func findPlacementEvent(logPath, instanceID string) (bool, string, []string, error) {
 	f, err := os.Open(logPath)
 	if err != nil {
-		return false, "", err
+		return false, "", nil, err
 	}
 	defer f.Close()
 
+	var allMatches []string
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 2*1024*1024)
 	for sc.Scan() {
@@ -108,6 +110,10 @@ func findPlacementEvent(logPath, instanceID string) (bool, string, error) {
 		if !strings.Contains(string(line), "placing cloud-hypervisor into cgroup at exec") {
 			continue
 		}
+		// Capture every placement record, even ones for other instances,
+		// so a failure dump can show what the exelet did log (helps tell
+		// "never logged at all" from "logged for the wrong id").
+		allMatches = append(allMatches, string(line))
 		var rec map[string]any
 		if err := json.Unmarshal(line, &rec); err != nil {
 			continue
@@ -116,7 +122,7 @@ func findPlacementEvent(logPath, instanceID string) (bool, string, error) {
 			continue
 		}
 		path, _ := rec["path"].(string)
-		return true, path, nil
+		return true, path, allMatches, nil
 	}
-	return false, "", sc.Err()
+	return false, "", allMatches, sc.Err()
 }

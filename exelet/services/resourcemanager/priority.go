@@ -317,8 +317,9 @@ func (m *ResourceManager) ReleaseVMCgroup(ctx context.Context, id, groupID strin
 	if _, err := os.Stat(filepath.Join(m.cgroupRoot, "cgroup.controllers")); err != nil {
 		return nil
 	}
-	// Drop any tracked usage state so a stale entry doesn't keep the
-	// poll-loop reaper from re-creating or skipping over this VM.
+	// Drop any tracked usage state so a subsequent poll cycle's apply path
+	// does not see stale state and re-create the scope we are removing.
+	// (The reaper removes scopes; only applyPriority re-creates them.)
 	m.usageMu.Lock()
 	delete(m.usageState, id)
 	m.usageMu.Unlock()
@@ -476,11 +477,14 @@ func (m *ResourceManager) removeCgroup(ctx context.Context, id, groupID string) 
 	scopeName := fmt.Sprintf("vm-%s.scope", sanitizeCgroupName(id))
 	cgroupPath := filepath.Join(accountSlicePath, scopeName)
 
-	// Remove the VM's cgroup
-	if _, err := os.Stat(cgroupPath); os.IsNotExist(err) {
-		// Already gone, but still try to clean up account slice
-	} else if err := os.Remove(cgroupPath); err != nil {
+	// Remove the VM's cgroup. ENOENT is success (already gone); other
+	// errors are propagated so that callers (notably ReleaseVMCgroup on
+	// the rollback path) can log and surface real failures instead of
+	// silently leaking scopes.
+	var firstErr error
+	if err := os.Remove(cgroupPath); err != nil && !os.IsNotExist(err) {
 		m.log.WarnContext(ctx, "failed to remove VM cgroup", "id", id, "error", err)
+		firstErr = err
 	}
 
 	// Try to remove the account slice if it's now empty
@@ -491,11 +495,11 @@ func (m *ResourceManager) removeCgroup(ctx context.Context, id, groupID string) 
 
 	// Also clean up old-style cgroup if it exists (migration cleanup)
 	oldCgroupPath := filepath.Join(m.cgroupRoot, cgroupSlice, scopeName)
-	if _, err := os.Stat(oldCgroupPath); err == nil {
-		os.Remove(oldCgroupPath) // Best effort
+	if err := os.Remove(oldCgroupPath); err != nil && !os.IsNotExist(err) && firstErr == nil {
+		firstErr = err
 	}
 
-	return nil
+	return firstErr
 }
 
 // sanitizeCgroupName converts an ID to a valid cgroup name component.
