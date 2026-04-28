@@ -727,10 +727,12 @@
           </div>
           <div class="form-row">
             <label>Fields to expose</label>
-            <div class="radio-group">
-              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldEmail" /> email <span class="text-muted">— owner's email address</span></label>
-              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldIntegrations" /> integrations <span class="text-muted">— attached integrations</span></label>
-              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldTags" /> tags <span class="text-muted">— VM tags</span></label>
+            <div class="field-list">
+              <label class="radio-label"><input type="checkbox" v-model="reflectionModal.fieldAll" /> all <span class="text-muted">— expose every field, including ones added later</span></label>
+              <label class="radio-label" :class="{ 'radio-label-disabled': reflectionModal.fieldAll }"><input type="checkbox" v-model="reflectionModal.fieldEmail" :disabled="reflectionModal.fieldAll" /> email <span class="text-muted">— owner's email address</span></label>
+              <label class="radio-label" :class="{ 'radio-label-disabled': reflectionModal.fieldAll }"><input type="checkbox" v-model="reflectionModal.fieldIntegrations" :disabled="reflectionModal.fieldAll" /> integrations</label>
+              <label class="radio-label" :class="{ 'radio-label-disabled': reflectionModal.fieldAll }"><input type="checkbox" v-model="reflectionModal.fieldTags" :disabled="reflectionModal.fieldAll" /> tags</label>
+              <label class="radio-label" :class="{ 'radio-label-disabled': reflectionModal.fieldAll }"><input type="checkbox" v-model="reflectionModal.fieldComment" :disabled="reflectionModal.fieldAll" /> comment</label>
             </div>
           </div>
           <div class="form-row">
@@ -1191,9 +1193,11 @@ const reflectionModal = reactive({
   name: 'reflection',
   comment: '',
   team: false,
+  fieldAll: true,
   fieldEmail: true,
   fieldIntegrations: true,
   fieldTags: true,
+  fieldComment: true,
   attachments: [] as string[],
   tagVMs: [] as string[],
   running: false,
@@ -1774,9 +1778,11 @@ function openAddReflection() {
   reflectionModal.name = 'reflection'
   reflectionModal.comment = ''
   reflectionModal.team = false
+  reflectionModal.fieldAll = true
   reflectionModal.fieldEmail = true
   reflectionModal.fieldIntegrations = true
   reflectionModal.fieldTags = true
+  reflectionModal.fieldComment = true
   reflectionModal.attachments = ['tag:reflection']
   reflectionModal.tagVMs = []
   reflectionModal.running = false
@@ -1803,15 +1809,21 @@ const reflectionSelectedFields = computed(() => {
   if (reflectionModal.fieldEmail) fs.push('email')
   if (reflectionModal.fieldIntegrations) fs.push('integrations')
   if (reflectionModal.fieldTags) fs.push('tags')
+  if (reflectionModal.fieldComment) fs.push('comment')
   return fs
 })
 
 const reflectionBuiltCommands = computed(() => {
   const name = reflectionEffectiveName.value
   if (!name) return [] as string[]
-  const fields = reflectionSelectedFields.value
-  if (fields.length === 0) return [] as string[]
-  const fieldsArg = fields.length === 3 ? 'all' : fields.join(',')
+  let fieldsArg: string
+  if (reflectionModal.fieldAll) {
+    fieldsArg = 'all'
+  } else {
+    const fields = reflectionSelectedFields.value
+    if (fields.length === 0) return [] as string[]
+    fieldsArg = fields.join(',')
+  }
   let cmd = `integrations add reflection --name=${shellQuote(name)} --fields=${shellQuote(fieldsArg)}`
   if (reflectionModal.team) cmd += ' --team'
   if (reflectionModal.comment.trim()) cmd += ` --comment=${shellQuote(reflectionModal.comment.trim())}`
@@ -2906,6 +2918,18 @@ select.form-input {
   gap: 0.25rem 1rem;
 }
 
+.field-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.radio-label-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .radio-label {
   display: flex;
   align-items: center;
@@ -3274,8 +3298,8 @@ select.form-input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.4em;
-  height: 1.4em;
+  width: 24px;
+  height: 24px;
   line-height: 1;
 }
 .reflection-frame {

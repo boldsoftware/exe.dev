@@ -1,0 +1,133 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a VM over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestIntegrationsReflectionCLI@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestIntegrationsReflectionCLI@example.com
+Waiting for verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first VM
+- help to see a list of commands
+
+PROMPT ▶ whoami
+Email Address: TestIntegrationsReflectionCLI@example.com
+Region: lax (Los Angeles, USA)
+SSH Keys:
+  Public Key: SSH_PUBKEY (key-1) ← current
+PROMPT ▶ integrations
+
+Command: integrations
+Aliases: int
+
+Manage integrations
+
+Usage: integrations <subcommand> [args...]
+
+Subcommands:
+  list     - List your integrations
+  setup    - Set up a service integration
+  add      - Add a new integration
+  remove   - Remove an integration
+  attach   - Attach an integration to a VM, tag, or all VMs
+
+A <spec> controls where the integration is mounted:
+  vm:<vm-name>   attach to a specific VM (personal only)
+  tag:<tag-name> attach to every VM with the given tag
+  auto:all       attach to all current and future VMs (personal only)
+
+You can attach the same integration multiple times with different specs.
+Team integrations only support tag:<tag-name>.
+  detach   - Detach an integration from a VM, tag, or all VMs
+  rename   - Rename an integration
+PROMPT ▶ integrations add reflection --help
+
+Command: add
+
+Add a new integration
+
+Usage: integrations add <type> --name=<name> [--team] [args...]
+
+Options:
+  --attach     attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated
+  --bearer     bearer token (shorthand for --header="Authorization:Bearer TOKEN")
+  --comment    optional free-form comment stored with the integration
+  --fields     comma-separated reflection fields to expose (email, integrations, tags, comment); 'all' exposes every field including ones added in the future; 'none' disables every field
+  --header     header to inject (e.g. X-Auth:secret)
+  --name       integration name (required)
+  --peer       authenticate with a generated API key scoped to the target VM
+  --repository GitHub repository in owner/repo format (required for github)
+  --target     target URL (required for http-proxy)
+  --team       create as a team integration
+PROMPT ▶ integrations add reflection --name=mirror
+Added integration mirror (reflection, fields=all)
+
+To use this integration, attach it to a VM first:
+  integrations attach mirror vm:<vm-name>
+
+Usage from a VM:
+  curl http://mirror.int.exe.cloud/
+PROMPT ▶ integrations list
+mirror  reflection  fields=all  (none)
+PROMPT ▶ integrations remove mirror
+Removed integration mirror
+PROMPT ▶ integrations add reflection --name=mirror2 --fields=email,tags
+Added integration mirror2 (reflection, fields=email,tags)
+
+To use this integration, attach it to a VM first:
+  integrations attach mirror2 vm:<vm-name>
+
+Usage from a VM:
+  curl http://mirror2.int.exe.cloud/
+PROMPT ▶ integrations list
+mirror2  reflection  fields=email,tags  (none)
+PROMPT ▶ integrations remove mirror2
+Removed integration mirror2
+PROMPT ▶ integrations add reflection --name=mirror3 --fields=email,all
+Added integration mirror3 (reflection, fields=all)
+
+To use this integration, attach it to a VM first:
+  integrations attach mirror3 vm:<vm-name>
+
+Usage from a VM:
+  curl http://mirror3.int.exe.cloud/
+PROMPT ▶ integrations list
+mirror3  reflection  fields=all  (none)
+PROMPT ▶ integrations remove mirror3
+Removed integration mirror3
+PROMPT ▶ integrations add reflection --name=mirror4 --fields=none
+Added integration mirror4 (reflection, fields=(none))
+
+To use this integration, attach it to a VM first:
+  integrations attach mirror4 vm:<vm-name>
+
+Usage from a VM:
+  curl http://mirror4.int.exe.cloud/
+PROMPT ▶ integrations list
+mirror4  reflection  fields=(none)  (none)
+PROMPT ▶ integrations remove mirror4
+Removed integration mirror4
+PROMPT ▶ integrations add reflection --name=bad --fields=bogus
+unknown reflection field "bogus" (valid: email,integrations,tags,comment, all, none)
+PROMPT ▶

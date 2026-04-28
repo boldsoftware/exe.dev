@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 
 	"exe.dev/exedb"
@@ -69,7 +68,7 @@ func (s *Server) handleVMReflection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fieldEnabled := func(name string) bool { return slices.Contains(cfg.Fields, name) }
+	fieldEnabled := func(name string) bool { return reflectionFieldEnabled(cfg.Fields, name) }
 
 	// Route based on original request path.
 	origPath := r.Header.Get("X-Exedev-Original-Path")
@@ -227,6 +226,10 @@ func reflectionHelpFor(ig exedb.Integration) string {
 }
 
 func (s *Server) writeReflectionIndex(w http.ResponseWriter, fields []string) {
+	// Expand the "all" sentinel so the index lists every supported endpoint.
+	if reflectionAll(fields) {
+		fields = reflectionFieldsAll
+	}
 	paths := []map[string]string{}
 	for _, f := range fields {
 		switch f {

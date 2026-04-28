@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -25,6 +26,11 @@ const (
 	reflectionFieldIntegrations = "integrations"
 	reflectionFieldTags         = "tags"
 	reflectionFieldComment      = "comment"
+
+	// reflectionFieldAll is a sentinel value stored in
+	// reflectionIntegrationConfig.Fields meaning "every supported field,
+	// including ones added in the future".
+	reflectionFieldAll = "all"
 )
 
 var reflectionFieldsAll = []string{
@@ -32,6 +38,20 @@ var reflectionFieldsAll = []string{
 	reflectionFieldIntegrations,
 	reflectionFieldTags,
 	reflectionFieldComment,
+}
+
+// reflectionAll reports whether the configured fields include the "all"
+// sentinel (i.e. the integration exposes every supported field, including
+// fields added in future versions).
+func reflectionAll(fields []string) bool {
+	return slices.Contains(fields, reflectionFieldAll)
+}
+
+// reflectionFieldEnabled reports whether the named field is exposed by an
+// integration with the given configured Fields list. The "all" sentinel
+// matches every field.
+func reflectionFieldEnabled(fields []string, name string) bool {
+	return reflectionAll(fields) || slices.Contains(fields, name)
 }
 
 func isValidReflectionField(f string) bool {
@@ -53,18 +73,14 @@ func parseReflectionFields(raw string) ([]string, error) {
 	}
 	seen := map[string]bool{}
 	var fields []string
+	sawAll := false
 	for _, f := range strings.Split(raw, ",") {
 		f = strings.TrimSpace(f)
 		if f == "" {
 			continue
 		}
-		if f == "all" {
-			for _, v := range reflectionFieldsAll {
-				if !seen[v] {
-					seen[v] = true
-					fields = append(fields, v)
-				}
-			}
+		if f == reflectionFieldAll {
+			sawAll = true
 			continue
 		}
 		if !isValidReflectionField(f) {
@@ -74,6 +90,11 @@ func parseReflectionFields(raw string) ([]string, error) {
 			seen[f] = true
 			fields = append(fields, f)
 		}
+	}
+	// "all" is a sentinel: store just ["all"] so newly-added fields are
+	// included automatically. It absorbs any explicitly-listed fields.
+	if sawAll {
+		return []string{reflectionFieldAll}, nil
 	}
 	sort.Strings(fields)
 	return fields, nil
@@ -128,10 +149,14 @@ func (ss *SSHServer) handleAddReflection(ctx context.Context, cc *exemenu.Comman
 		return cc.Errorf("failed to add integration (name %q may already be in use)", name)
 	}
 
+	fieldsDisplay := strings.Join(fields, ",")
+	if fieldsDisplay == "" {
+		fieldsDisplay = "(none)"
+	}
 	if teamID != nil {
-		cc.Writeln("Added team integration %s (reflection, fields=%s)", name, strings.Join(fields, ","))
+		cc.Writeln("Added team integration %s (reflection, fields=%s)", name, fieldsDisplay)
 	} else {
-		cc.Writeln("Added integration %s (reflection, fields=%s)", name, strings.Join(fields, ","))
+		cc.Writeln("Added integration %s (reflection, fields=%s)", name, fieldsDisplay)
 	}
 	ss.printIntegrationUsage(cc, "reflection", name, attachments, nil, teamID)
 	return nil

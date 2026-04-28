@@ -614,7 +614,7 @@ func addIntegrationFlags() *flag.FlagSet {
 	fs.Var(&stringSliceFlag{}, "attach", "attach to a spec (vm:<name>, tag:<name>, or auto:all); can be repeated")
 	fs.Bool("team", false, "create as a team integration")
 	fs.String("comment", "", "optional free-form comment stored with the integration")
-	fs.String("fields", "email,integrations,tags,comment", "comma-separated reflection fields to expose (email, integrations, tags, comment)")
+	fs.String("fields", "all", "comma-separated reflection fields to expose (email, integrations, tags, comment); 'all' exposes every field including ones added in the future; 'none' disables every field")
 	return fs
 }
 

@@ -36,7 +36,10 @@ func TestIntegrationsReflection(t *testing.T) {
 	pty.WantPrompt()
 
 	// Add a reflection integration with a comment.
-	pty.SendLine(`integrations add reflection --name=me --comment="who am i" --fields=email,integrations,tags,comment`)
+	// Use --fields=all so the test exercises the "all" sentinel — i.e. the
+	// integration must continue to expose every supported endpoint without
+	// listing each field name.
+	pty.SendLine(`integrations add reflection --name=me --comment="who am i" --fields=all`)
 	pty.Want("Added integration me")
 	pty.WantPrompt()
 	pty.SendLine(fmt.Sprintf("integrations attach me vm:%s", bn))
@@ -183,4 +186,82 @@ func TestIntegrationsReflection(t *testing.T) {
 			time.Sleep(200 * time.Millisecond)
 		}
 	})
+}
+
+// TestIntegrationsReflectionCLI exercises the reflection integration's CLI
+// surface: the help text, the --fields=all default, an explicit field list,
+// fields=none, and an invalid field name. It captures a golden file so we
+// notice if the user-facing UX changes.
+func TestIntegrationsReflectionCLI(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// `integrations` without args prints the subcommand list — sanity check
+	// that 'add' and 'list' show up.
+	pty.SendLine("integrations")
+	pty.Want("list")
+	pty.Want("add")
+	pty.WantPrompt()
+
+	// `integrations add reflection --help` should advertise --fields and
+	// show 'all' as the default value.
+	pty.SendLine("integrations add reflection --help")
+	pty.Want("--fields")
+	pty.Want("all")
+	pty.WantPrompt()
+
+	// Default --fields=all: integration is created and the listed config
+	// preserves the 'all' sentinel rather than expanding it (so future fields
+	// are exposed automatically).
+	pty.SendLine("integrations add reflection --name=mirror")
+	pty.Want("Added integration mirror")
+	pty.WantPrompt()
+	pty.SendLine("integrations list")
+	pty.Want("mirror")
+	pty.Want("fields=all")
+	pty.WantPrompt()
+	pty.SendLine("integrations remove mirror")
+	pty.Want("Removed")
+	pty.WantPrompt()
+
+	// Explicit field list (subset).
+	pty.SendLine("integrations add reflection --name=mirror2 --fields=email,tags")
+	pty.Want("Added integration mirror2")
+	pty.WantPrompt()
+	pty.SendLine("integrations list")
+	pty.Want("fields=email,tags")
+	pty.WantPrompt()
+	pty.SendLine("integrations remove mirror2")
+	pty.Want("Removed")
+	pty.WantPrompt()
+
+	// 'all' anywhere in the list collapses to the sentinel.
+	pty.SendLine("integrations add reflection --name=mirror3 --fields=email,all")
+	pty.Want("Added integration mirror3")
+	pty.WantPrompt()
+	pty.SendLine("integrations list")
+	pty.Want("fields=all")
+	pty.WantPrompt()
+	pty.SendLine("integrations remove mirror3")
+	pty.Want("Removed")
+	pty.WantPrompt()
+
+	// 'none' produces an empty field set.
+	pty.SendLine("integrations add reflection --name=mirror4 --fields=none")
+	pty.Want("Added integration mirror4")
+	pty.WantPrompt()
+	pty.SendLine("integrations list")
+	pty.Want("fields=(none)")
+	pty.WantPrompt()
+	pty.SendLine("integrations remove mirror4")
+	pty.Want("Removed")
+	pty.WantPrompt()
+
+	// Unknown field is rejected with a helpful message.
+	pty.SendLine("integrations add reflection --name=bad --fields=bogus")
+	pty.Want("unknown reflection field")
+	pty.WantPrompt()
 }
