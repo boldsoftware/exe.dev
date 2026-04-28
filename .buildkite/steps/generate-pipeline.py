@@ -569,9 +569,37 @@ def main():
     psimon_text = generate_psimon_step(final_keys)
     segments.append(psimon_text)
 
-    # Emit the pipeline (stdout for upload, stderr for build log)
-    queue = os.environ.get("EXE_CI_QUEUE", "exe-ci")
-    lines = ["agents:", f"  queue: {queue}", ""]
+    # Emit the pipeline (stdout for upload, stderr for build log).
+    #
+    # Pin all jobs in this build to the SAME host that ran the generate step.
+    # Multiple CI machines (exe-ci-01, exe-ci-03, ...) share the exe-ci queue,
+    # but each build's caches/git-mirrors/snapshots are local to one host —
+    # splitting jobs across hosts wastes those caches and risks dataset name
+    # collisions. The hostname tag is set by tags-from-host on each agent
+    # (see .buildkite/agent/buildkite-agent.cfg).
+    #
+    # Queue can be overridden by the CI-Queue: <name> commit trailer or the
+    # EXE_CI_QUEUE env var (default exe-ci). Use CI-Queue: exe-ci-test to
+    # target the staging queue (e.g. for benchmarking new hardware).
+    default_queue = os.environ.get("EXE_CI_QUEUE", "exe-ci")
+    queue = trailers.get("ci-queue", default_queue).strip()
+    # Pin to the host running the generate step ONLY when targeting the
+    # default queue (i.e. no queue override). When a CI-Queue trailer
+    # redirects to e.g. exe-ci-test, the generate step ran on exe-ci but
+    # the jobs need to land on a different host — don't pin in that case.
+    pin_host = ""
+    if queue == default_queue:
+        pin_host = os.environ.get("BUILDKITE_AGENT_META_DATA_HOSTNAME", "").strip()
+        if not pin_host:
+            # Fallback for local testing: ask the OS.
+            try:
+                pin_host = subprocess.check_output(["hostname"], text=True).strip()
+            except Exception:
+                pin_host = ""
+    lines = ["agents:", f"  queue: {queue}"]
+    if pin_host:
+        lines.append(f"  hostname: {pin_host}")
+    lines.append("")
     if not test_race:
         lines += ["env:", '  EXE_TEST_RACE: "false"', ""]
     lines.append("steps:")

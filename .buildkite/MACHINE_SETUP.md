@@ -138,7 +138,11 @@ queue). In the Buildkite UI under Organization → Clusters → Default cluster:
 name="%hostname-%spawn"
 spawn=16
 token="bkct_..."   # cluster token from step above
-tags="queue=exe-ci"
+# The hostname=<host> tag pins all jobs of a single build to one machine.
+# generate-pipeline.py reads BUILDKITE_AGENT_META_DATA_HOSTNAME and emits
+# `agents.hostname: <host>` so subsequent jobs route to the same host.
+# Replace exe-ci-01 below with the actual hostname for this machine.
+tags="queue=exe-ci,hostname=exe-ci-01"
 build-path="/var/lib/buildkite-agent/builds"
 hooks-path="/etc/buildkite-agent/hooks"
 plugins-path="/etc/buildkite-agent/plugins"
@@ -392,19 +396,22 @@ While shaking down a new host, point it at a separate Buildkite queue
    restrict a token to a queue, but the agent's `tags="queue=..."` is a
    tighter contract than the queue-allowlist would be: the agent will
    only register with that tag, and other queues' steps will not match.
-3. Set the agent's `tags="queue=exe-ci-test"` in `buildkite-agent.cfg`.
-4. Temporarily patch the pipeline to dispatch on `exe-ci-test`:
-   ```bash
-   curl -s -X PATCH \
-     "https://buildkite.int.exe.xyz/v2/organizations/bold-software/pipelines/exe-kite-queue" \
-     -H "Content-Type: application/json" \
-     --data '{"configuration":"agents:\n  queue: exe-ci-test\nenv:\n  EXE_CI_QUEUE: exe-ci-test\nsteps:\n  - label: \":pipeline: Generate pipeline\"\n    command: python3 .buildkite/steps/generate-pipeline.py | buildkite-agent pipeline upload\n    timeout_in_minutes: 5\n"}'
+3. Set the agent's `tags="queue=exe-ci-test,hostname=<new-host>"` in
+   `buildkite-agent.cfg` and restart the agent.
+4. Send individual builds to the staging queue with the `CI-Queue:`
+   commit trailer — no pipeline-config patch needed:
    ```
-   `generate-pipeline.py` honors `EXE_CI_QUEUE` so child steps target the
-   same queue.
+   ci: poke at exe-ci-03
+
+   CI-Queue: exe-ci-test
+   ```
+   `generate-pipeline.py` reads the trailer and emits the right
+   `agents.queue` for all child steps. When `CI-Queue` is set, the
+   per-host pinning is skipped (the generate step ran on `exe-ci`,
+   so we can't pin to that host for `exe-ci-test` jobs).
 5. Push a `kite-test-*` branch via `bin/t --dry-run` and iterate.
-6. When green, restore the pipeline configuration to point back at
-   `exe-ci` and switch the agent's tag to `queue=exe-ci`.
+6. When green, switch the agent's tag to `queue=exe-ci,hostname=<host>`
+   and drop the `CI-Queue` trailer.
 
 ## Notes / gotchas
 
