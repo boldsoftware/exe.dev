@@ -57,7 +57,7 @@ var postmarkMessageStreams = map[Type]string{
 	TypeBoxMaintenance:           "general-notification",
 	TypeAccessRequest:            "general-notification",
 	TypeTeamInvitation:           "general-notification",
-	TypeDripCampaign:             "drip-campaign",
+	TypeDripCampaign:             "drip-campaign-1",
 }
 
 var emailsSentTotal = prometheus.NewCounterVec(
