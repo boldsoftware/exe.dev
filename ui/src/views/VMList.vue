@@ -59,10 +59,7 @@
             v-for="box in sortedBoxes"
             :key="box.name"
             :box="box"
-            :has-team="hasTeam"
-            :expanded="expandedBoxes.has(box.name)"
             :recent-emojis="recentEmojis"
-            @toggle="toggleExpand(box.name)"
             @action="handleAction"
           />
         </div>
@@ -80,10 +77,7 @@
               v-for="box in group.boxes"
               :key="box.name"
               :box="box"
-              :has-team="hasTeam"
-              :expanded="expandedBoxes.has(box.name)"
               :recent-emojis="recentEmojis"
-              @toggle="toggleExpand(box.name)"
               @action="handleAction"
             />
           </div>
@@ -314,7 +308,6 @@ const teamSharedBoxes = ref<TeamSharedBoxInfo[]>([])
 const teamBoxes = ref<TeamBoxInfo[]>([])
 const hasTeam = ref(false)
 const searchQuery = ref((route.query.filter as string) || '')
-const expandedBoxes = ref(new Set<string>())
 const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
 const viewMode = ref<'list' | 'usage'>(route.name === 'vms-usage' ? 'usage' : 'list')
@@ -595,18 +588,6 @@ async function loadDashboard() {
     const sb = data.boxes.filter(b => b.shelleyURL)
     if (sb.length > 0) promptVM.value = sb[0].name
 
-    // Auto-expand when filtered to a single result (e.g. redirected from /create-vm)
-    if (searchQuery.value.trim()) {
-      const q = searchQuery.value.toLowerCase().trim()
-      const tagQ = q.startsWith('#') ? q.slice(1) : q
-      const matched = data.boxes.filter(b =>
-        b.name.toLowerCase().includes(q) ||
-        (b.displayTags || []).some(t => t.toLowerCase().includes(tagQ))
-      )
-      if (matched.length === 1) {
-        expandedBoxes.value.add(matched[0].name)
-      }
-    }
   } catch (err: any) {
     console.error('Failed to load dashboard:', err)
     loadError.value = err.message || 'Failed to load data'
@@ -656,14 +637,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEscapeKey)
 })
-
-function toggleExpand(name: string) {
-  if (expandedBoxes.value.has(name)) {
-    expandedBoxes.value.delete(name)
-  } else {
-    expandedBoxes.value.add(name)
-  }
-}
 
 interface ActionEvent {
   type: string

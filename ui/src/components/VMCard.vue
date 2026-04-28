@@ -1,6 +1,5 @@
 <template>
-  <div class="box-row" :class="{ expanded }" @click="onRowClick">
-    <!-- Collapsed row -->
+  <div class="box-row" role="link" tabindex="0" @click="onRowClick" @keydown.enter="onRowClick">
     <div class="box-main">
       <span ref="emojiAnchor" class="emoji-anchor">
         <StatusDot
@@ -41,32 +40,22 @@
             <CoolS :name="box.name" :size="14" />
           </a>
         </template>
-        <button class="action-btn expand-btn" @click.stop="$emit('toggle')" :title="expanded ? 'Collapse' : 'Expand'">
-          <i :class="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'" style="font-size: 10px;"></i>
-        </button>
       </div>
     </div>
-
-    <!-- Expanded details -->
-    <VMDetailSections
-      v-if="expanded"
-      class="expanded-sections"
-      :box="box"
-      :has-team="hasTeam"
-      @action="(a) => $emit('action', a)"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import type { BoxInfo } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import CoolS from './CoolS.vue'
 import EmojiPicker from './EmojiPicker.vue'
-import VMDetailSections from './VMDetailSections.vue'
 import { useCommand } from '../composables/useCommand'
 import { shellQuote } from '../api/client'
+
+const router = useRouter()
 
 const emojiAnchor = ref<HTMLElement | null>(null)
 const emojiOpen = ref(false)
@@ -76,8 +65,6 @@ const emojiCmd = useCommand()
 
 const props = defineProps<{
   box: BoxInfo
-  expanded: boolean
-  hasTeam: boolean
   recentEmojis?: string[]
 }>()
 
@@ -109,13 +96,12 @@ async function onEmojiPick(emoji: string) {
 }
 
 const emit = defineEmits<{
-  (e: 'toggle'): void
   (e: 'action', action: { type: string; boxName: string; extra?: any }): void
 }>()
 
-function onRowClick(event: MouseEvent) {
+function onRowClick(event: Event) {
   if ((event.target as HTMLElement).closest('button, a')) return
-  emit('toggle')
+  router.push(`/vm/${props.box.name}`)
 }
 </script>
 
@@ -231,18 +217,6 @@ function onRowClick(event: MouseEvent) {
   border-color: var(--btn-hover-border);
   color: var(--btn-hover-text);
   text-decoration: none;
-}
-
-.expand-btn {
-  width: 28px;
-  height: 28px;
-}
-
-/* Expanded details */
-.expanded-sections {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--surface-border);
 }
 
 @media (max-width: 768px) {
