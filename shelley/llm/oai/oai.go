@@ -192,6 +192,13 @@ var (
 		APIKeyEnv: FireworksAPIKeyEnv,
 	}
 
+	DeepseekV4ProFireworks = Model{
+		UserName:  "deepseek-v4-pro-fireworks",
+		ModelName: "accounts/fireworks/models/deepseek-v4-pro",
+		URL:       FireworksURL,
+		APIKeyEnv: FireworksAPIKeyEnv,
+	}
+
 	MoonshotKimiK2 = Model{
 		UserName:  "moonshot-kimi-k2",
 		ModelName: "moonshot-v1-auto",
@@ -349,6 +356,7 @@ var ModelsRegistry = []Model{
 	TogetherMistralSmall,
 	// Fireworks / misc providers
 	FireworksDeepseekV3,
+	DeepseekV4ProFireworks,
 	FireworksLlama4Maverick,
 	MoonshotKimiK2,
 	MistralMedium,
@@ -756,6 +764,8 @@ func (s *Service) TokenContextWindow() int {
 		return 256000
 	case "gpt-oss-20b", "gpt-oss-120b":
 		return 128000
+	case "accounts/fireworks/models/deepseek-v4-pro":
+		return 1048576
 	case "gpt-5.1", "gpt-5.1-mini", "gpt-5.1-nano":
 		return 256000
 	default:

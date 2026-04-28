@@ -1199,6 +1199,11 @@ func TestTokenContextWindowAdditionalCases(t *testing.T) {
 			expected: 128000,
 		},
 		{
+			name:     "DeepSeek V4 Pro Fireworks model",
+			model:    DeepseekV4ProFireworks,
+			expected: 1048576,
+		},
+		{
 			name:     "GPT-OSS 120B model",
 			model:    GPTOSS120B,
 			expected: 128000,

@@ -278,6 +278,23 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "deepseek-v4-pro-fireworks",
+			Provider:        ProviderFireworks,
+			Description:     "DeepSeek V4 Pro on Fireworks",
+			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			GatewayEnabled:  true,
+			Factory: func(config *Config, httpc *http.Client) (llm.Service, error) {
+				if config.FireworksAPIKey == "" {
+					return nil, fmt.Errorf("deepseek-v4-pro-fireworks requires FIREWORKS_API_KEY")
+				}
+				svc := &oai.Service{Model: oai.DeepseekV4ProFireworks, APIKey: config.FireworksAPIKey, HTTPC: httpc}
+				if url := config.getFireworksURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "glm-5.1-fireworks",
 			Provider:        ProviderFireworks,
 			Description:     "GLM-5.1 on Fireworks",
