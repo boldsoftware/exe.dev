@@ -72,8 +72,13 @@ func newTestRunner(t *testing.T, db *sqlite.DB) (*Runner, *[]sentEmail) {
 	return r, &sent
 }
 
-// createTrialUser creates a user with a trial plan, returning the user_id.
+// createTrialUser creates a self-serve signup trial user, returning the user_id.
 func createTrialUser(t *testing.T, ctx context.Context, db *sqlite.DB, emailAddr string, createdAt time.Time) string {
+	t.Helper()
+	return createTrialUserWithChangedBy(t, ctx, db, emailAddr, createdAt, "system:stripeless_trial")
+}
+
+func createTrialUserWithChangedBy(t *testing.T, ctx context.Context, db *sqlite.DB, emailAddr string, createdAt time.Time, changedBy string) string {
 	t.Helper()
 	userID := "user_" + emailAddr
 
@@ -98,7 +103,7 @@ func createTrialUser(t *testing.T, ctx context.Context, db *sqlite.DB, emailAddr
 			PlanID:         "trial:monthly:20260106",
 			StartedAt:      createdAt,
 			TrialExpiresAt: &expires,
-			ChangedBy:      new("test"),
+			ChangedBy:      &changedBy,
 		}); err != nil {
 			return err
 		}
@@ -418,6 +423,89 @@ func TestUpgradedUserNotEmailed(t *testing.T) {
 	r.runOnce(ctx)
 	if len(*sent) != 1 {
 		t.Fatalf("expected still 1 email after upgrade, got %d", len(*sent))
+	}
+}
+
+func TestInviteTrialUserNotEmailed(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	r, sent := newTestRunner(t, db)
+
+	userID := createTrialUserWithChangedBy(t, ctx, db, "invite-trial@test.com", testNow.Add(-5*24*time.Hour), "invite:test")
+
+	r.runOnce(ctx)
+
+	if len(*sent) != 0 {
+		t.Fatalf("expected 0 emails for invite trial, got %d", len(*sent))
+	}
+
+	sends, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
+		UserID:   userID,
+		Campaign: campaignTrialOnboarding,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sends) != 0 {
+		t.Fatalf("expected 0 drip records for invite trial, got %d", len(sends))
+	}
+}
+
+func TestTeamMemberTrialUserNotEmailed(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	r, sent := newTestRunner(t, db)
+
+	userID := createTrialUser(t, ctx, db, "team-member@test.com", testNow.Add(-5*24*time.Hour))
+
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		ownerEmail := "team-owner@test.com"
+		if err := q.InsertUser(ctx, exedb.InsertUserParams{
+			UserID:         "user_" + ownerEmail,
+			Email:          ownerEmail,
+			CanonicalEmail: &ownerEmail,
+			Region:         "lax",
+		}); err != nil {
+			return err
+		}
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        "acct_user_" + ownerEmail,
+			CreatedBy: "user_" + ownerEmail,
+		}); err != nil {
+			return err
+		}
+		if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: "acct_user_" + ownerEmail,
+			PlanID:    "team",
+			StartedAt: testNow,
+			ChangedBy: new("system:test"),
+		}); err != nil {
+			return err
+		}
+		return q.SetAccountParentID(ctx, exedb.SetAccountParentIDParams{
+			CreatedBy: userID,
+			ParentID:  new("acct_user_" + ownerEmail),
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.runOnce(ctx)
+
+	if len(*sent) != 0 {
+		t.Fatalf("expected 0 emails for team member trial, got %d", len(*sent))
+	}
+
+	sends, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).GetDripSendsForUser, exedb.GetDripSendsForUserParams{
+		UserID:   userID,
+		Campaign: campaignTrialOnboarding,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sends) != 0 {
+		t.Fatalf("expected 0 drip records for team member trial, got %d", len(sends))
 	}
 }
 

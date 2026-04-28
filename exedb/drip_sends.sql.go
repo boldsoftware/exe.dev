@@ -177,6 +177,8 @@ JOIN accounts a ON a.created_by = u.user_id
 JOIN account_plans ap ON ap.account_id = a.id
 WHERE ap.plan_id LIKE 'trial:%'
   AND ap.started_at >= ?1
+  AND ap.changed_by = 'system:stripeless_trial'
+  AND a.parent_id IS NULL
   -- Only target users created after drip campaign deployment.
   AND u.created_at >= '2026-04-14'
   -- Exclude users created via logging into someone else's machine.
@@ -214,9 +216,11 @@ type ListTrialUsersForDripRow struct {
 	StillOnTrial   int64      `db:"still_on_trial" json:"still_on_trial"`
 }
 
-// Returns users who are on a trial or were recently on a trial (for post-trial emails).
-// Includes active trial users and users whose trial started within the last 21 days
-// (to cover the day14 final email). Excludes users who have upgraded to a paid plan.
+// Returns users who are on a self-serve signup trial or were recently on one
+// (for post-trial emails). Includes active signup-trial users and users whose
+// signup trial started within the last 21 days (to cover the day14 final
+// email). Excludes users who have upgraded to a paid plan, non-signup trials,
+// and child accounts whose effective plan resolves through a parent account.
 func (q *Queries) ListTrialUsersForDrip(ctx context.Context, startedAtCutoff time.Time) ([]ListTrialUsersForDripRow, error) {
 	rows, err := q.query(ctx, q.listTrialUsersForDripStmt, listTrialUsersForDrip, startedAtCutoff)
 	if err != nil {

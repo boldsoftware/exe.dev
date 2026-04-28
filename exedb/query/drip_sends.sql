@@ -18,9 +18,11 @@ SELECT COUNT(*) FROM drip_sends
 WHERE user_id = ? AND status = 'sent' AND created_at >= ?;
 
 -- name: ListTrialUsersForDrip :many
--- Returns users who are on a trial or were recently on a trial (for post-trial emails).
--- Includes active trial users and users whose trial started within the last 21 days
--- (to cover the day14 final email). Excludes users who have upgraded to a paid plan.
+-- Returns users who are on a self-serve signup trial or were recently on one
+-- (for post-trial emails). Includes active signup-trial users and users whose
+-- signup trial started within the last 21 days (to cover the day14 final
+-- email). Excludes users who have upgraded to a paid plan, non-signup trials,
+-- and child accounts whose effective plan resolves through a parent account.
 SELECT
     u.user_id,
     u.email,
@@ -33,6 +35,8 @@ JOIN accounts a ON a.created_by = u.user_id
 JOIN account_plans ap ON ap.account_id = a.id
 WHERE ap.plan_id LIKE 'trial:%'
   AND ap.started_at >= sqlc.arg(started_at_cutoff)
+  AND ap.changed_by = 'system:stripeless_trial'
+  AND a.parent_id IS NULL
   -- Only target users created after drip campaign deployment.
   AND u.created_at >= '2026-04-14'
   -- Exclude users created via logging into someone else's machine.
