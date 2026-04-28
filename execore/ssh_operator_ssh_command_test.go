@@ -28,18 +28,16 @@ func TestExeletHostFromCtrhost(t *testing.T) {
 }
 
 // TestBuildOperatorSSHCommand_ContainsParts checks the literal printed form of
-// the operator-ssh command.
+// the operator-ssh command (run from the exelet host).
 func TestBuildOperatorSSHCommand_ContainsParts(t *testing.T) {
 	t.Parallel()
-	cmd := buildOperatorSSHCommand("exelet-99", "/data/exelet/runtime/abc/opssh.sock", 2222)
+	cmd := buildOperatorSSHCommand("/data/exelet/runtime/abc/opssh.sock", 2222)
 	for _, want := range []string{
-		"ssh -o StrictHostKeyChecking=no",
-		"-o 'ProxyCommand=bash -c \"",
-		`coproc P { ssh exelet-99`,
-		`sudo socat -t30 - UNIX-CONNECT:/data/exelet/runtime/abc/opssh.sock`,
+		"ssh -i /tmp/opssh-key",
+		"-o StrictHostKeyChecking=no",
 		`echo CONNECT 2222`,
-		`>&\${P[1]}`,
-		`<&\${P[0]}`,
+		`sudo socat -t30 - UNIX-CONNECT:/data/exelet/runtime/abc/opssh.sock`,
+		`read _`,
 		"root@vsock",
 	} {
 		if !strings.Contains(cmd, want) {
@@ -49,35 +47,22 @@ func TestBuildOperatorSSHCommand_ContainsParts(t *testing.T) {
 }
 
 // TestBuildOperatorSSHCommand_QuotingRoundTrip simulates what happens when an
-// operator pastes the printed command into their shell and ssh forks the
-// ProxyCommand: we verify that a *real* /bin/sh can parse the command line
-// down to the eventual `bash -c <script>` invocation, and that the script
-// matches what we expect.
-//
-// To avoid actually running ssh/socat, we shim `ssh` in PATH. The shim records
-// argv it received; the FIRST argv we capture is the argv ssh would have been
-// invoked with by the operator (i.e. the printed command's `ssh ... root@vsock`
-// form). We then look at the -o values that shim received to extract the
-// ProxyCommand value, and execute that via /bin/sh -c with `bash` shimmed to
-// capture *its* argv.
+// operator pastes the printed command into their shell on the exelet host.
+// We shim `ssh` and `sudo` in PATH to capture argv without running anything,
+// then verify the ProxyCommand is parseable by /bin/sh.
 func TestBuildOperatorSSHCommand_QuotingRoundTrip(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("bash not available")
-	}
-	cmd := buildOperatorSSHCommand("exelet-99", "/data/exelet/runtime/abc/opssh.sock", 2222)
+	cmd := buildOperatorSSHCommand("/data/exelet/runtime/abc/opssh.sock", 2222)
 
 	shimDir := t.TempDir()
 	sshLog := filepath.Join(shimDir, "ssh-argv")
-	bashLog := filepath.Join(shimDir, "bash-argv")
 	dumpScript := func(path string) string {
 		return "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\0' \"$a\" >> " + path + "; done\n"
 	}
-	if err := os.WriteFile(filepath.Join(shimDir, "ssh"), []byte(dumpScript(sshLog)), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(shimDir, "bash"), []byte(dumpScript(bashLog)), 0o755); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"ssh", "sudo"} {
+		if err := os.WriteFile(filepath.Join(shimDir, name), []byte(dumpScript(sshLog)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Run the entire printed command via /bin/sh -c, with our shims taking
@@ -99,30 +84,27 @@ func TestBuildOperatorSSHCommand_QuotingRoundTrip(t *testing.T) {
 	if proxyCmd == "" {
 		t.Fatalf("no ProxyCommand in ssh argv: %q", sshArgs)
 	}
-	if !strings.HasPrefix(proxyCmd, `bash -c "`) {
+	if !strings.HasPrefix(proxyCmd, `sh -c "`) {
 		t.Fatalf("unexpected ProxyCommand: %q", proxyCmd)
 	}
 
-	// ssh forks /bin/sh -c <ProxyCommand>. Reproduce that.
-	os.Remove(bashLog)
+	// ssh forks /bin/sh -c <ProxyCommand>. Reproduce that and verify it parses.
+	os.Remove(sshLog)
 	c2 := exec.Command("/bin/sh", "-c", proxyCmd)
 	c2.Env = append(os.Environ(), "PATH="+shimDir+":/usr/bin:/bin")
 	if out, err := c2.CombinedOutput(); err != nil {
 		t.Fatalf("run ProxyCommand: %v\nout: %s", err, out)
 	}
-	bashArgs := readNullArgs(t, bashLog)
-	if len(bashArgs) != 2 || bashArgs[0] != "-c" {
-		t.Fatalf("shimmed bash got args %q; want [-c <script>]", bashArgs)
-	}
-	script := bashArgs[1]
+
+	// The sudo shim should have captured the socat invocation.
+	sudoArgs := readNullArgs(t, sshLog)
+	joined := strings.Join(sudoArgs, " ")
 	for _, w := range []string{
-		`coproc P { ssh exelet-99 "sudo socat -t30 - UNIX-CONNECT:/data/exelet/runtime/abc/opssh.sock"; }`,
-		`echo CONNECT 2222 >&${P[1]}`,
-		`IFS= read -r _ <&${P[0]}`,
-		`cat <&${P[0]} & exec cat >&${P[1]}`,
+		"socat",
+		"UNIX-CONNECT:/data/exelet/runtime/abc/opssh.sock",
 	} {
-		if !strings.Contains(script, w) {
-			t.Errorf("final bash script missing %q\nscript: %s", w, script)
+		if !strings.Contains(joined, w) {
+			t.Errorf("sudo argv missing %q\nargv: %q", w, sudoArgs)
 		}
 	}
 }

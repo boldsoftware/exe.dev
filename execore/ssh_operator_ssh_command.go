@@ -60,7 +60,8 @@ func (ss *SSHServer) handleOperatorSSHCommand(ctx context.Context, cc *exemenu.C
 	)
 	socketPath := fmt.Sprintf("%s/runtime/%s/opssh.sock", dataDir, instanceID)
 
-	sshCmd := buildOperatorSSHCommand(exeletHost, socketPath, vsockPort)
+	keyQuery := fmt.Sprintf(`sqlite3 /data/execore/exe.db "SELECT ssh_client_private_key FROM boxes WHERE name='%s'" > /tmp/opssh-key && chmod 600 /tmp/opssh-key`, vmName)
+	sshCmd := buildOperatorSSHCommand(socketPath, vsockPort)
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
@@ -70,6 +71,7 @@ func (ss *SSHServer) handleOperatorSSHCommand(ctx context.Context, cc *exemenu.C
 			"socket_path": socketPath,
 			"vsock_port":  vsockPort,
 			"data_dir":    dataDir,
+			"key_query":   keyQuery,
 			"ssh_command": sshCmd,
 		})
 		return nil
@@ -81,48 +83,44 @@ func (ss *SSHServer) handleOperatorSSHCommand(ctx context.Context, cc *exemenu.C
 	cc.Writeln("  instance ID : %s", instanceID)
 	cc.Writeln("  vsock socket: %s (port %d)", socketPath, vsockPort)
 	cc.Writeln("")
-	cc.Writeln("Run from a host that can ssh to the exelet:")
+	cc.Writeln("\033[1mStep 1:\033[0m Extract the VM's SSH private key (run on execore host):")
+	cc.Writeln("")
+	cc.Writeln("  %s", keyQuery)
+	cc.Writeln("")
+	cc.Writeln("\033[1mStep 2:\033[0m SSH to the exelet host:")
+	cc.Writeln("")
+	cc.Writeln("  ssh %s", exeletHost)
+	cc.Writeln("")
+	cc.Writeln("\033[1mStep 3:\033[0m From the exelet, SSH into the VM:")
 	cc.Writeln("")
 	cc.Writeln("  %s", sshCmd)
 	cc.Writeln("")
-	cc.Writeln("\033[2mAuthenticates with the same key the in-guest sshd accepts. "+
-		"If the exelet uses a non-default --data-dir, replace %s in the path above.\033[0m", dataDir)
+	cc.Writeln("\033[2mIf the exelet uses a non-default --data-dir, replace %s in the socket path above.\033[0m", dataDir)
 	cc.Writeln("")
 	return nil
 }
 
 // buildOperatorSSHCommand builds the copy-pasteable shell command that opens
 // an SSH session into the in-guest operator-SSH server running on AF_VSOCK.
+// The command is meant to be run from the exelet host itself, removing one
+// layer of SSH tunneling and the associated quoting complexity.
 //
-// The ProxyCommand starts a bash coproc that runs `ssh <host> sudo socat ...`
-// (bridging stdio to the per-VM unix socket on the exelet host), writes the
-// `CONNECT <port>\n` line cloud-hypervisor's hybrid-vsock expects, reads and
-// discards the `OK <peerport>\n` reply, and then bidirectionally bridges the
-// remaining bytes between its own stdio and the coproc.
-//
-// Quoting layers, from outermost to innermost:
-//
-//	operator's shell  -- single-quoted -o argument keeps everything literal
-//	/bin/sh -c        -- expands the double-quoted bash -c argument; we use
-//	                     \" and \$ so they survive into bash
-//	bash -c           -- the actual script; uses 'CONNECT 2222\n' and ${P[i]}
-func buildOperatorSSHCommand(host, socketPath string, vsockPort int) string {
-	remote := fmt.Sprintf(`sudo socat -t30 - UNIX-CONNECT:%s`, socketPath)
-	// Bash script (post /bin/sh expansion). We use `echo` rather than
-	// `printf 'CONNECT %d\n'` so we don't need any literal single quotes
-	// inside the script -- the outer ProxyCommand= argument is itself wrapped
-	// in single quotes by the operator's shell, and nesting single quotes
-	// would terminate that string.
-	bashScript := fmt.Sprintf(
-		`coproc P { ssh %s "%s"; }; echo CONNECT %d >&${P[1]}; IFS= read -r _ <&${P[0]}; cat <&${P[0]} & exec cat >&${P[1]}`,
-		host, remote, vsockPort,
+// The ProxyCommand uses a simple sh pipeline:
+//   - { printf "CONNECT <port>\n"; cat; } sends the hybrid-vsock handshake
+//     then forwards stdin into the socat tunnel
+//   - sudo socat bridges stdio to the per-VM unix socket
+//   - { read _; cat; } strips the "OK" response and forwards the rest
+func buildOperatorSSHCommand(socketPath string, vsockPort int) string {
+	// The ProxyCommand is wrapped in single quotes at the -o level (so the
+	// operator's shell keeps it literal), and the inner sh -c argument uses
+	// double quotes. We use `echo` instead of `printf` to avoid any nested
+	// quote characters.
+	proxy := fmt.Sprintf(
+		`sh -c "{ echo CONNECT %d; cat; } | sudo socat -t30 - UNIX-CONNECT:%s | { read _; cat; }"`,
+		vsockPort, socketPath,
 	)
-	// Escape for /bin/sh's double-quoted expansion: " -> \", $ -> \$.
-	// (Backslashes are not in our generated string.)
-	shArg := strings.NewReplacer(`"`, `\"`, `$`, `\$`).Replace(bashScript)
-	proxy := `bash -c "` + shArg + `"`
 	return fmt.Sprintf(
-		`ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o 'ProxyCommand=%s' root@vsock`,
+		`ssh -i /tmp/opssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o 'ProxyCommand=%s' root@vsock`,
 		proxy,
 	)
 }
