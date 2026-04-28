@@ -622,7 +622,7 @@ func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request, user
 			PeriodEnd:   periodEnd,
 		},
 		Trial:    trialInfo,
-		HasUsage: s.env.EnforcePlanCPUMax,
+		HasUsage: s.env.EnforcePlanCPUMax || s.UserHasExeSudo(r.Context(), userID),
 	})
 }
 

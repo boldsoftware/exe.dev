@@ -38,11 +38,12 @@ type vmsLiveResponse struct {
 
 // HandleAPIVMsLive handles GET /api/vms/usage/live.
 // Returns live metrics for all VMs owned by the user.
-// Returns empty vms when EnforcePlanCPUMax is off (metrics not yet validated).
+// Returns empty vms when EnforcePlanCPUMax is off (metrics not yet validated),
+// unless the user is a sudoer.
 func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
 
-	if !s.env.EnforcePlanCPUMax {
+	if !s.env.EnforcePlanCPUMax && !s.UserHasExeSudo(ctx, userID) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(vmsLiveResponse{VMs: []vmsLiveVM{}})
 		return
