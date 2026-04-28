@@ -176,3 +176,127 @@ func (s *Server) handleDebugUsagePricingTeamAPI(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+// usagePricingHourVM is one VM's high-water-mark metrics for a specific hour,
+// returned by /debug/usage-pricing-team-hour-api.
+type usagePricingHourVM struct {
+	VMID          string  `json:"vm_id"`
+	VMName        string  `json:"vm_name"`
+	ResourceGroup string  `json:"resource_group"`
+	Host          string  `json:"host"`
+	CPUCores      float64 `json:"cpu_cores"`
+	MemoryRSSGiB  float64 `json:"memory_rss_gib"`
+	MemorySwapGiB float64 `json:"memory_swap_gib"`
+	DiskGiB       float64 `json:"disk_gib"`
+	CostUSD       float64 `json:"cost_usd"`
+}
+
+// handleDebugUsagePricingTeamHourAPI returns per-VM metrics for one hour.
+// GET /debug/usage-pricing-team-hour-api?team_id=xxx&hour=2026-04-27T20:00:00Z
+func (s *Server) handleDebugUsagePricingTeamHourAPI(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if s.metricsdURL == "" {
+		http.Error(w, "metricsd not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	teamID := r.URL.Query().Get("team_id")
+	if teamID == "" {
+		http.Error(w, "team_id is required", http.StatusBadRequest)
+		return
+	}
+	hourStr := r.URL.Query().Get("hour")
+	if hourStr == "" {
+		http.Error(w, "hour is required", http.StatusBadRequest)
+		return
+	}
+	hourStart, err := time.Parse(time.RFC3339, hourStr)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid hour: %v", err), http.StatusBadRequest)
+		return
+	}
+	hourStart = hourStart.UTC().Truncate(time.Hour)
+	hourEnd := hourStart.Add(time.Hour)
+
+	members, err := withRxRes1(s, ctx, (*exedb.Queries).GetTeamMembers, teamID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get team members: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if len(members) == 0 {
+		http.Error(w, "team has no members", http.StatusNotFound)
+		return
+	}
+	resourceGroups := make([]string, len(members))
+	for i, m := range members {
+		resourceGroups[i] = m.UserID
+	}
+
+	client := newMetricsClient(s.metricsdURL)
+	queryCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	allMetrics, err := client.queryHourly(queryCtx, resourceGroups, hourStart, hourEnd)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to query hourly metrics for hour", "error", err, "hour", hourStart)
+		http.Error(w, fmt.Sprintf("failed to query metrics: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	const (
+		cpuPerCorePerHour      = 0.05
+		activeMemPerGiBPerHour = 0.016
+		diskPerGiBPerMonth     = 0.08
+		swapPerGiBPerMonth     = 0.08
+		hoursPerMonth          = 720.0
+	)
+
+	vms := make([]*usagePricingHourVM, 0, len(allMetrics))
+	for _, m := range allMetrics {
+		// queryHourly is closed-open on [start, end); paranoia filter in case the
+		// backend returns adjacent hours.
+		if !m.HourStart.UTC().Equal(hourStart) {
+			continue
+		}
+		cpuCores := m.CPUDeltaSeconds / 3600.0
+		memRSS := float64(m.MemoryRSSMaxBytes) / (1 << 30)
+		memSwap := float64(m.MemorySwapMaxBytes) / (1 << 30)
+		disk := float64(m.DiskProvisionedBytes) / (1 << 30)
+		cost := cpuCores*cpuPerCorePerHour +
+			memRSS*activeMemPerGiBPerHour +
+			disk*diskPerGiBPerMonth/hoursPerMonth +
+			memSwap*swapPerGiBPerMonth/hoursPerMonth
+		vms = append(vms, &usagePricingHourVM{
+			VMID:          m.VMID,
+			VMName:        m.VMName,
+			ResourceGroup: m.ResourceGroup,
+			Host:          m.Host,
+			CPUCores:      cpuCores,
+			MemoryRSSGiB:  memRSS,
+			MemorySwapGiB: memSwap,
+			DiskGiB:       disk,
+			CostUSD:       cost,
+		})
+	}
+
+	// Sort by descending cost so the top consumers come first in the table.
+	sort.Slice(vms, func(i, j int) bool {
+		return vms[i].CostUSD > vms[j].CostUSD
+	})
+
+	result := struct {
+		Hour    string                `json:"hour"`
+		TeamID  string                `json:"team_id"`
+		VMs     []*usagePricingHourVM `json:"vms"`
+		VMCount int                   `json:"vm_count"`
+	}{
+		Hour:    hourStart.Format(time.RFC3339),
+		TeamID:  teamID,
+		VMs:     vms,
+		VMCount: len(vms),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}

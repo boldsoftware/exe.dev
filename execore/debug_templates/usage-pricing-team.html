@@ -17,7 +17,8 @@
   /* vega-embed sets display:inline-block on its container, which collapses
      width when paired with the chart spec's width:'container'. Force the
      chart div to be a block at full width so the SVG renders properly. */
-  .chart-container > div[id^="chart-"] { display: block; width: 100%; }
+  .chart-container > div[id^="chart-"],
+  .chart-container > div[id^="hist-"] { display: block; width: 100%; }
   #status { font-size: 13px; color: #888; margin-bottom: 16px; }
   .summary { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
   .summary .stat { background: #fafafa; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; }
@@ -65,6 +66,34 @@
   <div class="chart-container"><h3>Estimated Hourly Cost (USD)</h3><div id="chart-cost"></div></div>
 </div>
 
+<div id="hour-detail" style="margin-top: 32px; display: none;">
+  <h3 style="margin: 0 0 4px;">Per-VM breakdown for <span id="hour-detail-label"></span></h3>
+  <div id="hour-detail-status" style="font-size: 12px; color: #888; margin-bottom: 12px;"></div>
+  <div class="charts">
+    <div class="chart-container"><h3>CPU cores per VM (histogram)</h3><div id="hist-cpu"></div></div>
+    <div class="chart-container"><h3>Active memory GiB per VM (histogram)</h3><div id="hist-mem"></div></div>
+    <div class="chart-container">
+      <h3>Top VMs by hourly cost</h3>
+      <div style="max-height: 360px; overflow-y: auto;">
+        <table id="vm-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead style="position: sticky; top: 0; background: #fafafa;">
+            <tr style="text-align: left; border-bottom: 1px solid #ddd;">
+              <th style="padding: 6px;">VM</th>
+              <th style="padding: 6px;">User</th>
+              <th style="padding: 6px; text-align: right;">CPU cores</th>
+              <th style="padding: 6px; text-align: right;">Mem GiB</th>
+              <th style="padding: 6px; text-align: right;">Swap GiB</th>
+              <th style="padding: 6px; text-align: right;">Disk GiB</th>
+              <th style="padding: 6px; text-align: right;">Cost $</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const daysInput = document.getElementById('days');
 const hoursInput = document.getElementById('hours');
@@ -89,7 +118,9 @@ async function loadData() {
   statusEl.textContent = `Loading ${hours}h of data...`;
   loadBtn.disabled = true;
   try {
-    const resp = await fetch(`/debug/usage-pricing-team-api?team_id=${encodeURIComponent(teamId)}&hours=${hours}`);
+    currentTeamId = teamId;
+  hourDetail.style.display = 'none';
+  const resp = await fetch(`/debug/usage-pricing-team-api?team_id=${encodeURIComponent(teamId)}&hours=${hours}`);
     if (!resp.ok) { statusEl.textContent = `Error: ${resp.status} ${await resp.text()}`; return; }
     const data = await resp.json();
     await renderCharts(data);
@@ -139,7 +170,10 @@ function renderBar(elementId, buckets, field, title, color) {
     width: 'container',
     height: 200,
     data: { values: buckets },
-    mark: { type: 'bar', tooltip: true },
+    mark: { type: 'bar', tooltip: true, cursor: 'pointer' },
+    selection: {
+      sel: { type: 'single', empty: 'none', on: 'click', fields: ['hour'] }
+    },
     encoding: {
       x: {
         field: 'hour', type: 'temporal',
@@ -150,6 +184,12 @@ function renderBar(elementId, buckets, field, title, color) {
         axis: { title: title }
       },
       color: { value: color },
+      stroke: {
+        condition: { selection: 'sel', value: '#000' }, value: null
+      },
+      strokeWidth: {
+        condition: { selection: 'sel', value: 2 }, value: 0
+      },
       tooltip: [
         { field: 'hour', type: 'temporal', title: 'Hour' },
         { field: field, type: 'quantitative', title: title, format: '.2f' },
@@ -157,7 +197,14 @@ function renderBar(elementId, buckets, field, title, color) {
       ]
     },
   };
-  return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' });
+  return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' }).then(res => {
+    res.view.addEventListener('click', (event, item) => {
+      if (item && item.datum && item.datum.hour) {
+        loadHourDetail(item.datum.hour);
+      }
+    });
+    return res;
+  });
 }
 
 function renderStackedCost(elementId, buckets) {
@@ -200,12 +247,98 @@ function renderStackedCost(elementId, buckets) {
   return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' });
 }
 
+// ---- Per-hour drill-down ----
+let currentTeamId = null;
+const hourDetail = document.getElementById('hour-detail');
+const hourDetailLabel = document.getElementById('hour-detail-label');
+const hourDetailStatus = document.getElementById('hour-detail-status');
+
+async function loadHourDetail(hour) {
+  if (!currentTeamId) return;
+  hourDetail.style.display = 'block';
+  const hourDate = new Date(hour);
+  hourDetailLabel.textContent = hourDate.toISOString().replace('.000Z', 'Z');
+  hourDetailStatus.textContent = 'Loading per-VM breakdown...';
+  document.querySelector('#vm-table tbody').innerHTML = '';
+  try {
+    const resp = await fetch(
+      `/debug/usage-pricing-team-hour-api?team_id=${encodeURIComponent(currentTeamId)}` +
+      `&hour=${encodeURIComponent(hourDate.toISOString())}`
+    );
+    if (!resp.ok) {
+      hourDetailStatus.textContent = `Error: ${resp.status} ${await resp.text()}`;
+      return;
+    }
+    const data = await resp.json();
+    const vms = data.vms || [];
+    hourDetailStatus.textContent = `${vms.length} VM${vms.length === 1 ? '' : 's'} active in this hour.`;
+    await Promise.all([
+      renderHistogram('hist-cpu', vms, 'cpu_cores', 'CPU cores', '#4c78a8'),
+      renderHistogram('hist-mem', vms, 'memory_rss_gib', 'Active memory (GiB)', '#72b7b2'),
+    ]);
+    renderVMTable(vms);
+  } catch (e) {
+    hourDetailStatus.textContent = `Error: ${e.message}`;
+  }
+}
+
+function renderHistogram(elementId, vms, field, title, color) {
+  const spec = {
+    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    width: 'container',
+    height: 200,
+    data: { values: vms },
+    mark: { type: 'bar', tooltip: true },
+    encoding: {
+      x: {
+        field: field, type: 'quantitative',
+        bin: { maxbins: 30 },
+        axis: { title: title }
+      },
+      y: {
+        aggregate: 'count', type: 'quantitative',
+        axis: { title: 'VMs' }
+      },
+      color: { value: color },
+      tooltip: [
+        { aggregate: 'count', type: 'quantitative', title: 'VMs' },
+      ]
+    },
+  };
+  return vegaEmbed(`#${elementId}`, spec, { actions: false, renderer: 'svg' });
+}
+
+function renderVMTable(vms) {
+  const tbody = document.querySelector('#vm-table tbody');
+  const rows = vms.slice(0, 200).map(v =>
+    `<tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 4px 6px;"><a href="/debug/vms/${encodeURIComponent(v.vm_name)}" target="_blank">${escapeHtml(v.vm_name || v.vm_id)}</a></td>
+      <td style="padding: 4px 6px; color: #888;">${escapeHtml(v.resource_group)}</td>
+      <td style="padding: 4px 6px; text-align: right;">${v.cpu_cores.toFixed(2)}</td>
+      <td style="padding: 4px 6px; text-align: right;">${v.memory_rss_gib.toFixed(2)}</td>
+      <td style="padding: 4px 6px; text-align: right;">${v.memory_swap_gib.toFixed(2)}</td>
+      <td style="padding: 4px 6px; text-align: right;">${v.disk_gib.toFixed(1)}</td>
+      <td style="padding: 4px 6px; text-align: right;">$${v.cost_usd.toFixed(4)}</td>
+    </tr>`
+  ).join('');
+  tbody.innerHTML = rows + (vms.length > 200 ? `<tr><td colspan="7" style="padding: 6px; color: #888;">… ${vms.length - 200} more rows truncated</td></tr>` : '');
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
+
 // Auto-select first team and load on page ready.
 if (teamSelect.options.length > 1) {
   teamSelect.selectedIndex = 1;
   loadData();
 }
-teamSelect.addEventListener('change', loadData);
+teamSelect.addEventListener('change', () => {
+  hourDetail.style.display = 'none';
+  loadData();
+});
 </script>
 
 {{end}}

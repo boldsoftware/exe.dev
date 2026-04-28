@@ -169,6 +169,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("GET /debug/usage-api", s.handleDebugUsageAPI)
 	mux.HandleFunc("GET /debug/usage-pricing-team", s.handleDebugUsagePricingTeam)
 	mux.HandleFunc("GET /debug/usage-pricing-team-api", s.handleDebugUsagePricingTeamAPI)
+	mux.HandleFunc("GET /debug/usage-pricing-team-hour-api", s.handleDebugUsagePricingTeamHourAPI)
 
 	// SQL query tool & stream
 	mux.HandleFunc("GET /debug/sql-query", s.handleDebugSQLQueryForm)
