@@ -295,6 +295,15 @@ export async function fetchDaemonHealth(signal?: AbortSignal): Promise<DaemonHea
   return resp.json()
 }
 
+// Per-instance daemon health: map of hostname -> DaemonHealth.
+export type InstanceDaemonHealth = Record<string, DaemonHealth>
+
+export async function fetchDaemonHealthInstances(signal?: AbortSignal): Promise<InstanceDaemonHealth> {
+  const resp = await fetch('/api/v1/daemons/health/instances', { signal })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return resp.json()
+}
+
 export interface DaemonMetricSummary {
   name: string
   current: number | null

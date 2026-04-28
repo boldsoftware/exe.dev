@@ -34,6 +34,9 @@ func TestDaemonDefs(t *testing.T) {
 			if m.Query == "" {
 				t.Errorf("daemon %q metric %q: empty query", d.Daemon, m.Name)
 			}
+			if m.InstanceQuery == "" {
+				t.Errorf("daemon %q metric %q: empty instance query", d.Daemon, m.Name)
+			}
 			if m.Unit == "" {
 				t.Errorf("daemon %q metric %q: empty unit", d.Daemon, m.Name)
 			}

@@ -43,6 +43,7 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 
 	// Daemon health metrics (sparklines + floor evaluation).
 	authed.HandleFunc("/api/v1/daemons/health", h.HandleDaemonHealth)
+	authed.HandleFunc("/api/v1/daemons/health/instances", h.HandleDaemonHealthInstances)
 	authed.HandleFunc("/api/v1/daemons/summary", h.HandleDaemonHealthSummary)
 
 	// Server version.

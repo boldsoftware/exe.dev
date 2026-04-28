@@ -130,7 +130,7 @@
                   Uptime
                   <i v-if="sortCol === 'uptime'" class="pi" :class="sortDir === 'asc' ? 'pi-sort-amount-up-alt' : 'pi-sort-amount-down'"></i>
                 </th>
-                <th v-if="daemonHealth.length > 0" class="col-health-header">Health</th>
+                <th v-if="hasInstanceHealth" class="col-health-header">Health</th>
                 <th></th>
               </tr>
             </thead>
@@ -185,9 +185,9 @@
                   <span v-if="p.uptime_secs" class="uptime-text">{{ humanizeUptime(p.uptime_secs) }}</span>
                   <span v-else class="metric-blank">&mdash;</span>
                 </td>
-                <td v-if="daemonHealth.length > 0" class="col-health">
-                  <template v-if="procHealth(p.process)">
-                    <div v-for="m in procHealth(p.process)!.metrics" :key="m.name" class="health-metric" :title="m.description + ' (' + m.unit + ')'">
+                <td v-if="hasInstanceHealth" class="col-health">
+                  <template v-if="procHealth(p.hostname)">
+                    <div v-for="m in procHealth(p.hostname)!.metrics" :key="m.name" class="health-metric" :title="m.description + ' (' + m.unit + ')'">
                       <svg v-if="m.sparkline?.length" class="health-spark" viewBox="0 0 80 20" preserveAspectRatio="none">
                         <path :d="sparklinePath(m.sparkline)" stroke="var(--primary-color)" fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke" />
                       </svg>
@@ -667,14 +667,15 @@ import {
   type DeployCommit,
   type RolloutStatus,
   type RolloutTarget,
-  fetchDaemonHealth,
+  fetchDaemonHealthInstances,
   type DaemonHealth,
+  type InstanceDaemonHealth,
 } from '../api/client'
 
 const deployableProcesses = new Set(['exeletd', 'exeprox', 'exed', 'cgtop', 'metricsd', 'exe-ops', 'exepipe'])
 
-// Daemon health state
-const daemonHealth = ref<DaemonHealth[]>([])
+// Per-instance daemon health state (hostname -> DaemonHealth).
+const instanceHealth = ref<InstanceDaemonHealth>({})
 let daemonHealthTimer: ReturnType<typeof setInterval> | null = null
 let daemonHealthAbort: AbortController | null = null
 
@@ -682,30 +683,16 @@ async function loadDaemonHealth() {
   if (daemonHealthAbort) daemonHealthAbort.abort()
   daemonHealthAbort = new AbortController()
   try {
-    daemonHealth.value = await fetchDaemonHealth(daemonHealthAbort.signal)
+    instanceHealth.value = await fetchDaemonHealthInstances(daemonHealthAbort.signal)
   } catch (e: unknown) {
     if (e instanceof DOMException && e.name === 'AbortError') return
   }
 }
 
-// Map process name (from inventory) to daemon name (from health API).
-const procToDaemon: Record<string, string> = {
-  exeprox: 'exeprox',
-  exed: 'exed',
-  exeletd: 'exelet',
-  metricsd: 'metricsd',
-}
+const hasInstanceHealth = computed(() => Object.keys(instanceHealth.value).length > 0)
 
-// Lookup: daemon name -> DaemonHealth
-const daemonHealthMap = computed(() => {
-  const m = new Map<string, DaemonHealth>()
-  for (const d of daemonHealth.value) m.set(d.daemon, d)
-  return m
-})
-
-function procHealth(process: string): DaemonHealth | undefined {
-  const daemon = procToDaemon[process]
-  return daemon ? daemonHealthMap.value.get(daemon) : undefined
+function procHealth(hostname: string): DaemonHealth | undefined {
+  return instanceHealth.value[hostname]
 }
 
 function sparklinePath(points: [number, number][] | undefined): string {
