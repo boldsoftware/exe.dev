@@ -140,6 +140,8 @@ type ExeletConfig struct {
 	MetadataURL string
 	// ExepipeAddress is the Unix domain address of the exepipe server.
 	ExepipeAddress string
+	// Temporary during socat -> exepipe transition.
+	StopSocatListeners bool
 	// InstanceDomain is the domain for instance hostnames (e.g., exe.xyz, exe-staging.xyz)
 	InstanceDomain string
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs

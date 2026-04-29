@@ -84,6 +84,9 @@ func newProxyManager(ctx context.Context, cfg *config.ExeletConfig, log *slog.Lo
 	if cfg.ProxyNetnsFunc != nil {
 		opts.NetnsFunc = sshproxy.NetnsFunc(cfg.ProxyNetnsFunc)
 	}
+	if cfg.StopSocatListeners {
+		opts.StopSocatListeners = true
+	}
 	return sshproxy.NewManager(ctx, cfg.DataDir, cfg.ProxyBindIP, cfg.ExepipeAddress, log, opts)
 }
 
