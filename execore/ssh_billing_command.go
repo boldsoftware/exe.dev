@@ -92,6 +92,8 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 
 	tier, tierErr := plan.GetTierByID(planRow.PlanID)
 
+	isSudo := ss.isSudoUser(cc)
+
 	// JSON output
 	if cc.WantJSON() {
 		result := map[string]any{
@@ -109,24 +111,26 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 			result["max_disk_gb"] = tier.Quotas.MaxDisk / (1024 * 1024 * 1024)
 			result["bandwidth_gb"] = tier.Quotas.DefaultBandwidth / (1024 * 1024 * 1024)
 
-			// Include live pool usage in JSON.
-			usageRows, usageErr := ss.fetchVMUsageForUser(ctx, cc.User.ID)
-			if usageErr == nil && len(usageRows) > 0 {
-				var cpuUsed float64
-				var memUsed uint64
-				var diskProvisioned uint64
-				for _, row := range usageRows {
-					if row.Status == "running" {
-						cpuUsed += row.CPUPercent / 100.0
-						memUsed += row.DisplayMemBytes()
+			// Include live pool usage in JSON only for sudo users.
+			if isSudo {
+				usageRows, usageErr := ss.fetchVMUsageForUser(ctx, cc.User.ID)
+				if usageErr == nil && len(usageRows) > 0 {
+					var cpuUsed float64
+					var memUsed uint64
+					var diskProvisioned uint64
+					for _, row := range usageRows {
+						if row.Status == "running" {
+							cpuUsed += row.CPUPercent / 100.0
+							memUsed += row.DisplayMemBytes()
+						}
+						diskProvisioned += row.DiskCapacity
 					}
-					diskProvisioned += row.DiskCapacity
-				}
-				result["usage"] = map[string]any{
-					"cpu_used":               cpuUsed,
-					"mem_used_bytes":         memUsed,
-					"disk_provisioned_bytes": diskProvisioned,
-					"vm_count":               len(usageRows),
+					result["usage"] = map[string]any{
+						"cpu_used":               cpuUsed,
+						"mem_used_bytes":         memUsed,
+						"disk_provisioned_bytes": diskProvisioned,
+						"vm_count":               len(usageRows),
+					}
 				}
 			}
 		}
@@ -180,8 +184,8 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 			}
 		}
 
-		// Live pool utilization bars (only for plans with pool limits).
-		if tier.Quotas.MaxCPUs > 0 || tier.Quotas.MaxMemory > 0 {
+		// Live pool utilization bars (only for sudo users).
+		if isSudo {
 			ss.writeBillingPlanPoolBars(ctx, cc, tier, planRow)
 		}
 	}
