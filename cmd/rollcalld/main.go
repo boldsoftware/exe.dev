@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"sort"
@@ -17,24 +19,23 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"gopkg.in/yaml.v3"
 )
 
 func main() {
 	var (
-		listenAddr     string
-		checkInterval  time.Duration
-		prometheusConf string
-		once           bool
+		listenAddr    string
+		checkInterval time.Duration
+		prometheusURL string
+		once          bool
 	)
 	flag.StringVar(&listenAddr, "listen", ":9098", "listen address for metrics")
 	flag.DurationVar(&checkInterval, "interval", 5*time.Minute, "check interval")
-	flag.StringVar(&prometheusConf, "prometheus-config", "/home/ubuntu/prometheus/prometheus.yml", "path to prometheus.yml")
+	flag.StringVar(&prometheusURL, "prometheus-url", "http://mon:9090", "prometheus base URL")
 	flag.BoolVar(&once, "once", false, "run once, print results, and exit")
 	flag.Parse()
 
 	if once {
-		runOnce(prometheusConf)
+		runOnce(prometheusURL)
 		return
 	}
 
@@ -65,7 +66,7 @@ func main() {
 
 	go func() {
 		for {
-			result, err := check(prometheusConf)
+			result, err := check(prometheusURL)
 			if err != nil {
 				log.Printf("check error: %v", err)
 				time.Sleep(checkInterval)
@@ -111,15 +112,15 @@ type checkResult struct {
 	stale           []string            // in prometheus, not in tailscale
 }
 
-func check(configPath string) (*checkResult, error) {
+func check(prometheusURL string) (*checkResult, error) {
 	tsHosts, err := findTaggedOnlineHosts()
 	if err != nil {
 		return nil, fmt.Errorf("tailscale: %w", err)
 	}
 
-	promHosts, err := parsePrometheusHosts(configPath)
+	promHosts, err := queryPrometheusHosts(prometheusURL)
 	if err != nil {
-		return nil, fmt.Errorf("prometheus config: %w", err)
+		return nil, fmt.Errorf("prometheus: %w", err)
 	}
 
 	tsSet := make(map[string]bool, len(tsHosts))
@@ -151,8 +152,8 @@ func check(configPath string) (*checkResult, error) {
 	}, nil
 }
 
-func runOnce(configPath string) {
-	result, err := check(configPath)
+func runOnce(prometheusURL string) {
+	result, err := check(prometheusURL)
 	if err != nil {
 		log.Fatalf("check: %v", err)
 	}
@@ -230,44 +231,57 @@ func findTaggedOnlineHosts() ([]string, error) {
 	return hosts, nil
 }
 
-// prometheusConfig is the subset of prometheus.yml we care about.
-type prometheusConfig struct {
-	ScrapeConfigs []scrapeConfig `yaml:"scrape_configs"`
-}
+// queryPrometheusHosts queries the Prometheus API for the "up" metric to find
+// all actively monitored hosts, returning a map of hostname -> list of job names.
+func queryPrometheusHosts(baseURL string) (map[string][]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-type scrapeConfig struct {
-	JobName       string         `yaml:"job_name"`
-	StaticConfigs []staticConfig `yaml:"static_configs"`
-}
-
-type staticConfig struct {
-	Targets []string `yaml:"targets"`
-}
-
-// parsePrometheusHosts reads the prometheus config and extracts all target
-// hostnames, returning a map of hostname -> list of job names that scrape it.
-func parsePrometheusHosts(path string) (map[string][]string, error) {
-	data, err := os.ReadFile(path)
+	u := baseURL + "/api/v1/query?query=" + url.QueryEscape("up")
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", path, err)
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	var cfg prometheusConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("querying prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading response: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("prometheus returned %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string `json:"metric"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing response: %w", err)
+	}
+	if result.Status != "success" {
+		return nil, fmt.Errorf("prometheus query failed: status=%s", result.Status)
 	}
 
 	hosts := make(map[string][]string)
-	for _, sc := range cfg.ScrapeConfigs {
-		for _, tc := range sc.StaticConfigs {
-			for _, target := range tc.Targets {
-				host := normalizeTarget(target)
-				if host == "" {
-					continue
-				}
-				hosts[host] = appendUnique(hosts[host], sc.JobName)
-			}
+	for _, r := range result.Data.Result {
+		instance := r.Metric["instance"]
+		job := r.Metric["job"]
+		host := normalizeTarget(instance)
+		if host == "" {
+			continue
 		}
+		hosts[host] = appendUnique(hosts[host], job)
 	}
 	return hosts, nil
 }
