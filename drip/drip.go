@@ -332,7 +332,7 @@ func signature() string {
 }
 
 func htmlSignature() string {
-	return `<p>-- <br>David Crawshaw<br>CEO exe.dev<br>` +
+	return `<p style="color:#999">-- <br>David Crawshaw<br>CEO exe.dev<br>` +
 		`<a href="{{{pm:unsubscribe}}}" style="color:#999;text-decoration:none">Unsubscribe</a></p>`
 }
 
