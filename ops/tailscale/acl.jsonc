@@ -46,6 +46,7 @@
     "tag:exelet": ["autogroup:admin"],  // exelet primaries (ZFS replication source)
     "tag:replica": ["autogroup:admin"], // exelet replicas (ZFS replication dest)
     "tag:ops": ["autogroup:admin"],     // exe-ops / exe-ops-staging (fleet deploys)
+    "tag:exeprox": ["autogroup:admin"], // exeprox edge proxies (no policy grants; tag is informational)
   },
 
   "grants": [
