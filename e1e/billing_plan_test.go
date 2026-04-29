@@ -188,8 +188,8 @@ func TestBillingPlanTrialUser(t *testing.T) {
 
 	// Also verify JSON doesn't include price or weird tier info
 	result := runParseExeDevJSON[map[string]any](t, keyFile, "billing", "plan", "--json")
-	if result["plan"] != "Trial" {
-		t.Errorf("expected plan=Trial, got %v", result["plan"])
+	if result["plan"] != "Free" {
+		t.Errorf("expected plan=Free, got %v", result["plan"])
 	}
 	if result["paid"] != false {
 		t.Errorf("expected paid=false, got %v", result["paid"])

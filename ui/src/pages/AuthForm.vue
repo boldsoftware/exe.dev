@@ -6,7 +6,7 @@
       <p v-if="page.team_invite" class="success-text mb-4">✓ You've been invited to join {{ page.teamInviteName }}</p>
       <template v-else-if="page.inviteValid">
         <p v-if="page.invitePlanType === 'free'" class="success-text mb-4">✓ Invite code accepted: free account</p>
-        <p v-else-if="page.invitePlanType === 'trial'" class="success-text mb-4">✓ Invite code accepted: 1 month free trial</p>
+        <p v-else-if="page.invitePlanType === 'trial'" class="success-text mb-4">✓ Invite code accepted: 1 month free access</p>
         <p v-else class="success-text mb-4">✓ Invite code accepted</p>
       </template>
       <p v-else-if="page.inviteInvalid" class="error-text mb-4">Invalid or already used invite code.</p>

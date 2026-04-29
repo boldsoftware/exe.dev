@@ -5288,7 +5288,7 @@ func (s *Server) giveInvitesToUser(ctx context.Context, user *exedb.User, count 
 	var planDesc string
 	switch planType {
 	case "trial":
-		planDesc = "1 month free trial"
+		planDesc = "1 month free access"
 	case "free":
 		planDesc = "free"
 	default:

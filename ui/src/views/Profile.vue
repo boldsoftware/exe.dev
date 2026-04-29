@@ -93,8 +93,8 @@
                     <!-- TODO: uncomment when billing status states are implemented
                     <Tag v-if="data.credits.selfServeBilling" value="ACTIVE" class="active-tag" />
                     -->
-                    <span v-if="data.trial && data.trial.expired" class="trial-expired">Expired</span>
-                    <span v-else-if="data.trial" class="trial-expiry">Expires in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
+                    <span v-if="data.trial && data.trial.expired" class="trial-expired">Free access ended</span>
+                    <span v-else-if="data.trial" class="trial-expiry">Free access ends in {{ data.trial.daysLeft === 1 ? '1 day' : data.trial.daysLeft + ' days' }}</span>
                   </div>
                   <div v-if="data.planCapacity && data.planCapacity.poolSize" class="billing-plan-desc">{{ data.planCapacity.poolSize }}</div>
                   <div v-if="data.planCapacity" class="billing-plan-desc billing-plan-limits">{{ data.planCapacity.maxVMs }} VMs &middot; {{ data.planCapacity.defaultDiskGB }} GB disk<sup>+</sup> &middot; {{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></div>

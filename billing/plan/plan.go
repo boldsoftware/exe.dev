@@ -359,7 +359,7 @@ var plans = map[Category]Plan{
 		ID:          "trial:monthly:20260106",
 		Available:   true,
 		Category:    CategoryTrial,
-		Name:        "Trial",
+		Name:        "Free",
 		DefaultTier: "trial:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:             true,

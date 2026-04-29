@@ -1010,7 +1010,7 @@ func (ss *SSHServer) handleRegistration(s *shellSession, publicKey string) {
 		case "free":
 			fmt.Fprint(s, "\r\n\033[1;32m✓ Invite code accepted: free account\033[0m\r\n")
 		case "trial":
-			fmt.Fprint(s, "\r\n\033[1;32m✓ Invite code accepted: 1 month free trial\033[0m\r\n")
+			fmt.Fprint(s, "\r\n\033[1;32m✓ Invite code accepted: 1 month free access\033[0m\r\n")
 		}
 	}
 	if ghInfo.Email != "" {

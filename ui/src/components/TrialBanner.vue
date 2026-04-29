@@ -3,12 +3,12 @@
     <div class="trial-content">
       <span class="trial-icon">{{ expired ? '⚠️' : '⏳' }}</span>
       <span class="trial-text" v-if="expired">
-        Your <strong>trial has expired</strong>.
-        <a href="/user" class="trial-link">Upgrade</a> to keep using your VMs.
+        Your <strong>free access has ended</strong>.
+        <a href="/user" class="trial-link">Subscribe</a> to continue running VMs.
       </span>
       <span class="trial-text" v-else>
-        <strong>Trial</strong> — {{ daysText }} remaining.
-        <a href="/user" class="trial-link">Upgrade</a> to keep your VMs.
+        Your free access ends in <strong>{{ daysText }}</strong>.
+        <a href="/user" class="trial-link">Subscribe</a> to continue running VMs.
       </span>
     </div>
   </div>
