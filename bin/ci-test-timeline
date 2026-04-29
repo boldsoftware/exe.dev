@@ -14,16 +14,43 @@ so it can also be concatenated into another HTML page (e.g. psimon-pressure.html
 """
 import json
 import os
+import re
 import sys
 from datetime import datetime
 
 
+def parse_go_duration(s):
+    """Parse a Go time.Duration string (e.g. '1m30.5s', '500ms') to seconds."""
+    total = 0.0
+    for m in re.finditer(r'([\d.]+)(ms|µs|us|ns|h|m|s)', s):
+        val = float(m.group(1))
+        unit = m.group(2)
+        if unit == 'h':
+            total += val * 3600
+        elif unit == 'm':
+            total += val * 60
+        elif unit == 's':
+            total += val
+        elif unit == 'ms':
+            total += val / 1000
+        elif unit in ('µs', 'us'):
+            total += val / 1_000_000
+        elif unit == 'ns':
+            total += val / 1_000_000_000
+    return total
+
+
 def parse_file(path):
-    """Parse one gotestsum JSON file into a list of {test, pkg, start, end, status, shard}.
-    Timestamps are Unix seconds.
+    """Parse one gotestsum JSON file into a list of test records.
+
+    Each record: {test, pkg, start, end, elapsed, wait, exec, status, shard}.
+    Timestamps are Unix seconds. `wait` comes from VM_SLOTS_ACQUIRED markers
+    that the e1e infra emits when a test acquires its VM concurrency slots;
+    `exec = elapsed - wait` (clamped to >= 0).
     """
     shard = os.path.basename(path).replace(".json", "")
     starts = {}
+    vm_waits = {}  # (pkg, top_test) -> total seconds waiting for VM slots
     results = []
     try:
         with open(path) as f:
@@ -40,9 +67,18 @@ def parse_file(path):
                 pkg = ev.get("Package", "").replace("exe.dev/", "")
                 ts_str = ev.get("Time", "")
                 elapsed = ev.get("Elapsed", 0.0)
+                output = ev.get("Output", "")
                 if not test or not ts_str:
                     continue
-                if "/" in test:  # skip subtests
+                # Aggregate VM_SLOTS_ACQUIRED markers from any test (incl. subtests)
+                # onto their top-level test, since we display by top-level only.
+                if action == "output" and "VM_SLOTS_ACQUIRED" in output:
+                    m = re.search(r'waited=([\d.]+(?:h|m|s|ms|µs|us|ns)+)', output)
+                    if m:
+                        top = test.split("/")[0]
+                        k = (pkg, top)
+                        vm_waits[k] = vm_waits.get(k, 0) + parse_go_duration(m.group(1))
+                if "/" in test:  # skip subtest pass/fail/run for the timeline
                     continue
                 ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
                 key = (pkg, test)
@@ -50,6 +86,8 @@ def parse_file(path):
                     starts[key] = ts
                 elif action in ("pass", "fail", "skip"):
                     start = starts.get(key, ts - elapsed)
+                    wait = round(vm_waits.get(key, 0), 2)
+                    exec_ = round(max(elapsed - wait, 0), 2)
                     results.append({
                         "test": test,
                         "pkg": pkg,
@@ -57,6 +95,8 @@ def parse_file(path):
                         "start": start,
                         "end": start + elapsed,
                         "elapsed": round(elapsed, 2),
+                        "wait": wait,
+                        "exec": exec_,
                         "status": action,
                     })
     except OSError as e:
@@ -113,35 +153,56 @@ def build_html(records, title):
     records.sort(key=lambda r: r["start"])
     total_lanes, shard_order = pack_lanes(records)
     # Express absolute times in milliseconds for JS Date compatibility.
-    values = [
-        {
+    # Split each test into up to two segments: a queued/wait segment
+    # (from VM_SLOTS_ACQUIRED markers) followed by the exec segment.
+    # The wait segment is rendered with reduced opacity + a distinct color
+    # so VM-pool contention shows up visually.
+    def make_segment(r, t0_s, t1_s, status):
+        wait = r.get("wait", 0) or 0
+        return {
             "test": f"{r['pkg']}.{r['test']}",
             "pkg": r["pkg"],
             "shard": r["shard"],
             "lane": r["lane"],
-            "t0": int(r["start"] * 1000),
-            "t1": int(r["end"] * 1000),
+            "t0": int(t0_s * 1000),
+            "t1": int(t1_s * 1000),
             "elapsed": r["elapsed"],
-            "status": r["status"],
+            "wait": wait,
+            "exec": r.get("exec", r["elapsed"] - wait),
+            "status": status,
         }
-        for r in records
-    ]
-    n = len(values)
+
+    values = []
+    for r in records:
+        wait = r.get("wait", 0) or 0
+        if wait > 0.5 and wait < r["elapsed"]:
+            wait_end = r["start"] + wait
+            values.append(make_segment(r, r["start"], wait_end, "queued"))
+            values.append(make_segment(r, wait_end, r["end"], r["status"]))
+        else:
+            values.append(make_segment(r, r["start"], r["end"], r["status"]))
     # Pixel budget per lane. Pack tight; cap total height.
     lane_h = 10
     height = max(180, min(total_lanes * lane_h, 20000))
     n_shards = len({v["shard"] for v in values})
     n_fail = sum(1 for v in values if v["status"] == "fail")
     n_skip = sum(1 for v in values if v["status"] == "skip")
+    n_waited = sum(1 for r in records if r.get("wait", 0) > 0.5)
+    sum_wait = sum(r.get("wait", 0) for r in records)
     # Summary line.
     t_min = min(v["t0"] for v in values) / 1000
     t_max = max(v["t1"] for v in values) / 1000
     wall = t_max - t_min
     sum_elapsed = sum(v["elapsed"] for v in values)
+    # `values` may have up to 2 segments per record (wait + exec); count
+    # tests from the underlying records, not the segment list.
+    n_tests = len(records)
     stats = (
-        f"{n} tests across {n_shards} test steps · wall {wall:.0f}s · "
+        f"{n_tests} tests across {n_shards} test steps · wall {wall:.0f}s · "
         f"sum {sum_elapsed:.0f}s · {n_fail} failed · {n_skip} skipped"
     )
+    if n_waited:
+        stats += f" · {n_waited} VM-queued (Σ wait {sum_wait:.0f}s)"
     values_json = json.dumps(values)
     return f"""<section class="test-timeline" style="max-width: 1100px; margin: 24px auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#222;">
   <h2 style="font-size:1.1em; font-weight:600; margin:24px 0 8px 0; color:#333;">{title}</h2>
@@ -182,8 +243,15 @@ def build_html(records, title):
         condition: [
           {{ test: "datum.status === 'fail'", value: 1.0 }},
           {{ test: "datum.status === 'skip'", value: 0.35 }},
+          {{ test: "datum.status === 'queued'", value: 0.55 }},
         ],
         value: 0.85,
+      }},
+      // 'queued' segments override the per-shard color with a hatched gray
+      // so VM-slot wait visually pops out from execution time.
+      fillOpacity: {{
+        condition: {{ test: "datum.status === 'queued'", value: 0.4 }},
+        value: 1.0,
       }},
       stroke: {{
         condition: {{ test: "datum.status === 'fail'", value: '#c00' }},
@@ -197,7 +265,9 @@ def build_html(records, title):
         {{ field: 'test', title: 'test' }},
         {{ field: 'shard', title: 'test step' }},
         {{ field: 'pkg', title: 'package' }},
-        {{ field: 'elapsed', title: 'elapsed (s)', format: '.2f' }},
+        {{ field: 'elapsed', title: 'total (s)', format: '.2f' }},
+        {{ field: 'wait', title: 'VM queue wait (s)', format: '.2f' }},
+        {{ field: 'exec', title: 'exec (s)', format: '.2f' }},
         {{ field: 'status', title: 'status' }},
         {{ field: 't0', type: 'temporal', title: 'start', format: '%H:%M:%S' }},
       ],

@@ -107,7 +107,12 @@ const data = samples.map(s => ({
   MemFull: s.MemFull,
 }));
 
-function singleChart(title, yTitle, field, color) {
+function singleChart(title, yTitle, field, color, yDomain) {
+  // yDomain (optional): [min, max] for the y-axis. Use this to keep a fixed
+  // 0..100 scale for host CPU%, so a build that only hits 30% looks visibly
+  // less busy than one that hits 90% — without it, Vega autoscales to the
+  // observed max and contention is hidden.
+  const yScale = yDomain ? { domain: yDomain, clamp: true, nice: false } : { zero: true };
   return {
     width: 900,
     height: 120,
@@ -116,12 +121,13 @@ function singleChart(title, yTitle, field, color) {
     mark: { type: 'area', line: { strokeWidth: 1.5, color: color }, color: { x1: 1, y1: 1, x2: 1, y2: 0, gradient: 'linear', stops: [{ offset: 0, color: 'white' }, { offset: 1, color: color }] }, opacity: 0.25, interpolate: 'monotone' },
     encoding: {
       x: { field: 'time', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
-      y: { field: field, type: 'quantitative', title: yTitle, scale: { zero: true } },
+      y: { field: field, type: 'quantitative', title: yTitle, scale: yScale },
     },
   };
 }
 
-function dualChart(title, yTitle, fields, colors, legends) {
+function dualChart(title, yTitle, fields, colors, legends, yDomain) {
+  const yScale = yDomain ? { domain: yDomain, clamp: true, nice: false } : { zero: true };
   return {
     width: 900,
     height: 120,
@@ -139,7 +145,7 @@ function dualChart(title, yTitle, fields, colors, legends) {
     mark: { type: 'line', strokeWidth: 1.5, interpolate: 'monotone' },
     encoding: {
       x: { field: 'time', type: 'temporal', title: null, scale: { domain: TIME_DOMAIN, nice: false } },
-      y: { field: 'value', type: 'quantitative', title: yTitle, scale: { zero: true } },
+      y: { field: 'value', type: 'quantitative', title: yTitle, scale: yScale },
       color: {
         field: 'label',
         type: 'nominal',
@@ -170,16 +176,18 @@ const spec = {
     view: { stroke: null },
   },
   vconcat: [
-    singleChart('CPU Usage', 'CPU %', 'CPUPercent', '#e25c6a'),
-    singleChart('CPU Pressure', '% stalled (avg10)', 'CPUSome', '#4a80c4'),
+    singleChart('CPU Usage', 'CPU %', 'CPUPercent', '#e25c6a', [0, 100]),
+    singleChart('CPU Pressure', '% stalled (avg10)', 'CPUSome', '#4a80c4', [0, 100]),
     dualChart('IO Pressure', '% stalled (avg10)',
       ['IOSome', 'IOFull'],
       ['#e5a834', '#e25c6a'],
-      ['some (≥1 task)', 'full (all tasks)']),
+      ['some (≥1 task)', 'full (all tasks)'],
+      [0, 100]),
     dualChart('Memory Pressure', '% stalled (avg10)',
       ['MemSome', 'MemFull'],
       ['#3bbae0', '#8338ec'],
-      ['some (≥1 task)', 'full (all tasks)']),
+      ['some (≥1 task)', 'full (all tasks)'],
+      [0, 100]),
   ],
   spacing: 18,
   resolve: { scale: { x: 'shared', color: 'independent' } },

@@ -18,7 +18,7 @@ e1e shard steps are generated dynamically based on environment variables:
   E1E_VM_CONCURRENCY  — VMs per shard (default 12)
   E1E_GOMAXPROCS      — GOMAXPROCS for e1e tests (default: unset / Go default)
   E1E_EXELETS_VM_CONCURRENCY — VMs for exelets step (default 10)
-  E1E_MIGRATION_SHARDS       — number of exelets-migration shards (default 2)
+  E1E_MIGRATION_SHARDS       — number of exelets-migration shards (default 4)
 
 Coverage mode (commit trailer "Coverage: true" or env E1E_COVERAGE=true):
   Builds exed/exeprox with -cover, collects coverage from all test steps,
@@ -257,15 +257,55 @@ def generate_migration_only_steps(exelets_vm_concurrency, migration_shards, cove
     return _generate_migration_shards_text(exelets_vm_concurrency, migration_shards, coverage)
 
 
+# When a single-letter shard (e.g. ("T", "T")) is too heavy for letter-
+# rebalancing to fix, split it further by structural prefix-classes over
+# Test<L>.* — i.e. the regexes partition all conceivable test names
+# starting with the letter, so coverage is provable from the regex shape
+# alone (no enumeration of test names, no drift hazard if a TestT* is
+# added or renamed).
+#
+# Each entry maps a single letter to an ordered list of (suffix, regex)
+# pairs. The regexes are anchored at start; they MUST partition every
+# string beginning with Test<letter>. Verify by inspection: the cases
+# below exhaust the possibilities by walking down the prefix character
+# by character.
+#
+# Tuning: rebalance suffix-classes when one sub-shard's wall consistently
+# dominates. Last tuned 2026-04-29 from #1965 timing data.
+LETTER_SUBSPLIT = {
+    # T tests are dominated by TestTeam*. Partition into:
+    #   T-1: anything Test<T> that is NOT TestTeam[S-Z]*
+    #   T-2: TestTeam[S-Z]*  (TeamSharing, TeamSSHSharing, TeamTransfer,
+    #                         TeamUnenrollForce, ...)
+    # Coverage proof: every string starting with TestT either (a) ends
+    # there, (b) has a non-e at position 5, (c) has a non-a at position
+    # 6, (d) has a non-m at position 7, or (e) has TestTeam followed by
+    # some letter — [A-R] (T-1) or [S-Z] (T-2). The ($|...) alternations
+    # cover the "ends here" cases so a hypothetical bare 'TestTeam' test
+    # wouldn't be silently dropped.
+    "T": [
+        ("1", r"^Test(T($|[^Ee])|Te($|[^Aa])|Tea($|[^Mm])|Team($|[A-Ra-r]))"),
+        ("2", r"^TestTeam[S-Zs-z]"),
+    ],
+}
+
+
 def generate_e1e_steps(n_shards, vm_concurrency, gomaxprocs, exelets_vm_concurrency, migration_shards, coverage=False):
     """Generate YAML text for e1e shard steps + exelets step."""
-    shards = split_letters(n_shards)
+    shards_in = split_letters(n_shards)
+    # Expand any single-letter shard that has a structural sub-split rule.
+    shards = []
+    for s, e in shards_in:
+        if s == e and s in LETTER_SUBSPLIT:
+            for suffix, regex in LETTER_SUBSPLIT[s]:
+                shards.append((f"{s}-{suffix}", regex))
+        else:
+            shards.append((f"{s}-{e}", f"^Test[{s}-{e}{s.lower()}-{e.lower()}]"))
     lines = []
 
-    for i, (start, end) in enumerate(shards):
+    for i, (shard_label, run_filter) in enumerate(shards):
         shard_num = i + 1
-        run_filter = f"^Test[{start}-{end}{start.lower()}-{end.lower()}]"
-        label = f":rocket: e1e tests ({start}-{end})"
+        label = f":rocket: e1e tests ({shard_label})"
 
         lines.append(f'- label: "{label}"')
         lines.append(f'  key: test-e1e-{shard_num}')
@@ -463,7 +503,15 @@ def main():
     # contention with the 5 e1e shards + exelets step on the 48-core CI
     # host, inflating per-test times (e.g. build #1186 saw Orphaned go
     # 30s -> 50s). Stick with 3 until contention is reduced.
-    migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "3")))
+    # 4 is the sweet spot on exe-ci-03 (AMD EPYC 9455, 48c): benchmarks
+    # (#1940 vs #1954) show migration step max wall drops from ~76s
+    # (3 shards) to ~60s (4) without measurable contention with the 5
+    # e1e shards. 5 shards drops it further (~52s) but the per-shard
+    # parallel-start overhead cancels the win on the build wall. The
+    # older exe-ci-01 host saw contention at 4 shards; if we ever route
+    # production traffic back through it, reset to 3 via the
+    # E1E-Migration-Shards trailer.
+    migration_shards = int(trailers.get("e1e-migration-shards", os.environ.get("E1E_MIGRATION_SHARDS", "4")))
     coverage = trailers.get("coverage", os.environ.get("E1E_COVERAGE", "")).lower() in ("true", "1", "yes")
     # Test-Race: true (default) / false. Also accept EXE_TEST_RACE env.
     test_race = trailers.get("test-race", os.environ.get("EXE_TEST_RACE", "true")).lower() not in ("false", "0", "no")
@@ -589,7 +637,13 @@ def main():
     # the jobs need to land on a different host — don't pin in that case.
     pin_host = ""
     if queue == default_queue:
-        pin_host = os.environ.get("BUILDKITE_AGENT_META_DATA_HOSTNAME", "").strip()
+        # CI-Host: <hostname> trailer forces the entire build onto a
+        # specific agent host. Useful for reproducible benchmarking —
+        # without this the host that picked up :pipeline: silently
+        # defines the run, making A/B comparisons noisy.
+        pin_host = trailers.get("ci-host", "").strip()
+        if not pin_host:
+            pin_host = os.environ.get("BUILDKITE_AGENT_META_DATA_HOSTNAME", "").strip()
         if not pin_host:
             # Fallback for local testing: ask the OS.
             try:
