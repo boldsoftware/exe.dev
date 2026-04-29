@@ -238,6 +238,10 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.log.Info("CD scheduler loop starting")
 	defer s.log.Info("CD scheduler loop stopped")
 
+	// Seed lastDeploy from inventory so the topic shows the current SHA
+	// even after a restart (when in-memory state is lost).
+	s.seedLastDeploy()
+
 	for {
 		// Compute next deploy time.
 		s.mu.Lock()
@@ -346,19 +350,16 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 		return
 	}
 
-	// Skip if the SHA hasn't changed since the last successful deploy.
-	s.mu.Lock()
-	if s.lastDeploy != nil && s.lastDeploy.State == "success" && s.lastDeploy.SHA == sha {
-		s.mu.Unlock()
-		s.log.Info("CD deploy skipped: SHA unchanged", "sha", sha[:12])
-		return
-	}
-	s.mu.Unlock()
-
 	// Get exed host info from inventory.
 	host, dnsName, stage, role, deployedSHA, ok := s.inventory.ExedHost()
 	if !ok {
 		s.log.Warn("CD deploy skipped: exed host not found in inventory")
+		return
+	}
+
+	// Skip if the host is already running this SHA.
+	if deployedSHA == sha {
+		s.log.Info("CD deploy skipped: host already running this SHA", "sha", sha[:12])
 		return
 	}
 
@@ -457,6 +458,30 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// seedLastDeploy populates lastDeploy from inventory if it's nil.
+// This ensures the topic shows the current deployed SHA after a restart.
+func (s *Scheduler) seedLastDeploy() {
+	s.mu.Lock()
+	if s.lastDeploy != nil {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+
+	_, _, _, _, deployedSHA, ok := s.inventory.ExedHost()
+	if !ok || deployedSHA == "" || len(deployedSHA) != 40 {
+		return
+	}
+
+	s.mu.Lock()
+	s.lastDeploy = &ScheduledDeploy{
+		SHA:   deployedSHA,
+		State: "success",
+	}
+	s.mu.Unlock()
+	s.log.Info("CD scheduler seeded lastDeploy from inventory", "sha", deployedSHA[:12])
 }
 
 // announceFirstLast posts a message when the first or last deploy of
