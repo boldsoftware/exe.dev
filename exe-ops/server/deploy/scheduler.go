@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,12 +28,18 @@ type Scheduler struct {
 	notifier  CDNotifier
 	inventory InventoryProvider
 	log       *slog.Logger
-	channel   string // slack channel ("ship" for prod, "boat" for staging)
+	channel   string   // slack channel ("ship" for prod, "boat" for staging)
+	services  []string // processes managed by CD (e.g. ["exed"])
 
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 	wakeC     chan struct{} // signals the Run loop to re-evaluate immediately
 	stateFile string        // path to persist enabled/disabled state
+
+	// announcedDate tracks which business day we've already sent
+	// the first/last deploy announcements for, to avoid duplicates.
+	announcedFirstDate string // "2006-01-02"
+	announcedLastDate  string // "2006-01-02"
 
 	// nowFunc allows tests to override the current time.
 	nowFunc func() time.Time
@@ -122,6 +129,7 @@ func NewScheduler(
 		inventory: inventory,
 		log:       log,
 		channel:   channel,
+		services:  []string{"exed"},
 		nowFunc:   time.Now,
 		wakeC:     make(chan struct{}, 1),
 		stateFile: stateFile,
@@ -139,6 +147,8 @@ func (s *Scheduler) Enable() {
 	}
 	s.enabled = true
 	s.disabledReason = ""
+	s.announcedFirstDate = ""
+	s.announcedLastDate = ""
 	s.saveStateLocked()
 	s.log.Info("CD scheduler enabled")
 	if s.notifier != nil {
@@ -292,6 +302,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 			continue
 		}
 
+		// Announce first/last deploy of the day before running.
+		if s.notifier != nil {
+			s.announceFirstLast()
+		}
+
 		// Trigger a deploy.
 		s.runDeploy(ctx)
 	}
@@ -417,14 +432,6 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 				}
 				s.mu.Unlock()
 				if s.notifier != nil {
-					// Check if this was the last deploy of the day.
-					now := s.nowFunc()
-					next := s.nextDeployTime(now)
-					if next.Sub(now) > 12*time.Hour {
-						// Next deploy is tomorrow or later — this was the last one.
-						s.notifier.CDPostMessage(s.channel, fmt.Sprintf("🌙 Last exed deploy of the day (%s). Next: %s",
-							shaLink(sha), formatTimeWithDay(next)))
-					}
 					s.updateTopic()
 				}
 				return
@@ -449,6 +456,41 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 			s.log.Info("CD deploy interrupted by shutdown", "deploy_id", deployID)
 			return
 		}
+	}
+}
+
+// announceFirstLast posts a message when the first or last deploy of
+// the business day is about to run. Each announcement fires at most once
+// per calendar day.
+func (s *Scheduler) announceFirstLast() {
+	now := s.nowFunc()
+	et, _ := time.LoadLocation("America/New_York")
+	today := now.In(et).Format("2006-01-02")
+
+	// First deploy of the day.
+	s.mu.Lock()
+	alreadyFirst := s.announcedFirstDate == today
+	s.mu.Unlock()
+	if !alreadyFirst {
+		s.mu.Lock()
+		s.announcedFirstDate = today
+		s.mu.Unlock()
+		s.notifier.CDPostMessage(s.channel, "☀️ First CD deploy of the day coming up. Active services:"+s.serviceList())
+	}
+
+	// Last deploy of the day: next deploy after this one is on a different day.
+	nextAfter := s.nextDeployTime(now)
+	nextAfterDate := nextAfter.In(et).Format("2006-01-02")
+
+	s.mu.Lock()
+	alreadyLast := s.announcedLastDate == today
+	s.mu.Unlock()
+	if !alreadyLast && nextAfterDate != today {
+		s.mu.Lock()
+		s.announcedLastDate = today
+		s.mu.Unlock()
+		s.notifier.CDPostMessage(s.channel, fmt.Sprintf(
+			"🌙 Last CD deploy of the day — back at it %s. Active services:", formatTimeWithDay(nextAfter))+s.serviceList())
 	}
 }
 
@@ -582,6 +624,16 @@ func formatTimeWithDay(t time.Time) string {
 		t.UTC().Format("Mon 15:04 UTC"),
 		t.In(et).Format("Mon 15:04"),
 		t.In(pt).Format("Mon 15:04"))
+}
+
+// serviceList formats the scheduler's services as a Slack bullet list.
+func (s *Scheduler) serviceList() string {
+	var b strings.Builder
+	for _, svc := range s.services {
+		b.WriteString("\n• ")
+		b.WriteString(svc)
+	}
+	return b.String()
 }
 
 // shaLink returns a Slack mrkdwn link to the GitHub commit.

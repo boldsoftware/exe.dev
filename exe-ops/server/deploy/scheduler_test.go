@@ -118,6 +118,169 @@ func TestIsDeployableTime(t *testing.T) {
 	}
 }
 
+func TestAnnounceFirstLast_FirstDeploy(t *testing.T) {
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	// Monday 9:00 AM ET — first deploy slot of the day.
+	now := time.Date(2024, 3, 4, 9, 0, 0, 0, et)
+
+	s := &Scheduler{
+		notifier: notifier,
+		channel:  "ship",
+		services: []string{"exed"},
+		nowFunc:  func() time.Time { return now },
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		enabled:  true,
+	}
+
+	s.announceFirstLast()
+
+	var gotFirst bool
+	for _, msg := range notifier.messages {
+		if strings.Contains(msg, "First CD deploy") {
+			gotFirst = true
+			if !strings.Contains(msg, "• exed") {
+				t.Errorf("first-of-day message should list services, got %q", msg)
+			}
+		}
+	}
+	if !gotFirst {
+		t.Errorf("expected first-of-day message, got %v", notifier.messages)
+	}
+
+	// Calling again on the same day should not re-announce.
+	notifier.messages = nil
+	s.announceFirstLast()
+	for _, msg := range notifier.messages {
+		if strings.Contains(msg, "First CD deploy") {
+			t.Error("first-of-day message should not repeat on the same day")
+		}
+	}
+}
+
+func TestAnnounceFirstLast_LastDeploy(t *testing.T) {
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	pt, _ := time.LoadLocation("America/Los_Angeles")
+
+	// Find the last deploy slot: 6:00 PM PT on Monday.
+	// In ET (EST, March 4 2024), that's 9:00 PM.
+	lastSlot := time.Date(2024, 3, 4, 18, 0, 0, 0, pt)
+
+	s := &Scheduler{
+		notifier:           notifier,
+		channel:            "ship",
+		services:           []string{"exed"},
+		nowFunc:            func() time.Time { return lastSlot },
+		log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		enabled:            true,
+		announcedFirstDate: lastSlot.In(et).Format("2006-01-02"), // suppress first
+	}
+
+	s.announceFirstLast()
+
+	var gotLast bool
+	for _, msg := range notifier.messages {
+		if strings.Contains(msg, "Last CD deploy") {
+			gotLast = true
+			if !strings.Contains(msg, "• exed") {
+				t.Errorf("last-of-day message should list services, got %q", msg)
+			}
+		}
+	}
+	if !gotLast {
+		t.Errorf("expected last-of-day message, got %v", notifier.messages)
+	}
+
+	// Should not repeat.
+	notifier.messages = nil
+	s.announceFirstLast()
+	for _, msg := range notifier.messages {
+		if strings.Contains(msg, "Last CD deploy") {
+			t.Error("last-of-day message should not repeat on the same day")
+		}
+	}
+}
+
+func TestAnnounceFirstLast_MidDay(t *testing.T) {
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	// Monday noon ET — not the last deploy, and first already announced.
+	now := time.Date(2024, 3, 4, 12, 0, 0, 0, et)
+
+	s := &Scheduler{
+		notifier:           notifier,
+		channel:            "ship",
+		services:           []string{"exed"},
+		nowFunc:            func() time.Time { return now },
+		log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		enabled:            true,
+		announcedFirstDate: now.In(et).Format("2006-01-02"),
+	}
+
+	s.announceFirstLast()
+
+	// No first or last message expected.
+	for _, msg := range notifier.messages {
+		if strings.Contains(msg, "First CD deploy") || strings.Contains(msg, "Last CD deploy") {
+			t.Errorf("unexpected announcement at mid-day: %s", msg)
+		}
+	}
+}
+
+func TestAnnounceFirstLast_MultipleServices(t *testing.T) {
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	now := time.Date(2024, 3, 4, 9, 0, 0, 0, et)
+
+	s := &Scheduler{
+		notifier: notifier,
+		channel:  "ship",
+		services: []string{"exed", "exeprox", "metricsd"},
+		nowFunc:  func() time.Time { return now },
+		log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		enabled:  true,
+	}
+
+	s.announceFirstLast()
+
+	if len(notifier.messages) == 0 {
+		t.Fatal("expected at least one message")
+	}
+	msg := notifier.messages[0]
+	for _, svc := range []string{"exed", "exeprox", "metricsd"} {
+		if !strings.Contains(msg, "• "+svc) {
+			t.Errorf("message should list %q, got %q", svc, msg)
+		}
+	}
+}
+
+func TestAnnounceFirstLast_ResetsOnEnable(t *testing.T) {
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	now := time.Date(2024, 3, 4, 12, 0, 0, 0, et)
+
+	s := &Scheduler{
+		notifier:           notifier,
+		channel:            "ship",
+		nowFunc:            func() time.Time { return now },
+		log:                slog.New(slog.NewTextHandler(io.Discard, nil)),
+		wakeC:              make(chan struct{}, 1),
+		enabled:            false,
+		announcedFirstDate: now.In(et).Format("2006-01-02"),
+	}
+
+	s.Enable()
+
+	// After enable, announced dates should be cleared.
+	s.mu.Lock()
+	first := s.announcedFirstDate
+	s.mu.Unlock()
+	if first != "" {
+		t.Error("expected announcedFirstDate to be cleared after Enable")
+	}
+}
+
 type fakeNotifier struct {
 	topics   []string
 	messages []string
