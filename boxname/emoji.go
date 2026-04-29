@@ -19,7 +19,7 @@ var wordEmojis = map[string]string{
 
 	// WWII / older phonetics
 	"able": "💪", "baker": "👨\u200d🍳", "dog": "🐕", "early": "🌅", "waltz": "🕺",
-	"george": "🧑", "how": "❓", "item": "📦", "jig": "🧩", "king": "👑",
+	"george": "🧑", "how": "❓", "item": "📦", "king": "👑",
 	"love": "❤️", "nan": "🍞", "oboe": "🎶", "prep": "🧑\u200d🍳", "queen": "👸",
 	"roger": "👍", "sweet": "🍬", "tare": "⚖️", "uncle": "👨", "victory": "✌️",
 	"william": "🎩", "extra": "➕", "yolk": "🥚", "zebra": "🦓",
@@ -31,6 +31,8 @@ var wordEmojis = map[string]string{
 	"star": "⭐", "comet": "☄️", "nova": "💥", "eclipse": "🌑", "ocean": "🌊",
 	"tide": "🌊", "sky": "🌤️", "oak": "🌳", "maple": "🍁", "pine": "🌲",
 	"cedar": "🌲", "willow": "🌿", "elm": "🌳", "spruce": "🌲", "fir": "🌲",
+	"breeze": "🍃", "mist": "🌫️", "frost": "🥶", "aurora": "🌌", "halo": "😇",
+	"zenith": "🌟", "meadow": "🌾", "prairie": "🌾",
 
 	// Animals
 	"lion": "🦁", "tiger": "🐯", "bear": "🐻", "wolf": "🐺", "eagle": "🦅",
@@ -39,7 +41,16 @@ var wordEmojis = map[string]string{
 	"crane": "🕊️", "heron": "🕊️", "sparrow": "🐦", "crow": "🐦\u200d⬛", "raven": "🐦\u200d⬛",
 	"fox": "🦊", "badger": "🦡", "ferret": "🦡", "bird": "🐦", "bobcat": "🐈",
 	"cougar": "🐆", "panther": "🐆", "cobra": "🐍", "viper": "🐍", "python": "🐍",
-	"gecko": "🦎",
+	"gecko":   "🦎",
+	"penguin": "🐧", "dolphin": "🐬", "walrus": "🦭", "hedgehog": "🦔", "koala": "🐨",
+	"panda": "🐼", "kangaroo": "🦘", "llama": "🦙", "alpaca": "🦙", "capybara": "🦫",
+	"axolotl": "🦎", "narwhal": "🐋", "manatee": "🐋", "lemur": "🐒",
+	"wombat": "🐾", "quokka": "🐾", "pelican": "🪶", "platypus": "🦆", "chinchilla": "🐭",
+	"tortoise": "🐢", "lizard": "🦎",
+
+	// Plants & garden
+	"fern": "🌿", "moss": "🌿", "daisy": "🌼", "tulip": "🌷", "lotus": "🪷",
+	"bamboo": "🎋", "clover": "🍀", "sunflower": "🌻",
 
 	// Colors
 	"red": "🟥", "blue": "🟦", "green": "🟩", "yellow": "🟨", "purple": "🟪",
@@ -67,12 +78,30 @@ var wordEmojis = map[string]string{
 	"canyon": "🏜️", "fun": "🎉", "reef": "🐠", "stream": "💦", "dune": "🏜️",
 	"grove": "🌳", "peak": "🏔️", "ridge": "⛰️", "plateau": "🗻",
 
+	// Snacks, instruments & whimsy
+	"yolo": "🎉", "parachute": "🪂", "waffle": "🧇", "noodle": "🍜",
+	"pretzel": "🥨", "muffin": "🧁", "bagel": "🥯", "cupcake": "🧁", "popsicle": "🍦",
+	"sundae": "🍨", "mango": "🥭", "kiwi": "🥝",
+	"pancake": "🥞", "donut": "🍩", "scone": "🥐", "croissant": "🥐", "biscuit": "🍪",
+	"dumpling": "🥟", "ramen": "🍜", "macaron": "🍪",
+	"guitar": "🎸", "bass": "🎸", "piano": "🎹", "drum": "🥁", "flute": "🎶",
+	"violin": "🎻", "cello": "🎻", "saxophone": "🎷", "trumpet": "🎺",
+	"clarinet": "🎶", "bagpipe": "🎶", "xylophone": "🎶", "tambourine": "🪘",
+	"piccolo": "🎶", "bugle": "📯", "fife": "🎶", "marimba": "🎶",
+	"ukulele": "🎸", "harmonica": "🎶", "mandolin": "🎻", "accordion": "🪗", "tuba": "🎺",
+	"kazoo": "🎶", "banjo": "🪕", "ocarina": "🎶",
+	"balloon": "🎈", "kite": "🪁", "frisbee": "🥏", "yoyo": "🪀", "igloo": "🛖",
+	"crayon": "🖍️", "jetpack": "🚀",
+	"bubble": "🫧", "sparkle": "✨", "ripple": "🌊",
+	"confetti": "🎊", "lantern": "🏮",
+
 	// Misc fun
 	"sphinx": "🦁", "obelisk": "🗿", "party": "🎉", "griffin": "🦅", "hydra": "🐉",
 	"kraken": "🐙", "unicorn": "🦄", "pegasus": "🐎", "chimera": "🐐", "golem": "🗿",
 	"spin": "🌀", "road": "🛣️", "alley": "🛤️", "sprite": "🧚", "fairy": "🧚",
 	"dragon": "🐉", "wyvern": "🐉", "cyclops": "👁️", "satyr": "🐐", "noon": "🌞",
 	"centaur": "🐎", "minotaur": "🐂", "harp": "🎵", "basilisk": "🐍", "leviathan": "🐉",
+	"phoenix": "🔥", "yeti": "🧊", "valkyrie": "🛡️", "kelpie": "🐎",
 }
 
 // fallbackEmojis is a safe, non-political, SFW list to pick from when no word-based
