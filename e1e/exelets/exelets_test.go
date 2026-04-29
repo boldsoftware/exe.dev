@@ -158,9 +158,16 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "building binaries failed: %v\n", err)
 		exit(1)
 	}
-	testinfra.AddCleanup(func() {
-		os.Remove(exeletBinary)
-	})
+	// Only remove the binary if we built it ourselves. When PREBUILT_EXELET
+	// is set (CI), exeletBinary points at a shared cache file that may be
+	// in use by a concurrent shard of the exelets step (build-id-scoped
+	// cache shared across jobs). Removing it mid-run breaks the other
+	// shard's VM uploads.
+	if os.Getenv("PREBUILT_EXELET") == "" {
+		testinfra.AddCleanup(func() {
+			os.Remove(exeletBinary)
+		})
+	}
 
 	// Wait for VM1 (needed for server startup).
 	vm1 := <-vm1Ch
