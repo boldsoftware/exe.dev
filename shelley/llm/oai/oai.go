@@ -290,6 +290,20 @@ var (
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
+	GPT55 = Model{
+		UserName:  "gpt-5.5",
+		ModelName: "gpt-5.5",
+		URL:       OpenAIURL,
+		APIKeyEnv: OpenAIAPIKeyEnv,
+	}
+
+	GPT55Pro = Model{
+		UserName:  "gpt-5.5-pro",
+		ModelName: "gpt-5.5-pro",
+		URL:       OpenAIURL,
+		APIKeyEnv: OpenAIAPIKeyEnv,
+	}
+
 	GPT54 = Model{
 		UserName:  "gpt-5.4",
 		ModelName: "gpt-5.4",
@@ -335,6 +349,8 @@ var _ llm.Service = (*Service)(nil)
 // Declaration order is display order — keep current models at top, old models at bottom.
 var ModelsRegistry = []Model{
 	// Current OpenAI
+	GPT55,
+	GPT55Pro,
 	GPT54,
 	GPT5,
 	GPT5Mini,
@@ -752,6 +768,8 @@ func (s *Service) TokenContextWindow() int {
 	// OpenAI models generally have 128k context windows
 	// Some newer models have larger windows, but 128k is a safe default
 	switch model.ModelName {
+	case "gpt-5.5", "gpt-5.5-2026-04-23", "gpt-5.5-pro", "gpt-5.5-pro-2026-04-23":
+		return 272000
 	case "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14":
 		return 200000 // 200k for newer GPT-4.1 models
 	case "gpt-4o-2024-08-06", "gpt-4o-mini-2024-07-18":

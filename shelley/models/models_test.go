@@ -39,6 +39,8 @@ func TestByID(t *testing.T) {
 		wantID  string
 		wantNil bool
 	}{
+		{id: "gpt-5.5", wantID: "gpt-5.5", wantNil: false},
+		{id: "gpt-5.5-pro", wantNil: true},
 		{id: "deepseek-v4-pro-fireworks", wantID: "deepseek-v4-pro-fireworks", wantNil: false},
 		{id: "gpt-oss-20b-fireworks", wantID: "gpt-oss-20b-fireworks", wantNil: false},
 		{id: "gpt-5.2-codex", wantID: "gpt-5.2-codex", wantNil: false},
@@ -180,6 +182,29 @@ func TestManagerGetAvailableModelsMatchesAllOrder(t *testing.T) {
 		if available[i] != expected[i] {
 			t.Errorf("model at index %d: got %q, want %q", i, available[i], expected[i])
 		}
+	}
+}
+
+func TestManagerGetAvailableModelsOmitsGPT55Pro(t *testing.T) {
+	cfg := &Config{OpenAIAPIKey: "test-key"}
+
+	manager, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	if manager.HasModel("gpt-5.5-pro") {
+		t.Fatal("gpt-5.5-pro should not be available in Shelley's built-in model list")
+	}
+
+	for _, modelID := range manager.GetAvailableModels() {
+		if modelID == "gpt-5.5-pro" {
+			t.Fatalf("gpt-5.5-pro should not appear in available models: %v", manager.GetAvailableModels())
+		}
+	}
+
+	if info := manager.GetModelInfo("gpt-5.5-pro"); info != nil {
+		t.Fatalf("GetModelInfo(gpt-5.5-pro) = %+v, want nil", info)
 	}
 }
 

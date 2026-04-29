@@ -1214,6 +1214,26 @@ func TestTokenContextWindowAdditionalCases(t *testing.T) {
 			expected: 256000,
 		},
 		{
+			name:     "GPT-5.5 model",
+			model:    GPT55,
+			expected: 272000,
+		},
+		{
+			name:     "GPT-5.5 Pro model",
+			model:    GPT55Pro,
+			expected: 272000,
+		},
+		{
+			name:     "GPT-5.5 dated model",
+			model:    Model{ModelName: "gpt-5.5-2026-04-23"},
+			expected: 272000,
+		},
+		{
+			name:     "GPT-5.5 Pro dated model",
+			model:    Model{ModelName: "gpt-5.5-pro-2026-04-23"},
+			expected: 272000,
+		},
+		{
 			name:     "GPT-5 Mini model",
 			model:    GPT5Mini,
 			expected: 256000,
