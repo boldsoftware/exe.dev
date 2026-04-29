@@ -16,6 +16,7 @@ The lobby (main exe.dev server) is located in the United States for all accounts
 - **PDX**: Oregon, USA
 - **LAX**: Los Angeles, USA
 - **NYC**: New York, USA
+- **DAL**: Dallas, USA
 - **FRA**: Frankfurt, Germany
 - **TYO**: Tokyo, Japan
 - **SYD**: Sydney, Australia

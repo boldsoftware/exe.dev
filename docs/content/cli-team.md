@@ -37,7 +37,7 @@ Add a user to the team
 
 **Usage:**
 ```
-team add <email>
+team add <email> [<user|admin|billing_owner>]
 ```
 
 **Options:**

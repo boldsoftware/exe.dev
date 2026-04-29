@@ -5,7 +5,7 @@ subheading: "5. Teams"
 suborder: 4
 ---
 
-By default, team members log in with email and passkey. The billing owner can
+By default, team members log in with email and passkey. Team admins can
 enforce a different auth provider for the whole team.
 
 ## Viewing the current provider
