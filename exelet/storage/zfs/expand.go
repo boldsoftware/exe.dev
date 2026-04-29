@@ -59,20 +59,26 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64, resizeFilesyst
 		return fmt.Errorf("udevadm settle failed: %w", err)
 	}
 
-	// If resizeFilesystem is true, run fsck and resize2fs to expand the filesystem
-	// This should be done when the filesystem is NOT mounted (e.g., during instance creation)
+	// If resizeFilesystem is true, expand the ext4 filesystem to fill the new volume size.
+	// This should be done when the filesystem is NOT mounted (e.g., during instance creation).
 	if resizeFilesystem {
 		diskPath, err := s.getDSDiskPath(id)
 		if err != nil {
 			return err
 		}
 
-		if err := fsck(ctx, diskPath); err != nil {
-			return err
-		}
-
+		// Try resize2fs directly first — it's fast because it only updates metadata
+		// at the end of the filesystem. On a cleanly cloned volume this always works.
+		// If the superblock has the errors-detected flag, resize2fs will refuse and
+		// we fall back to fsck + resize2fs.
 		if err := resize(ctx, diskPath, 0); err != nil {
-			return err
+			s.log.DebugContext(ctx, "resize2fs failed, falling back to fsck+resize", "id", id, "error", err)
+			if err := fsck(ctx, diskPath); err != nil {
+				return err
+			}
+			if err := resize(ctx, diskPath, 0); err != nil {
+				return err
+			}
 		}
 	}
 
