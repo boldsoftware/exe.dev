@@ -106,7 +106,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "building binaries failed: %v\n", err)
 		exit(1)
 	}
-	testinfra.AddCleanup(func() { os.Remove(exeletBinary) })
+	// Cleanup of exeletBinary is handled inside testinfra.BuildExeletBinary
+	// for non-prebuilt paths. When PREBUILT_EXELET is set (CI), it points to
+	// a shared cache used by sibling jobs and must not be deleted.
 
 	exelet, err := testinfra.StartExelet(context.Background(), exeletBinary, vmHost, exedHTTPProxy.Port(), exedHTTPProxy.Port(), nil, testRunID, nil, nil, false, nil, nil)
 	if err != nil {

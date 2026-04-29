@@ -1476,6 +1476,11 @@ var buildExeletBinaryMu sync.Mutex
 // be available for the exelet in that case — this is an acceptable trade-off
 // for CI speed since the main e1e shards already get coverage from their own
 // exelet builds).
+//
+// In the non-prebuilt case the returned binary is registered for cleanup via
+// AddCleanup. Callers must NOT delete the returned path themselves: when
+// PREBUILT_EXELET is set, the path points to a CI cache shared with sibling
+// jobs on the same agent host, and removing it breaks them.
 func BuildExeletBinary(ctx context.Context, testRunID string) (string, error) {
 	if prebuilt := os.Getenv("PREBUILT_EXELET"); prebuilt != "" {
 		st, err := os.Stat(prebuilt)
@@ -1490,6 +1495,7 @@ func BuildExeletBinary(ctx context.Context, testRunID string) (string, error) {
 	}
 
 	binPath := filepath.Join(os.TempDir(), "exelet-test-"+testRunID)
+	AddCleanup(func() { os.Remove(binPath) })
 
 	// Set working directory to project root (parent of e1e directory)
 	srcdir, err := exeRootDir()

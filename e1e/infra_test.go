@@ -461,9 +461,9 @@ func setup(ctrHost string, metricsdInstance *testinfra.MetricsdInstance) (*testE
 	if err != nil {
 		return env, err
 	}
-	testinfra.AddCleanup(func() {
-		os.Remove(exeletBinary)
-	})
+	// Cleanup of exeletBinary is registered inside BuildExeletBinary for
+	// non-prebuilt paths. Don't delete here: when PREBUILT_EXELET is set
+	// (CI), exeletBinary points to a shared cache used by sibling jobs.
 
 	var exeletLog io.Writer
 	if *flagVerboseExelet {
