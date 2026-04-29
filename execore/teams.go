@@ -456,6 +456,7 @@ This invite expires in 24 hours.
 		to:          invitedEmail,
 		subject:     subject,
 		body:        body,
+		htmlBody:    "",
 		fromName:    "",
 		replyTo:     "",
 		attrs:       []slog.Attr{slog.String("invited_by_user_id", invitedByUserID)},

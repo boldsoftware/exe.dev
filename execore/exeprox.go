@@ -597,6 +597,7 @@ func (es *exeproxServer) SendEmail(ctx context.Context, req *proxyapi.SendEmailR
 		to:          req.To,
 		subject:     req.Subject,
 		body:        req.Body,
+		htmlBody:    "",
 		fromName:    req.FromName,
 		replyTo:     req.ReplyTo,
 		attrs:       attrs,

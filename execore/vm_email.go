@@ -74,6 +74,7 @@ func (s *Server) handleVMEmailSend(w http.ResponseWriter, r *http.Request) {
 		to:          userEmail,
 		subject:     req.Subject,
 		body:        req.Body,
+		htmlBody:    "",
 		fromName:    s.env.BoxSub(boxName),
 		replyTo:     "",
 		attrs:       []slog.Attr{slog.String("user_id", box.CreatedByUserID)},

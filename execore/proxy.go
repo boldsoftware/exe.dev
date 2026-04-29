@@ -538,6 +538,7 @@ func (pd *proxyData) SendEmail(ctx context.Context, req email.SendRequest) error
 		to:          req.To,
 		subject:     req.Subject,
 		body:        req.Body,
+		htmlBody:    "",
 		fromName:    req.FromName,
 		replyTo:     req.ReplyTo,
 		attrs:       attrs,

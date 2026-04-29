@@ -789,6 +789,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		to:          email,
 		subject:     subject,
 		body:        body,
+		htmlBody:    "",
 		fromName:    "",
 		replyTo:     "",
 		attrs:       []slog.Attr{slog.String("user_id", cc.User.ID)},
