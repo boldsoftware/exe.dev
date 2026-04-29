@@ -85,6 +85,10 @@
 <input type="hidden" name="box_name" value="{{.Name}}">
 <button type="submit" style="padding: 6px 12px; background: #ffc107; border: 1px solid #e0a800; cursor: pointer; border-radius: 3px; font-size: 13px;">Flush All Proxy Caches</button>
 </form>
+<form method="POST" action="/debug/vms/drop-page-cache" style="margin-top: 8px;" onsubmit="return confirm('SSH into {{.Name}} and drop its guest page cache?');">
+<input type="hidden" name="box_name" value="{{.Name}}">
+<button type="submit" style="padding: 6px 12px; background: #17a2b8; border: 1px solid #138496; color: white; cursor: pointer; border-radius: 3px; font-size: 13px;">Drop Guest Page Cache</button>
+</form>
 </div>
 
 <div class="section">

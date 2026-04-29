@@ -72,6 +72,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/vms/delete", s.handleDebugBoxDelete)
 	mux.HandleFunc("POST /debug/vms/stop", s.handleDebugBoxStop)
 	mux.HandleFunc("POST /debug/vms/start", s.handleDebugBoxStart)
+	mux.HandleFunc("POST /debug/vms/drop-page-cache", s.handleDebugBoxDropPageCache)
 	mux.HandleFunc("GET /debug/vms/migrate", s.handleDebugBoxMigrateForm)
 	mux.HandleFunc("POST /debug/vms/migrate", s.handleDebugBoxMigrate)
 	mux.HandleFunc("POST /debug/vms/cancel-migration", s.handleDebugCancelMigration)

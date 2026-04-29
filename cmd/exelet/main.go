@@ -590,11 +590,18 @@ func serveAction(clix *cli.Context) error {
 		MetricsRegistry: srv.MetricsRegistry(),
 	}
 
+	resourceMgrSvc, err := resourcemanagerservice.New(cfg, log)
+	if err != nil {
+		return err
+	}
+
 	svcs := []func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error){
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return computeSvc, nil
 		},
-		resourcemanagerservice.New,
+		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
+			return resourceMgrSvc, nil
+		},
 		pktflowservice.New,
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return storageSvc, nil

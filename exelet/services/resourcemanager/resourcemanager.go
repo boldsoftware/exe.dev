@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"exe.dev/exelet/config"
@@ -61,6 +62,15 @@ type ResourceManager struct {
 	collectUsageFn  func(ctx context.Context, id, name, groupID string) (*usageData, error)
 	applyPriorityFn func(ctx context.Context, id, groupID string, priority api.VMPriority, allocatedMemoryBytes uint64) error
 
+	// idleCacheDropRandFn returns a uniform [0,1). nil uses math/rand/v2.
+	// Tests override this to deterministically trigger or suppress probes.
+	idleCacheDropRandFn func() float64
+
+	// dropInflight is set while a page-cache drop probe is running. New
+	// probes that observe it set simply skip — SSH to one VM is cheap, but
+	// stampeding exed when many VMs go idle simultaneously is not.
+	dropInflight atomic.Bool
+
 	// Memory reclaim
 	reclaimInflight hashtriemap.HashTrieMap[string, struct{}] // tracks in-flight memory.reclaim writes by path
 
@@ -111,6 +121,10 @@ type vmUsageState struct {
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
 	prevPollTime   time.Time
+
+	// idle tracks history used by the page-cache drop probe for idle VMs.
+	// Lazily allocated. See pagecache.go.
+	idle *idleProbe
 }
 
 // New creates a new ResourceManager service.
@@ -509,6 +523,13 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	// Update Prometheus metrics
 	if m.metrics != nil {
 		m.metrics.update(id, name, state)
+	}
+
+	// For idle running VMs, occasionally ask exed to drop the guest page
+	// cache via SSH. Best-effort; this returns immediately and any actual
+	// work is done on a background goroutine with its own timeout.
+	if vmState == computeapi.VMState_RUNNING {
+		m.maybeProbeIdleCacheDrop(ctx, id, name, stateGroupID, now, usage.cpuSeconds)
 	}
 
 	// Apply priority on first observation (to create cgroup), when cgroup setup

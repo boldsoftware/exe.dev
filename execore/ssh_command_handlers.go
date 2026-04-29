@@ -685,6 +685,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 					FlagSetFunc:       jsonOnlyFlags("operator-ssh"),
 					Handler:           ss.handleOperatorSSHCommand,
 				},
+				{
+					Name:              "drop-page-cache",
+					Hidden:            true,
+					RequiresSudo:      true,
+					Description:       "SSH into a VM and drop its guest kernel page cache (support only)",
+					Usage:             "sudo-exe drop-page-cache <vmname>",
+					HasPositionalArgs: true,
+					FlagSetFunc:       jsonOnlyFlags("drop-page-cache"),
+					Handler:           ss.handleSudoDropPageCacheCommand,
+				},
 			},
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 				return cc.Errorf("usage: sudo-exe <subcommand>")
@@ -1746,8 +1756,20 @@ func runCommandOnBox(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, c
 
 // runCommandOnBoxWithStdin executes a command on a box via SSH with optional stdin.
 func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, command string, stdin io.Reader) ([]byte, error) {
+	return runCommandOnBoxAsUser(ctx, pool, box, "", command, stdin)
+}
+
+// runCommandOnBoxAsUser executes a command on a box via SSH as the given
+// user. If user is empty, *box.SSHUser is used. The box's client key is
+// authorized for both the login user and root (exe-init keeps
+// authorized_keys root-owned), so passing "root" lets callers run
+// privileged commands without invoking sudo.
+func runCommandOnBoxAsUser(ctx context.Context, pool *sshpool2.Pool, box *exedb.Box, user, command string, stdin io.Reader) ([]byte, error) {
 	if box.SSHPort == nil || box.SSHUser == nil || len(box.SSHClientPrivateKey) == 0 {
 		return nil, fmt.Errorf("box %q does not have SSH configured", box.Name)
+	}
+	if user == "" {
+		user = *box.SSHUser
 	}
 
 	sshSigner, err := ssh.ParsePrivateKey(box.SSHClientPrivateKey)
@@ -1757,14 +1779,14 @@ func runCommandOnBoxWithStdin(ctx context.Context, pool *sshpool2.Pool, box *exe
 
 	sshHost := exeweb.BoxSSHHost(slog.Default(), box.Ctrhost)
 	sshConfig := &ssh.ClientConfig{
-		User:            *box.SSHUser,
+		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshSigner)},
 		HostKeyCallback: exeweb.CreateHostKeyCallback(box.Name, box.SSHServerIdentityKey),
 		Timeout:         10 * time.Second,
 	}
 
 	connRetries := []time.Duration{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
-	return pool.RunCommand(ctx, sshHost, *box.SSHUser, int(*box.SSHPort), sshSigner, sshConfig, command, stdin, connRetries)
+	return pool.RunCommand(ctx, sshHost, user, int(*box.SSHPort), sshSigner, sshConfig, command, stdin, connRetries)
 }
 
 // scpToBox copies content to a remote file on a box via SSH.

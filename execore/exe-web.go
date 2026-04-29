@@ -547,6 +547,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleExeletDesired(w, r)
 		return
 	}
+	if r.URL.Path == "/exelet-drop-page-cache" {
+		s.handleExeletDropPageCache(w, r)
+		return
+	}
 	if r.URL.Path == "/_/peer-proxy" {
 		s.requireTailscaleOrDev(s.handlePeerProxy)(w, r)
 		return

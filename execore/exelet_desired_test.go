@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"exe.dev/desiredstate"
@@ -700,5 +701,43 @@ func TestExeletDesiredWithIOMaxOverrides(t *testing.T) {
 	}
 	if cgMap["io.max"] != "~ rbps=10485760 wbps=52428800" {
 		t.Errorf("io.max = %q, want %q", cgMap["io.max"], "~ rbps=10485760 wbps=52428800")
+	}
+}
+
+func TestExeletDropPageCacheMissingContainerID(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	req := httptest.NewRequest("POST", "/exelet-drop-page-cache", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := httptest.NewRecorder()
+	server.handleExeletDropPageCache(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestExeletDropPageCacheUnknownContainerID(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	form := "container_id=does-not-exist"
+	req := httptest.NewRequest("POST", "/exelet-drop-page-cache", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := httptest.NewRecorder()
+	server.handleExeletDropPageCache(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestExeletDropPageCacheRejectsGET(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	req := httptest.NewRequest("GET", "/exelet-drop-page-cache?container_id=x", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := httptest.NewRecorder()
+	server.handleExeletDropPageCache(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d (%s)", w.Code, w.Body.String())
 	}
 }
