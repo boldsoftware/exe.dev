@@ -126,6 +126,8 @@ func main() {
 			var scheduler *deploy.Scheduler
 			if slackNotifier != nil {
 				scheduler = deploy.NewScheduler(deployer, gitRepo, slackNotifier, inv, log, environment, "cd-state.json")
+				// When a human deploys exed out-of-band, update the CD topic.
+				deployer.OnDeployDone(scheduler.NotifyDeploy)
 			}
 
 			// When TLS is on we're serving over Tailscale, which is also

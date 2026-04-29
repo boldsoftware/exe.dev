@@ -44,6 +44,10 @@ type Manager struct {
 	// Used to trigger an inventory refresh so the UI sees updated versions.
 	onDeploy func()
 
+	// onDeployDone is like onDeploy but receives the final deploy status.
+	// Used by the CD scheduler to track out-of-band deploys.
+	onDeployDone func(Status)
+
 	// runDeploy is the deploy execution function. Defaults to (*Manager).execute.
 	// Tests override it to avoid invoking ssh/scp/git.
 	runDeploy func(ctx context.Context, d *deploy)
@@ -93,6 +97,12 @@ func (m *Manager) SetNotifier(n Notifier) {
 // OnDeploy registers a callback that fires after every deploy finishes.
 func (m *Manager) OnDeploy(f func()) {
 	m.onDeploy = f
+}
+
+// OnDeployDone registers a callback that receives the final Status after
+// every deploy finishes (success, failure, or cancellation).
+func (m *Manager) OnDeployDone(f func(Status)) {
+	m.onDeployDone = f
 }
 
 // Request describes a deploy to start.
@@ -373,11 +383,15 @@ func (m *Manager) finish(d *deploy) {
 	// reaching finish, which only runs from execute()'s defer.
 	close(d.done)
 
+	st := d.snapshot()
 	if m.notifier != nil {
-		m.notifier.DeployFinished(d.snapshot())
+		m.notifier.DeployFinished(st)
 	}
 	if m.onDeploy != nil {
 		m.onDeploy()
+	}
+	if m.onDeployDone != nil {
+		m.onDeployDone(st)
 	}
 }
 

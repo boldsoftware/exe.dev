@@ -175,6 +175,32 @@ func (s *Scheduler) Disable() {
 	}
 }
 
+// NotifyDeploy is called when any deploy finishes. If it's a successful
+// exed deploy not initiated by the CD scheduler itself, we update the
+// topic to reflect the newly deployed SHA.
+func (s *Scheduler) NotifyDeploy(st Status) {
+	// Only care about successful exed deploys from humans (out-of-band).
+	if st.Process != "exed" || st.State != "done" || st.InitiatedBy == "exe-ops" {
+		return
+	}
+
+	s.mu.Lock()
+	s.lastDeploy = &ScheduledDeploy{
+		SHA:       st.SHA,
+		DeployID:  st.ID,
+		StartedAt: st.StartedAt,
+		State:     "success",
+	}
+	enabled := s.enabled
+	s.mu.Unlock()
+
+	s.log.Info("CD scheduler: recorded out-of-band exed deploy", "sha", st.SHA[:12], "by", st.InitiatedBy)
+
+	if enabled && s.notifier != nil {
+		s.updateTopic()
+	}
+}
+
 // Status returns the current CD scheduler state.
 func (s *Scheduler) Status() CDStatus {
 	s.mu.Lock()
