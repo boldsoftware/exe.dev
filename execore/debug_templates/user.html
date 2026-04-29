@@ -426,6 +426,15 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 </form>
 {{end}}
 
+{{if .CanRevokeTrial}}
+<h3 style="margin-top:15px;">Revoke Trial</h3>
+<p style="font-size:13px;color:#666;">Moves this user from Trial to Basic. Their VMs will be stopped by the trial expiry enforcer.</p>
+<form method="post" action="/debug/users/revoke-trial" onsubmit="return confirm('Revoke trial and move user to Basic plan?');">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<button type="submit" style="padding: 8px 16px; background: #dc3545; color: white; border: none; cursor: pointer;">Revoke Trial</button>
+</form>
+{{end}}
+
 {{if .TrialExpiresAt}}
 <h3 style="margin-top:15px;">Set Trial Expiry</h3>
 <p style="font-size:13px;color:#666;">Current: <strong>{{.TrialExpiresAt}}</strong></p>

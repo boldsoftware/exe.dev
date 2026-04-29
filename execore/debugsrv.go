@@ -103,6 +103,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
 	mux.HandleFunc("POST /debug/users/set-trial-expiry", s.handleDebugSetTrialExpiry)
+	mux.HandleFunc("POST /debug/users/revoke-trial", s.handleDebugRevokeTrial)
 	mux.HandleFunc("POST /debug/user/assign-enterprise", s.handleDebugAssignEnterprise)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
@@ -2701,6 +2702,71 @@ func (s *Server) handleDebugSetTrialExpiry(w http.ResponseWriter, r *http.Reques
 	s.slog().InfoContext(ctx, "trial expiry updated via debug page",
 		"user_id", userID,
 		"trial_expires_at", expiry.Format(time.RFC3339),
+	)
+
+	// Wake the enforcer so it picks up the change.
+	s.wakeTrialExpiryEnforcer()
+
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
+// handleDebugRevokeTrial moves a user from Trial to Basic.
+// This is the inverse of handleDebugGrantTrial.
+func (s *Server) handleDebugRevokeTrial(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, fmt.Sprintf("user %q not found", userID), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to look up user: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Verify user is actually on a trial.
+	cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to check plan: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if cat != plan.CategoryTrial {
+		http.Error(w, fmt.Sprintf("user is on %s plan, not trial", cat), http.StatusBadRequest)
+		return
+	}
+
+	acct, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get account: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	now := time.Now()
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    plan.ID(plan.CategoryBasic),
+			At:        now,
+			ChangedBy: "debug:revoke-trial",
+		})
+	}); err != nil {
+		http.Error(w, fmt.Sprintf("failed to revoke trial: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "trial revoked via debug page",
+		"user_id", userID,
+		"email", user.Email,
+		"account_id", acct.ID,
 	)
 
 	// Wake the enforcer so it picks up the change.
@@ -5781,6 +5847,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		LockoutNote         string
 		Limits              string
 		CanGrantTrial       bool
+		CanRevokeTrial      bool
 		TrialExpiresAt      string // RFC3339, empty if no trial
 		TrialExpiresAtInput string // datetime-local format for HTML input
 		AllowDeleteUser     bool
@@ -5834,6 +5901,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.PlanCategory = string(cat)
 		data.PlanName = plan.Name(cat)
 		data.CanGrantTrial = cat == plan.CategoryBasic || cat == plan.CategoryRestricted
+		data.CanRevokeTrial = cat == plan.CategoryTrial
 	}
 
 	// Populate trial expiry for the user's active plan.

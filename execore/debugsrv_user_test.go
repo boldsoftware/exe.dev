@@ -1,6 +1,7 @@
 package execore
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -251,5 +252,136 @@ func requireAccountRow(t *testing.T, body, accountID string) {
 	)
 	if !row.MatchString(body) {
 		t.Fatalf("expected billing row account=%q", accountID)
+	}
+}
+
+// TestDebugRevokeTrial tests that revoking a trial moves the user to Basic.
+func TestDebugRevokeTrial(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+	userID := createTestUser(t, s, "debug-revoke-trial@example.com")
+
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+
+	// Grant trial.
+	now := time.Now()
+	trialEnd := now.Add(30 * 24 * time.Hour)
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      account.ID,
+			PlanID:         plan.ID(plan.CategoryTrial),
+			At:             now,
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      "test",
+		})
+	}); err != nil {
+		t.Fatalf("ReplaceAccountPlan(trial): %v", err)
+	}
+
+	// Verify user is on trial.
+	cat, err := exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
+	})
+	if err != nil {
+		t.Fatalf("ForUser: %v", err)
+	}
+	if cat != plan.CategoryTrial {
+		t.Fatalf("expected trial, got %s", cat)
+	}
+
+	// Revoke trial.
+	form := url.Values{"user_id": {userID}}
+	req := httptest.NewRequest(http.MethodPost, "/debug/users/revoke-trial", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.handleDebugRevokeTrial(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify user is now on basic.
+	cat, err = exedb.WithRxRes0(s.db, ctx, func(q *exedb.Queries, ctx context.Context) (plan.Category, error) {
+		return plan.ForUser(ctx, q, userID)
+	})
+	if err != nil {
+		t.Fatalf("ForUser after revoke: %v", err)
+	}
+	if cat != plan.CategoryBasic {
+		t.Fatalf("expected basic after revoke, got %s", cat)
+	}
+
+	// Verify plan history shows the change.
+	body := debugUserPageBody(t, s, userID)
+	if !strings.Contains(body, "debug:revoke-trial") {
+		t.Error("expected plan history to show debug:revoke-trial")
+	}
+}
+
+// TestDebugRevokeTrialNotOnTrial tests that revoking a trial for a non-trial user fails.
+func TestDebugRevokeTrialNotOnTrial(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-revoke-not-trial@example.com")
+
+	form := url.Values{"user_id": {userID}}
+	req := httptest.NewRequest(http.MethodPost, "/debug/users/revoke-trial", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.handleDebugRevokeTrial(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "not trial") {
+		t.Errorf("expected error about not being on trial, got: %s", w.Body.String())
+	}
+}
+
+// TestDebugRevokeTrialShowsInUI tests that the Revoke Trial button appears
+// on the debug user page when the user is on a trial.
+func TestDebugRevokeTrialShowsInUI(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+	userID := createTestUser(t, s, "debug-revoke-ui@example.com")
+
+	// On basic: should show Grant Trial, not Revoke Trial.
+	body := debugUserPageBody(t, s, userID)
+	if !strings.Contains(body, "Grant Trial") {
+		t.Error("expected Grant Trial on basic user")
+	}
+	if strings.Contains(body, "Revoke Trial") {
+		t.Error("should not show Revoke Trial on basic user")
+	}
+
+	// Grant trial.
+	account, err := withRxRes1(s, ctx, (*exedb.Queries).GetAccountByUserID, userID)
+	if err != nil {
+		t.Fatalf("GetAccountByUserID: %v", err)
+	}
+	now := time.Now()
+	trialEnd := now.Add(30 * 24 * time.Hour)
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID:      account.ID,
+			PlanID:         plan.ID(plan.CategoryTrial),
+			At:             now,
+			TrialExpiresAt: &trialEnd,
+			ChangedBy:      "test",
+		})
+	}); err != nil {
+		t.Fatalf("ReplaceAccountPlan(trial): %v", err)
+	}
+
+	// On trial: should show Revoke Trial, not Grant Trial.
+	body = debugUserPageBody(t, s, userID)
+	if strings.Contains(body, "Grant Trial") {
+		t.Error("should not show Grant Trial on trial user")
+	}
+	if !strings.Contains(body, "Revoke Trial") {
+		t.Error("expected Revoke Trial on trial user")
 	}
 }
