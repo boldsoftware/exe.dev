@@ -333,7 +333,7 @@ func signature() string {
 
 func htmlSignature() string {
 	return `<p>-- <br>David Crawshaw<br>CEO exe.dev</p>` +
-		`<p><a href="{{{pm:unsubscribe}}}" style="color:#999">Unsubscribe</a></p>`
+		`<p><a href="{{{pm:unsubscribe}}}" style="color:#999;text-decoration:none">Unsubscribe</a></p>`
 }
 
 // htmlLink renders a URL as a plain-looking link: the visible text is the URL itself.
