@@ -209,14 +209,17 @@ func (ss *SSHServer) isSudoUser(cc *exemenu.CommandContext) bool {
 	return ss.server.UserHasExeSudo(context.Background(), cc.User.ID)
 }
 
-// canCreateTeam checks if user is NOT already in a team (for team enable visibility).
-// The entitlement check happens inside the handler so we can give a helpful error message.
+// canCreateTeam checks if a user can create a team: not already in a team
+// and has the team:create entitlement.
 func (ss *SSHServer) canCreateTeam(cc *exemenu.CommandContext) bool {
 	if ss.server == nil || ss.server.db == nil {
 		return false
 	}
 	team, _ := ss.server.GetTeamForUser(context.Background(), cc.User.ID)
-	return team == nil
+	if team != nil {
+		return false
+	}
+	return ss.server.UserHasEntitlement(context.Background(), plan.SourceSSH, plan.TeamCreate, cc.User.ID)
 }
 
 // isTeamBillingOwner checks if the user is a team billing owner (for team disable)
