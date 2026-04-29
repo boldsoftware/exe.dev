@@ -41,6 +41,8 @@ type Scheduler struct {
 	announcedFirstDate string // "2006-01-02"
 	announcedLastDate  string // "2006-01-02"
 
+	lastTopic string // last topic string sent to Slack, to avoid redundant updates
+
 	// nowFunc allows tests to override the current time.
 	nowFunc func() time.Time
 }
@@ -149,6 +151,7 @@ func (s *Scheduler) Enable() {
 	s.disabledReason = ""
 	s.announcedFirstDate = ""
 	s.announcedLastDate = ""
+	s.lastTopic = ""
 	s.saveStateLocked()
 	s.log.Info("CD scheduler enabled")
 	if s.notifier != nil {
@@ -176,7 +179,7 @@ func (s *Scheduler) Disable() {
 	s.log.Info("CD scheduler disabled")
 	if s.notifier != nil {
 		s.notifier.CDPostMessage(s.channel, "🔴 exed CD disabled")
-		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
+		s.setTopicLocked("exed: 🔴 CD disabled")
 	}
 	// Wake the Run loop.
 	select {
@@ -378,7 +381,9 @@ func (s *Scheduler) runDeploy(ctx context.Context) {
 				s.notifier.CDPostMessage(s.channel, fmt.Sprintf(
 					"<!here> 🔴 exed CD disabled — %d commits in the next release (%s → %s). Manual deploy required.",
 					count, shaLink(deployedSHA), shaLink(sha)))
-				s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
+				s.mu.Lock()
+				s.setTopicLocked("exed: 🔴 CD disabled")
+				s.mu.Unlock()
 			}
 			return
 		}
@@ -531,7 +536,9 @@ func (s *Scheduler) disableOnFailure(reason string) {
 
 	if s.notifier != nil {
 		s.notifier.CDPostMessage(s.channel, fmt.Sprintf("🔴 exed CD disabled — %s", reason))
-		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
+		s.mu.Lock()
+		s.setTopicLocked("exed: 🔴 CD disabled")
+		s.mu.Unlock()
 	}
 }
 
@@ -541,7 +548,7 @@ func (s *Scheduler) updateTopic() {
 	defer s.mu.Unlock()
 
 	if !s.enabled {
-		s.notifier.CDSetTopic(s.channel, "exed: 🔴 CD disabled")
+		s.setTopicLocked("exed: 🔴 CD disabled")
 		return
 	}
 
@@ -556,9 +563,9 @@ func (s *Scheduler) updateTopic() {
 		next := s.nextDeployTime(now)
 		nextStr := formatTimeWithDay(next)
 		if s.lastDeploy != nil {
-			s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
+			s.setTopicLocked(fmt.Sprintf("exed: 💤 CD idle | Last: %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 		} else {
-			s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 💤 CD idle | Next: %s", nextStr))
+			s.setTopicLocked(fmt.Sprintf("exed: 💤 CD idle | Next: %s", nextStr))
 		}
 		return
 	}
@@ -566,10 +573,20 @@ func (s *Scheduler) updateTopic() {
 	// Within window, between deploys.
 	nextStr := formatTime(s.nextAt)
 	if s.lastDeploy != nil {
-		s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
+		s.setTopicLocked(fmt.Sprintf("exed: 🟢 %s | Next: %s", shaLink(s.lastDeploy.SHA), nextStr))
 	} else {
-		s.notifier.CDSetTopic(s.channel, fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
+		s.setTopicLocked(fmt.Sprintf("exed: 🟢 CD active | Next: %s", nextStr))
 	}
+}
+
+// setTopicLocked sends the topic to Slack only if it differs from the last
+// one we set. Caller must hold s.mu.
+func (s *Scheduler) setTopicLocked(topic string) {
+	if topic == s.lastTopic {
+		return
+	}
+	s.lastTopic = topic
+	s.notifier.CDSetTopic(s.channel, topic)
 }
 
 // loadState reads the persisted CD state from disk.
