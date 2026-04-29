@@ -58,7 +58,7 @@ func TestAllEntitlements(t *testing.T) {
 		"team:create":         true,
 		"vm:create":           true,
 		"vm:run":              true,
-		"disk:resize":         true,
+		"vm:resize":           true,
 		"billing:selfserve":   true,
 		"billing:seats":       true,
 		"billing:trialaccess": true,
@@ -80,10 +80,10 @@ func TestAllEntitlements(t *testing.T) {
 	}
 }
 
-// TestDiskResizeEntitlementByPlan verifies which plans grant DiskResize.
+// TestVMResizeEntitlementByPlan verifies which plans grant VMResize.
 // Plans with MaxDisk > 0 should have it; basic and restricted should not.
-func TestDiskResizeEntitlementByPlan(t *testing.T) {
-	wantDiskResize := map[Category]bool{
+func TestVMResizeEntitlementByPlan(t *testing.T) {
+	wantVMResize := map[Category]bool{
 		CategoryEnterprise:    true,
 		CategoryTeam:          true,
 		CategoryIndividual:    true,
@@ -94,15 +94,15 @@ func TestDiskResizeEntitlementByPlan(t *testing.T) {
 		CategoryRestricted:    false,
 	}
 
-	for cat, want := range wantDiskResize {
+	for cat, want := range wantVMResize {
 		p, ok := plans[cat]
 		if !ok {
 			t.Errorf("plan %q not found in plans map", cat)
 			continue
 		}
-		got := Grants(p.ID, DiskResize)
+		got := Grants(p.ID, VMResize)
 		if got != want {
-			t.Errorf("plan %q: Grants(DiskResize) = %v, want %v", cat, got, want)
+			t.Errorf("plan %q: Grants(VMResize) = %v, want %v", cat, got, want)
 		}
 	}
 }

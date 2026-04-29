@@ -2225,7 +2225,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Handle disk resize if specified
 	var diskGrowResult *api.GrowDiskResponse
 	if diskStr != "" {
-		if !isSudo && !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.DiskResize, cc.User.ID) {
+		if !isSudo && !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMResize, cc.User.ID) {
 			return cc.Errorf("disk resize is not available on your current plan")
 		}
 

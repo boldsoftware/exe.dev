@@ -110,7 +110,7 @@ func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {
 	requireEntitlementRow(t, body, "Create VMs", false)
 	requireEntitlementRow(t, body, "Purchase Credits", false)
 	requireEntitlementRow(t, body, "Run VMs", false)
-	requireEntitlementRow(t, body, "Resize VM Disks", false)
+	requireEntitlementRow(t, body, "Resize VMs", false)
 }
 
 // TestDebugBillingEntitlementTableFriendUser verifies a Friend plan user
@@ -148,7 +148,7 @@ func TestDebugBillingEntitlementTableFriendUser(t *testing.T) {
 	requireEntitlementRow(t, body, "Create VMs", true)
 	requireEntitlementRow(t, body, "Run VMs", true)
 	requireEntitlementRow(t, body, "Purchase Credits", false)
-	requireEntitlementRow(t, body, "Resize VM Disks", true)
+	requireEntitlementRow(t, body, "Resize VMs", true)
 }
 
 // TestDebugBillingEntitlementTableIndividualUser verifies an Individual plan user

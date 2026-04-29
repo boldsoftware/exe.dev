@@ -169,21 +169,21 @@ func TestSelfServeResize(t *testing.T) {
 	cleanupBox(t, keyFile, box)
 }
 
-// TestSelfServeResizeEntitlement tests that plans without DiskResize entitlement
+// TestSelfServeResizeEntitlement tests that plans without VMResize entitlement
 // cannot use the resize command for disk.
 func TestSelfServeResizeEntitlement(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)
 	noGolden(t)
 
-	// Verify basic plan does NOT have DiskResize.
-	if plan.Grants(plan.ID(plan.CategoryBasic), plan.DiskResize) {
-		t.Fatal("basic plan should not grant DiskResize")
+	// Verify basic plan does NOT have VMResize.
+	if plan.Grants(plan.ID(plan.CategoryBasic), plan.VMResize) {
+		t.Fatal("basic plan should not grant VMResize")
 	}
 
-	// Verify individual plan DOES have DiskResize.
-	if !plan.Grants(plan.ID(plan.CategoryIndividual), plan.DiskResize) {
-		t.Fatal("individual plan should grant DiskResize")
+	// Verify individual plan DOES have VMResize.
+	if !plan.Grants(plan.ID(plan.CategoryIndividual), plan.VMResize) {
+		t.Fatal("individual plan should grant VMResize")
 	}
 }
 

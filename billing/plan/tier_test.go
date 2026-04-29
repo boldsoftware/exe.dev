@@ -189,7 +189,7 @@ func TestTierGrantsInheritance(t *testing.T) {
 	}
 
 	// Non-nil Entitlements → use override (ignores plan entitlements).
-	override := map[Entitlement]bool{DiskResize: true}
+	override := map[Entitlement]bool{VMResize: true}
 	tierWithOverride := Tier{
 		ID:           "test:custom:monthly:20260106",
 		Category:     CategoryIndividual,
@@ -198,8 +198,8 @@ func TestTierGrantsInheritance(t *testing.T) {
 
 		Entitlements: &override,
 	}
-	if !tierGrants(tierWithOverride, DiskResize) {
-		t.Error("overridden tier should grant DiskResize")
+	if !tierGrants(tierWithOverride, VMResize) {
+		t.Error("overridden tier should grant VMResize")
 	}
 	if tierGrants(tierWithOverride, VMCreate) {
 		t.Error("overridden tier should not grant VMCreate (not in override set)")
