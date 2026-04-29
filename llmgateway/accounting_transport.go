@@ -404,8 +404,9 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 			completionTokens = 1
 		}
 
+		uncachedInputTokens, cachedTokens := splitOpenAICompatibleCachedPromptTokens(promptTokens, cachedTokens)
 		usage := Usage{
-			InputTokens:          uint64(promptTokens),
+			InputTokens:          uncachedInputTokens,
 			OutputTokens:         uint64(completionTokens),
 			CacheReadInputTokens: cachedTokens,
 		}
@@ -418,9 +419,9 @@ func (m *accountingTransport) processResponseData(data []byte) (*CostInfo, error
 		m.log.InfoContext(ctx, "debitResponse",
 			"message_id", oi.ID,
 			"model", model,
-			"input_tokens", promptTokens,
-			"output_tokens", completionTokens,
-			"cache_read_tokens", cachedTokens,
+			"input_tokens", usage.InputTokens,
+			"output_tokens", usage.OutputTokens,
+			"cache_read_tokens", usage.CacheReadInputTokens,
 		)
 
 	default:
@@ -581,8 +582,9 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 			completionTokens = 1
 		}
 
+		uncachedInputTokens, cachedTokens := splitOpenAICompatibleCachedPromptTokens(promptTokens, cachedTokens)
 		usage := Usage{
-			InputTokens:          uint64(promptTokens),
+			InputTokens:          uncachedInputTokens,
 			OutputTokens:         uint64(completionTokens),
 			CacheReadInputTokens: cachedTokens,
 		}
@@ -594,9 +596,9 @@ func (m *accountingTransport) processResponseDataSSE(data []byte) error {
 		m.log.InfoContext(ctx, "debitResponse",
 			"message_id", oi.ID,
 			"model", model,
-			"input_tokens", promptTokens,
-			"output_tokens", completionTokens,
-			"cache_read_tokens", cachedTokens,
+			"input_tokens", usage.InputTokens,
+			"output_tokens", usage.OutputTokens,
+			"cache_read_tokens", usage.CacheReadInputTokens,
 		)
 
 	default:
@@ -885,6 +887,19 @@ func (oi *openaiResponseUsageInfo) effectiveTokens() (promptTokens, completionTo
 		cachedTokens = uint64(oi.Usage.PromptTokensDetails.CachedTokens)
 	}
 	return promptTokens, completionTokens, cachedTokens
+}
+
+// splitOpenAICompatibleCachedPromptTokens normalizes OpenAI-compatible prompt/input
+// token usage. OpenAI-compatible providers report prompt/input tokens as the total
+// input, with cached tokens nested separately inside that total. We split that into
+// uncached input tokens plus cache-read input tokens so gateway billing matches the
+// provider's pricing model.
+func splitOpenAICompatibleCachedPromptTokens(promptTokens int, cachedTokens uint64) (uncachedTokens, normalizedCachedTokens uint64) {
+	totalPromptTokens := uint64(max(promptTokens, 0))
+	if cachedTokens > totalPromptTokens {
+		cachedTokens = totalPromptTokens
+	}
+	return totalPromptTokens - cachedTokens, cachedTokens
 }
 
 // Helper function to extract rate limit values from headers and set gauge metrics

@@ -32,6 +32,11 @@ type Usage struct {
 	CacheReadInputTokens     uint64
 }
 
+// TotalInputTokens returns all input-context tokens, including cached tokens.
+func (u Usage) TotalInputTokens() uint64 {
+	return u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+}
+
 // ErrModelNotAllowed is returned when a model is not in the allowlist.
 var ErrModelNotAllowed = fmt.Errorf("model not allowed")
 
@@ -67,10 +72,12 @@ func calculateCostMicroCents(provider Provider, model string, usage Usage) micro
 		return 0
 	}
 
-	total := usage.InputTokens*cost.Input +
-		usage.OutputTokens*cost.Output +
-		usage.CacheReadInputTokens*cost.CacheRead +
-		usage.CacheCreationInputTokens*cost.CacheCreation
+	resolvedCost := resolveTieredCost(*cost, usage)
+
+	total := usage.InputTokens*resolvedCost.Input +
+		usage.OutputTokens*resolvedCost.Output +
+		usage.CacheReadInputTokens*resolvedCost.CacheRead +
+		usage.CacheCreationInputTokens*resolvedCost.CacheCreation
 	return microCents(total)
 }
 
@@ -82,6 +89,18 @@ type ModelCost struct {
 	CacheRead     uint64    // cents per 1M cache read tokens
 	CacheCreation uint64    // cents per 1M cache creation tokens
 	Type          ModelType // defaults to ModelTypeChat when empty
+	Tiers         []PricingTier
+}
+
+// PricingTier overrides token pricing once total input reaches MinTotalInputTokens.
+// Tiers are evaluated in ascending threshold order and resolve to a single rate
+// card for the full request; they are not applied incrementally by token range.
+type PricingTier struct {
+	MinTotalInputTokens uint64
+	Input               uint64
+	Output              uint64
+	CacheRead           uint64
+	CacheCreation       uint64
 }
 
 // ServerToolCosts maps server tool use names to their per-use cost in microCents.
@@ -89,6 +108,25 @@ type ModelCost struct {
 var ServerToolCosts = map[string]microCents{
 	"web_search_requests": 1_000_000, // $0.01 per search = 1 cent = 1,000,000 microCents
 	// "web_fetch_requests" is not yet priced but is tracked.
+}
+
+func resolveTieredCost(cost ModelCost, usage Usage) ModelCost {
+	if len(cost.Tiers) == 0 {
+		return cost
+	}
+
+	resolved := cost
+	totalInput := usage.TotalInputTokens()
+	for _, tier := range cost.Tiers {
+		if totalInput < tier.MinTotalInputTokens {
+			break
+		}
+		resolved.Input = tier.Input
+		resolved.Output = tier.Output
+		resolved.CacheRead = tier.CacheRead
+		resolved.CacheCreation = tier.CacheCreation
+	}
+	return resolved
 }
 
 // CalculateServerToolCost returns the cost in USD for server-side tool usage.
@@ -142,11 +180,97 @@ var allowedModels = map[Provider]map[string]ModelCost{
 	},
 
 	ProviderOpenAI: {
+		// GPT-5.5 models
+		"gpt-5.5": {
+			Input:     500,
+			Output:    3000,
+			CacheRead: 50,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               1000,
+				Output:              4500,
+				CacheRead:           100,
+			}},
+		},
+		"gpt-5.5-2026-04-23": {
+			Input:     500,
+			Output:    3000,
+			CacheRead: 50,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               1000,
+				Output:              4500,
+				CacheRead:           100,
+			}},
+		},
+		"gpt-5.5-pro": {
+			Input:  3000,
+			Output: 18000,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               6000,
+				Output:              27000,
+			}},
+		},
+		"gpt-5.5-pro-2026-04-23": {
+			Input:  3000,
+			Output: 18000,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               6000,
+				Output:              27000,
+			}},
+		},
+
 		// GPT-5.4 models
-		"gpt-5.4":                {Input: 250, Output: 1500, CacheRead: 25},
-		"gpt-5.4-2026-03-05":     {Input: 250, Output: 1500, CacheRead: 25},
-		"gpt-5.4-pro":            {Input: 3000, Output: 18000},
-		"gpt-5.4-pro-2026-03-05": {Input: 3000, Output: 18000},
+		"gpt-5.4": {
+			Input:     250,
+			Output:    1500,
+			CacheRead: 25,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               500,
+				Output:              2250,
+				CacheRead:           50,
+			}},
+		},
+		"gpt-5.4-2026-03-05": {
+			Input:     250,
+			Output:    1500,
+			CacheRead: 25,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               500,
+				Output:              2250,
+				CacheRead:           50,
+			}},
+		},
+		"gpt-5.4-pro": {
+			Input:  3000,
+			Output: 18000,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               6000,
+				Output:              27000,
+			}},
+		},
+		"gpt-5.4-pro-2026-03-05": {
+			Input:  3000,
+			Output: 18000,
+			// resolveTieredCost replaces the full rate card, so tiers must repeat every non-zero rate.
+			Tiers: []PricingTier{{
+				MinTotalInputTokens: 272_001,
+				Input:               6000,
+				Output:              27000,
+			}},
+		},
 
 		// GPT-5.3 models
 		"gpt-5.3-codex":       {Input: 175, Output: 1400, CacheRead: 17},

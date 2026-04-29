@@ -232,8 +232,8 @@ func TestAccountingTransport_OpenAI_ChatCompletions(t *testing.T) {
 
 	// Manually compute expected cost:
 	// gpt-4.1: Input=200, Output=800, CacheRead=50 (cents per million tokens)
-	// input_tokens=500, completion_tokens=120, cache_read=300
-	expectedMicroCents := uint64(500)*200 + uint64(120)*800 + uint64(300)*50
+	// prompt_tokens=500 total, cached=300, so uncached input=200
+	expectedMicroCents := uint64(200)*200 + uint64(120)*800 + uint64(300)*50
 	expectedUSD := float64(expectedMicroCents) / 100_000_000
 	t.Logf("cost: got=%s expected=%.6f", costHeader, expectedUSD)
 	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
@@ -250,7 +250,7 @@ func TestAccountingTransport_OpenAI_ChatCompletions(t *testing.T) {
 
 	assertAttr(t, attrs, "model", "gpt-4.1-2025-04-14")
 	assertAttr(t, attrs, "message_id", "chatcmpl-abc123")
-	assertAttrUint(t, attrs, "input_tokens", 500)
+	assertAttrUint(t, attrs, "input_tokens", 200)
 	assertAttrUint(t, attrs, "output_tokens", 120)
 	assertAttrUint(t, attrs, "cache_read_tokens", 300)
 }
@@ -306,8 +306,8 @@ func TestAccountingTransport_OpenAI_ResponsesAPI(t *testing.T) {
 	}
 
 	// gpt-5.3-codex: Input=175, Output=1400, CacheRead=17
-	// input_tokens=1500, output_tokens=200, cache_read=1200
-	expectedMicroCents := uint64(1500)*175 + uint64(200)*1400 + uint64(1200)*17
+	// input_tokens=1500 total, cached=1200, so uncached input=300
+	expectedMicroCents := uint64(300)*175 + uint64(200)*1400 + uint64(1200)*17
 	expectedUSD := float64(expectedMicroCents) / 100_000_000
 	t.Logf("cost: got=%s expected=%.6f", costHeader, expectedUSD)
 	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
@@ -324,7 +324,7 @@ func TestAccountingTransport_OpenAI_ResponsesAPI(t *testing.T) {
 
 	assertAttr(t, attrs, "model", "gpt-5.3-codex")
 	assertAttr(t, attrs, "message_id", "resp_abc123")
-	assertAttrUint(t, attrs, "input_tokens", 1500)
+	assertAttrUint(t, attrs, "input_tokens", 300)
 	assertAttrUint(t, attrs, "output_tokens", 200)
 	assertAttrUint(t, attrs, "cache_read_tokens", 1200)
 
@@ -509,7 +509,7 @@ func TestAccountingTransport_SSE_ResponsesAPI(t *testing.T) {
 
 	assertAttr(t, attrs, "model", "gpt-5.3-codex")
 	assertAttr(t, attrs, "message_id", "resp_sse123")
-	assertAttrUint(t, attrs, "input_tokens", 2000)
+	assertAttrUint(t, attrs, "input_tokens", 200)
 	assertAttrUint(t, attrs, "output_tokens", 300)
 	assertAttrUint(t, attrs, "cache_read_tokens", 1800)
 
@@ -520,8 +520,8 @@ func TestAccountingTransport_SSE_ResponsesAPI(t *testing.T) {
 	if transport.sseUsage.Model != "gpt-5.3-codex" {
 		t.Errorf("sseUsage.Model = %s, want gpt-5.3-codex", transport.sseUsage.Model)
 	}
-	if transport.sseUsage.Usage.InputTokens != 2000 {
-		t.Errorf("sseUsage.InputTokens = %d, want 2000", transport.sseUsage.Usage.InputTokens)
+	if transport.sseUsage.Usage.InputTokens != 200 {
+		t.Errorf("sseUsage.InputTokens = %d, want 200", transport.sseUsage.Usage.InputTokens)
 	}
 	if transport.sseUsage.Usage.CacheReadInputTokens != 1800 {
 		t.Errorf("sseUsage.CacheReadInputTokens = %d, want 1800", transport.sseUsage.Usage.CacheReadInputTokens)
@@ -631,8 +631,9 @@ func TestAccountingTransport_OpenAI_ResponsesAPI_LiveCodex(t *testing.T) {
 	if rawResp.Usage.InputTokensDetails != nil {
 		cachedTokens = uint64(rawResp.Usage.InputTokensDetails.CachedTokens)
 	}
+	uncachedTokens := uint64(rawResp.Usage.InputTokens) - cachedTokens
 	expectedCost := llmpricing.CalculateCost(llmpricing.ProviderOpenAI, rawResp.Model, llmpricing.Usage{
-		InputTokens:          uint64(rawResp.Usage.InputTokens),
+		InputTokens:          uncachedTokens,
 		OutputTokens:         uint64(rawResp.Usage.OutputTokens),
 		CacheReadInputTokens: cachedTokens,
 	})
@@ -651,7 +652,7 @@ func TestAccountingTransport_OpenAI_ResponsesAPI_LiveCodex(t *testing.T) {
 	assertAttr(t, attrs, "message_id", rawResp.ID)
 	// Model in logs should match the response model
 	assertAttr(t, attrs, "model", rawResp.Model)
-	assertAttrUint(t, attrs, "input_tokens", uint64(rawResp.Usage.InputTokens))
+	assertAttrUint(t, attrs, "input_tokens", uncachedTokens)
 	assertAttrUint(t, attrs, "output_tokens", uint64(rawResp.Usage.OutputTokens))
 	assertAttrUint(t, attrs, "cache_read_tokens", cachedTokens)
 }
@@ -739,8 +740,9 @@ func TestAccountingTransport_OpenAI_ChatCompletions_Live(t *testing.T) {
 	if rawResp.Usage.PromptTokensDetails != nil {
 		cachedTokens = uint64(rawResp.Usage.PromptTokensDetails.CachedTokens)
 	}
+	uncachedTokens := uint64(rawResp.Usage.PromptTokens) - cachedTokens
 	expectedCost := llmpricing.CalculateCost(llmpricing.ProviderOpenAI, rawResp.Model, llmpricing.Usage{
-		InputTokens:          uint64(rawResp.Usage.PromptTokens),
+		InputTokens:          uncachedTokens,
 		OutputTokens:         uint64(rawResp.Usage.CompletionTokens),
 		CacheReadInputTokens: cachedTokens,
 	})
@@ -758,9 +760,179 @@ func TestAccountingTransport_OpenAI_ChatCompletions_Live(t *testing.T) {
 
 	assertAttr(t, attrs, "model", rawResp.Model)
 	assertAttr(t, attrs, "message_id", rawResp.ID)
-	assertAttrUint(t, attrs, "input_tokens", uint64(rawResp.Usage.PromptTokens))
+	assertAttrUint(t, attrs, "input_tokens", uncachedTokens)
 	assertAttrUint(t, attrs, "output_tokens", uint64(rawResp.Usage.CompletionTokens))
 	assertAttrUint(t, attrs, "cache_read_tokens", cachedTokens)
+}
+
+func TestAccountingTransport_OpenAI_GPT55LongContextPricing(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	backend := `{
+		"id": "resp_gpt55_long",
+		"object": "response",
+		"model": "gpt-5.5",
+		"status": "completed",
+		"output": [{
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "output_text", "text": "hello"}]
+		}],
+		"usage": {
+			"input_tokens": 300000,
+			"output_tokens": 1000,
+			"total_tokens": 301000,
+			"input_tokens_details": {
+				"cached_tokens": 50000
+			}
+		}
+	}`
+
+	rr, _ := proxyThroughAccounting(t,
+		llmpricing.ProviderOpenAI,
+		backend,
+		"/_/gateway/openai/v1/responses",
+		`{"model":"gpt-5.5","input":[]}`,
+		logger,
+	)
+
+	costHeader := rr.Header().Get("Exedev-Gateway-Cost")
+	if costHeader == "" {
+		t.Fatal("missing Exedev-Gateway-Cost header")
+	}
+	costUSD, err := strconv.ParseFloat(costHeader, 64)
+	if err != nil {
+		t.Fatalf("bad Exedev-Gateway-Cost header %q: %v", costHeader, err)
+	}
+
+	expectedMicroCents := uint64(250_000)*1000 + uint64(50_000)*100 + uint64(1_000)*4500
+	expectedUSD := float64(expectedMicroCents) / 100_000_000
+	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
+		t.Errorf("cost mismatch: got %.6f, want %.6f", costUSD, expectedUSD)
+	}
+
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	assertAttr(t, attrs, "model", "gpt-5.5")
+	assertAttr(t, attrs, "message_id", "resp_gpt55_long")
+	assertAttrUint(t, attrs, "input_tokens", 250_000)
+	assertAttrUint(t, attrs, "output_tokens", 1_000)
+	assertAttrUint(t, attrs, "cache_read_tokens", 50_000)
+}
+
+func TestAccountingTransport_OpenAI_GPT54LongContextPricing(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	backend := `{
+		"id": "resp_gpt54_long",
+		"object": "response",
+		"model": "gpt-5.4",
+		"status": "completed",
+		"output": [{
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "output_text", "text": "hello"}]
+		}],
+		"usage": {
+			"input_tokens": 300000,
+			"output_tokens": 1000,
+			"total_tokens": 301000,
+			"input_tokens_details": {
+				"cached_tokens": 50000
+			}
+		}
+	}`
+
+	rr, _ := proxyThroughAccounting(t,
+		llmpricing.ProviderOpenAI,
+		backend,
+		"/_/gateway/openai/v1/responses",
+		`{"model":"gpt-5.4","input":[]}`,
+		logger,
+	)
+
+	costHeader := rr.Header().Get("Exedev-Gateway-Cost")
+	if costHeader == "" {
+		t.Fatal("missing Exedev-Gateway-Cost header")
+	}
+	costUSD, err := strconv.ParseFloat(costHeader, 64)
+	if err != nil {
+		t.Fatalf("bad Exedev-Gateway-Cost header %q: %v", costHeader, err)
+	}
+
+	expectedMicroCents := uint64(250_000)*500 + uint64(50_000)*50 + uint64(1_000)*2250
+	expectedUSD := float64(expectedMicroCents) / 100_000_000
+	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
+		t.Errorf("cost mismatch: got %.6f, want %.6f", costUSD, expectedUSD)
+	}
+
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	assertAttr(t, attrs, "model", "gpt-5.4")
+	assertAttr(t, attrs, "message_id", "resp_gpt54_long")
+	assertAttrUint(t, attrs, "input_tokens", 250_000)
+	assertAttrUint(t, attrs, "output_tokens", 1_000)
+	assertAttrUint(t, attrs, "cache_read_tokens", 50_000)
+}
+
+func TestAccountingTransport_Fireworks_CachedPromptTokens(t *testing.T) {
+	logs := &logCapture{}
+	logger := slog.New(logs.handler())
+
+	backend := `{
+		"id": "chatcmpl-fireworks-cache",
+		"model": "accounts/fireworks/models/glm-5",
+		"usage": {
+			"prompt_tokens": 500,
+			"completion_tokens": 120,
+			"total_tokens": 620,
+			"prompt_tokens_details": {
+				"cached_tokens": 300
+			}
+		}
+	}`
+
+	rr, _ := proxyThroughAccounting(t,
+		llmpricing.ProviderFireworks,
+		backend,
+		"/_/gateway/fireworks/inference/v1/chat/completions",
+		`{"model":"accounts/fireworks/models/glm-5","messages":[]}`,
+		logger,
+	)
+
+	costHeader := rr.Header().Get("Exedev-Gateway-Cost")
+	if costHeader == "" {
+		t.Fatal("missing Exedev-Gateway-Cost header")
+	}
+	costUSD, err := strconv.ParseFloat(costHeader, 64)
+	if err != nil {
+		t.Fatalf("bad Exedev-Gateway-Cost header %q: %v", costHeader, err)
+	}
+
+	expectedMicroCents := uint64(200)*100 + uint64(120)*320 + uint64(300)*20
+	expectedUSD := float64(expectedMicroCents) / 100_000_000
+	if fmt.Sprintf("%.6f", costUSD) != fmt.Sprintf("%.6f", expectedUSD) {
+		t.Errorf("cost mismatch: got %.6f, want %.6f", costUSD, expectedUSD)
+	}
+
+	debit := logs.findRecord("debitResponse")
+	if debit == nil {
+		t.Fatal("no debitResponse log found")
+	}
+	attrs := attrMap(debit)
+	assertAttr(t, attrs, "model", "accounts/fireworks/models/glm-5")
+	assertAttr(t, attrs, "message_id", "chatcmpl-fireworks-cache")
+	assertAttrUint(t, attrs, "input_tokens", 200)
+	assertAttrUint(t, attrs, "output_tokens", 120)
+	assertAttrUint(t, attrs, "cache_read_tokens", 300)
 }
 
 // TestAccountingTransport_Anthropic_WebSearch verifies that server_tool_use

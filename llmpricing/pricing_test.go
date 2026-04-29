@@ -110,6 +110,33 @@ func TestCalculateCost_OpenAI(t *testing.T) {
 			wantUSD: 11.25, // $1.25 + $10
 		},
 		{
+			name:  "gpt-5.5 short context",
+			model: "gpt-5.5",
+			usage: Usage{
+				InputTokens:  100_000,
+				OutputTokens: 1_000_000,
+			},
+			wantUSD: 30.5, // $0.50 + $30
+		},
+		{
+			name:  "gpt-5.5-pro short context",
+			model: "gpt-5.5-pro",
+			usage: Usage{
+				InputTokens:  100_000,
+				OutputTokens: 1_000_000,
+			},
+			wantUSD: 183.0, // $3 + $180
+		},
+		{
+			name:  "gpt-5.4 short context",
+			model: "gpt-5.4",
+			usage: Usage{
+				InputTokens:  100_000,
+				OutputTokens: 1_000_000,
+			},
+			wantUSD: 15.25, // $0.25 + $15
+		},
+		{
 			name:  "gpt-5.2-codex",
 			model: "gpt-5.2-codex",
 			usage: Usage{
@@ -125,6 +152,167 @@ func TestCalculateCost_OpenAI(t *testing.T) {
 			got := CalculateCost(ProviderOpenAI, tt.model, tt.usage)
 			if !floatEqual(got, tt.wantUSD) {
 				t.Errorf("CalculateCost(%s) = $%.6f, want $%.6f", tt.model, got, tt.wantUSD)
+			}
+		})
+	}
+}
+
+func TestCalculateCost_OpenAI_GPT55ContextTiers(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   Usage
+		wantUSD float64
+	}{
+		{
+			name: "272K tokens still use standard pricing",
+			usage: Usage{
+				InputTokens: 272_000,
+			},
+			wantUSD: 1.36,
+		},
+		{
+			name: "more than 272K tokens use long-context pricing",
+			usage: Usage{
+				InputTokens: 272_001,
+			},
+			wantUSD: 2.72001,
+		},
+		{
+			name: "cached tokens count toward the 272K threshold",
+			usage: Usage{
+				InputTokens:          100_000,
+				CacheReadInputTokens: 172_001,
+				OutputTokens:         1_000,
+			},
+			wantUSD: 1.217001,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateCost(ProviderOpenAI, "gpt-5.5", tt.usage)
+			if !floatEqual(got, tt.wantUSD) {
+				t.Errorf("CalculateCost(gpt-5.5) = $%.6f, want $%.6f", got, tt.wantUSD)
+			}
+		})
+	}
+}
+
+func TestCalculateCost_OpenAI_GPT54ContextTiers(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   Usage
+		wantUSD float64
+	}{
+		{
+			name: "272K tokens still use standard pricing",
+			usage: Usage{
+				InputTokens:  272_000,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 0.695,
+		},
+		{
+			name: "more than 272K tokens use long-context pricing",
+			usage: Usage{
+				InputTokens:  272_001,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 1.382505,
+		},
+		{
+			name: "cached tokens count toward the 272K threshold",
+			usage: Usage{
+				InputTokens:          100_000,
+				CacheReadInputTokens: 172_001,
+				OutputTokens:         1_000,
+			},
+			wantUSD: 0.6085005,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateCost(ProviderOpenAI, "gpt-5.4", tt.usage)
+			if !floatEqual(got, tt.wantUSD) {
+				t.Errorf("CalculateCost(gpt-5.4) = $%.6f, want $%.6f", got, tt.wantUSD)
+			}
+		})
+	}
+}
+
+func TestCalculateCost_OpenAI_GPT54ProContextTiers(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   Usage
+		wantUSD float64
+	}{
+		{
+			name: "272K tokens still use standard pricing",
+			usage: Usage{
+				InputTokens:  272_000,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 8.34,
+		},
+		{
+			name: "more than 272K tokens use long-context pricing",
+			usage: Usage{
+				InputTokens:  272_001,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 16.59006,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateCost(ProviderOpenAI, "gpt-5.4-pro", tt.usage)
+			if !floatEqual(got, tt.wantUSD) {
+				t.Errorf("CalculateCost(gpt-5.4-pro) = $%.6f, want $%.6f", got, tt.wantUSD)
+			}
+		})
+	}
+}
+
+func TestCalculateCost_OpenAI_GPT55ProContextTiers(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   Usage
+		wantUSD float64
+	}{
+		{
+			name: "272K tokens still use standard pricing",
+			usage: Usage{
+				InputTokens:  272_000,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 8.34,
+		},
+		{
+			name: "more than 272K tokens use long-context pricing",
+			usage: Usage{
+				InputTokens:  272_001,
+				OutputTokens: 1_000,
+			},
+			wantUSD: 16.59006,
+		},
+		{
+			name: "cached tokens count toward the 272K threshold",
+			usage: Usage{
+				InputTokens:          100_000,
+				CacheReadInputTokens: 172_001,
+				OutputTokens:         1_000,
+			},
+			wantUSD: 6.27,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CalculateCost(ProviderOpenAI, "gpt-5.5-pro", tt.usage)
+			if !floatEqual(got, tt.wantUSD) {
+				t.Errorf("CalculateCost(gpt-5.5-pro) = $%.6f, want $%.6f", got, tt.wantUSD)
 			}
 		})
 	}
@@ -287,6 +475,8 @@ func TestIsModelAllowed(t *testing.T) {
 		{ProviderAnthropic, "claude-haiku-4-5", true},
 		{ProviderAnthropic, "unknown-model", false},
 		{ProviderOpenAI, "gpt-4o", true},
+		{ProviderOpenAI, "gpt-5.5", true},
+		{ProviderOpenAI, "gpt-5.5-pro", true},
 		{ProviderOpenAI, "gpt-5.2-codex", true},
 		{ProviderOpenAI, "unknown-model", false},
 		{ProviderFireworks, "accounts/fireworks/models/deepseek-v4-pro", true},
