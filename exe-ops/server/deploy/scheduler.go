@@ -593,6 +593,10 @@ func (s *Scheduler) saveStateLocked() {
 // right now (e.g. holiday, weekend, outside hours). Returns "" if now is
 // within the deploy window.
 func (s *Scheduler) skipReason(now time.Time) string {
+	if s.isWindowOpen(now) {
+		return ""
+	}
+
 	et, _ := time.LoadLocation("America/New_York")
 	nowET := now.In(et)
 

@@ -281,6 +281,31 @@ func TestAnnounceFirstLast_ResetsOnEnable(t *testing.T) {
 	}
 }
 
+func TestSkipReason(t *testing.T) {
+	et, _ := time.LoadLocation("America/New_York")
+	s := &Scheduler{nowFunc: time.Now}
+
+	tests := []struct {
+		name string
+		now  time.Time
+		want string
+	}{
+		{"mid-window weekday", time.Date(2024, 3, 4, 12, 0, 0, 0, et), ""},
+		{"Saturday", time.Date(2024, 3, 9, 12, 0, 0, 0, et), "weekend"},
+		{"Sunday", time.Date(2024, 3, 10, 12, 0, 0, 0, et), "weekend"},
+		{"before window", time.Date(2024, 3, 4, 7, 0, 0, 0, et), "outside deploy window"},
+		{"New Year 2024", time.Date(2024, 1, 1, 12, 0, 0, 0, et), "New Year's Day"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.skipReason(tt.now)
+			if got != tt.want {
+				t.Errorf("skipReason(%v) = %q, want %q", tt.now.Format("Mon 2006-01-02 15:04"), got, tt.want)
+			}
+		})
+	}
+}
+
 type fakeNotifier struct {
 	topics   []string
 	messages []string
