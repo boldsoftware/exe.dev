@@ -3,6 +3,7 @@ package resourcemanager
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/exelet/storage/ext4"
 	"exe.dev/exelet/utils"
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 )
@@ -34,6 +36,13 @@ type usageData struct {
 	diskVolsizeBytes uint64 // ZFS volsize (provisioned size)
 	diskBytes        uint64 // ZFS used (actual compressed bytes on disk)
 	diskLogicalBytes uint64 // ZFS logicalused (uncompressed)
+
+	// Filesystem-level (ext4) view of the zvol, read directly from the
+	// ext4 superblock by [readFilesystemUsage]. Zero if unavailable
+	// (volume not yet formatted, not ext4, transient I/O error).
+	fsTotalBytes     uint64 // ext4 capacity (block_size * blocks_count)
+	fsFreeBytes      uint64 // ext4 free bytes (block_size * free_blocks_count)
+	fsAvailableBytes uint64 // ext4 free bytes minus root reservation
 	netRxBytes       uint64
 	netTxBytes       uint64
 	ioReadBytes      uint64 // cumulative IO read bytes from cgroup io.stat
@@ -98,6 +107,21 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 		usage.diskVolsizeBytes = zfsInfo.Volsize
 		usage.diskBytes = zfsInfo.Used
 		usage.diskLogicalBytes = zfsInfo.LogicalUsed
+	}
+
+	// Filesystem-level usage from the zvol's ext4 superblock. Read-only,
+	// non-blocking, safe against a live VM (see exelet/storage/ext4).
+	// Gated: only collected when configured (env-wide or per group ID).
+	if m.ext4UsageAllowed(groupID) {
+		readFn := m.readFilesystemUsageFn
+		if readFn == nil {
+			readFn = m.readFilesystemUsage
+		}
+		if fsUsage, ok := readFn(ctx, id); ok {
+			usage.fsTotalBytes = fsUsage.TotalBytes()
+			usage.fsFreeBytes = fsUsage.FreeBytes()
+			usage.fsAvailableBytes = fsUsage.AvailableBytes()
+		}
 	}
 
 	// Network usage from tap device
@@ -398,4 +422,85 @@ func parseIOStat(data []byte) (readBytes, writeBytes uint64, err error) {
 		}
 	}
 	return readBytes, writeBytes, nil
+}
+
+// zvolDevicePath returns /dev/zvol/<dataset>/<id> when the configured
+// storage manager is ZFS, or "" otherwise (no storage configured, a
+// non-ZFS backend, or an `id` that doesn't look like a single safe
+// path segment — we don't trust callers to have validated it, since
+// this is on a metrics polling path that runs against persisted state).
+func (m *ResourceManager) zvolDevicePath(id string) string {
+	if m.config.StorageManagerAddress == "" {
+		return ""
+	}
+	u, err := url.Parse(m.config.StorageManagerAddress)
+	if err != nil || !strings.EqualFold(u.Scheme, "zfs") {
+		return ""
+	}
+	dataset := u.Query().Get("dataset")
+	if dataset == "" {
+		return ""
+	}
+	if !isSafePathSegment(id) {
+		return ""
+	}
+	return filepath.Join("/dev/zvol", dataset, id)
+}
+
+// isSafePathSegment returns true if s is a single non-empty path
+// component: no separators, no NUL bytes, not "." or "..".
+func isSafePathSegment(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	if strings.ContainsAny(s, "/\\\x00") {
+		return false
+	}
+	return true
+}
+
+// readFilesystemUsage reads the ext4 superblock on the instance's zvol
+// and returns the resulting usage. The second return value is false on
+// any failure (no zvol path resolvable, device missing, not ext4, I/O
+// error). All errors are logged at debug level — this is opportunistic.
+//
+// The read is O_RDONLY, single-call, no locking; safe to perform while
+// a guest VM has the zvol mounted read-write. We run it in a goroutine
+// with a short timeout so a stalled device (e.g. mid-resilver) can't
+// block the metrics poll loop, which iterates over every VM.
+func (m *ResourceManager) readFilesystemUsage(ctx context.Context, id string) (ext4.Usage, bool) {
+	devPath := m.zvolDevicePath(id)
+	if devPath == "" {
+		return ext4.Usage{}, false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	type result struct {
+		u   ext4.Usage
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		u, err := ext4.ReadUsage(devPath)
+		done <- result{u, err}
+	}()
+
+	var res result
+	select {
+	case res = <-done:
+	case <-ctx.Done():
+		m.log.DebugContext(ctx, "ext4 superblock read timed out", "id", id, "path", devPath)
+		return ext4.Usage{}, false
+	}
+	if res.err != nil {
+		// ErrNotExt4 is expected on volumes that aren't yet formatted or
+		// hold something else; don't spam debug logs every poll.
+		if !errors.Is(res.err, ext4.ErrNotExt4) {
+			m.log.DebugContext(ctx, "failed to read ext4 superblock", "id", id, "path", devPath, "error", res.err)
+		}
+		return ext4.Usage{}, false
+	}
+	return res.u, true
 }

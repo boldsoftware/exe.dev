@@ -12,6 +12,7 @@ import (
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
+	"exe.dev/exelet/storage/ext4"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 
@@ -79,6 +80,14 @@ type ResourceManager struct {
 	// Polling
 	pollInterval time.Duration
 
+	// ext4 usage gate, derived once at construction.
+	collectExt4Usage         bool
+	collectExt4UsageGroupIDs map[string]struct{}
+
+	// readFilesystemUsageFn is a test hook that overrides the actual
+	// zvol superblock read. Nil in production.
+	readFilesystemUsageFn func(ctx context.Context, id string) (ext4.Usage, bool)
+
 	// Metrics daemon reporter
 	metricsReporter *MetricsDaemonReporter
 
@@ -111,6 +120,9 @@ type vmUsageState struct {
 	diskVolsizeBytes        uint64 // ZFS volsize (provisioned size)
 	diskBytes               uint64 // ZFS used (actual compressed bytes on disk)
 	diskLogicalBytes        uint64 // ZFS logicalused (uncompressed)
+	fsTotalBytes            uint64 // ext4 capacity from zvol superblock (0 if unavailable)
+	fsFreeBytes             uint64 // ext4 free bytes from zvol superblock
+	fsAvailableBytes        uint64 // ext4 free bytes minus root reservation
 	netRxBytes              uint64
 	netTxBytes              uint64
 	ioReadBytes             uint64
@@ -181,17 +193,39 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		pollInterval = cfg.ResourceManagerInterval
 	}
 
+	ext4Allow := make(map[string]struct{}, len(cfg.CollectExt4UsageGroupIDs))
+	for _, g := range cfg.CollectExt4UsageGroupIDs {
+		if g == "" {
+			continue
+		}
+		ext4Allow[g] = struct{}{}
+	}
+
 	return &ResourceManager{
-		config:           cfg,
-		log:              log,
-		machineAvailable: true,
-		zfsPool:          zfsPool,
-		zfsPools:         zfsPools,
-		usageState:       make(map[string]*vmUsageState),
-		priorityOverride: make(map[string]api.VMPriority),
-		cgroupRoot:       "/sys/fs/cgroup",
-		pollInterval:     pollInterval,
+		config:                   cfg,
+		log:                      log,
+		machineAvailable:         true,
+		zfsPool:                  zfsPool,
+		zfsPools:                 zfsPools,
+		usageState:               make(map[string]*vmUsageState),
+		priorityOverride:         make(map[string]api.VMPriority),
+		cgroupRoot:               "/sys/fs/cgroup",
+		pollInterval:             pollInterval,
+		collectExt4Usage:         cfg.CollectExt4Usage,
+		collectExt4UsageGroupIDs: ext4Allow,
 	}, nil
+}
+
+// ext4UsageAllowed reports whether the resource manager's gate permits
+// reading the ext4 superblock for a VM owned by groupID. The gate is
+// the env-wide CollectExt4Usage flag plus a per-group allow-list set
+// at boot.
+func (m *ResourceManager) ext4UsageAllowed(groupID string) bool {
+	if m.collectExt4Usage {
+		return true
+	}
+	_, ok := m.collectExt4UsageGroupIDs[groupID]
+	return ok
 }
 
 // Type returns the service type.
@@ -414,6 +448,17 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 			usage.diskBytes = zfsInfo.Used
 			usage.diskLogicalBytes = zfsInfo.LogicalUsed
 		}
+		if m.ext4UsageAllowed(groupID) {
+			readFn := m.readFilesystemUsageFn
+			if readFn == nil {
+				readFn = m.readFilesystemUsage
+			}
+			if fsUsage, ok := readFn(ctx, id); ok {
+				usage.fsTotalBytes = fsUsage.TotalBytes()
+				usage.fsFreeBytes = fsUsage.FreeBytes()
+				usage.fsAvailableBytes = fsUsage.AvailableBytes()
+			}
+		}
 	} else {
 		// Running, starting, paused, stopping: VM process still exists, collect full usage.
 		collectFn := m.collectUsage
@@ -494,6 +539,9 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.diskVolsizeBytes = usage.diskVolsizeBytes
 	state.diskBytes = usage.diskBytes
 	state.diskLogicalBytes = usage.diskLogicalBytes
+	state.fsTotalBytes = usage.fsTotalBytes
+	state.fsFreeBytes = usage.fsFreeBytes
+	state.fsAvailableBytes = usage.fsAvailableBytes
 	state.netRxBytes = usage.netRxBytes
 	state.netTxBytes = usage.netTxBytes
 	state.ioReadBytes = usage.ioReadBytes

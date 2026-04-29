@@ -485,6 +485,8 @@ func serveAction(clix *cli.Context) error {
 		ReplicationVolumeTimeout:    replicationVolumeTimeout,
 		MetricsDaemonURL:            metricsDaemonURL,
 		MetricsDaemonInterval:       metricsDaemonInterval,
+		CollectExt4Usage:            env.CollectExt4Usage,
+		CollectExt4UsageGroupIDs:    env.ExtraExt4UsageGroupIDs,
 		ReservedCPUs:                reservedCPUs,
 		PktFlowEnabled:              pktflowEnabled,
 		PktFlowInterval:             pktflowInterval,

@@ -113,7 +113,7 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 
 			// Include live pool usage in JSON only for sudo users.
 			if isSudo {
-				usageRows, usageErr := ss.fetchVMUsageForUser(ctx, cc.User.ID)
+				usageRows, usageErr := ss.fetchVMUsageForUser(ctx, cc.User.ID, false)
 				if usageErr == nil && len(usageRows) > 0 {
 					var cpuUsed float64
 					var memUsed uint64
@@ -198,7 +198,7 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 
 // writeBillingPlanPoolBars fetches live metrics and writes pool utilization bars.
 func (ss *SSHServer) writeBillingPlanPoolBars(ctx context.Context, cc *exemenu.CommandContext, tier plan.Tier, planRow exedb.GetActivePlanForUserRow) {
-	usageRows, err := ss.fetchVMUsageForUser(ctx, cc.User.ID)
+	usageRows, err := ss.fetchVMUsageForUser(ctx, cc.User.ID, false)
 	if err != nil || len(usageRows) == 0 {
 		return
 	}

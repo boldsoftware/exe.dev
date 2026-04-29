@@ -54,20 +54,25 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 		return nil, status.Error(codes.InvalidArgument, "vm_id is required")
 	}
 
+	// Snapshot the proto AND groupID under the lock, so we don't read
+	// the mutable vmUsageState concurrently with the poller.
 	m.usageMu.Lock()
 	state, exists := m.usageState[req.VmID]
-	m.usageMu.Unlock()
-
 	if !exists {
+		m.usageMu.Unlock()
 		return nil, status.Errorf(codes.NotFound, "no usage data for VM %s", req.VmID)
 	}
+	u := vmUsageProto(req.VmID, state)
+	groupID := state.groupID
+	m.usageMu.Unlock()
 
-	return &api.GetVMUsageResponse{
-		Usage: vmUsageProto(req.VmID, state),
-	}, nil
+	m.maybeFillExt4Usage(ctx, req.VmID, groupID, req.GetCollectFilesystemUsage(), u)
+	return &api.GetVMUsageResponse{Usage: u}, nil
 }
 
-// vmUsageProto builds an api.VMUsage from a vmUsageState.
+// vmUsageProto builds an api.VMUsage from a vmUsageState. It does NOT
+// populate the fs_*_bytes fields: those are gated and filled by
+// maybeFillExt4Usage on the request paths that opt in.
 func vmUsageProto(id string, state *vmUsageState) *api.VMUsage {
 	return &api.VMUsage{
 		ID:                      id,
@@ -93,15 +98,58 @@ func vmUsageProto(id string, state *vmUsageState) *api.VMUsage {
 	}
 }
 
+// maybeFillExt4Usage performs an on-demand ext4 superblock probe and
+// fills u.Fs*Bytes when:
+//
+//   - The caller asked for it (collectRequested), AND
+//   - The exelet's gate (env-wide flag or per-group allow-list) permits
+//     it for this VM's groupID.
+//
+// Otherwise the fs_*_bytes fields are left at zero.
+func (m *ResourceManager) maybeFillExt4Usage(ctx context.Context, id, groupID string, collectRequested bool, u *api.VMUsage) {
+	if !collectRequested || u == nil {
+		return
+	}
+	if !m.ext4UsageAllowed(groupID) {
+		return
+	}
+	readFn := m.readFilesystemUsageFn
+	if readFn == nil {
+		readFn = m.readFilesystemUsage
+	}
+	fs, ok := readFn(ctx, id)
+	if !ok {
+		return
+	}
+	u.FsTotalBytes = fs.TotalBytes()
+	u.FsFreeBytes = fs.FreeBytes()
+	u.FsAvailableBytes = fs.AvailableBytes()
+}
+
 // ListVMUsage streams usage information for all VMs.
 func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.ResourceManagerService_ListVMUsageServer) error {
+	// Snapshot under the lock; do the I/O for ext4 outside of it so a
+	// stalled zvol can't block other usage state mutations.
+	type snapshot struct {
+		id      string
+		groupID string
+		usage   *api.VMUsage
+	}
 	m.usageMu.Lock()
-	defer m.usageMu.Unlock()
-
+	snapshots := make([]snapshot, 0, len(m.usageState))
 	for id, state := range m.usageState {
-		if err := stream.Send(&api.ListVMUsageResponse{
-			Usage: vmUsageProto(id, state),
-		}); err != nil {
+		snapshots = append(snapshots, snapshot{
+			id:      id,
+			groupID: state.groupID,
+			usage:   vmUsageProto(id, state),
+		})
+	}
+	m.usageMu.Unlock()
+
+	collect := req.GetCollectFilesystemUsage()
+	for _, s := range snapshots {
+		m.maybeFillExt4Usage(stream.Context(), s.id, s.groupID, collect, s.usage)
+		if err := stream.Send(&api.ListVMUsageResponse{Usage: s.usage}); err != nil {
 			return err
 		}
 	}

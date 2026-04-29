@@ -159,10 +159,16 @@ func (x *GetNodeStatusResponse) GetAllocation() *NodeAllocation {
 }
 
 type GetVMUsageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	VmID          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	VmID  string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
+	// collect_filesystem_usage requests that the exelet probe the
+	// guest's ext4 superblock and populate fs_*_bytes on the response.
+	// Defaults to false (no probe; fs_*_bytes left at zero). Honoured
+	// only when the exelet's gate (env-wide CollectExt4Usage or this
+	// VM's group ID being on the allow-list) permits it.
+	CollectFilesystemUsage bool `protobuf:"varint,2,opt,name=collect_filesystem_usage,json=collectFilesystemUsage,proto3" json:"collect_filesystem_usage,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *GetVMUsageRequest) Reset() {
@@ -200,6 +206,13 @@ func (x *GetVMUsageRequest) GetVmID() string {
 		return x.VmID
 	}
 	return ""
+}
+
+func (x *GetVMUsageRequest) GetCollectFilesystemUsage() bool {
+	if x != nil {
+		return x.CollectFilesystemUsage
+	}
+	return false
 }
 
 type GetVMUsageResponse struct {
@@ -247,9 +260,12 @@ func (x *GetVMUsageResponse) GetUsage() *VMUsage {
 }
 
 type ListVMUsageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Same semantics as GetVMUsageRequest.collect_filesystem_usage,
+	// applied to every VM in the response stream.
+	CollectFilesystemUsage bool `protobuf:"varint,1,opt,name=collect_filesystem_usage,json=collectFilesystemUsage,proto3" json:"collect_filesystem_usage,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ListVMUsageRequest) Reset() {
@@ -280,6 +296,13 @@ func (x *ListVMUsageRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListVMUsageRequest.ProtoReflect.Descriptor instead.
 func (*ListVMUsageRequest) Descriptor() ([]byte, []int) {
 	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListVMUsageRequest) GetCollectFilesystemUsage() bool {
+	if x != nil {
+		return x.CollectFilesystemUsage
+	}
+	return false
 }
 
 type ListVMUsageResponse struct {
@@ -477,8 +500,21 @@ type VMUsage struct {
 	MemoryShmemBytes        uint64 `protobuf:"varint,19,opt,name=memory_shmem_bytes,json=memoryShmemBytes,proto3" json:"memory_shmem_bytes,omitempty"`
 	MemorySlabBytes         uint64 `protobuf:"varint,20,opt,name=memory_slab_bytes,json=memorySlabBytes,proto3" json:"memory_slab_bytes,omitempty"`
 	MemoryInactiveFileBytes uint64 `protobuf:"varint,21,opt,name=memory_inactive_file_bytes,json=memoryInactiveFileBytes,proto3" json:"memory_inactive_file_bytes,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Guest filesystem (ext4) usage, read directly from the zvol's primary
+	// superblock without involving the guest. Zero when unavailable
+	// (volume not yet formatted, not ext4, transient I/O error). These
+	// numbers reflect the guest's view. fs_total_bytes is the raw ext4
+	// block_count * block_size (typically a few percent larger than
+	// statvfs f_blocks, which subtracts metadata overhead). fs_free_bytes
+	// matches statvfs f_bfree (free blocks including the root-reserved
+	// pool); fs_available_bytes matches statvfs f_bavail (free blocks
+	// minus the root reservation, i.e. what `df` shows in the "Avail"
+	// column for a non-root user).
+	FsTotalBytes     uint64 `protobuf:"varint,22,opt,name=fs_total_bytes,json=fsTotalBytes,proto3" json:"fs_total_bytes,omitempty"`
+	FsFreeBytes      uint64 `protobuf:"varint,23,opt,name=fs_free_bytes,json=fsFreeBytes,proto3" json:"fs_free_bytes,omitempty"`
+	FsAvailableBytes uint64 `protobuf:"varint,24,opt,name=fs_available_bytes,json=fsAvailableBytes,proto3" json:"fs_available_bytes,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *VMUsage) Reset() {
@@ -654,6 +690,27 @@ func (x *VMUsage) GetMemorySlabBytes() uint64 {
 func (x *VMUsage) GetMemoryInactiveFileBytes() uint64 {
 	if x != nil {
 		return x.MemoryInactiveFileBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetFsTotalBytes() uint64 {
+	if x != nil {
+		return x.FsTotalBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetFsFreeBytes() uint64 {
+	if x != nil {
+		return x.FsFreeBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetFsAvailableBytes() uint64 {
+	if x != nil {
+		return x.FsAvailableBytes
 	}
 	return 0
 }
@@ -1172,12 +1229,14 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\bcapacity\x18\x01 \x01(\v2\x1d.exe.resource.v1.NodeCapacityR\bcapacity\x12?\n" +
 	"\n" +
 	"allocation\x18\x02 \x01(\v2\x1f.exe.resource.v1.NodeAllocationR\n" +
-	"allocation\"(\n" +
+	"allocation\"b\n" +
 	"\x11GetVMUsageRequest\x12\x13\n" +
-	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\"D\n" +
+	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x128\n" +
+	"\x18collect_filesystem_usage\x18\x02 \x01(\bR\x16collectFilesystemUsage\"D\n" +
 	"\x12GetVMUsageResponse\x12.\n" +
-	"\x05usage\x18\x01 \x01(\v2\x18.exe.resource.v1.VMUsageR\x05usage\"\x14\n" +
-	"\x12ListVMUsageRequest\"E\n" +
+	"\x05usage\x18\x01 \x01(\v2\x18.exe.resource.v1.VMUsageR\x05usage\"N\n" +
+	"\x12ListVMUsageRequest\x128\n" +
+	"\x18collect_filesystem_usage\x18\x01 \x01(\bR\x16collectFilesystemUsage\"E\n" +
 	"\x13ListVMUsageResponse\x12.\n" +
 	"\x05usage\x18\x01 \x01(\v2\x18.exe.resource.v1.VMUsageR\x05usage\"d\n" +
 	"\fNodeCapacity\x12\x12\n" +
@@ -1189,7 +1248,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xb1\x06\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xa9\a\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1218,7 +1277,10 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x13memory_kernel_bytes\x18\x12 \x01(\x04R\x11memoryKernelBytes\x12,\n" +
 	"\x12memory_shmem_bytes\x18\x13 \x01(\x04R\x10memoryShmemBytes\x12*\n" +
 	"\x11memory_slab_bytes\x18\x14 \x01(\x04R\x0fmemorySlabBytes\x12;\n" +
-	"\x1amemory_inactive_file_bytes\x18\x15 \x01(\x04R\x17memoryInactiveFileBytes\"d\n" +
+	"\x1amemory_inactive_file_bytes\x18\x15 \x01(\x04R\x17memoryInactiveFileBytes\x12$\n" +
+	"\x0efs_total_bytes\x18\x16 \x01(\x04R\ffsTotalBytes\x12\"\n" +
+	"\rfs_free_bytes\x18\x17 \x01(\x04R\vfsFreeBytes\x12,\n" +
+	"\x12fs_available_bytes\x18\x18 \x01(\x04R\x10fsAvailableBytes\"d\n" +
 	"\x14SetVMPriorityRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x127\n" +
 	"\bpriority\x18\x02 \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"\x17\n" +

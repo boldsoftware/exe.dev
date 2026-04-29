@@ -24,8 +24,9 @@ INSERT INTO vm_metrics (
 	io_read_bytes, io_write_bytes,
 	vm_id,
 	memory_anon_bytes, memory_file_bytes, memory_kernel_bytes,
-	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes,
+	fs_total_bytes, fs_free_bytes, fs_available_bytes
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // SelectSQL is the query for retrieving metrics.
@@ -48,7 +49,10 @@ SELECT
 	COALESCE(memory_kernel_bytes, 0) AS memory_kernel_bytes,
 	COALESCE(memory_shmem_bytes, 0) AS memory_shmem_bytes,
 	COALESCE(memory_slab_bytes, 0) AS memory_slab_bytes,
-	COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes
+	COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes,
+	COALESCE(fs_total_bytes, 0) AS fs_total_bytes,
+	COALESCE(fs_free_bytes, 0) AS fs_free_bytes,
+	COALESCE(fs_available_bytes, 0) AS fs_available_bytes
 FROM vm_metrics_all
 `
 
@@ -70,7 +74,10 @@ SELECT
 	COALESCE(memory_kernel_bytes, 0) AS memory_kernel_bytes,
 	COALESCE(memory_shmem_bytes, 0) AS memory_shmem_bytes,
 	COALESCE(memory_slab_bytes, 0) AS memory_slab_bytes,
-	COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes
+	COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes,
+	COALESCE(fs_total_bytes, 0) AS fs_total_bytes,
+	COALESCE(fs_free_bytes, 0) AS fs_free_bytes,
+	COALESCE(fs_available_bytes, 0) AS fs_available_bytes
 FROM vm_metrics_all
 WHERE timestamp > now() - INTERVAL '%d' HOUR
 ORDER BY vm_name, timestamp ASC

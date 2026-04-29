@@ -50,7 +50,7 @@ func (s *Server) HandleAPIVMsLive(w http.ResponseWriter, r *http.Request, userID
 	}
 
 	// Fetch live metrics for all user's VMs via exelet gRPC.
-	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID)
+	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID, false)
 
 	vms := make([]vmsLiveVM, 0, len(usageRows))
 	if err == nil {

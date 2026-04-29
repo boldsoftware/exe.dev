@@ -39,6 +39,15 @@ type Metric struct {
 	IOReadBytes             int64   `json:"io_read_bytes"`
 	IOWriteBytes            int64   `json:"io_write_bytes"`
 	VMID                    string  `json:"vm_id,omitempty"`
+
+	// Filesystem-level (ext4) view of the zvol, when the exelet was
+	// configured to collect it for this VM. Zero when not collected.
+	// FsTotalBytes is raw block_count*block_size; FsFreeBytes/
+	// FsAvailableBytes match statvfs f_bfree/f_bavail. See
+	// exelet/storage/ext4 for the read-only superblock probe.
+	FsTotalBytes     int64 `json:"fs_total_bytes,omitempty"`
+	FsFreeBytes      int64 `json:"fs_free_bytes,omitempty"`
+	FsAvailableBytes int64 `json:"fs_available_bytes,omitempty"`
 }
 
 // MetricsBatch allows submitting multiple metrics at once.

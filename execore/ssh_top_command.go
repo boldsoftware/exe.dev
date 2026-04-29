@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,13 @@ type vmUsageRow struct {
 	MemShmemBytes        uint64
 	MemSlabBytes         uint64
 	MemInactiveFileBytes uint64
+
+	// Filesystem-level (ext4) view, populated only when the caller is
+	// allowed to request it (per-stage gate plus the ext4-allow-list)
+	// and the exelet returns non-zero data.
+	FsTotalBytes     uint64
+	FsFreeBytes      uint64
+	FsAvailableBytes uint64
 }
 
 // DisplayMemBytes returns the user-facing memory figure: cgroup memory.current
@@ -118,6 +126,10 @@ type topModel struct {
 
 	// fetchFunc fetches fresh VM usage rows. Injected for testability.
 	fetchFunc func(ctx context.Context) ([]vmUsageRow, error)
+
+	// showFsUsage adds a USED/CAP disk column when true; only set when
+	// the caller is allowed to see ext4 superblock-derived numbers.
+	showFsUsage bool
 }
 
 type (
@@ -316,7 +328,11 @@ func (m *topModel) View() string {
 	b.WriteString(" ")
 	hdr("RAM", 8, sortRAM, false)
 	b.WriteString(" ")
-	hdr("DISK", 8, sortDisk, false)
+	if m.showFsUsage {
+		hdr("DISK", 17, sortDisk, false)
+	} else {
+		hdr("DISK", 8, sortDisk, false)
+	}
 	b.WriteString(" ")
 	hdr("NET RX", 10, sortNetRx, false)
 	b.WriteString(" ")
@@ -345,6 +361,14 @@ func (m *topModel) View() string {
 		swapStr := topFmtBytes(row.SwapBytes)
 		ramStr := topFmtBytes(row.MemCapacity)
 		diskStr := topFmtBytes(row.DiskCapacity)
+		if m.showFsUsage {
+			// "USED/CAP" view: 8 chars used + "/" + 8 chars capacity = 17.
+			used := "-"
+			if row.FsTotalBytes > 0 {
+				used = topFmtBytes(row.FsTotalBytes - row.FsAvailableBytes)
+			}
+			diskStr = ansiPadLeft(used, 8) + "/" + ansiPadLeft(topFmtBytes(row.DiskCapacity), 8)
+		}
 
 		// Network: rates in Mbps (bits per second).
 		var rxStr, txStr string
@@ -368,7 +392,11 @@ func (m *topModel) View() string {
 		b.WriteString(" ")
 		b.WriteString(ansiPadLeft(ramStr, 8))
 		b.WriteString(" ")
-		b.WriteString(ansiPadLeft(diskStr, 8))
+		diskWidth := 8
+		if m.showFsUsage {
+			diskWidth = 17
+		}
+		b.WriteString(ansiPadLeft(diskStr, diskWidth))
 		b.WriteString(" ")
 		b.WriteString(ansiPadLeft(rxStr, 10))
 		b.WriteString(" ")
@@ -515,7 +543,9 @@ func topFmtBytes(b uint64) string {
 }
 
 // fetchVMUsageForUser queries all exelets for usage of the user's VMs.
-func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]vmUsageRow, error) {
+// When collectFs is true, the ListVMUsage call requests the exelet read
+// the ext4 superblock; the exelet still applies its own gate.
+func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string, collectFs bool) ([]vmUsageRow, error) {
 	// Get user's boxes from DB.
 	boxes, err := withRxRes1(ss.server, ctx, (*exedb.Queries).BoxesForUser, userID)
 	if err != nil {
@@ -575,7 +605,9 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 			listCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			defer cancel()
 
-			stream, err := ec.client.ListVMUsage(listCtx, &resourceapi.ListVMUsageRequest{})
+			stream, err := ec.client.ListVMUsage(listCtx, &resourceapi.ListVMUsageRequest{
+				CollectFilesystemUsage: collectFs,
+			})
 			usageByID := make(map[string]*resourceapi.VMUsage)
 			if err == nil {
 				for {
@@ -613,6 +645,9 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string) ([]
 					row.MemShmemBytes = u.MemoryShmemBytes
 					row.MemSlabBytes = u.MemorySlabBytes
 					row.MemInactiveFileBytes = u.MemoryInactiveFileBytes
+					row.FsTotalBytes = u.FsTotalBytes
+					row.FsFreeBytes = u.FsFreeBytes
+					row.FsAvailableBytes = u.FsAvailableBytes
 				}
 				allRows = append(allRows, row)
 			}
@@ -665,14 +700,46 @@ func (t *topSessionInput) Read(p []byte) (int, error) {
 }
 
 func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	width, height := cc.PtySize()
 	userID := cc.User.ID
+
+	// Whether to ask the exelet for ext4 filesystem usage. The exelet
+	// will refuse if it doesn't trust this user/stage; we mirror that
+	// gate here so the request flag isn't a runtime no-op (and so we
+	// know whether to show the extra columns).
+	collectFs := ss.server.env.CollectExt4Usage || slices.Contains(ss.server.env.ExtraExt4UsageGroupIDs, userID)
+
+	// Scripted (one-shot / fixed-iteration) mode. -n > 0 or --json runs
+	// the fetch loop once-or-N-times and prints rows, no Bubble Tea UI.
+	// This is what scripts and tests use; it does not require a PTY.
+	nIter, _ := strconv.Atoi(cc.FlagSet.Lookup("n").Value.String())
+	wantJSON := cc.WantJSON()
+	if nIter > 0 || wantJSON {
+		if nIter <= 0 {
+			nIter = 1
+		}
+		interval, err := time.ParseDuration(cc.FlagSet.Lookup("interval").Value.String())
+		if err != nil || interval <= 0 {
+			interval = topPollInterval
+		}
+		return ss.runTopOneShot(ctx, cc, userID, collectFs, nIter, interval, wantJSON)
+	}
+
+	// Interactive Bubble Tea UI requires a PTY.
+	if cc.SSHSession == nil {
+		return cc.Errorf("interactive top requires an SSH session; pass -n N or --json for scripted output")
+	}
+	if _, ok := cc.SSHSession.Pty(); !ok {
+		return cc.Errorf("interactive top requires a PTY (`ssh -t`); pass -n N or --json for scripted output")
+	}
+
+	width, height := cc.PtySize()
 	model := &topModel{
-		width:     width,
-		height:    height,
-		startTime: time.Now(),
+		width:       width,
+		height:      height,
+		startTime:   time.Now(),
+		showFsUsage: collectFs,
 		fetchFunc: func(ctx context.Context) ([]vmUsageRow, error) {
-			return ss.fetchVMUsageForUser(ctx, userID)
+			return ss.fetchVMUsageForUser(ctx, userID, collectFs)
 		},
 	}
 
@@ -717,5 +784,166 @@ func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	cc.Write("\n")
+	return nil
+}
+
+// topJSONRow is the JSON shape emitted by `top -n N --json` and
+// `top --json`. Keep these field names stable: scripts depend on them.
+type topJSONRow struct {
+	Name             string  `json:"name"`
+	Status           string  `json:"status"`
+	CPUPercent       float64 `json:"cpu_percent"`
+	CPUs             uint64  `json:"cpus"`
+	MemBytes         uint64  `json:"memory_bytes"`
+	MemDisplayBytes  uint64  `json:"memory_display_bytes"`
+	MemAnonBytes     uint64  `json:"memory_anon_bytes"`
+	MemFileBytes     uint64  `json:"memory_file_bytes"`
+	MemKernelBytes   uint64  `json:"memory_kernel_bytes"`
+	SwapBytes        uint64  `json:"swap_bytes"`
+	MemCapacity      uint64  `json:"memory_capacity_bytes"`
+	DiskBytes        uint64  `json:"disk_bytes"`
+	DiskLogicalBytes uint64  `json:"disk_logical_bytes"`
+	DiskCapacity     uint64  `json:"disk_capacity_bytes"`
+	NetRx            uint64  `json:"net_rx_bytes"`
+	NetTx            uint64  `json:"net_tx_bytes"`
+	NetRxRate        float64 `json:"net_rx_bytes_per_sec,omitempty"`
+	NetTxRate        float64 `json:"net_tx_bytes_per_sec,omitempty"`
+	FsTotalBytes     uint64  `json:"fs_total_bytes,omitempty"`
+	FsFreeBytes      uint64  `json:"fs_free_bytes,omitempty"`
+	FsAvailableBytes uint64  `json:"fs_available_bytes,omitempty"`
+}
+
+func rowToJSON(r vmUsageRow, rxRate, txRate float64) topJSONRow {
+	return topJSONRow{
+		Name:             r.Name,
+		Status:           r.Status,
+		CPUPercent:       r.CPUPercent,
+		CPUs:             r.CPUs,
+		MemBytes:         r.MemBytes,
+		MemDisplayBytes:  r.DisplayMemBytes(),
+		MemAnonBytes:     r.MemAnonBytes,
+		MemFileBytes:     r.MemFileBytes,
+		MemKernelBytes:   r.MemKernelBytes,
+		SwapBytes:        r.SwapBytes,
+		MemCapacity:      r.MemCapacity,
+		DiskBytes:        r.DiskBytes,
+		DiskLogicalBytes: r.DiskLogicalBytes,
+		DiskCapacity:     r.DiskCapacity,
+		NetRx:            r.NetRx,
+		NetTx:            r.NetTx,
+		NetRxRate:        rxRate,
+		NetTxRate:        txRate,
+		FsTotalBytes:     r.FsTotalBytes,
+		FsFreeBytes:      r.FsFreeBytes,
+		FsAvailableBytes: r.FsAvailableBytes,
+	}
+}
+
+// runTopOneShot executes the top fetch loop n times (n>=1), printing
+// results without the Bubble Tea UI. It's used by `top -n N` and
+// `top --json`. It runs against any session — PTY or scripted — and
+// is the path that scripts and e1e tests exercise.
+//
+// CPU%: the exelet computes CPU% from the delta between successive
+// poll intervals it does internally, so even with n=1 we get a real
+// number (not zero) as long as the resource manager has done at
+// least one poll. Network rates, however, are computed by `top` from
+// the difference between consecutive iterations; with n=1 they're
+// reported as 0. n>=2 yields meaningful rates.
+func (ss *SSHServer) runTopOneShot(ctx context.Context, cc *exemenu.CommandContext, userID string, collectFs bool, n int, interval time.Duration, wantJSON bool) error {
+	var prev map[string]vmUsageRow
+	var prevTime time.Time
+
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(interval):
+			}
+		}
+		rows, err := ss.fetchVMUsageForUser(ctx, userID, collectFs)
+		if err != nil {
+			return err
+		}
+		now := time.Now()
+		rxRates := make(map[string]float64, len(rows))
+		txRates := make(map[string]float64, len(rows))
+		if prev != nil {
+			elapsed := now.Sub(prevTime).Seconds()
+			if elapsed > 0 {
+				for _, r := range rows {
+					if p, ok := prev[r.Name]; ok {
+						if r.NetRx >= p.NetRx {
+							rxRates[r.Name] = float64(r.NetRx-p.NetRx) / elapsed
+						}
+						if r.NetTx >= p.NetTx {
+							txRates[r.Name] = float64(r.NetTx-p.NetTx) / elapsed
+						}
+					}
+				}
+			}
+		}
+		prev = make(map[string]vmUsageRow, len(rows))
+		for _, r := range rows {
+			prev[r.Name] = r
+		}
+		prevTime = now
+
+		// Only print on the last iteration: scripts asked for one
+		// snapshot, and earlier iterations exist only so we have a
+		// previous-poll datum for accurate net rates.
+		if i < n-1 {
+			continue
+		}
+
+		if wantJSON {
+			out := struct {
+				Iterations int          `json:"iterations"`
+				Interval   string       `json:"interval"`
+				ShowFs     bool         `json:"show_fs_usage"`
+				VMs        []topJSONRow `json:"vms"`
+			}{
+				Iterations: n,
+				Interval:   interval.String(),
+				ShowFs:     collectFs,
+				VMs:        make([]topJSONRow, 0, len(rows)),
+			}
+			for _, r := range rows {
+				out.VMs = append(out.VMs, rowToJSON(r, rxRates[r.Name], txRates[r.Name]))
+			}
+			cc.WriteJSON(out)
+			continue
+		}
+
+		// Plain text scripted output: one row per VM, columns aligned.
+		if len(rows) == 0 {
+			cc.Writeln("no VMs")
+			continue
+		}
+		header := "VM\tSTATUS\tCPU%\tMEM\tSWAP\tRAM\tDISK\tNET RX/s\tNET TX/s"
+		if collectFs {
+			header += "\tFS USED\tFS TOTAL"
+		}
+		cc.Writeln("%s", header)
+		for _, r := range rows {
+			line := fmt.Sprintf("%s\t%s\t%.1f\t%s\t%s\t%s\t%s\t%s\t%s",
+				r.Name, r.Status, r.CPUPercent,
+				topFmtBytes(r.DisplayMemBytes()),
+				topFmtBytes(r.SwapBytes),
+				topFmtBytes(r.MemCapacity),
+				topFmtBytes(r.DiskCapacity),
+				fmtNetRate(rxRates[r.Name]), fmtNetRate(txRates[r.Name]),
+			)
+			if collectFs {
+				used := "-"
+				if r.FsTotalBytes > 0 {
+					used = topFmtBytes(r.FsTotalBytes - r.FsAvailableBytes)
+				}
+				line += fmt.Sprintf("\t%s\t%s", used, topFmtBytes(r.FsTotalBytes))
+			}
+			cc.Writeln("%s", line)
+		}
+	}
 	return nil
 }

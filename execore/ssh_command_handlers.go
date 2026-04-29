@@ -248,6 +248,18 @@ func cpCommandFlags() *flag.FlagSet {
 	return fs
 }
 
+// topCommandFlags creates a FlagSet for the top command. The default,
+// no-flag invocation runs the bubbletea live UI (requires a PTY).
+// --json or -n switches to a one-shot scripted mode that prints rows
+// to stdout and exits, no PTY required.
+func topCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("top", flag.ContinueOnError)
+	fs.Bool("json", false, "output in JSON format and exit (implies -n 1 unless overridden)")
+	fs.Int("n", 0, "number of iterations before exiting (0 = run interactive UI)")
+	fs.Duration("interval", topPollInterval, "poll interval between iterations when -n > 1")
+	return fs
+}
+
 func resizeCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("resize", flag.ContinueOnError)
 	fs.String("memory", "", "memory allocation (e.g., 4, 4GB, 8G)")
@@ -733,7 +745,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			AllowTagScoped: true,
 			Description:    "Live VM resource usage",
 			Handler:        ss.handleTopCommand,
-			RequiresPTY:    true,
+			FlagSetFunc:    topCommandFlags,
 		},
 		{
 			Name:           "exit",

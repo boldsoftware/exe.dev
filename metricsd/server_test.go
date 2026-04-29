@@ -368,6 +368,7 @@ func TestSparklines(t *testing.T) {
 			"io_read_bytes", "io_write_bytes", "vm_id",
 			"memory_anon_bytes", "memory_file_bytes", "memory_kernel_bytes",
 			"memory_shmem_bytes", "memory_slab_bytes", "memory_inactive_file_bytes",
+			"fs_total_bytes", "fs_free_bytes", "fs_available_bytes",
 		}
 		if len(cols) != len(wantCols) {
 			t.Errorf("got %d columns, want %d", len(cols), len(wantCols))

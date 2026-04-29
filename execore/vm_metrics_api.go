@@ -60,7 +60,7 @@ func (s *Server) handleAPIVMMetrics(w http.ResponseWriter, r *http.Request, user
 	// We fetch all VMs because fetchVMUsageForUser is optimized for bulk queries
 	// (groups by ctrhost, queries in parallel). Fetching just one VM would require
 	// a new code path that's actually less efficient.
-	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID)
+	usageRows, err := s.sshServer.fetchVMUsageForUser(ctx, userID, false)
 	if err != nil {
 		// Log the error but still return the VM with DB-only info (status from DB, zero metrics)
 		// This handles the case where the exelet is temporarily unreachable.
