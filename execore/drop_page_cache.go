@@ -20,11 +20,33 @@ import (
 // the in-VM drop_caches write. The whole thing is best-effort.
 const dropPageCacheTimeout = 30 * time.Second
 
-// dropPageCacheCommand is run inside the VM as root. It captures
-// /proc/meminfo before and after, separated by a marker, so the caller can
-// compute MemFree (and friends) deltas from a single SSH session. Writing
-// to /proc/sys/vm/drop_caches requires CAP_SYS_ADMIN, which root has.
-const dropPageCacheCommand = "cat /proc/meminfo; echo --DROP--; echo 3 > /proc/sys/vm/drop_caches; cat /proc/meminfo"
+// isSSHAuthError reports whether err looks like an SSH authentication
+// failure (as opposed to a network / timeout / remote-command failure).
+// x/crypto/ssh doesn't expose a sentinel for this, so we match on the
+// canonical error text.
+func isSSHAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unable to authenticate") ||
+		strings.Contains(msg, "no supported methods remain")
+}
+
+// dropPageCacheCommandRoot is run inside the VM when we're SSH'd in as
+// root: no sudo needed. It captures /proc/meminfo before and after,
+// separated by a marker, so the caller can compute MemFree (and
+// friends) deltas from a single SSH session.
+const dropPageCacheCommandRoot = "cat /proc/meminfo; echo --DROP--; echo 3 > /proc/sys/vm/drop_caches; cat /proc/meminfo"
+
+// dropPageCacheCommandSudo is the fallback for VMs where root pubkey
+// auth doesn't work. VMs created before commit af35594b ("exe-init:
+// keep authorized_keys owned by root for multi-user SSH") have
+// /exe.dev/etc/ssh/authorized_keys chowned to the login user, and
+// OpenSSH StrictModes refuses to read it for root, producing
+// "ssh: unable to authenticate, attempted methods [none publickey]".
+// We log into the regular login user and sudo to the kernel write.
+const dropPageCacheCommandSudo = "cat /proc/meminfo; echo --DROP--; sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'; cat /proc/meminfo"
 
 // dropPageCacheResult summarizes a single drop. Bytes are computed from
 // /proc/meminfo's MemFree, MemAvailable, and Cached (all reported in kB)
@@ -40,9 +62,12 @@ type dropPageCacheResult struct {
 	RawOutput               []byte
 }
 
-// dropPageCacheOnBox SSHes into the VM as root and asks the guest kernel to
-// drop pagecache, dentries and inodes. It also captures /proc/meminfo
-// before and after, parses out MemFree, and emits a canonical log line.
+// dropPageCacheOnBox SSHes into the VM and asks the guest kernel to
+// drop pagecache, dentries and inodes. It tries the fast path first
+// (SSH as root, no sudo), and falls back to SSH-as-login-user + sudo
+// for VMs whose authorized_keys file isn't root-owned (see
+// dropPageCacheCommandSudo). It also captures /proc/meminfo before and
+// after, parses out MemFree, and emits a canonical log line.
 // Best-effort: callers should generally treat failures as non-fatal.
 func (s *Server) dropPageCacheOnBox(ctx context.Context, box *exedb.Box) (*dropPageCacheResult, error) {
 	if box.SSHPort == nil || len(box.SSHClientPrivateKey) == 0 {
@@ -50,7 +75,17 @@ func (s *Server) dropPageCacheOnBox(ctx context.Context, box *exedb.Box) (*dropP
 	}
 	cctx, cancel := context.WithTimeout(ctx, dropPageCacheTimeout)
 	defer cancel()
-	out, err := runCommandOnBoxAsUser(cctx, s.sshPool, box, "root", dropPageCacheCommand, nil)
+	// Try root first; if SSH auth fails (typically because the box's
+	// authorized_keys isn't root-owned and StrictModes rejects it), retry
+	// as the login user with sudo. Only auth-class failures fall back —
+	// other errors (timeout, network, command failure) are returned as is
+	// so we don't paper over real problems.
+	authMethod := "root"
+	out, err := runCommandOnBoxAsUser(cctx, s.sshPool, box, "root", dropPageCacheCommandRoot, nil)
+	if err != nil && isSSHAuthError(err) {
+		authMethod = "sudo"
+		out, err = runCommandOnBox(cctx, s.sshPool, box, dropPageCacheCommandSudo)
+	}
 	if err != nil {
 		return &dropPageCacheResult{RawOutput: out}, err
 	}
@@ -58,6 +93,7 @@ func (s *Server) dropPageCacheOnBox(ctx context.Context, box *exedb.Box) (*dropP
 	s.slog().InfoContext(ctx, "drop-page-cache",
 		"box", box.Name,
 		"ctrhost", box.Ctrhost,
+		"auth", authMethod,
 		"memfree_before_bytes", res.MemFreeBeforeBytes,
 		"memfree_after_bytes", res.MemFreeAfterBytes,
 		"memfree_delta_bytes", res.MemFreeDeltaBytes,
