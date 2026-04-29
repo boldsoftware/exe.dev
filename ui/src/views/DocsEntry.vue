@@ -9,6 +9,7 @@
     <div v-else class="docs-container">
       <!-- Sidebar -->
       <nav class="sidebar" ref="sidebarEl">
+        <DocsSearch />
         <div class="sidebar-top">
           <router-link
             v-if="route.name === 'docs-all'"
@@ -37,7 +38,10 @@
 
       <!-- Main Content -->
       <main class="main">
-        <router-link class="back-to-list" to="/docs/list">&larr; All docs</router-link>
+        <div class="mobile-top-row">
+          <router-link class="back-to-list" to="/docs/list">&larr; All docs</router-link>
+          <div class="mobile-search"><DocsSearch trigger="button" /></div>
+        </div>
         <div v-if="entry" class="doc-header">
           <h1 class="doc-title">{{ entry.title }}</h1>
           <button v-if="entry.markdown" class="copy-md-btn" :class="{ copied: isCopied }" :data-tooltip="copyLabel" :aria-label="copyLabel" @click="copyMarkdown">
@@ -59,6 +63,7 @@
 import { ref, watch, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchDocsList, fetchDocsEntry, fetchDocsAll, isAuthenticated, type DocsGroup, type DocsDocRef } from '../api/client'
+import DocsSearch from '../components/DocsSearch.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -626,10 +631,22 @@ watch(
   margin-left: auto;
 }
 
+/* Mobile-only search above main content. The component renders only an icon
+   button in trigger="button" mode; the actual search UI is a full-screen
+   overlay (see DocsSearch.vue). */
+.mobile-search {
+  display: none;
+}
+
+.mobile-top-row {
+  display: contents;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .docs-container {
     flex-direction: column;
+    align-items: stretch;
     padding: 0 20px;
   }
 
@@ -637,8 +654,24 @@ watch(
     display: none;
   }
 
+  .mobile-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .mobile-top-row .back-to-list {
+    margin: 0;
+  }
+
+  .mobile-search {
+    display: block;
+  }
+
   .main {
-    padding: 24px 0 72px;
+    padding: 0 0 72px;
   }
 
   .doc-title {

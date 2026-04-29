@@ -30,9 +30,12 @@ endif
 PNPM         := $(NODE_BIN)/pnpm
 export PATH  := $(NODE_BIN):$(PATH)
 
-# UI build cache: keyed on the git tree hash of ui/.
+# UI build cache: keyed on the git tree hashes of ui/ and docs/content/.
+# The pagefind search index is built from docs/content, so the cache must
+# bust whenever docs change too.
 # Set UI_CACHE_DIR to override the default cache location.
-UI_TREE_HASH := $(shell git rev-parse HEAD:ui/ 2>/dev/null)
+UI_TREE_HASH_RAW := $(shell git rev-parse HEAD:ui/ HEAD:docs/content/ 2>/dev/null | tr '\n' '-' | sed 's/-$$//')
+UI_TREE_HASH := $(UI_TREE_HASH_RAW)
 ifdef UI_CACHE_DIR
   _UI_CACHE_BASE := $(UI_CACHE_DIR)
 else ifdef CI_CACHE
@@ -80,8 +83,8 @@ _build: $(NODE_BIN)/.corepack-enabled
 	@# Pre-compress assets for serving with Content-Encoding: gzip.
 	@# Vite already content-hashes filenames, so .gz siblings are safe to cache.
 	@# -n omits the timestamp so output is reproducible.
-	find dist/assets -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
-		| xargs -P0 gzip -9 -k -n
+	find dist/assets dist/pagefind -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' \) \
+		2>/dev/null | xargs -P0 gzip -9 -k -n
 
 typecheck: $(NODE_BIN)/.corepack-enabled ## Run vue-tsc type checking
 	pnpm install --frozen-lockfile

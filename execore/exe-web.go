@@ -1168,6 +1168,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Serve Pagefind search index assets (built by ui/scripts/build-search-index.mjs)
+		if pfPath, ok := strings.CutPrefix(path, "/pagefind/"); ok {
+			if pfPath != "" && !strings.Contains(pfPath, "..") {
+				if s.servePagefindAsset(w, r, "pagefind/"+pfPath) {
+					return
+				}
+			}
+		}
+
 		// Serve embedded static assets under /static/
 		if filename, ok := strings.CutPrefix(path, "/static/"); ok {
 			// simple security check; our embed only exposes files inside static/
@@ -1218,6 +1227,20 @@ func (s *Server) serveDashboardUIAsset(w http.ResponseWriter, r *http.Request, a
 		return false
 	}
 	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	exeweb.ServePrecompressed(w, r, s.dashboardUI, assetPath)
+	return true
+}
+
+// servePagefindAsset serves a Pagefind search index file. Pagefind's own
+// internal index/fragment files are content-hashed, but the entry files
+// (pagefind.js, pagefind-entry.json, wasm.*.pagefind) are stable names
+// whose contents change with each rebuild. Use a shorter cache lifetime
+// so search updates roll out reliably with new releases.
+func (s *Server) servePagefindAsset(w http.ResponseWriter, r *http.Request, assetPath string) bool {
+	if s.dashboardUI == nil {
+		return false
+	}
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	exeweb.ServePrecompressed(w, r, s.dashboardUI, assetPath)
 	return true
 }

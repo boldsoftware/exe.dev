@@ -9,6 +9,7 @@
     <main v-else class="docs-list-main">
       <h1 class="page-title">exe Documentation</h1>
       <p class="page-subtitle">Learn how exe hosts persistent development containers you can reach over SSH or the browser.</p>
+      <div class="docs-list-search"><DocsSearch trigger="button" /></div>
       <p class="page-links">
         <router-link to="/docs/all">View all docs in one page</router-link> &middot;
         <a href="/docs/all.md">Download as Markdown</a> &middot;
@@ -33,6 +34,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { fetchDocsList, isAuthenticated, type DocsGroup } from '../api/client'
+import DocsSearch from '../components/DocsSearch.vue'
 
 const loading = ref(true)
 const loadError = ref('')
@@ -91,10 +93,32 @@ onMounted(async () => {
 .page-subtitle {
   font-size: 20px;
   color: var(--text-color-secondary);
-  margin-bottom: 80px;
+  margin-bottom: 32px;
   max-width: 600px;
   line-height: 1.4;
   font-weight: 300;
+}
+
+.docs-list-search {
+  margin-bottom: 48px;
+}
+
+.docs-list-search :deep(.docs-search) {
+  margin-bottom: 0;
+}
+
+.docs-list-search :deep(.docs-search-trigger) {
+  width: auto;
+  height: auto;
+  padding: 10px 16px;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-color-secondary);
+  border-radius: 8px;
+}
+
+.docs-list-search :deep(.docs-search-trigger)::after {
+  content: 'Search docs';
 }
 
 .page-links {
@@ -174,7 +198,11 @@ onMounted(async () => {
 
   .page-subtitle {
     font-size: 18px;
-    margin-bottom: 60px;
+    margin-bottom: 24px;
+  }
+
+  .docs-list-search {
+    margin-bottom: 32px;
   }
 
   .section-title {
