@@ -243,6 +243,7 @@ export interface PlanCapacity {
   tierName: string
   poolSize: string
   monthlyPriceCents: number
+  perSeat?: boolean
   nextTier?: {
     poolSize: string
     monthlyPriceCents: number

@@ -60,6 +60,7 @@ func TestAllEntitlements(t *testing.T) {
 		"vm:run":              true,
 		"disk:resize":         true,
 		"billing:selfserve":   true,
+		"billing:seats":       true,
 		"billing:trialaccess": true,
 		"account:delete":      true,
 	}
