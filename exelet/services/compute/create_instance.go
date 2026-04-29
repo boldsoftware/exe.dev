@@ -254,6 +254,22 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Phase timing for canonical log line at the end of creation.
+	var (
+		phaseNetworkDur  time.Duration
+		phaseManifestDur time.Duration
+		phaseCloneDur    time.Duration
+		phaseExpandDur   time.Duration
+		phaseMountDur    time.Duration
+		phaseKernelDur   time.Duration
+		phaseConfigDur   time.Duration
+		phaseUnmountDur  time.Duration
+		phaseBootDur     time.Duration
+		phaseSSHDur      time.Duration
+		imagePulled      bool
+	)
+	createStart := time.Now()
+
 	// networking
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
@@ -263,10 +279,12 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	s.log.DebugContext(ctx, "creating network interface", "id", instanceID)
+	phaseStart := time.Now()
 	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, instanceID)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	phaseNetworkDur = time.Since(phaseStart)
 	rb.networkCreated = true
 	rb.networkMAC = networkInterface.MACAddress
 	if networkInterface.IP != nil {
@@ -308,6 +326,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	s.log.DebugContext(ctx, "creating instance fs", "id", instanceID)
 
 	s.log.InfoContext(ctx, "fetching image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform)
+	phaseStart = time.Now()
 	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
 		if isImageResolutionUserError(err) {
@@ -321,6 +340,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		s.log.ErrorContext(ctx, "failed to fetch image manifest", "instance_id", instanceID, "image", req.Image, "platform", platform, "error", err)
 		return nil, status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
+	phaseManifestDur = time.Since(phaseStart)
 	s.log.DebugContext(ctx, "loaded image manifest", "image", req.Image, "digest", imageMetadata.Digest)
 
 	// config
@@ -353,18 +373,23 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		// update rollback configs
 		rb.imageFSID = imageID
 		rb.imageFSMounted = false
+		imagePulled = true
 	}
 
 	// clone
+	phaseStart = time.Now()
 	if err = s.context.StorageManager.Clone(ctx, imageFSID, instanceID); err != nil {
 		return nil, status.Errorf(codes.Internal, "error cloning instance storage for image %s: %s", req.Image, err)
 	}
+	phaseCloneDur = time.Since(phaseStart)
 	rb.instanceCloned = true
 
 	// resize - pass resizeFilesystem=true since the filesystem is not mounted yet
+	phaseStart = time.Now()
 	if err = s.context.StorageManager.Expand(ctx, instanceID, req.Disk, true); err != nil {
 		return nil, status.Errorf(codes.Internal, "error resizing instance filesystem storage: %s", err)
 	}
+	phaseExpandDur = time.Since(phaseStart)
 
 	// get instance fs
 	instanceFS, err := s.context.StorageManager.Get(ctx, instanceID)
@@ -373,14 +398,17 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	// mount
+	phaseStart = time.Now()
 	mountConfig, err := s.context.StorageManager.Mount(ctx, instanceID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error mounting instance filesystem: %s", err)
 	}
+	phaseMountDur = time.Since(phaseStart)
 	rb.instanceMounted = true
 	mountpoint := mountConfig.Path
 
 	// kernel
+	phaseStart = time.Now()
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
 		State:   api.CreateInstanceStatus_PULLING,
@@ -422,7 +450,10 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		}
 	}
 
+	phaseKernelDur = time.Since(phaseStart)
+
 	// init
+	phaseStart = time.Now()
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
 		State:   api.CreateInstanceStatus_CONFIG,
@@ -658,11 +689,15 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 		}
 	}
 
+	phaseConfigDur = time.Since(phaseStart)
+
 	// unmount
+	phaseStart = time.Now()
 	s.log.DebugContext(ctx, "unmounting instance storage", "id", instanceID)
 	if err := s.context.StorageManager.Unmount(ctx, instanceID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	phaseUnmountDur = time.Since(phaseStart)
 	rb.instanceMounted = false
 
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -700,6 +735,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 
 	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
+	phaseStart = time.Now()
 	if err := s.vmm.Create(ctx, vmCfg); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -709,6 +745,7 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	if err := s.vmm.Start(ctx, vmCfg.ID); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	phaseBootDur = time.Since(phaseStart)
 	rb.vmStarted = true
 
 	// allocate a port for SSH proxy
@@ -733,11 +770,13 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	// create and start SSH proxy using socat
+	phaseStart = time.Now()
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
 	if err := s.proxyManager.CreateProxy(ctx, instanceID, vmIP, sshPort, instanceDir); err != nil {
 		s.portAllocator.Release(sshPort)
 		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
 	}
+	phaseSSHDur = time.Since(phaseStart)
 	rb.proxyCreated = true
 
 	// Parse exposed ports from image config
@@ -776,6 +815,25 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	if err := s.saveInstanceConfig(i); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	// Canonical timing log line for instance creation.
+	createDur := time.Since(createStart)
+	s.log.InfoContext(ctx, "instance created",
+		"instance_id", instanceID,
+		"image", req.Image,
+		"image_pulled", imagePulled,
+		"total_ms", createDur.Milliseconds(),
+		"network_ms", phaseNetworkDur.Milliseconds(),
+		"manifest_ms", phaseManifestDur.Milliseconds(),
+		"clone_ms", phaseCloneDur.Milliseconds(),
+		"expand_ms", phaseExpandDur.Milliseconds(),
+		"mount_ms", phaseMountDur.Milliseconds(),
+		"kernel_ms", phaseKernelDur.Milliseconds(),
+		"config_ms", phaseConfigDur.Milliseconds(),
+		"unmount_ms", phaseUnmountDur.Milliseconds(),
+		"boot_ms", phaseBootDur.Milliseconds(),
+		"ssh_proxy_ms", phaseSSHDur.Milliseconds(),
+	)
 
 	// complete
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{

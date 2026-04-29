@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/mistifyio/go-zfs/v3"
@@ -50,14 +51,22 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64, resizeFilesyst
 
 	s.log.DebugContext(ctx, "expanding volume", "id", id, "size", newSize, "resizeFilesystem", resizeFilesystem)
 	// note: volumes remain sparse (no refreservation) to allow efficient space sharing
+	t0 := time.Now()
 	if err := ds.SetProperty("volsize", fmt.Sprintf("%d", newSize)); err != nil {
 		return err
 	}
+	setVolsizeDur := time.Since(t0)
 
 	// Wait for udev to process the device size change
+	t1 := time.Now()
 	if err := exec.Command("udevadm", "settle").Run(); err != nil {
 		return fmt.Errorf("udevadm settle failed: %w", err)
 	}
+	udevDur := time.Since(t1)
+
+	var resizeDur time.Duration
+	var fsckDur time.Duration
+	var usedFallback bool
 
 	// If resizeFilesystem is true, expand the ext4 filesystem to fill the new volume size.
 	// This should be done when the filesystem is NOT mounted (e.g., during instance creation).
@@ -71,16 +80,44 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64, resizeFilesyst
 		// at the end of the filesystem. On a cleanly cloned volume this always works.
 		// If the superblock has the errors-detected flag, resize2fs will refuse and
 		// we fall back to fsck + resize2fs.
+		t2 := time.Now()
 		if err := resize(ctx, diskPath, 0); err != nil {
+			usedFallback = true
 			s.log.DebugContext(ctx, "resize2fs failed, falling back to fsck+resize", "id", id, "error", err)
+
+			t3 := time.Now()
 			if err := fsck(ctx, diskPath); err != nil {
 				return err
 			}
+			fsckDur = time.Since(t3)
+
+			t4 := time.Now()
 			if err := resize(ctx, diskPath, 0); err != nil {
 				return err
 			}
+			resizeDur = time.Since(t4)
+		} else {
+			resizeDur = time.Since(t2)
 		}
 	}
+
+	attrs := []any{
+		"id", id,
+		"set_volsize_ms", setVolsizeDur.Milliseconds(),
+		"udev_settle_ms", udevDur.Milliseconds(),
+	}
+	if resizeFilesystem {
+		attrs = append(attrs,
+			"resize_ms", resizeDur.Milliseconds(),
+			"fsck_fallback", usedFallback,
+		)
+		if usedFallback {
+			attrs = append(attrs, "fsck_ms", fsckDur.Milliseconds())
+		}
+	}
+	total := setVolsizeDur + udevDur + resizeDur + fsckDur
+	attrs = append(attrs, "total_ms", total.Milliseconds())
+	s.log.InfoContext(ctx, "expand complete", attrs...)
 
 	return nil
 }
