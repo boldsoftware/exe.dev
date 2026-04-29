@@ -8,7 +8,7 @@
 
 EXE.DEV: get a VM over ssh
 
-✓ Invite code accepted: 1 month free trial
+✓ Invite code accepted: 1 month free access
 To sign up, please verify your email.
 
 Please enter your email address: TestInviteCodeTrial@example.com
