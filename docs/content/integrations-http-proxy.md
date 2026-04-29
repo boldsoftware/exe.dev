@@ -43,3 +43,22 @@ exe.dev ▶ ssh my-vm-name curl -s http://mirror.int.exe.xyz/anything -Hfoo:bar
 ```
 
 The HTTP Proxy integration supports HTTP basic auth as well.
+
+## Peer Integrations
+
+The `--peer` flag turns an HTTP proxy integration into a VM-to-VM proxy: the
+`--target` is another VM you own, and exe.dev injects a generated API key so
+the source VM can reach the target without managing tokens itself.
+
+When a request flows through a peer integration, exe.dev sets the
+`X-Exedev-Source-Vm` header on the outbound request to the name of the
+calling VM. The target can use this header to audit or route based on the
+caller. The header is set (not appended) by the platform, so a source VM
+cannot smuggle in a forged value.
+
+```
+exe.dev ▶ integrations add http-proxy --name talk-to-bob --target https://bob.<your-domain>/ --peer --attach vm:alice
+```
+
+From `alice`, requests to `http://talk-to-bob.int.exe.xyz/` arrive at `bob`
+with `X-Exedev-Source-Vm: alice`.
