@@ -781,6 +781,18 @@ func (s *Server) handleDebugBoxMigrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Best-effort: drop guest page cache before migration to reduce
+	// the amount of active memory that needs to be transferred.
+	if wasRunning && box.SSHPort != nil {
+		writeProgress("Dropping guest page cache...")
+		if res, err := s.dropPageCacheOnBox(ctx, &box); err != nil {
+			writeProgress("WARNING: failed to drop page cache: %v (proceeding with migration)", err)
+		} else {
+			writeProgress("Dropped page cache (MemFree delta: %+d bytes, cached before: %d, after: %d)",
+				res.MemFreeDeltaBytes, res.CachedBeforeBytes, res.CachedAfterBytes)
+		}
+	}
+
 	if live {
 		writeProgress("Starting live migration from %s to %s...", box.Ctrhost, targetAddr)
 		s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
@@ -7573,6 +7585,18 @@ func (s *Server) migrateUserVMs(ctx context.Context, userID string, writeProgres
 				cpuMismatch = true
 			} else {
 				writeProgress("CPU feature compatibility check passed.")
+			}
+		}
+
+		// Best-effort: drop guest page cache before migration to reduce
+		// the amount of active memory that needs to be transferred.
+		if wasRunning && box.SSHPort != nil {
+			writeProgress("Dropping guest page cache...")
+			if res, err := s.dropPageCacheOnBox(ctx, &box); err != nil {
+				writeProgress("WARNING: failed to drop page cache: %v (proceeding with migration)", err)
+			} else {
+				writeProgress("Dropped page cache (MemFree delta: %+d bytes, cached before: %d, after: %d)",
+					res.MemFreeDeltaBytes, res.CachedBeforeBytes, res.CachedAfterBytes)
 			}
 		}
 
