@@ -237,6 +237,7 @@ type jsonPlanCapacity struct {
 	TierName          string        `json:"tierName"`
 	PoolSize          string        `json:"poolSize"`
 	MonthlyPriceCents int           `json:"monthlyPriceCents"`
+	PerSeat           bool          `json:"perSeat,omitempty"`
 	NextTier          *jsonNextTier `json:"nextTier,omitempty"`
 }
 
@@ -733,6 +734,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 				TierName:          tier.Name,
 				PoolSize:          poolSize,
 				MonthlyPriceCents: tier.MonthlyPriceCents,
+				PerSeat:           plan.Grants(planRow.PlanID, plan.BillingSeats),
 			}
 			if next := plan.NextTier(planRow.PlanID); next != nil {
 				planCapacity.NextTier = &jsonNextTier{

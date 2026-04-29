@@ -173,7 +173,11 @@ func (ss *SSHServer) handleBillingPlanCommand(ctx context.Context, cc *exemenu.C
 		// Price
 		if tier.MonthlyPriceCents > 0 {
 			cc.Writeln("")
-			cc.Writeln("  $%d/month", tier.MonthlyPriceCents/100)
+			if plan.Grants(planRow.PlanID, plan.BillingSeats) {
+				cc.Writeln("  $%d/user/month", tier.MonthlyPriceCents/100)
+			} else {
+				cc.Writeln("  $%d/month", tier.MonthlyPriceCents/100)
+			}
 		}
 
 		// Live pool utilization bars (only for plans with pool limits).

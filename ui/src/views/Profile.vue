@@ -98,7 +98,7 @@
                   </div>
                   <div v-if="data.planCapacity && data.planCapacity.poolSize" class="billing-plan-desc">{{ data.planCapacity.poolSize }}</div>
                   <div v-if="data.planCapacity" class="billing-plan-desc billing-plan-limits">{{ data.planCapacity.maxVMs }} VMs &middot; {{ data.planCapacity.defaultDiskGB }} GB disk<sup>+</sup> &middot; {{ data.planCapacity.bandwidthGB }} GB transfer<sup>+</sup></div>
-                  <div v-if="data.planCapacity && data.planCapacity.monthlyPriceCents" class="billing-plan-price">${{ data.planCapacity.monthlyPriceCents / 100 }}<span class="billing-plan-interval">/month</span></div>
+                  <div v-if="data.planCapacity && data.planCapacity.monthlyPriceCents" class="billing-plan-price">${{ data.planCapacity.monthlyPriceCents / 100 }}<span class="billing-plan-interval">{{ data.planCapacity.perSeat ? '/user/month' : '/month' }}</span></div>
                   <div v-if="data.billingPeriodEnd" class="billing-plan-renewal">Your subscription will auto renew on {{ formatRenewalDate(data.billingPeriodEnd) }}.</div>
                 </div>
                 <div class="billing-plan-action">

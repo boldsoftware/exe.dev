@@ -298,6 +298,7 @@ var plans = map[Category]Plan{
 			LLMUse:         true,
 			CreditPurchase: true,
 			InviteRequest:  true,
+			BillingSeats:   true,
 			VMCreate:       true,
 			VMRun:          true,
 			DiskResize:     true,

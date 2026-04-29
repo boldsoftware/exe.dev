@@ -35,6 +35,7 @@ var (
 
 	// Billing operations.
 	BillingSelfServe   = Entitlement{"billing:selfserve", "Self-Service Billing Management"}
+	BillingSeats       = Entitlement{"billing:seats", "Per-Seat Pricing"}
 	BillingTrialAccess = Entitlement{"billing:trialaccess", "Has / Had Access to Trials"}
 
 	// Account operations.
@@ -57,6 +58,7 @@ func AllEntitlements() []Entitlement {
 		VMRun,
 		DiskResize,
 		BillingSelfServe,
+		BillingSeats,
 		BillingTrialAccess,
 		AccountDelete,
 	}
