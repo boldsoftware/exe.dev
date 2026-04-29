@@ -108,6 +108,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
 	mux.HandleFunc("POST /debug/users/rename-email", s.handleDebugRenameUserEmail)
+	mux.HandleFunc("POST /debug/user/send-test-drip", s.handleDebugSendTestDrip)
 	mux.HandleFunc("/debug/migrations", s.handleDebugMigrations)
 	mux.HandleFunc("POST /debug/migrations/batch", s.handleDebugBatchMigrate)
 	mux.HandleFunc("POST /debug/migrations/cancel-all", s.handleDebugCancelAllMigrations)
@@ -10047,4 +10048,32 @@ func (s *Server) handleDebugSQLQueryExec(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.renderDebugTemplate(ctx, w, "sql-query.html", data)
+}
+
+func (s *Server) handleDebugSendTestDrip(w http.ResponseWriter, r *http.Request) {
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	user, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserWithDetails, userID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("user not found: %v", err), http.StatusNotFound)
+		return
+	}
+
+	if s.dripRunner == nil {
+		http.Error(w, "drip runner not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.dripRunner.SendTestEmail(ctx, user.Email); err != nil {
+		http.Error(w, fmt.Sprintf("failed to send test drip: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	s.slog().InfoContext(ctx, "sent test drip email via debug", "user_id", userID, "to", user.Email)
+	http.Redirect(w, r, fmt.Sprintf("/debug/user?userId=%s", url.QueryEscape(userID)), http.StatusSeeOther)
 }

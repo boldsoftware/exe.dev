@@ -111,6 +111,7 @@ type Message struct {
 	To          string
 	Subject     string
 	Body        string
+	HTMLBody    string // when non-empty, sets the HTML body of the email
 	ReplyTo     string // when non-empty, sets the Reply-To header
 	Attachments []Attachment
 	// Attrs are included in the "email sent" log line.
@@ -190,6 +191,7 @@ func (s *PostmarkSender) Send(ctx context.Context, msg Message) error {
 		To:            msg.To,
 		Subject:       msg.Subject,
 		TextBody:      msg.Body,
+		HTMLBody:      msg.HTMLBody,
 		ReplyTo:       msg.ReplyTo,
 		MessageStream: postmarkMessageStreams[msg.Type],
 	}
@@ -233,6 +235,9 @@ func NewMailgunSender(domain, apiKey string) *MailgunSender {
 // Send sends an email via Mailgun.
 func (s *MailgunSender) Send(ctx context.Context, msg Message) error {
 	m := s.mg.NewMessage(msg.From, msg.Subject, msg.Body, msg.To)
+	if msg.HTMLBody != "" {
+		m.SetHtml(msg.HTMLBody)
+	}
 	if msg.ReplyTo != "" {
 		m.SetReplyTo(msg.ReplyTo)
 	}

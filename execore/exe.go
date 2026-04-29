@@ -1319,6 +1319,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			to:          msg.To,
 			subject:     msg.Subject,
 			body:        msg.Body,
+			htmlBody:    msg.HTMLBody,
 			fromName:    "David Crawshaw",
 			replyTo:     msg.ReplyTo,
 			attrs:       msg.Attrs,
@@ -1781,6 +1782,7 @@ type sendEmailParams struct {
 	to          string
 	subject     string
 	body        string
+	htmlBody    string
 	fromName    string
 	replyTo     string
 	attachments []email.Attachment
@@ -1846,6 +1848,7 @@ func (s *Server) sendEmail(ctx context.Context, p sendEmailParams) error {
 		To:          p.to,
 		Subject:     p.subject,
 		Body:        p.body,
+		HTMLBody:    p.htmlBody,
 		ReplyTo:     replyTo,
 		Attachments: p.attachments,
 		Attrs:       p.attrs,

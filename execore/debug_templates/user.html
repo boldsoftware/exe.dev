@@ -476,6 +476,10 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 {{else}}
 <p>No drip campaign emails sent or evaluated for this user.</p>
 {{end}}
+<form method="POST" action="/debug/user/send-test-drip" style="margin-top:8px;">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<button type="submit">Send test drip email</button>
+</form>
 </div>
 </div>
 

@@ -223,46 +223,47 @@ func (r *Runner) evaluateStep(ctx context.Context, u exedb.ListTrialUsersForDrip
 	}
 	hasCreatedVM := boxCount > 0
 
-	var subject, body, skipReason string
+	var subject, body, htmlBody, skipReason string
 	var shouldSend bool
 
 	switch stepName {
 	case stepDay0Welcome:
-		subject, body, skipReason, shouldSend = r.day0Welcome(hasCreatedVM)
+		subject, body, htmlBody, skipReason, shouldSend = r.day0Welcome(hasCreatedVM)
 	case stepDay1Nudge:
-		subject, body, skipReason, shouldSend = r.day1Nudge(ctx, u, hasCreatedVM)
+		subject, body, htmlBody, skipReason, shouldSend = r.day1Nudge(ctx, u, hasCreatedVM)
 	case stepDay3Feature:
-		subject, body, skipReason, shouldSend = r.day3Feature(ctx, u, hasCreatedVM)
+		subject, body, htmlBody, skipReason, shouldSend = r.day3Feature(ctx, u, hasCreatedVM)
 	case stepDay5Urgency:
-		subject, body, skipReason, shouldSend = r.day5Urgency(hasCreatedVM)
+		subject, body, htmlBody, skipReason, shouldSend = r.day5Urgency(hasCreatedVM)
 	case stepDay7Expiry:
-		subject, body, skipReason, shouldSend = r.day7Expiry()
+		subject, body, htmlBody, skipReason, shouldSend = r.day7Expiry()
 	case stepDay10WinBack:
-		subject, body, skipReason, shouldSend = r.day10WinBack(ctx, u, hasCreatedVM)
+		subject, body, htmlBody, skipReason, shouldSend = r.day10WinBack(ctx, u, hasCreatedVM)
 	case stepDay14Final:
-		subject, body, skipReason, shouldSend = r.day14Final()
+		subject, body, htmlBody, skipReason, shouldSend = r.day14Final()
 	default:
 		r.log.ErrorContext(ctx, "drip: unknown step", "step", stepName)
 		return
 	}
 
 	if shouldSend {
-		r.sendAndRecord(ctx, u, stepName, subject, body)
+		r.sendAndRecord(ctx, u, stepName, subject, body, htmlBody)
 	} else {
 		r.recordSkip(ctx, u.UserID, stepName, skipReason)
 	}
 }
 
-func (r *Runner) sendAndRecord(ctx context.Context, u exedb.ListTrialUsersForDripRow, stepName, subject, body string) {
+func (r *Runner) sendAndRecord(ctx context.Context, u exedb.ListTrialUsersForDripRow, stepName, subject, body, htmlBody string) {
 	from := "David Crawshaw <david@" + r.env.WebHost + ">"
 
 	err := r.send(ctx, email.Message{
-		Type:    email.TypeDripCampaign,
-		From:    from,
-		To:      u.Email,
-		Subject: subject,
-		Body:    body,
-		ReplyTo: "david@" + r.env.WebHost,
+		Type:     email.TypeDripCampaign,
+		From:     from,
+		To:       u.Email,
+		Subject:  subject,
+		Body:     body,
+		HTMLBody: htmlBody,
+		ReplyTo:  "david@" + r.env.WebHost,
 		Attrs: []slog.Attr{
 			slog.String("user_id", u.UserID),
 			slog.String("campaign", campaignTrialOnboarding),
@@ -330,12 +331,45 @@ func signature() string {
 	return "\n-- \nDavid Crawshaw\nCEO exe.dev\n"
 }
 
+func htmlSignature() string {
+	return `<p>-- <br>David Crawshaw<br>CEO exe.dev</p>` +
+		`<p><a href="{{{pm:unsubscribe}}}" style="color:#999">Unsubscribe</a></p>`
+}
+
+// htmlLink renders a URL as a plain-looking link: the visible text is the URL itself.
+func htmlLink(url string) string {
+	return `<a href="` + url + `">` + url + `</a>`
+}
+
+// htmlWrap wraps body content in a minimal HTML document.
+func htmlWrap(body string) string {
+	return `<html><body>` + body + `</body></html>`
+}
+
+// SendTestEmail sends the day0 welcome email to the given address for testing.
+func (r *Runner) SendTestEmail(ctx context.Context, to string) error {
+	subject, body, htmlBody, _, _ := r.day0Welcome(false)
+	from := "David Crawshaw <david@" + r.env.WebHost + ">"
+	return r.send(ctx, email.Message{
+		Type:        email.TypeDripCampaign,
+		From:        from,
+		To:          to,
+		Subject:     subject,
+		Body:        body,
+		HTMLBody:    htmlBody,
+		ReplyTo:     "david@" + r.env.WebHost,
+		Attrs:       []slog.Attr{slog.String("test", "true")},
+		Attachments: nil,
+	})
+}
+
 // --- Step implementations ---
 
-func (r *Runner) day0Welcome(hasCreatedVM bool) (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day0Welcome(hasCreatedVM bool) (subject, body, htmlBody, skipReason string, shouldSend bool) {
 	if hasCreatedVM {
-		return "", "", "user already created a VM", false
+		return "", "", "", "user already created a VM", false
 	}
+	ideaURL := r.webURL("/idea")
 	subject = "exe.dev: ready to build"
 	body = "Hello,\n\n" +
 		"Welcome to exe.dev. You have a 7-day trial to create and use virtual machines.\n\n" +
@@ -343,28 +377,42 @@ func (r *Runner) day0Welcome(hasCreatedVM bool) (subject, body, skipReason strin
 		"  ssh exe.dev\n\n" +
 		"Then you can create your first machine by typing `new`.\n\n" +
 		"If you want some inspiration, check out:\n" +
-		r.webURL("/idea") + "\n" +
+		ideaURL + "\n" +
 		signature()
-	return subject, body, "", true
+	htmlBody = htmlWrap(
+		`<p>Hello,</p>` +
+			`<p>Welcome to exe.dev. You have a 7-day trial to create and use virtual machines.</p>` +
+			`<p>To get started, open a terminal and run:</p>` +
+			`<pre>  ssh exe.dev</pre>` +
+			"<p>Then you can create your first machine by typing <code>new</code>.</p>" +
+			`<p>If you want some inspiration, check out:<br>` + htmlLink(ideaURL) + `</p>` +
+			htmlSignature())
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day1Nudge(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day1Nudge(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, htmlBody, skipReason string, shouldSend bool) {
 	if hasCreatedVM {
-		return "", "", "user already created a VM; on track", false
+		return "", "", "", "user already created a VM; on track", false
 	}
+	ideaURL := r.webURL("/idea")
 	subject = "exe.dev: 6 days left, start something"
 	body = "Hello,\n\n" +
 		"You signed up for exe.dev but haven't created a machine yet. " +
 		"Your trial expires in 6 days.\n\n" +
 		"Not sure what to build? Here are some ideas:\n" +
-		r.webURL("/idea") + "\n\n" +
+		ideaURL + "\n\n" +
 		signature()
-	return subject, body, "", true
+	htmlBody = htmlWrap(
+		`<p>Hello,</p>` +
+			`<p>You signed up for exe.dev but haven't created a machine yet. Your trial expires in 6 days.</p>` +
+			`<p>Not sure what to build? Here are some ideas:<br>` + htmlLink(ideaURL) + `</p>` +
+			htmlSignature())
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, htmlBody, skipReason string, shouldSend bool) {
 	if !hasCreatedVM {
-		return "", "", "user has not created a VM; not sending feature email to inactive user", false
+		return "", "", "", "user has not created a VM; not sending feature email to inactive user", false
 	}
 
 	// Pick a feature they haven't used yet.
@@ -373,13 +421,20 @@ func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripR
 
 	switch {
 	case hasUsedShelley == 0:
+		shelleyURL := r.webURL("/docs/shelley")
 		subject = "exe.dev machines have an agent"
 		body = "Hello,\n\n" +
 			"Every exe.dev machine comes with Shelley. Credits included.\n\n" +
 			"Try it out at exe.dev, click on the shelley icon next to your VM.\n\n" +
 			"Learn more:\n" +
-			r.webURL("/docs/shelley") + "\n" +
+			shelleyURL + "\n" +
 			signature()
+		htmlBody = htmlWrap(
+			`<p>Hello,</p>` +
+				`<p>Every exe.dev machine comes with Shelley. Credits included.</p>` +
+				`<p>Try it out at exe.dev, click on the shelley icon next to your VM.</p>` +
+				`<p>Learn more:<br>` + htmlLink(shelleyURL) + `</p>` +
+				htmlSignature())
 	case hasShared == 0:
 		subject = "Share your exe.dev machine with a friend"
 		body = "Hello,\n\n" +
@@ -389,27 +444,50 @@ func (r *Runner) day3Feature(ctx context.Context, u exedb.ListTrialUsersForDripR
 			"  share\n\n" +
 			"Send the link to anyone.\n" +
 			signature()
+		htmlBody = htmlWrap(
+			`<p>Hello,</p>` +
+				`<p>You can share any of your exe.dev machines with a link. Great for pair programming, demos, or getting help.</p>` +
+				`<p>SSH into exe.dev and run:</p>` +
+				`<pre>  share</pre>` +
+				`<p>Send the link to anyone.</p>` +
+				htmlSignature())
 	default:
+		docsURL := r.webURL("/docs")
 		// They've used the features we track. Send a general tip.
 		subject = "Getting the most out of exe.dev"
 		body = "Hello,\n\n" +
 			"A few things you might not have tried yet:\n\n" +
 			"• Custom domains: put a domain name on your machine\n" +
 			"• GitHub integration: let agents in a VM access GitHub without leaking secrets\n\n" +
-			"Docs: " + r.webURL("/docs") + "\n" +
+			"Docs: " + docsURL + "\n" +
 			signature()
+		htmlBody = htmlWrap(
+			`<p>Hello,</p>` +
+				`<p>A few things you might not have tried yet:</p>` +
+				`<ul>` +
+				`<li>Custom domains: put a domain name on your machine</li>` +
+				`<li>GitHub integration: let agents in a VM access GitHub without leaking secrets</li>` +
+				`</ul>` +
+				`<p>Docs: ` + htmlLink(docsURL) + `</p>` +
+				htmlSignature())
 	}
-	return subject, body, "", true
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, htmlBody, skipReason string, shouldSend bool) {
+	userURL := r.webURL("/user")
 	subject = "Your trial ends in 2 days"
 	if hasCreatedVM {
 		body = "Hello,\n\n" +
 			"Your exe.dev trial ends in 2 days.\n\n" +
 			"Upgrade now to keep your work:\n" +
-			r.webURL("/user") + "\n" +
+			userURL + "\n" +
 			signature()
+		htmlBody = htmlWrap(
+			`<p>Hello,</p>` +
+				`<p>Your exe.dev trial ends in 2 days.</p>` +
+				`<p>Upgrade now to keep your work:<br>` + htmlLink(userURL) + `</p>` +
+				htmlSignature())
 	} else {
 		body = "Hello,\n\n" +
 			"You still have 2 days left on your exe.dev trial.\n\n" +
@@ -417,44 +495,72 @@ func (r *Runner) day5Urgency(hasCreatedVM bool) (subject, body, skipReason strin
 			"  ssh exe.dev\n\n" +
 			"It takes about 30 seconds to create your first machine.\n" +
 			signature()
+		htmlBody = htmlWrap(
+			`<p>Hello,</p>` +
+				`<p>You still have 2 days left on your exe.dev trial.</p>` +
+				`<p>If you haven't had a chance to try it yet, you can start right now:</p>` +
+				`<pre>  ssh exe.dev</pre>` +
+				`<p>It takes about 30 seconds to create your first machine.</p>` +
+				htmlSignature())
 	}
-	return subject, body, "", true
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day7Expiry() (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day7Expiry() (subject, body, htmlBody, skipReason string, shouldSend bool) {
+	userURL := r.webURL("/user")
 	subject = "Your trial has ended"
 	body = "Hello,\n\n" +
 		"Your exe.dev trial has ended. You are now on the Basic plan.\n\n" +
 		"Your VMs are stopped, but your disk is preserved for 30 days.\n\n" +
 		"Upgrade to the Individual plan to turn your VMs back on. " +
 		"New subscribers receive a $100 LLM credit.\n\n" +
-		"Upgrade: " + r.webURL("/user") + "\n" +
+		"Upgrade: " + userURL + "\n" +
 		signature()
-	return subject, body, "", true
+	htmlBody = htmlWrap(
+		`<p>Hello,</p>` +
+			`<p>Your exe.dev trial has ended. You are now on the Basic plan.</p>` +
+			`<p>Your VMs are stopped, but your disk is preserved for 30 days.</p>` +
+			`<p>Upgrade to the Individual plan to turn your VMs back on. New subscribers receive a $100 LLM credit.</p>` +
+			`<p>Upgrade: ` + htmlLink(userURL) + `</p>` +
+			htmlSignature())
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day10WinBack(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day10WinBack(ctx context.Context, u exedb.ListTrialUsersForDripRow, hasCreatedVM bool) (subject, body, htmlBody, skipReason string, shouldSend bool) {
 	if !hasCreatedVM {
-		return "", "", "user never created a VM; no workspace to win back", false
+		return "", "", "", "user never created a VM; no workspace to win back", false
 	}
+	userURL := r.webURL("/user")
 	subject = "Your exe.dev workspace is still here"
 	body = "Hello,\n\n" +
 		"Your exe.dev workspace and persistent disk are still intact. " +
 		"Everything you built during your trial is waiting for you.\n\n" +
 		"Upgrade to pick up where you left off:\n" +
-		r.webURL("/user") + "\n" +
+		userURL + "\n" +
 		signature()
-	return subject, body, "", true
+	htmlBody = htmlWrap(
+		`<p>Hello,</p>` +
+			`<p>Your exe.dev workspace and persistent disk are still intact. Everything you built during your trial is waiting for you.</p>` +
+			`<p>Upgrade to pick up where you left off:<br>` + htmlLink(userURL) + `</p>` +
+			htmlSignature())
+	return subject, body, htmlBody, "", true
 }
 
-func (r *Runner) day14Final() (subject, body, skipReason string, shouldSend bool) {
+func (r *Runner) day14Final() (subject, body, htmlBody, skipReason string, shouldSend bool) {
+	userURL := r.webURL("/user")
 	subject = "Last note from us"
 	body = "Hello,\n\n" +
 		"This is our last email about your exe.dev trial.\n\n" +
 		"Your workspace will be cleaned up soon. " +
 		"Upgrade anytime to pick up where you left off:\n" +
-		r.webURL("/user") + "\n\n" +
+		userURL + "\n\n" +
 		"Thanks for trying exe.dev.\n" +
 		signature()
-	return subject, body, "", true
+	htmlBody = htmlWrap(
+		`<p>Hello,</p>` +
+			`<p>This is our last email about your exe.dev trial.</p>` +
+			`<p>Your workspace will be cleaned up soon. Upgrade anytime to pick up where you left off:<br>` + htmlLink(userURL) + `</p>` +
+			`<p>Thanks for trying exe.dev.</p>` +
+			htmlSignature())
+	return subject, body, htmlBody, "", true
 }
