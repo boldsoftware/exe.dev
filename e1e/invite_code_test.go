@@ -75,7 +75,7 @@ func TestInviteCodeTrial(t *testing.T) {
 	pty.SetPrompt(testinfra.ExeDevPrompt)
 
 	pty.Want(testinfra.Banner)
-	pty.Want("Invite code accepted: 1 month free trial")
+	pty.Want("Invite code accepted: 1 month free access")
 	pty.Want("Please enter your email")
 	email := t.Name() + testinfra.FakeEmailSuffix
 	pty.SendLine(email)
