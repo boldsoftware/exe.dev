@@ -1393,18 +1393,33 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	)
 }
 
+// proxyPreservedExeDevHeaders are X-Exedev-* headers we leave on the
+// outbound proxy request. They are informational (not auth-bearing) and
+// are stamped by trusted upstream components (e.g. exed's peer integration
+// proxy). External callers can set them too — that's acceptable since
+// they convey identity/origin claims that the target should treat as
+// hints, not authenticated facts.
+var proxyPreservedExeDevHeaders = map[string]bool{
+	"X-Exedev-Source-Vm": true,
+}
+
 // clearExeDevHeaders removes any X-ExeDev-* headers from
-// the outbound proxy request.
+// the outbound proxy request, except for a small allowlist of
+// informational headers (see proxyPreservedExeDevHeaders).
 // This prevents clients from spoofing authentication state via
-// custom headers and reserves the entire X-ExeDev- namespace for our use.
+// custom headers and reserves the X-ExeDev- namespace for our use.
 func clearExeDevHeaders(req *http.Request) {
 	if req == nil {
 		return
 	}
 	for key := range req.Header {
-		if strings.HasPrefix(strings.ToLower(key), "x-exedev-") {
-			req.Header.Del(key)
+		if !strings.HasPrefix(strings.ToLower(key), "x-exedev-") {
+			continue
 		}
+		if proxyPreservedExeDevHeaders[http.CanonicalHeaderKey(key)] {
+			continue
+		}
+		req.Header.Del(key)
 	}
 }
 

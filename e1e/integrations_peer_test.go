@@ -37,6 +37,9 @@ func TestIntegrationsPeer(t *testing.T) {
 	waitForSSH(t, targetBN, keyFile)
 
 	// Start a web server on the target VM and make it publicly accessible.
+	// Also drop in a CGI script that echoes selected request headers so we
+	// can verify what the target sees (e.g. X-Exedev-Source-Vm).
+	installHeaderEchoCGI(t, targetBN, keyFile)
 	serveIndex(t, targetBN, keyFile, "hello-from-peer-target")
 	configureProxyRoute(t, keyFile, targetBN, 8080, "public")
 
@@ -86,6 +89,24 @@ func TestIntegrationsPeer(t *testing.T) {
 			t.Fatalf("timed out waiting for peer proxy response, last output: %s", response)
 		}
 		time.Sleep(200 * time.Millisecond)
+	}
+
+	// Curl the header-echo CGI through the integration proxy. The peer
+	// proxy in exed must stamp X-Exedev-Source-Vm with the authenticated
+	// source VM name, overwriting any value sent by the source.
+	echoCmd := fmt.Sprintf(
+		`curl --max-time 5 -s -H 'X-Exedev-Source-Vm: spoofed-by-source' http://target-peer.int.exe.cloud/cgi-bin/headers`,
+	)
+	out, err := boxSSHShell(t, sourceBN, keyFile, echoCmd).CombinedOutput()
+	if err != nil {
+		t.Fatalf("curl header-echo CGI: %v\n%s", err, out)
+	}
+	want := "source-vm=" + sourceBN
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("header-echo response missing %q: %s", want, out)
+	}
+	if strings.Contains(string(out), "spoofed-by-source") {
+		t.Fatalf("source spoofed X-Exedev-Source-Vm leaked to target: %s", out)
 	}
 
 	// Remove the integration.
@@ -143,4 +164,24 @@ func TestIntegrationsPeerValidation(t *testing.T) {
 	pty.SendLine("integrations add http-proxy --name=bad --target=https://x.exe.cloud --peer --header=X-Foo:bar")
 	pty.Want("mutually exclusive")
 	pty.WantPrompt()
+}
+
+// installHeaderEchoCGI puts a busybox-httpd CGI script at
+// /home/exedev/cgi-bin/headers on the box. The script echoes selected
+// HTTP headers (only those forwarded as HTTP_* CGI env vars) back to
+// the caller as `name=value` lines, e.g. `source-vm=<vm>`.
+func installHeaderEchoCGI(t *testing.T, box, keyFile string) {
+	t.Helper()
+	shellCmd := `mkdir -p /home/exedev/cgi-bin
+cat > /home/exedev/cgi-bin/headers <<'EOF'
+#!/bin/sh
+printf 'Content-Type: text/plain\r\n\r\n'
+printf 'source-vm=%s\n' "$HTTP_X_EXEDEV_SOURCE_VM"
+printf 'box=%s\n' "$HTTP_X_EXEDEV_BOX"
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`
+	if err := boxSSHShell(t, box, keyFile, shellCmd).Run(); err != nil {
+		t.Fatalf("install header-echo CGI: %v", err)
+	}
 }

@@ -528,6 +528,9 @@ func (s *Server) handlePeerProxy(w http.ResponseWriter, r *http.Request) {
 					pr.Out.Header.Set(name, strings.TrimSpace(value))
 				}
 			}
+			// Identify the source VM to the target. Set (not Add) so any
+			// inbound value from the source exelet cannot be smuggled through.
+			pr.Out.Header.Set("X-Exedev-Source-Vm", vmName)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			s.slog().WarnContext(r.Context(), "peer proxy upstream error",

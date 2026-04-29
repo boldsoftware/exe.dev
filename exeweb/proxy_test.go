@@ -705,6 +705,18 @@ func TestClearExeDevHeaders(t *testing.T) {
 	if got := req.Header.Get("X-Custom-Header"); got != "custom-value" {
 		t.Fatalf("expected other X- headers untouched, got %q", got)
 	}
+
+	// X-Exedev-Source-Vm is preserved (set by exed peer-proxy, informational).
+	req2 := httptest.NewRequest(http.MethodGet, "https://box.exe.dev/", nil)
+	req2.Header.Set("X-Exedev-Source-Vm", "src-vm")
+	req2.Header.Set("X-Exedev-UserID", "spoofed")
+	clearExeDevHeaders(req2)
+	if got := req2.Header.Get("X-Exedev-Source-Vm"); got != "src-vm" {
+		t.Fatalf("expected X-Exedev-Source-Vm preserved, got %q", got)
+	}
+	if got := req2.Header.Get("X-Exedev-UserID"); got != "" {
+		t.Fatalf("expected X-Exedev-UserID cleared, got %q", got)
+	}
 }
 
 // mockProxyData is a minimal ProxyData for unit tests.
