@@ -20,17 +20,38 @@ import (
 // the in-VM drop_caches write. The whole thing is best-effort.
 const dropPageCacheTimeout = 30 * time.Second
 
-// isSSHAuthError reports whether err looks like an SSH authentication
-// failure (as opposed to a network / timeout / remote-command failure).
-// x/crypto/ssh doesn't expose a sentinel for this, so we match on the
-// canonical error text.
-func isSSHAuthError(err error) bool {
+// isSSHHandshakeError reports whether err looks like a server-side
+// failure during the SSH handshake (auth, key exchange, or sshd
+// closing the connection mid-handshake) — i.e. something a
+// different-user retry might fix. We deliberately avoid matching
+// network-class failures ("SSH dial failed", "i/o timeout",
+// "connection refused"). The wrapper-level "ssh: handshake failed:"
+// always wraps a more specific cause that we then classify here.
+//
+// We've observed two flavors in the wild on legacy VMs (created
+// before af35594b, where /exe.dev/etc/ssh/authorized_keys is owned by
+// the login user instead of root):
+//
+//  1. "ssh: handshake failed: ssh: unable to authenticate, attempted
+//     methods [none publickey], no supported methods remain"
+//     — the textbook OpenSSH StrictModes rejection of root.
+//  2. "ssh: handshake failed: EOF" — sshd closed the transport
+//     mid-handshake without an SSH_MSG_DISCONNECT, e.g. when
+//     StrictModes rejects the file or auth otherwise terminates the
+//     connection abruptly. x/crypto/ssh surfaces the truncated read
+//     as a plain io.EOF.
+//
+// x/crypto/ssh doesn't expose a sentinel for either, so we match on
+// error text. Network-class errors come back as "SSH dial failed" or
+// "failed to set deadline" (see sshpool2/pool.go) and don't pass.
+func isSSHHandshakeError(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "unable to authenticate") ||
-		strings.Contains(msg, "no supported methods remain")
+		strings.Contains(msg, "no supported methods remain") ||
+		strings.Contains(msg, "handshake failed: EOF")
 }
 
 // dropPageCacheCommandRoot is run inside the VM when we're SSH'd in as
@@ -82,9 +103,16 @@ func (s *Server) dropPageCacheOnBox(ctx context.Context, box *exedb.Box) (*dropP
 	// so we don't paper over real problems.
 	authMethod := "root"
 	out, err := runCommandOnBoxAsUser(cctx, s.sshPool, box, "root", dropPageCacheCommandRoot, nil)
-	if err != nil && isSSHAuthError(err) {
+	var rootErr error
+	if err != nil && isSSHHandshakeError(err) {
+		rootErr = err
 		authMethod = "sudo"
 		out, err = runCommandOnBox(cctx, s.sshPool, box, dropPageCacheCommandSudo)
+		if err != nil {
+			// Surface both the root attempt and the sudo attempt so
+			// operators can tell which auth path was actually broken.
+			err = fmt.Errorf("root: %w; sudo: %w", rootErr, err)
+		}
 	}
 	if err != nil {
 		return &dropPageCacheResult{RawOutput: out}, err

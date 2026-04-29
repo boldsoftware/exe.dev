@@ -44,7 +44,7 @@ func TestDropPageCacheCommandShape(t *testing.T) {
 	}
 }
 
-func TestIsSSHAuthError(t *testing.T) {
+func TestIsSSHHandshakeError(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -53,9 +53,19 @@ func TestIsSSHAuthError(t *testing.T) {
 		{"nil", nil, false},
 		{"unrelated", errors.New("connection refused"), false},
 		{"timeout", errors.New("i/o timeout"), false},
+		{"dial failed", errors.New("SSH dial failed: dial tcp: i/o timeout"), false},
 		{
-			"observed handshake failure",
+			"observed handshake failure (auth)",
 			errors.New("ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remain"),
+			true,
+		},
+		{
+			// Reproduces what `sudo-exe drop-page-cache phil-exe-dev` returns
+			// against legacy VMs after the retryLoop in sshpool2 exhausts: sshd
+			// closes the transport mid-handshake (probably StrictModes) and
+			// x/crypto/ssh surfaces it as a plain EOF.
+			"observed handshake failure (EOF)",
+			errors.New("SSH new client conn failed: ssh: handshake failed: EOF"),
 			true,
 		},
 		{
@@ -65,8 +75,8 @@ func TestIsSSHAuthError(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isSSHAuthError(tc.err); got != tc.want {
-				t.Errorf("isSSHAuthError(%v) = %v, want %v", tc.err, got, tc.want)
+			if got := isSSHHandshakeError(tc.err); got != tc.want {
+				t.Errorf("isSSHHandshakeError(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})
 	}
@@ -103,5 +113,19 @@ func TestParseDropPageCacheOutput(t *testing.T) {
 	}
 	if got, want := res.CachedAfterBytes, int64(10000*kB); got != want {
 		t.Errorf("CachedAfter = %d, want %d", got, want)
+	}
+}
+
+// TestIsSSHHandshakeError_RetryLoopJoined exercises the actual error
+// shape the SSH pool returns after retries are exhausted: errors.Join
+// of four "SSH new client conn failed: ssh: handshake failed: EOF"
+// errors. This is the literal error string we observed on
+// `sudo-exe drop-page-cache phil-exe-dev` and what motivated this
+// commit.
+func TestIsSSHHandshakeError_RetryLoopJoined(t *testing.T) {
+	one := errors.New("SSH new client conn failed: ssh: handshake failed: EOF")
+	joined := errors.Join(one, one, one, one)
+	if !isSSHHandshakeError(joined) {
+		t.Errorf("expected joined retryLoop error to be classified as handshake failure; got %v", joined)
 	}
 }
