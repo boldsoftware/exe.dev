@@ -90,6 +90,7 @@ Usage from a VM:
   curl http://mirror.int.exe.cloud/
 PROMPT ▶ integrations list
 mirror  reflection  fields=all  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove mirror
 Removed integration mirror
 PROMPT ▶ integrations add reflection --name=mirror2 --fields=email,tags
@@ -102,6 +103,7 @@ Usage from a VM:
   curl http://mirror2.int.exe.cloud/
 PROMPT ▶ integrations list
 mirror2  reflection  fields=email,tags  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove mirror2
 Removed integration mirror2
 PROMPT ▶ integrations add reflection --name=mirror3 --fields=email,all
@@ -114,6 +116,7 @@ Usage from a VM:
   curl http://mirror3.int.exe.cloud/
 PROMPT ▶ integrations list
 mirror3  reflection  fields=all  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove mirror3
 Removed integration mirror3
 PROMPT ▶ integrations add reflection --name=mirror4 --fields=none
@@ -126,6 +129,7 @@ Usage from a VM:
   curl http://mirror4.int.exe.cloud/
 PROMPT ▶ integrations list
 mirror4  reflection  fields=(none)  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove mirror4
 Removed integration mirror4
 PROMPT ▶ integrations add reflection --name=bad --fields=bogus

@@ -36,7 +36,7 @@
           <i class="pi pi-globe grid-btn-icon"></i>
           <span class="grid-btn-label">HTTP Proxy</span>
         </button>
-        <button class="grid-btn" @click="openAddReflection">
+        <button class="grid-btn" @click="reflectionTileAction">
           <span class="reflection-icon grid-btn-icon" aria-hidden="true">
             <span class="reflection-frame">
               <img src="/exy.png" alt="" class="reflection-fish" />
@@ -44,6 +44,7 @@
             </span>
           </span>
           <span class="grid-btn-label">Reflection</span>
+          <span v-if="data.reflectionIntegrations.length === 0" class="grid-btn-action">Install default</span>
         </button>
         <button v-for="sp in serviceProxies" :key="sp.id" class="grid-btn" @click="openServiceProxy(sp.id)">
           <span class="grid-btn-icon grid-btn-icon-text" v-html="sp.icon"></span>
@@ -73,6 +74,7 @@
                   <i v-else :class="row.iconClass" class="table-icon-pi"></i>
                   <div class="table-name-info">
                     <span class="table-name">{{ row.displayName }}</span>
+                    <span v-if="row.isDefault" class="badge badge-default">default</span>
                     <span v-if="row.isTeam" class="badge badge-team">team</span>
                   </div>
                 </div>
@@ -888,6 +890,11 @@ function showError(msg: string) {
   inlineMessageIsError.value = true
 }
 
+function showSuccess(msg: string) {
+  inlineMessage.value = msg
+  inlineMessageIsError.value = false
+}
+
 const integrationScheme = ref('https')
 const boxHost = ref(window.location.hostname)
 const highlightedIntegration = ref('')
@@ -944,6 +951,7 @@ interface ActiveIntegrationRow {
   hasBasicAuth: boolean
   comment: string
   reflectionFields: string[]
+  isDefault: boolean
 }
 
 function matchServiceProxy(ig: IntegrationInfo): ServiceProxyDef | null {
@@ -977,6 +985,7 @@ const allActiveIntegrations = computed((): ActiveIntegrationRow[] => {
       hasBasicAuth: ig.hasBasicAuth,
       comment: ig.comment || '',
       reflectionFields: [],
+      isDefault: false,
     })
   }
 
@@ -998,6 +1007,7 @@ const allActiveIntegrations = computed((): ActiveIntegrationRow[] => {
       hasBasicAuth: ig.hasBasicAuth,
       comment: ig.comment || '',
       reflectionFields: [],
+      isDefault: false,
     })
   }
 
@@ -1017,6 +1027,7 @@ const allActiveIntegrations = computed((): ActiveIntegrationRow[] => {
       hasBasicAuth: false,
       comment: ig.comment || '',
       reflectionFields: ig.reflectionFields || [],
+      isDefault: !!ig.isDefault,
     })
   }
 
@@ -1773,6 +1784,30 @@ watch(() => reflectionModal.team, (isTeam) => {
   if (isTeam) reflectionModal.attachments = reflectionModal.attachments.filter(a => a.startsWith('tag:'))
 })
 
+function reflectionTileAction() {
+  if (data.value && data.value.reflectionIntegrations.length === 0) {
+    installDefaultReflection()
+    return
+  }
+  openAddReflection()
+}
+
+async function installDefaultReflection() {
+  if (!data.value) return
+  const cmd = 'integrations add reflection --name=reflection --fields=all --attach=auto:all'
+  try {
+    const res = await runCommand(cmd)
+    if (res.success) {
+      showSuccess('Installed default reflection integration.')
+      await reload()
+    } else {
+      showError(res.output || res.error || 'Failed to install default reflection integration')
+    }
+  } catch (err: any) {
+    showError(err.message || 'Network error')
+  }
+}
+
 function openAddReflection() {
   reflectionModal.visible = true
   reflectionModal.name = 'reflection'
@@ -2100,7 +2135,11 @@ function removeIntegration(name: string) {
 
 function attachViaCommand(name: string) {
   // Find existing attachments for this integration
-  const ig = [...(data.value?.githubIntegrations || []), ...(data.value?.proxyIntegrations || [])].find(i => i.name === name)
+  const ig = [
+    ...(data.value?.githubIntegrations || []),
+    ...(data.value?.proxyIntegrations || []),
+    ...(data.value?.reflectionIntegrations || []),
+  ].find(i => i.name === name)
   attachModal.visible = true
   attachModal.name = name
   attachModal.isTeam = ig?.isTeam || false
@@ -2394,6 +2433,20 @@ function confirmUnlinkGitHub(installationID: number) {
   align-items: center;
   justify-content: center;
   font-weight: 600;
+}
+
+.grid-btn-action {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--primary-color, #14b8a6);
+  color: white;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .field-error {
@@ -2754,10 +2807,20 @@ function confirmUnlinkGitHub(installationID: number) {
   color: #3730a3;
 }
 
+.badge-default {
+  background: #dcfce7;
+  color: #166534;
+}
+
 @media (prefers-color-scheme: dark) {
   .badge-team {
     background: #312e81;
     color: #c7d2fe;
+  }
+
+  .badge-default {
+    background: #14532d;
+    color: #bbf7d0;
   }
 }
 

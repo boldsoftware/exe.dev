@@ -15,9 +15,10 @@ func TestIntegrationsCommand(t *testing.T) {
 
 	pty, _, _, _ := registerForExeDev(t)
 
-	// List with no integrations.
+	// New users start with the default reflection integration.
 	pty.SendLine("integrations list")
-	pty.Want("No integrations configured.")
+	pty.Want("reflection")
+	pty.Want("auto:all")
 	pty.WantPrompt()
 
 	// Add an http-proxy integration.
@@ -442,9 +443,10 @@ func TestTeamIntegrations(t *testing.T) {
 		pty.Want("Removed integration better-mcp")
 		pty.WantPrompt()
 
-		// List should be empty now.
+		// The owner's default personal reflection integration remains.
 		pty.SendLine("integrations list")
-		pty.Want("No integrations configured.")
+		pty.Want("reflection")
+		pty.Want("auto:all")
 		pty.WantPrompt()
 		pty.Disconnect()
 	})
@@ -564,10 +566,13 @@ func TestTeamIntegrations(t *testing.T) {
 		pty.Want("(team)")
 		pty.WantPrompt()
 
-		// Member should no longer see it.
+		// Member should no longer see the team integration; their default personal
+		// reflection integration remains.
 		mpty = sshToExeDev(t, memberKey)
 		mpty.SendLine("integrations list")
-		mpty.Want("No integrations configured.")
+		mpty.Want("reflection")
+		mpty.Want("auto:all")
+		mpty.Reject("survive-leave")
 		mpty.WantPrompt()
 		mpty.Disconnect()
 

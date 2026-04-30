@@ -3385,8 +3385,9 @@ func (s *Server) regionForIP(ctx context.Context, ip string) region.Region {
 	return region.ForUser(result.CountryCode, result.Latitude, result.Longitude)
 }
 
-// createUserRecord creates a user record, an account, and an initial account_plans row,
-// then returns the new user ID. All three inserts happen in the caller's transaction.
+// createUserRecord creates a user record and installs the default reflection
+// integration, then returns the new user ID. Both inserts happen in the caller's
+// transaction.
 // If createdForLoginWithExe is true, the user was created during the login flow
 // when trying to log into a site hosted by exe (via proxy auth with return_host).
 // regionCode is the region to assign to the new user. Pass region.Default().Code if
@@ -3417,6 +3418,9 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 		Region:                 regionCode,
 	}); err != nil {
 		return "", fmt.Errorf("failed to create user: %w", err)
+	}
+	if err := installDefaultReflectionIntegration(ctx, queries, userID); err != nil {
+		return "", fmt.Errorf("failed to install default reflection integration: %w", err)
 	}
 
 	// Account creation is handled by the caller, not here.

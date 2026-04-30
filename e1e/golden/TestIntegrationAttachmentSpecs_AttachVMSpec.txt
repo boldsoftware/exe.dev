@@ -12,6 +12,7 @@ PROMPT ▶ integrations attach testint vm:BOX_NAME
 Attached testint to vm:BOX_NAME
 PROMPT ▶ integrations list
 testint  http-proxy  target=https://example.com header=X-Auth:***  vm:BOX_NAME
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations attach testint vm:BOX_NAME
 testint is already attached via vm:BOX_NAME
 PROMPT ▶ integrations detach testint vm:BOX_NAME

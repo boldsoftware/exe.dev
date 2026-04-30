@@ -18,6 +18,7 @@ To use this integration, attach it to a tag:
 Usage from a VM:
   curl http://shared-mcp.team.exe.cloud/
 PROMPT ▶ integrations list
+reflection  reflection  fields=all  auto:all
 shared-mcp  http-proxy  target=https://example.com header=X-Auth:***  (none)  (team)
 PROMPT ▶ integrations attach shared-mcp tag:production
 Attached shared-mcp to tag:production
@@ -30,10 +31,11 @@ Detached shared-mcp from tag:production
 PROMPT ▶ integrations rename shared-mcp better-mcp
 Renamed integration shared-mcp to better-mcp
 PROMPT ▶ integrations list
+reflection  reflection  fields=all  auto:all
 better-mcp  http-proxy  target=https://example.com header=X-Auth:***  (none)  (team)
 PROMPT ▶ integrations remove better-mcp
 Removed integration better-mcp
 PROMPT ▶ integrations list
-No integrations configured.
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ exit
 Goodbye!

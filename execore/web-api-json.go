@@ -352,6 +352,7 @@ type jsonIntegrationInfo struct {
 	PeerVM           string   `json:"peerVM,omitempty"`
 	Comment          string   `json:"comment"`
 	ReflectionFields []string `json:"reflectionFields,omitempty"`
+	IsDefault        bool     `json:"isDefault,omitempty"`
 }
 
 type jsonGitHubAccount struct {
@@ -1139,6 +1140,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			Type:        ig.Type,
 			Attachments: nonNil(ig.GetAttachments()),
 			Comment:     ig.Comment,
+			IsDefault:   isDefaultReflectionIntegration(ig),
 		}
 		switch ig.Type {
 		case "http-proxy":
@@ -1181,6 +1183,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 				Attachments: nonNil(ig.GetAttachments()),
 				IsTeam:      true,
 				Comment:     ig.Comment,
+				IsDefault:   isDefaultReflectionIntegration(ig),
 			}
 			switch ig.Type {
 			case "http-proxy":

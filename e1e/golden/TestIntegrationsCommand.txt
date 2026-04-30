@@ -37,7 +37,7 @@ Region: lax (Los Angeles, USA)
 SSH Keys:
   Public Key: SSH_PUBKEY (key-1) ← current
 PROMPT ▶ integrations list
-No integrations configured.
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations add http-proxy --name=myproxy --target=https://example.com --header=X-Auth:secret123
 Added integration myproxy
 
@@ -48,6 +48,7 @@ Usage from a VM:
   curl http://myproxy.int.exe.cloud/
 PROMPT ▶ integrations list
 myproxy  http-proxy  target=https://example.com header=X-Auth:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://other.com --header=Authorization:Bearer-tok
 Added integration otherproxy
 
@@ -59,10 +60,12 @@ Usage from a VM:
 PROMPT ▶ integrations list
 otherproxy  http-proxy  target=https://other.com header=Authorization:***  (none)
 myproxy  http-proxy  target=https://example.com header=X-Auth:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove myproxy
 Removed integration myproxy
 PROMPT ▶ integrations list
 otherproxy  http-proxy  target=https://other.com header=Authorization:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove doesnotexist
 integration "doesnotexist" not found
 PROMPT ▶ integrations add http-proxy --target=https://x.com --header=X-Foo:bar

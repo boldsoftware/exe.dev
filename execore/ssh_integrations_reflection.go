@@ -2,7 +2,9 @@ package execore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -38,6 +40,62 @@ var reflectionFieldsAll = []string{
 	reflectionFieldIntegrations,
 	reflectionFieldTags,
 	reflectionFieldComment,
+}
+
+const (
+	defaultReflectionIntegrationName       = "reflection"
+	defaultReflectionIntegrationAttachment = "auto:all"
+	defaultReflectionIntegrationComment    = "Installed by default for new users. Accessing https://reflection.int.exe.xyz/ returns metadata about the VM, including other attached integrations. To disable, detach from auto:all."
+)
+
+func defaultReflectionIntegrationConfigJSON() (string, error) {
+	cfg := reflectionIntegrationConfig{Fields: []string{reflectionFieldAll}}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func isDefaultReflectionIntegration(ig exedb.Integration) bool {
+	if ig.Type != "reflection" || ig.Name != defaultReflectionIntegrationName || ig.TeamID != nil || ig.Comment != defaultReflectionIntegrationComment {
+		return false
+	}
+	var cfg reflectionIntegrationConfig
+	if err := json.Unmarshal([]byte(ig.Config), &cfg); err != nil {
+		return false
+	}
+	return len(cfg.Fields) == 1 && cfg.Fields[0] == reflectionFieldAll
+}
+
+func installDefaultReflectionIntegration(ctx context.Context, queries *exedb.Queries, userID string) error {
+	if _, err := queries.GetIntegrationByOwnerAndName(ctx, exedb.GetIntegrationByOwnerAndNameParams{
+		OwnerUserID: userID,
+		Name:        defaultReflectionIntegrationName,
+	}); err == nil {
+		return nil
+	} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	cfgJSON, err := defaultReflectionIntegrationConfigJSON()
+	if err != nil {
+		return err
+	}
+	id, err := generateID("int")
+	if err != nil {
+		return err
+	}
+	return queries.InsertIntegration(ctx, exedb.InsertIntegrationParams{
+		IntegrationID: id,
+		OwnerUserID:   userID,
+		Type:          "reflection",
+		Config:        cfgJSON,
+		Name:          defaultReflectionIntegrationName,
+		Attachments:   exedb.AttachmentsJSON([]string{defaultReflectionIntegrationAttachment}),
+		TeamID:        nil,
+		Comment:       defaultReflectionIntegrationComment,
+	})
 }
 
 // reflectionAll reports whether the configured fields include the "all"

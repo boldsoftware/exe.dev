@@ -2100,6 +2100,14 @@ func TestCreateUserRecordCreatesAccountAndPlan(t *testing.T) {
 		t.Errorf("account.created_by=%q, want %q", acct.CreatedBy, userID)
 	}
 
+	ints, err := withRxRes1(server, ctx, (*exedb.Queries).ListIntegrationsByUser, userID)
+	if err != nil {
+		t.Fatalf("ListIntegrationsByUser: %v", err)
+	}
+	if len(ints) != 1 || !isDefaultReflectionIntegration(ints[0]) {
+		t.Fatalf("new user integrations = %#v, want exactly default reflection integration", ints)
+	}
+
 	// Account must have exactly one active plan with plan_id='basic'.
 	ap, err := withRxRes1(server, ctx, (*exedb.Queries).GetActiveAccountPlan, acct.ID)
 	if err != nil {

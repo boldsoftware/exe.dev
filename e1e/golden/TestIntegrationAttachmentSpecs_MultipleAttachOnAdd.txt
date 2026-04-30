@@ -16,6 +16,7 @@ Usage from a VM:
 PROMPT ▶ integrations list
 multiint  http-proxy  target=https://example.com header=X-Auth:***  vm:BOX_NAME auto:all
 testint  http-proxy  target=https://example.com header=X-Auth:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations remove multiint
 Removed integration multiint
 PROMPT ▶ exit

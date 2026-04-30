@@ -123,6 +123,7 @@ export interface IntegrationInfo {
   peerVM?: string
   comment: string
   reflectionFields?: string[]
+  isDefault?: boolean
 }
 
 export interface GitHubAccountInfo {

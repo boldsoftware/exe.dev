@@ -16,6 +16,7 @@ PROMPT ▶ integrations attach testint auto:all
 Attached testint to auto:all
 PROMPT ▶ integrations list
 testint  http-proxy  target=https://example.com header=X-Auth:***  vm:BOX_NAME tag:prod auto:all
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations detach testint tag:prod
 Detached testint from tag:prod
 PROMPT ▶ integrations detach testint auto:all
@@ -24,5 +25,6 @@ PROMPT ▶ integrations detach testint vm:BOX_NAME
 Detached testint from vm:BOX_NAME
 PROMPT ▶ integrations list
 testint  http-proxy  target=https://example.com header=X-Auth:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ exit
 Goodbye!

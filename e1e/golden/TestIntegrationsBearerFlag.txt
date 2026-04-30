@@ -46,6 +46,7 @@ Usage from a VM:
   curl http://bearerproxy.int.exe.cloud/
 PROMPT ▶ integrations list
 bearerproxy  http-proxy  target=https://example.com header=Authorization:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations add http-proxy --name=bearerproxy2 --target=https://other.com --bearer=another-token-456
 Added integration bearerproxy2
 
@@ -57,6 +58,7 @@ Usage from a VM:
 PROMPT ▶ integrations list
 bearerproxy2  http-proxy  target=https://other.com header=Authorization:***  (none)
 bearerproxy  http-proxy  target=https://example.com header=Authorization:***  (none)
+reflection  reflection  fields=all  auto:all
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com --header=X-Foo:bar --bearer=tok
 --header and --bearer are mutually exclusive
 PROMPT ▶ integrations add http-proxy --name=bad --target=https://x.com
