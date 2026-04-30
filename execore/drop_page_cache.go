@@ -101,26 +101,58 @@ func (s *Server) dropPageCacheOnBox(ctx context.Context, box *exedb.Box) (*dropP
 	// as the login user with sudo. Only auth-class failures fall back —
 	// other errors (timeout, network, command failure) are returned as is
 	// so we don't paper over real problems.
+	loginUser := ""
+	if box.SSHUser != nil {
+		loginUser = *box.SSHUser
+	}
+	sshPort := 0
+	if box.SSHPort != nil {
+		sshPort = int(*box.SSHPort)
+	}
+	log := s.slog().With(
+		"box", box.Name,
+		"ctrhost", box.Ctrhost,
+		"ssh_port", sshPort,
+		"login_user", loginUser,
+	)
+	log.InfoContext(ctx, "drop-page-cache: trying root")
 	authMethod := "root"
+	t0 := time.Now()
 	out, err := runCommandOnBoxAsUser(cctx, s.sshPool, box, "root", dropPageCacheCommandRoot, nil)
 	var rootErr error
-	if err != nil && isSSHHandshakeError(err) {
-		rootErr = err
-		authMethod = "sudo"
-		out, err = runCommandOnBox(cctx, s.sshPool, box, dropPageCacheCommandSudo)
-		if err != nil {
-			// Surface both the root attempt and the sudo attempt so
-			// operators can tell which auth path was actually broken.
-			err = fmt.Errorf("root: %w; sudo: %w", rootErr, err)
+	if err != nil {
+		handshake := isSSHHandshakeError(err)
+		log.InfoContext(ctx, "drop-page-cache: root attempt failed",
+			"err", err.Error(),
+			"handshake_error", handshake,
+			"output", string(truncOutput(out, 1024)),
+			"elapsed", time.Since(t0),
+		)
+		if handshake {
+			rootErr = err
+			authMethod = "sudo"
+			log.InfoContext(ctx, "drop-page-cache: falling back to sudo as login user",
+				"sudo_user", loginUser,
+			)
+			t1 := time.Now()
+			out, err = runCommandOnBox(cctx, s.sshPool, box, dropPageCacheCommandSudo)
+			if err != nil {
+				log.InfoContext(ctx, "drop-page-cache: sudo attempt failed",
+					"err", err.Error(),
+					"output", string(truncOutput(out, 1024)),
+					"elapsed", time.Since(t1),
+				)
+				// Surface both the root attempt and the sudo attempt so
+				// operators can tell which auth path was actually broken.
+				err = fmt.Errorf("root: %w; sudo: %w", rootErr, err)
+			}
 		}
 	}
 	if err != nil {
 		return &dropPageCacheResult{RawOutput: out}, err
 	}
 	res := parseDropPageCacheOutput(out)
-	s.slog().InfoContext(ctx, "drop-page-cache",
-		"box", box.Name,
-		"ctrhost", box.Ctrhost,
+	log.InfoContext(ctx, "drop-page-cache",
 		"auth", authMethod,
 		"memfree_before_bytes", res.MemFreeBeforeBytes,
 		"memfree_after_bytes", res.MemFreeAfterBytes,
