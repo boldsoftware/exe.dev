@@ -150,7 +150,7 @@
     specs.push(lineChart(
       'Memory Used', width, height, multiVM,
       'memory_used_gb', 'GB', memUsedSort,
-      [{field: 'memory_used_gb', title: 'Used', format: '.2f'},
+      [{field: 'memory_used_gb', title: 'Memory', format: '.2f'},
        {field: 'memory_nominal_gb', title: 'Nominal', format: '.1f'}],
       maxMemNom > 0 ? {domain: [0, maxMemNom]} : {},
       maxMemNom > 0 ? maxMemNom : null

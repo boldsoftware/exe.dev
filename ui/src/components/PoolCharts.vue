@@ -10,7 +10,7 @@
 
     <div v-else class="chart-grid">
       <div class="chart-card">
-        <div class="chart-label">vCPU <span class="chart-current">{{ cpuCurrent }}</span></div>
+        <div class="chart-label">CPU <span class="chart-current">{{ cpuCurrent }}</span></div>
         <div class="chart-wrap">
           <canvas ref="cpuCanvas"></canvas>
         </div>
@@ -56,20 +56,20 @@ const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
 const cpuCurrent = computed(() => {
   if (points.value.length === 0) return ''
   const last = points.value[points.value.length - 1]
-  return `${last.cpu_cores.sum.toFixed(1)} / ${cpuLimit.value} cores`
+  return `avg ${last.cpu_cores.avg.toFixed(1)} / ${cpuLimit.value} vCPUs`
 })
 
 const memCurrent = computed(() => {
   if (points.value.length === 0 || memLimit.value === 0) return ''
   const last = points.value[points.value.length - 1]
-  return `${fmtGB(last.mem_bytes.sum)} / ${fmtGB(memLimit.value)}`
+  return `avg ${fmtGiB(last.mem_bytes.avg)} / ${fmtGiB(memLimit.value)}`
 })
 
-function fmtGB(bytes: number): string {
-  const gb = bytes / (1024 * 1024 * 1024)
-  if (gb >= 1) return gb.toFixed(1) + ' GB'
-  const mb = bytes / (1024 * 1024)
-  return mb.toFixed(0) + ' MB'
+function fmtGiB(bytes: number): string {
+  const gib = bytes / (1024 * 1024 * 1024)
+  if (gib >= 1) return gib.toFixed(1) + ' GiB'
+  const mib = bytes / (1024 * 1024)
+  return mib.toFixed(0) + ' MiB'
 }
 
 function fmtTime(ts: string): string {
@@ -92,14 +92,13 @@ function getChartColors() {
 function buildChart(
   canvas: HTMLCanvasElement,
   labels: string[],
-  sumData: number[],
   avgData: number[],
   limit: number,
   yLabel: string,
   formatY: (v: number) => string,
 ): Chart {
   const colors = getChartColors()
-  const yMax = Math.max(limit * 1.15, ...sumData) || 1
+  const yMax = Math.max(limit * 1.15, ...avgData) || 1
 
   return new Chart(canvas, {
     type: 'line',
@@ -107,8 +106,8 @@ function buildChart(
       labels,
       datasets: [
         {
-          label: 'Total (sum)',
-          data: sumData,
+          label: 'Average',
+          data: avgData,
           borderColor: colors.primary,
           backgroundColor: colors.primary + '30',
           borderWidth: 1.5,
@@ -118,19 +117,7 @@ function buildChart(
           tension: 0.3,
         },
         {
-          label: 'Avg per VM',
-          data: avgData,
-          borderColor: colors.muted,
-          backgroundColor: colors.muted + '15',
-          borderWidth: 1,
-          borderDash: [4, 3],
-          fill: false,
-          pointRadius: 0,
-          pointHitRadius: 8,
-          tension: 0.3,
-        },
-        {
-          label: 'Pool limit',
+          label: 'Pool size',
           data: new Array(labels.length).fill(limit),
           borderColor: '#cf222e',
           borderWidth: 1.5,
@@ -151,9 +138,35 @@ function buildChart(
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: '#fff',
+          borderColor: colors.border,
+          borderWidth: 1,
+          titleColor: colors.muted,
+          titleFont: {
+            family:
+              "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+            size: 11,
+          },
+          bodyFont: {
+            family:
+              "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+            size: 11,
+          },
+          padding: 8,
+          boxWidth: 8,
+          boxHeight: 8,
+          usePointStyle: true,
           callbacks: {
             label: (ctx) => {
               return `${ctx.dataset.label}: ${formatY(ctx.parsed.y ?? 0)}`
+            },
+            labelColor: (ctx) => {
+              const isLimit = ctx.datasetIndex === 1
+              const c = isLimit ? '#cf222e' : colors.muted
+              return { borderColor: c, backgroundColor: c }
+            },
+            labelTextColor: (ctx) => {
+              return ctx.datasetIndex === 1 ? '#cf222e' : colors.muted
             },
           },
         },
@@ -199,7 +212,6 @@ function renderCharts() {
     cpuChart = buildChart(
       cpuCanvas.value,
       labels,
-      points.value.map((p) => p.cpu_cores.sum),
       points.value.map((p) => p.cpu_cores.avg),
       cpuLimit.value,
       'cores',
@@ -211,11 +223,10 @@ function renderCharts() {
     memChart = buildChart(
       memCanvas.value,
       labels,
-      points.value.map((p) => p.mem_bytes.sum),
       points.value.map((p) => p.mem_bytes.avg),
       memLimit.value,
-      'GB',
-      (v) => fmtGB(v),
+      'GiB',
+      (v) => fmtGiB(v),
     )
   }
 }
@@ -276,7 +287,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--surface-inset);
+  background: var(--surface-card);
   border: 1px solid var(--surface-border);
   border-radius: 6px;
   padding: 14px 16px;

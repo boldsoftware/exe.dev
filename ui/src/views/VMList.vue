@@ -19,8 +19,8 @@
       </div>
       <div class="section-right">
         <div v-if="hasUsage" class="view-toggle">
-          <button :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">List</button>
-          <button :class="{ active: viewMode === 'usage' }" @click="viewMode = 'usage'">Usage</button>
+          <button :class="{ active: viewMode === 'list' }" @click="$router.push({ name: 'vms' })">List</button>
+          <button :class="{ active: viewMode === 'usage' }" @click="$router.push({ name: 'vms-usage' })">Usage</button>
         </div>
         <ViewPopover v-model="viewOptions" :mode="viewMode" :hours="usageHours" @update:hours="usageHours = $event" />
         <div class="search-box">
@@ -93,7 +93,7 @@
     </div>
 
     <!-- Shared VMs -->
-    <div v-if="sharedBoxes.length > 0" class="shared-section">
+    <div v-if="sharedBoxes.length > 0 && viewMode === 'list'" class="shared-section">
       <h2 class="section-title">Shared with you</h2>
       <div class="boxes-list">
         <div v-for="box in sharedBoxes" :key="box.name" class="shared-row">
@@ -108,7 +108,7 @@
     </div>
 
     <!-- Team-shared VMs -->
-    <div v-if="teamSharedBoxes.length > 0" class="shared-section">
+    <div v-if="teamSharedBoxes.length > 0 && viewMode === 'list'" class="shared-section">
       <h2 class="section-title">Shared with your team</h2>
       <div class="boxes-list">
         <div v-for="box in teamSharedBoxes" :key="box.name" class="shared-row">
@@ -127,7 +127,7 @@
     </div>
 
     <!-- Team VMs (admin view) -->
-    <div v-if="teamBoxes.length > 0" class="shared-section">
+    <div v-if="teamBoxes.length > 0 && viewMode === 'list'" class="shared-section">
       <h2 class="section-title">Team VMs</h2>
       <div class="boxes-list">
         <div v-for="box in teamBoxes" :key="box.name" class="shared-row">
@@ -310,7 +310,7 @@ const hasTeam = ref(false)
 const searchQuery = ref((route.query.filter as string) || '')
 const sshCommand = ref('')
 const trialInfo = ref<TrialInfo | null>(null)
-const viewMode = ref<'list' | 'usage'>(route.name === 'vms-usage' ? 'usage' : 'list')
+const viewMode = computed(() => route.name === 'vms-usage' ? 'usage' as const : 'list' as const)
 const usageHours = ref(24)
 const hasUsage = ref(false)
 

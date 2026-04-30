@@ -219,7 +219,7 @@ func (ss *SSHServer) writeBillingPlanPoolBars(ctx context.Context, cc *exemenu.C
 
 	if tier.Quotas.MaxCPUs > 0 {
 		cpuMax := float64(tier.Quotas.MaxCPUs)
-		suffix := fmt.Sprintf("%.1f / %d cores", clampF64(cpuUsed, cpuMax), tier.Quotas.MaxCPUs)
+		suffix := fmt.Sprintf("%.1f / %d vCPUs", clampF64(cpuUsed, cpuMax), tier.Quotas.MaxCPUs)
 		cc.Writeln("  vCPU:      %s", poolBar(cpuUsed, cpuMax, suffix))
 	}
 	if tier.Quotas.MaxMemory > 0 {

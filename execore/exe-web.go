@@ -666,6 +666,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.serveDashboardUI(w, r)
 		return
+	case "/vms/usage":
+		if _, err := s.validateAuthCookie(r); err != nil {
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.serveDashboardUI(w, r)
+		return
 	case "/usage":
 		userID, err := s.validateAuthCookie(r)
 		if err != nil {

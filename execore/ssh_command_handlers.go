@@ -2176,7 +2176,10 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
 
 	if len(cc.Args) != 1 {
-		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8 GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
+		if isSudo {
+			return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8 GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
+		}
+		return cc.Errorf("usage: resize <vmname> --disk=<size>\nDisk size is in GiB (e.g., '25' for 25 GiB). Disk can only be grown, not shrunk.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])

@@ -17,7 +17,7 @@
         </div>
         <div class="nav-right">
           <template v-if="isLoggedIn">
-            <router-link to="/" class="nav-btn" :class="{ active: route.name === 'vms' }">
+            <router-link to="/" class="nav-btn" :class="{ active: route.name === 'vms' || route.name === 'vms-usage' }">
               <i class="pi pi-box"></i>
               <span class="nav-btn-text">VMs</span>
             </router-link>

@@ -88,7 +88,7 @@
     {
       group: 'Memory',
       cols: [
-        {key: 'memory_used_gb', label: 'Used', fmt: fmtGB, color: '#1f77b4', nominal: 'memory_nominal_gb',
+        {key: 'memory_used_gb', label: 'Memory', fmt: fmtGB, color: '#1f77b4', nominal: 'memory_nominal_gb',
          tooltip: 'VM memory used (cgroup memory.current minus reclaimable host page cache)'},
         {key: 'memory_swap_gb', label: 'Swap', fmt: fmtGB, color: '#9467bd',
          tooltip: 'Swap usage'},

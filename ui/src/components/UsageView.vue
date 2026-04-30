@@ -16,45 +16,49 @@
     <!-- Usage Table -->
     <template v-else-if="filteredRows.length > 0">
     <div class="table-heading">VMs <span class="table-heading-range">{{ rangeLabel }}</span></div>
-    <div class="boxes-list">
-      <div class="usage-header">
-        <button class="col-btn" @click="toggleSort('name')">VM <i :class="sortIcon('name')" class="sort-icon"></i></button>
-        <button class="col-btn col-right" @click="toggleSort('cpu')">CPU <i :class="sortIcon('cpu')" class="sort-icon"></i></button>
-        <button class="col-btn col-right" @click="toggleSort('mem')">Used <i :class="sortIcon('mem')" class="sort-icon"></i></button>
-        <button class="col-btn col-right" @click="toggleSort('disk')">Disk <i :class="sortIcon('disk')" class="sort-icon"></i></button>
-        <button class="col-btn col-right" @click="toggleSort('io')">IO <i :class="sortIcon('io')" class="sort-icon"></i></button>
-      </div>
-      <div v-for="row in filteredRows" :key="row.name" class="box-row" @click="$router.push(`/vm/${row.name}`)">
-        <div class="vm-cell">
-          <StatusDot :status="row.status" />
-          <router-link :to="`/vm/${row.name}`" class="vm-name" @click.stop>{{ row.name }}</router-link>
-        </div>
-        <div class="metric-cell">
-          <svg class="spark-svg" width="64" height="18" viewBox="0 0 64 18">
-            <polyline :points="row.cpuSpark" style="stroke: #ff7f0e" />
-          </svg>
-          <span class="metric-value">{{ row.cpuLabel }}</span>
-        </div>
-        <div class="metric-cell">
-          <svg class="spark-svg" width="64" height="18" viewBox="0 0 64 18">
-            <polyline :points="row.memSpark" style="stroke: #1f77b4" />
-          </svg>
-          <span class="metric-value">{{ row.memLabel }}</span>
-        </div>
-        <div class="metric-cell">
-          <svg class="spark-svg" width="64" height="18" viewBox="0 0 64 18">
-            <polyline :points="row.diskSpark" style="stroke: #9467bd" />
-          </svg>
-          <span class="metric-value">{{ row.diskLabel }}</span>
-        </div>
-        <div class="metric-cell">
-          <svg class="spark-svg" width="64" height="18" viewBox="0 0 64 18">
-            <polyline :points="row.ioSpark" style="stroke: #17becf" />
-          </svg>
-          <span class="metric-value">{{ row.ioLabel }}</span>
-        </div>
-      </div>
-    </div>
+    <DataTable
+      :value="filteredRows"
+      sortField="name"
+      :sortOrder="1"
+      stripedRows
+      size="small"
+      class="usage-table"
+      tableStyle="width: 100%"
+      @row-click="onRowClick"
+    >
+      <Column field="name" header="VM" sortable>
+        <template #body="{ data }">
+          <div class="vm-cell">
+            <StatusDot :status="data.status" />
+            <router-link :to="`/vm/${data.name}`" class="vm-name" @click.stop>{{ data.name }}</router-link>
+          </div>
+        </template>
+      </Column>
+      <Column field="cpuSort" header="vCPUs" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
+        <template #body="{ data }">
+          <div class="metric-cell">
+            <!-- <TufteSpark :values="data.cpuValues" :scale-max="data.cpuNominal" color="#ff7f0e" /> -->
+            <span class="metric-value">{{ data.cpuLabel }}</span>
+          </div>
+        </template>
+      </Column>
+      <Column field="memSort" header="Memory" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
+        <template #body="{ data }">
+          <div class="metric-cell">
+            <!-- <TufteSpark :values="data.memValues" color="#1f77b4" /> -->
+            <span class="metric-value">{{ data.memLabel }}</span>
+          </div>
+        </template>
+      </Column>
+      <Column field="diskSort" header="Disk" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
+        <template #body="{ data }">
+          <div class="metric-cell">
+            <!-- <TufteSpark :values="data.diskValues" color="#9467bd" /> -->
+            <span class="metric-value">{{ data.diskLabel }}</span>
+          </div>
+        </template>
+      </Column>
+    </DataTable>
     </template>
 
     <!-- No data -->
@@ -66,6 +70,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 import {
   fetchUsageHistory,
   fetchVMsPool,
@@ -76,6 +83,7 @@ import {
 } from '../api/client'
 import StatusDot from './StatusDot.vue'
 import PoolCharts from './PoolCharts.vue'
+// import TufteSpark from './TufteSpark.vue'
 
 const props = defineProps<{
   boxes: BoxInfo[]
@@ -83,6 +91,7 @@ const props = defineProps<{
   hours: number
 }>()
 
+const router = useRouter()
 const pool = ref<VMsPoolResponse | null>(null)
 const history = ref<UsageHistoryResponse>({})
 const historyLoading = ref(false)
@@ -94,24 +103,8 @@ const ranges = [
 
 const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.label ?? '')
 
-// Sorting.
-type SortCol = 'name' | 'cpu' | 'mem' | 'disk' | 'io'
-const sortCol = ref<SortCol>('name')
-const sortAsc = ref(true)
-
-function toggleSort(col: SortCol) {
-  if (sortCol.value === col) {
-    sortAsc.value = !sortAsc.value
-  } else {
-    sortCol.value = col
-    // Default descending for metrics, ascending for name.
-    sortAsc.value = col === 'name'
-  }
-}
-
-function sortIcon(col: SortCol): string {
-  if (sortCol.value !== col) return 'pi pi-sort-alt'
-  return sortAsc.value ? 'pi pi-sort-amount-up-alt' : 'pi pi-sort-amount-down'
+function onRowClick(e: { data: UsageRow }) {
+  router.push(`/vm/${e.data.name}`)
 }
 
 async function loadData() {
@@ -131,77 +124,62 @@ async function loadData() {
 }
 
 onMounted(loadData)
-watch(() => props.hours, async () => {
-  historyLoading.value = true
-  try {
-    history.value = await fetchUsageHistory(props.hours)
-  } catch {
-    /* ignore */
-  } finally {
-    historyLoading.value = false
-  }
-})
+watch(
+  () => props.hours,
+  async () => {
+    historyLoading.value = true
+    try {
+      history.value = await fetchUsageHistory(props.hours)
+    } catch {
+      /* ignore */
+    } finally {
+      historyLoading.value = false
+    }
+  },
+)
 
-// Build a status lookup from boxes prop.
 const boxStatusMap = computed(() => {
   const m = new Map<string, string>()
   for (const b of props.boxes) m.set(b.name, b.status)
   return m
 })
 
-// Per-VM row data with raw sort values.
 interface UsageRow {
   name: string
   status: string
-  cpuSpark: string
+  cpuValues: number[]
+  cpuNominal: number
   cpuLabel: string
   cpuSort: number
-  memSpark: string
+  memValues: number[]
   memLabel: string
   memSort: number
-  diskSpark: string
+  diskValues: number[]
   diskLabel: string
   diskSort: number
-  ioSpark: string
-  ioLabel: string
-  ioSort: number
 }
 
-function makeSpark(values: number[], scaleMax?: number): string {
-  const w = 64,
-    h = 18
-  if (values.length === 0) return ''
-  const max = scaleMax ?? Math.max(...values, 0.001)
-  return values
-    .map((v, i) => {
-      const x = values.length === 1 ? w / 2 : (i / (values.length - 1)) * w
-      const y = h - (Math.max(v, 0) / max) * (h - 2) - 1
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
+function fmtCores(cores: number): string {
+  if (cores < 0.01) return '0'
+  if (cores < 0.1) return cores.toFixed(2)
+  return cores.toFixed(1)
 }
 
-function fmtPct(cores: number, nominal: number): string {
-  if (nominal <= 0) return '0%'
-  return Math.round((cores / nominal) * 100) + '%'
-}
+// Backend returns decimal GB (bytes / 1e9). Convert to GiB for display.
+const GB_TO_GIB = 1e9 / (1024 * 1024 * 1024) // ~0.9313
 
 function fmtMem(gb: number): string {
-  if (gb >= 1) return gb.toFixed(1) + ' GB'
-  const mb = gb * 1024
-  return mb < 1 ? '0 MB' : mb.toFixed(0) + ' MB'
+  const gib = gb * GB_TO_GIB
+  if (gib >= 1) return gib.toFixed(1) + ' GiB'
+  const mib = gib * 1024
+  return mib < 1 ? '0 MiB' : mib.toFixed(0) + ' MiB'
 }
 
-function fmtGB(gb: number): string {
-  return gb.toFixed(1) + ' GB'
+function fmtDisk(gb: number): string {
+  return (gb * GB_TO_GIB).toFixed(1) + ' GiB'
 }
 
-function fmtIO(mbps: number): string {
-  if (mbps < 0.1) return '0'
-  return mbps.toFixed(1) + ' MB/s'
-}
-
-function lastValue(points: UsageDataPoint[], field: keyof UsageDataPoint): number {
+function lastVal(points: UsageDataPoint[], field: keyof UsageDataPoint): number {
   if (points.length === 0) return 0
   return points[points.length - 1][field] as number
 }
@@ -216,64 +194,31 @@ const rows = computed<UsageRow[]>(() => {
   for (const name of allNames) {
     const points = history.value[name] ?? []
     const status = boxStatusMap.value.get(name) ?? 'unknown'
-    const cpuNominal = points.length > 0 ? lastValue(points, 'cpu_nominal') : 1
+    const cpuNominal = points.length > 0 ? lastVal(points, 'cpu_nominal') : 1
 
-    const cpuValues = points.map((p) => (cpuNominal > 0 ? p.cpu_cores / cpuNominal : 0))
-    const memValues = points.map((p) => p.memory_used_gb)
-    const diskValues = points.map((p) => p.disk_used_gb)
-    const ioValues = points.map((p) => p.io_read_mbps + p.io_write_mbps)
-
-    const cpuLast = points.length > 0 ? lastValue(points, 'cpu_cores') : 0
-    const memLast = points.length > 0 ? lastValue(points, 'memory_used_gb') : 0
-    const diskLast = points.length > 0 ? lastValue(points, 'disk_used_gb') : 0
-    const ioLast = points.length > 0 ? lastValue(points, 'io_read_mbps') + lastValue(points, 'io_write_mbps') : 0
+    const cpuLast = points.length > 0 ? lastVal(points, 'cpu_cores') : 0
+    const memLast = points.length > 0 ? lastVal(points, 'memory_used_gb') : 0
+    const diskLast = points.length > 0 ? lastVal(points, 'disk_used_gb') : 0
 
     result.push({
       name,
       status,
-      cpuSpark: makeSpark(cpuValues, 1),
-      cpuLabel: points.length > 0 ? fmtPct(cpuLast, cpuNominal) : '\u2014',
-      cpuSort: cpuNominal > 0 ? cpuLast / cpuNominal : 0,
-      memSpark: makeSpark(memValues),
+      cpuValues: points.map((p) => p.cpu_cores),
+      cpuNominal: cpuNominal > 0 ? cpuNominal : 1,
+      cpuLabel: points.length > 0 ? fmtCores(cpuLast) : '\u2014',
+      cpuSort: cpuLast,
+      memValues: points.map((p) => p.memory_used_gb),
       memLabel: points.length > 0 ? fmtMem(memLast) : '\u2014',
       memSort: memLast,
-      diskSpark: makeSpark(diskValues),
-      diskLabel: points.length > 0 ? fmtGB(diskLast) : '\u2014',
+      diskValues: points.map((p) => p.disk_used_gb),
+      diskLabel: points.length > 0 ? fmtDisk(diskLast) : '\u2014',
       diskSort: diskLast,
-      ioSpark: makeSpark(ioValues),
-      ioLabel: points.length > 0 ? fmtIO(ioLast) : '\u2014',
-      ioSort: ioLast,
     })
   }
-
-  // Sort by selected column.
-  const col = sortCol.value
-  const asc = sortAsc.value
-  result.sort((a, b) => {
-    let cmp: number
-    switch (col) {
-      case 'cpu':
-        cmp = a.cpuSort - b.cpuSort
-        break
-      case 'mem':
-        cmp = a.memSort - b.memSort
-        break
-      case 'disk':
-        cmp = a.diskSort - b.diskSort
-        break
-      case 'io':
-        cmp = a.ioSort - b.ioSort
-        break
-      default:
-        cmp = a.name.localeCompare(b.name)
-    }
-    return asc ? cmp : -cmp
-  })
 
   return result
 })
 
-// Filter rows by name.
 const filteredRows = computed(() => {
   const q = props.filter.trim().toLowerCase()
   if (!q) return rows.value
@@ -288,7 +233,6 @@ const filteredRows = computed(() => {
   gap: 12px;
 }
 
-/* Beta banner */
 .beta-banner {
   font-size: 12px;
   color: var(--badge-public-text);
@@ -312,7 +256,6 @@ const filteredRows = computed(() => {
   margin-right: 4px;
 }
 
-/* Table heading */
 .table-heading {
   font-size: 11px;
   font-weight: 600;
@@ -330,61 +273,8 @@ const filteredRows = computed(() => {
   font-size: 10px;
 }
 
-/* Table — matches .boxes-list from VMList.vue */
-.boxes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: var(--surface-border);
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.usage-header {
-  display: grid;
-  grid-template-columns: minmax(160px, 1.5fr) 1fr 1fr 1fr 1fr;
-  background: var(--surface-inset);
-  padding: 0 16px;
-}
-
-.col-btn {
-  background: none;
-  border: none;
-  padding: 6px 0;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: var(--text-color-muted);
+.usage-table :deep(.p-datatable-tbody > tr) {
   cursor: pointer;
-  font-family: inherit;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.col-btn:hover {
-  color: var(--text-color);
-}
-.col-btn.col-right {
-  justify-content: flex-end;
-}
-.sort-icon {
-  font-size: 10px;
-  opacity: 0.6;
-}
-
-.box-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 1.5fr) 1fr 1fr 1fr 1fr;
-  align-items: center;
-  background: var(--surface-card);
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.box-row:hover {
-  background: var(--surface-hover);
 }
 
 .vm-cell {
@@ -411,20 +301,14 @@ const filteredRows = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  justify-content: flex-end;
+  justify-content: center;
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-color);
 }
 .metric-value {
-  min-width: 55px;
-  text-align: right;
-}
-
-.spark-svg polyline {
-  fill: none;
-  stroke-width: 1.5;
+  text-align: center;
 }
 
 .usage-loading {
@@ -440,15 +324,8 @@ const filteredRows = computed(() => {
 }
 
 @media (max-width: 768px) {
-  .usage-header,
-  .box-row {
-    grid-template-columns: minmax(100px, 1.2fr) 1fr 1fr;
-  }
-  /* Hide disk and IO on mobile */
-  .usage-header .col-btn:nth-child(4),
-  .usage-header .col-btn:nth-child(5),
-  .box-row > :nth-child(4),
-  .box-row > :nth-child(5) {
+  .usage-table :deep(th:nth-child(4)),
+  .usage-table :deep(td:nth-child(4)) {
     display: none;
   }
 }
