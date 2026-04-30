@@ -339,6 +339,17 @@ type OauthState struct {
 	CallbackUri          *string    `db:"callback_uri" json:"callback_uri"`
 }
 
+type OtherStripeEvent struct {
+	ID              int64     `db:"id" json:"id"`
+	StripeEventID   string    `db:"stripe_event_id" json:"stripe_event_id"`
+	EventType       string    `db:"event_type" json:"event_type"`
+	APIVersion      *string   `db:"api_version" json:"api_version"`
+	StripeCreatedAt int64     `db:"stripe_created_at" json:"stripe_created_at"`
+	ReceivedAt      time.Time `db:"received_at" json:"received_at"`
+	Source          string    `db:"source" json:"source"`
+	Payload         string    `db:"payload" json:"payload"`
+}
+
 type Passkey struct {
 	ID           int64      `db:"id" json:"id"`
 	UserID       string     `db:"user_id" json:"user_id"`

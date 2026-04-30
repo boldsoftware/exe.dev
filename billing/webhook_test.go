@@ -107,19 +107,11 @@ func TestHandleWebhook_Idempotent(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	var events []exedb.StripeWebhookEvent
-	err := exedb.WithRx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		var err error
-		events, err = q.ListStripeWebhookEventsByType(ctx, exedb.ListStripeWebhookEventsByTypeParams{
-			EventType: "invoice.paid",
-			Limit:     10,
-		})
-		return err
-	})
+	count, err := exedb.WithRxRes1(db, ctx, (*exedb.Queries).CountOtherStripeEventsByID, "evt_idempotent")
 	if err != nil {
-		t.Fatalf("failed to list events: %v", err)
+		t.Fatalf("failed to count events: %v", err)
 	}
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event after 3 identical requests, got %d", len(events))
+	if count != 1 {
+		t.Fatalf("expected 1 event after 3 identical requests, got %d", count)
 	}
 }

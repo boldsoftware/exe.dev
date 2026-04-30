@@ -135,6 +135,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countEmailBouncesStmt, err = db.PrepareContext(ctx, countEmailBounces); err != nil {
 		return nil, fmt.Errorf("error preparing query CountEmailBounces: %w", err)
 	}
+	if q.countOtherStripeEventsByIDStmt, err = db.PrepareContext(ctx, countOtherStripeEventsByID); err != nil {
+		return nil, fmt.Errorf("error preparing query CountOtherStripeEventsByID: %w", err)
+	}
 	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
 		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
 	}
@@ -918,6 +921,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
 	}
+	if q.insertOtherStripeEventStmt, err = db.PrepareContext(ctx, insertOtherStripeEvent); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertOtherStripeEvent: %w", err)
+	}
 	if q.insertPaidCreditsStmt, err = db.PrepareContext(ctx, insertPaidCredits); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPaidCredits: %w", err)
 	}
@@ -1616,6 +1622,11 @@ func (q *Queries) Close() error {
 	if q.countEmailBouncesStmt != nil {
 		if cerr := q.countEmailBouncesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countEmailBouncesStmt: %w", cerr)
+		}
+	}
+	if q.countOtherStripeEventsByIDStmt != nil {
+		if cerr := q.countOtherStripeEventsByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countOtherStripeEventsByIDStmt: %w", cerr)
 		}
 	}
 	if q.countPendingBoxSharesStmt != nil {
@@ -2923,6 +2934,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertOrReplaceEmailVerificationStmt: %w", cerr)
 		}
 	}
+	if q.insertOtherStripeEventStmt != nil {
+		if cerr := q.insertOtherStripeEventStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertOtherStripeEventStmt: %w", cerr)
+		}
+	}
 	if q.insertPaidCreditsStmt != nil {
 		if cerr := q.insertPaidCreditsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertPaidCreditsStmt: %w", cerr)
@@ -3849,6 +3865,7 @@ type Queries struct {
 	countBoxesForUserStmt                      *sql.Stmt
 	countDripSendsSinceStmt                    *sql.Stmt
 	countEmailBouncesStmt                      *sql.Stmt
+	countOtherStripeEventsByIDStmt             *sql.Stmt
 	countPendingBoxSharesStmt                  *sql.Stmt
 	countPendingBoxSharesByUserStmt            *sql.Stmt
 	countPendingTeamInvitesForUserStmt         *sql.Stmt
@@ -4110,6 +4127,7 @@ type Queries struct {
 	insertIntegrationStmt                      *sql.Stmt
 	insertOAuthStateStmt                       *sql.Stmt
 	insertOrReplaceEmailVerificationStmt       *sql.Stmt
+	insertOtherStripeEventStmt                 *sql.Stmt
 	insertPaidCreditsStmt                      *sql.Stmt
 	insertPasskeyStmt                          *sql.Stmt
 	insertPasskeyChallengeStmt                 *sql.Stmt
@@ -4323,6 +4341,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countBoxesForUserStmt:                      q.countBoxesForUserStmt,
 		countDripSendsSinceStmt:                    q.countDripSendsSinceStmt,
 		countEmailBouncesStmt:                      q.countEmailBouncesStmt,
+		countOtherStripeEventsByIDStmt:             q.countOtherStripeEventsByIDStmt,
 		countPendingBoxSharesStmt:                  q.countPendingBoxSharesStmt,
 		countPendingBoxSharesByUserStmt:            q.countPendingBoxSharesByUserStmt,
 		countPendingTeamInvitesForUserStmt:         q.countPendingTeamInvitesForUserStmt,
@@ -4584,6 +4603,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertIntegrationStmt:                      q.insertIntegrationStmt,
 		insertOAuthStateStmt:                       q.insertOAuthStateStmt,
 		insertOrReplaceEmailVerificationStmt:       q.insertOrReplaceEmailVerificationStmt,
+		insertOtherStripeEventStmt:                 q.insertOtherStripeEventStmt,
 		insertPaidCreditsStmt:                      q.insertPaidCreditsStmt,
 		insertPasskeyStmt:                          q.insertPasskeyStmt,
 		insertPasskeyChallengeStmt:                 q.insertPasskeyChallengeStmt,

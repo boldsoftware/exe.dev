@@ -6,8 +6,18 @@ import (
 	"net/http"
 
 	"exe.dev/exedb"
+	"github.com/stripe/stripe-go/v85"
 	"github.com/stripe/stripe-go/v85/webhook"
 )
+
+// subscriptionEventTypes are routed to stripe_webhook_events for the subscription pipeline.
+// Any other event type lands in other_stripe_events for out-of-band post-processing;
+// add a sibling routing branch here if a new category needs special in-process handling.
+var subscriptionEventTypes = map[stripe.EventType]bool{
+	"customer.subscription.created": true,
+	"customer.subscription.updated": true,
+	"customer.subscription.deleted": true,
+}
 
 // HandleWebhook receives Stripe webhook events, verifies the signature,
 // and stores the raw payload for later processing.
@@ -44,10 +54,25 @@ func (m *Manager) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = exedb.WithTx(m.DB, ctx, func(ctx context.Context, q *exedb.Queries) error {
-		return q.InsertStripeWebhookEvent(ctx, exedb.InsertStripeWebhookEventParams{
-			StripeEventID: event.ID,
-			EventType:     string(event.Type),
-			Payload:       string(body),
+		if subscriptionEventTypes[event.Type] {
+			return q.InsertStripeWebhookEvent(ctx, exedb.InsertStripeWebhookEventParams{
+				StripeEventID: event.ID,
+				EventType:     string(event.Type),
+				Payload:       string(body),
+			})
+		}
+		var apiVersion *string
+		if event.APIVersion != "" {
+			v := event.APIVersion
+			apiVersion = &v
+		}
+		return q.InsertOtherStripeEvent(ctx, exedb.InsertOtherStripeEventParams{
+			StripeEventID:   event.ID,
+			EventType:       string(event.Type),
+			APIVersion:      apiVersion,
+			StripeCreatedAt: event.Created,
+			Source:          "webhook",
+			Payload:         string(body),
 		})
 	})
 	if err != nil {
