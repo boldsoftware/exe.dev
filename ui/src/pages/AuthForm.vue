@@ -87,34 +87,52 @@ const passkeyExtra: Record<string, string> = {}
 if (page.response_mode) passkeyExtra.response_mode = page.response_mode
 if (page.callback_uri) passkeyExtra.callback_uri = page.callback_uri
 
+// Tracks the abort function for conditional (autofill) auth, so we can
+// cancel it before starting an explicit WebAuthn ceremony.
+let abortConditional: (() => void) | null = null
+
 onMounted(async () => {
   if (typeof passkey === 'undefined' || !passkey.isSupported()) return
 
+  // Always show the explicit passkey button so users can trigger
+  // cross-platform authenticators (e.g. YubiKeys) that don't appear
+  // in the conditional/autofill UI.
+  if (passkeySectionEl.value) {
+    passkeySectionEl.value.style.display = 'block'
+  }
+
   if (await passkey.isConditionalUISupported()) {
-    // Browser has native passkey autofill UI
-    passkey.startConditionalAuth(null, passkeyExtra).catch((err: any) => {
-      if (err.name !== 'NotAllowedError') {
-        if (err.message && err.message.includes('Resident credentials')) {
-          console.log('passkey conditional auth not fully supported:', err.message)
-          return
+    // Also start conditional auth for autofill-based passkey selection
+    const result = await passkey.startConditionalAuth(null, passkeyExtra)
+    if (result) {
+      abortConditional = result.abort
+      result.promise.catch((err: any) => {
+        if (err.name === 'AbortError') return // Expected when user clicks the explicit button
+        if (err.name !== 'NotAllowedError') {
+          if (err.message && err.message.includes('Resident credentials')) {
+            console.log('passkey conditional auth not fully supported:', err.message)
+            return
+          }
+          console.error('passkey conditional auth failed:', err)
+          if (passkeyErrorEl.value) {
+            passkeyErrorEl.value.textContent = err.message
+            passkeyErrorEl.value.style.display = 'block'
+          }
         }
-        console.error('passkey conditional auth failed:', err)
-        if (passkeyErrorEl.value) {
-          passkeyErrorEl.value.textContent = err.message
-          passkeyErrorEl.value.style.display = 'block'
-        }
-      }
-    })
-  } else {
-    // No conditional UI, show manual passkey button
-    if (passkeySectionEl.value) {
-      passkeySectionEl.value.style.display = 'block'
+      })
     }
   }
 })
 
 async function loginWithPasskey() {
   if (!passkeyErrorEl.value || !passkeyBtnEl.value) return
+
+  // Cancel any in-flight conditional auth — only one navigator.credentials.get()
+  // can be active at a time.
+  if (abortConditional) {
+    abortConditional()
+    abortConditional = null
+  }
 
   passkeyErrorEl.value.style.display = 'none'
   passkeyBtnEl.value.disabled = true
@@ -126,7 +144,7 @@ async function loginWithPasskey() {
     passkeyErrorEl.value.textContent = err.message
     passkeyErrorEl.value.style.display = 'block'
     passkeyBtnEl.value.disabled = false
-    passkeyBtnEl.value.textContent = 'Sign in with Passkey'
+    passkeyBtnEl.value.textContent = 'Sign in with passkey'
   }
 }
 </script>

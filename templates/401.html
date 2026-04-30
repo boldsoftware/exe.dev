@@ -84,33 +84,48 @@
       return url;
     }
 
+    var abortConditional = null;
+
     document.addEventListener('DOMContentLoaded', async function() {
       if (passkey.isSupported()) {
         const redirectURL = getPasskeyRedirectURL();
+
+        // Always show the explicit passkey button so users can trigger
+        // cross-platform authenticators (e.g. YubiKeys) that don't appear
+        // in the conditional/autofill UI.
+        document.getElementById('passkey-section').style.display = 'block';
+
         if (await passkey.isConditionalUISupported()) {
-          // Browser has native passkey autofill UI, use that instead of showing our button
-          passkey.startConditionalAuth(redirectURL).catch(function(err) {
-            // NotAllowedError happens if user dismisses the autofill or clicks the button instead
-            if (err.name !== 'NotAllowedError') {
-              // Some browsers report conditional UI support but don't actually support resident credentials
-              if (err.message && err.message.includes('Resident credentials')) {
-                console.log('passkey conditional auth not fully supported:', err.message);
-                return;
+          // Also start conditional auth for autofill-based passkey selection
+          var result = await passkey.startConditionalAuth(redirectURL);
+          if (result) {
+            abortConditional = result.abort;
+            result.promise.catch(function(err) {
+              if (err.name === 'AbortError') return; // Expected when user clicks the explicit button
+              if (err.name !== 'NotAllowedError') {
+                if (err.message && err.message.includes('Resident credentials')) {
+                  console.log('passkey conditional auth not fully supported:', err.message);
+                  return;
+                }
+                console.error('passkey conditional auth failed:', err);
+                var errorEl = document.getElementById('passkey-error');
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
               }
-              console.error('passkey conditional auth failed:', err);
-              var errorEl = document.getElementById('passkey-error');
-              errorEl.textContent = err.message;
-              errorEl.style.display = 'block';
-            }
-          });
-        } else {
-          // No conditional UI, show the manual passkey button
-          document.getElementById('passkey-section').style.display = 'block';
+            });
+          }
         }
       }
     });
 
     async function loginWithPasskey() {
+      // Cancel any in-flight conditional auth — only one navigator.credentials.get()
+      // can be active at a time.
+      if (abortConditional) {
+        abortConditional();
+        abortConditional = null;
+      }
+
       const errorEl = document.getElementById('passkey-error');
       const btn = document.getElementById('passkey-login-btn');
 

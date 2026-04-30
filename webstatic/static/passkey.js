@@ -111,7 +111,8 @@ async function registerPasskey(name) {
 // Authenticate with a passkey (mediation can be 'optional' for button click, or 'conditional' for autofill)
 // redirectTo is an optional URL to redirect to after successful authentication
 // extraParams is an optional object of extra query params to pass to the finish URL
-async function authenticateWithPasskey(mediation, redirectTo, extraParams) {
+// signal is an optional AbortSignal to cancel the request
+async function authenticateWithPasskey(mediation, redirectTo, extraParams, signal) {
     if (!isPasskeySupported()) {
         throw new Error('Passkeys are not supported on this device');
     }
@@ -145,11 +146,19 @@ async function authenticateWithPasskey(mediation, redirectTo, extraParams) {
         options.mediation = mediation;
     }
 
+    // Attach abort signal if provided (used to cancel conditional UI)
+    if (signal) {
+        options.signal = signal;
+    }
+
     // Get the credential
     let credential;
     try {
         credential = await navigator.credentials.get(options);
     } catch (err) {
+        if (err.name === 'AbortError') {
+            throw err; // Let callers handle abort distinctly
+        }
         if (err.name === 'NotAllowedError') {
             throw new Error('Authentication was cancelled');
         }
@@ -216,11 +225,14 @@ async function authenticateWithPasskey(mediation, redirectTo, extraParams) {
 // Start conditional mediation (autofill) authentication
 // This should be called on page load; it will resolve when user selects a passkey from autofill
 // redirectTo is an optional URL to redirect to after successful authentication
+// Returns an object with { promise, abort } so callers can cancel the conditional auth
 async function startConditionalAuth(redirectTo, extraParams) {
     if (!await isConditionalUISupported()) {
         return null;
     }
-    return authenticateWithPasskey('conditional', redirectTo, extraParams);
+    const controller = new AbortController();
+    const promise = authenticateWithPasskey('conditional', redirectTo, extraParams, controller.signal);
+    return { promise, abort: () => controller.abort() };
 }
 
 // Delete a passkey
