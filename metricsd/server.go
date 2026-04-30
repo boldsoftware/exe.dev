@@ -417,7 +417,8 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 		// Column order must match the physical table layout.
 		// resource_group is added by migration 002, io_read/write_bytes by migration 003,
 		// vm_id by migration 006 (ALTER TABLE) — it appears later physically — and
-		// the memory.stat breakdown columns by migration 010.
+		// the memory.stat breakdown columns by migration 010, and the
+		// guest-memory observability columns by migration 011.
 		err := appender.AppendRow(
 			ts, m.Host, m.VMName,
 			m.DiskSizeBytes, m.DiskUsedBytes, m.DiskLogicalUsedBytes,
@@ -430,6 +431,9 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
 			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
 			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes, m.FsUsedBytes,
+			m.GuestMemTotalBytes, m.GuestMemAvailableBytes,
+			m.GuestCachedBytes, m.GuestReclaimableBytes, m.GuestDirtyBytes,
+			m.GuestPSISomeAvg60, m.GuestPSIFullAvg60, m.GuestRefaultRate,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -494,6 +498,9 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 		&m.MemoryAnonBytes, &m.MemoryFileBytes, &m.MemoryKernelBytes,
 		&m.MemoryShmemBytes, &m.MemorySlabBytes, &m.MemoryInactiveFileBytes,
 		&m.FsTotalBytes, &m.FsFreeBytes, &m.FsAvailableBytes, &m.FsUsedBytes,
+		&m.GuestMemTotalBytes, &m.GuestMemAvailableBytes,
+		&m.GuestCachedBytes, &m.GuestReclaimableBytes, &m.GuestDirtyBytes,
+		&m.GuestPSISomeAvg60, &m.GuestPSIFullAvg60, &m.GuestRefaultRate,
 	); err != nil {
 		return fmt.Errorf("scan row: %w", err)
 	}

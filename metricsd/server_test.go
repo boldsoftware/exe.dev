@@ -369,6 +369,9 @@ func TestSparklines(t *testing.T) {
 			"memory_anon_bytes", "memory_file_bytes", "memory_kernel_bytes",
 			"memory_shmem_bytes", "memory_slab_bytes", "memory_inactive_file_bytes",
 			"fs_total_bytes", "fs_free_bytes", "fs_available_bytes", "fs_used_bytes",
+			"guest_mem_total_bytes", "guest_mem_available_bytes",
+			"guest_cached_bytes", "guest_reclaimable_bytes", "guest_dirty_bytes",
+			"guest_psi_some_avg60", "guest_psi_full_avg60", "guest_refault_rate",
 		}
 		if len(cols) != len(wantCols) {
 			t.Errorf("got %d columns, want %d", len(cols), len(wantCols))
@@ -682,5 +685,62 @@ func TestInsertMetrics_DefaultTimestamp(t *testing.T) {
 	// Timestamp should be recent (within last minute)
 	if time.Since(metrics[0].Timestamp) > time.Minute {
 		t.Errorf("timestamp %v is too old", metrics[0].Timestamp)
+	}
+}
+
+// TestGuestMemoryRoundTrip verifies the new memwatch v0 guest-memory
+// fields are preserved end-to-end through Insert (DuckDB Appender) and
+// SELECT (scanMetric).
+func TestGuestMemoryRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	connector, db, _, err := OpenDB(ctx, "", "")
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	defer db.Close()
+	defer connector.Close()
+
+	srv := NewServer(connector, db, false)
+	defer srv.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	want := Metric{
+		Timestamp:              now,
+		Host:                   "h",
+		VMName:                 "vm-guest",
+		GuestMemTotalBytes:     8 << 30,
+		GuestMemAvailableBytes: 4 << 30,
+		GuestCachedBytes:       2 << 30,
+		GuestReclaimableBytes:  1 << 30,
+		GuestDirtyBytes:        16 << 20,
+		GuestPSISomeAvg60:      1.25,
+		GuestPSIFullAvg60:      0.5,
+		GuestRefaultRate:       42.0,
+	}
+	if err := srv.InsertMetrics(ctx, []Metric{want}); err != nil {
+		t.Fatalf("InsertMetrics: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx, SelectSQL+"WHERE vm_name = ? ORDER BY timestamp DESC LIMIT ?", "vm-guest", 1)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatalf("no rows")
+	}
+	var got Metric
+	if err := scanMetric(rows, &got); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if got.GuestMemTotalBytes != want.GuestMemTotalBytes ||
+		got.GuestMemAvailableBytes != want.GuestMemAvailableBytes ||
+		got.GuestCachedBytes != want.GuestCachedBytes ||
+		got.GuestReclaimableBytes != want.GuestReclaimableBytes ||
+		got.GuestDirtyBytes != want.GuestDirtyBytes ||
+		got.GuestPSISomeAvg60 != want.GuestPSISomeAvg60 ||
+		got.GuestPSIFullAvg60 != want.GuestPSIFullAvg60 ||
+		got.GuestRefaultRate != want.GuestRefaultRate {
+		t.Errorf("round-trip mismatch:\n got %+v\nwant %+v", got, want)
 	}
 }

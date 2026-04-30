@@ -25,8 +25,11 @@ INSERT INTO vm_metrics (
 	vm_id,
 	memory_anon_bytes, memory_file_bytes, memory_kernel_bytes,
 	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes,
-	fs_total_bytes, fs_free_bytes, fs_available_bytes, fs_used_bytes
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	fs_total_bytes, fs_free_bytes, fs_available_bytes, fs_used_bytes,
+	guest_mem_total_bytes, guest_mem_available_bytes,
+	guest_cached_bytes, guest_reclaimable_bytes, guest_dirty_bytes,
+	guest_psi_some_avg60, guest_psi_full_avg60, guest_refault_rate
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // SelectSQL is the query for retrieving metrics.
@@ -53,7 +56,15 @@ SELECT
 	COALESCE(fs_total_bytes, 0) AS fs_total_bytes,
 	COALESCE(fs_free_bytes, 0) AS fs_free_bytes,
 	COALESCE(fs_available_bytes, 0) AS fs_available_bytes,
-	COALESCE(fs_used_bytes, 0) AS fs_used_bytes
+	COALESCE(fs_used_bytes, 0) AS fs_used_bytes,
+	COALESCE(guest_mem_total_bytes, 0)     AS guest_mem_total_bytes,
+	COALESCE(guest_mem_available_bytes, 0) AS guest_mem_available_bytes,
+	COALESCE(guest_cached_bytes, 0)        AS guest_cached_bytes,
+	COALESCE(guest_reclaimable_bytes, 0)   AS guest_reclaimable_bytes,
+	COALESCE(guest_dirty_bytes, 0)         AS guest_dirty_bytes,
+	COALESCE(guest_psi_some_avg60, 0)      AS guest_psi_some_avg60,
+	COALESCE(guest_psi_full_avg60, 0)      AS guest_psi_full_avg60,
+	COALESCE(guest_refault_rate, 0)        AS guest_refault_rate
 FROM vm_metrics_all
 `
 
@@ -79,7 +90,15 @@ SELECT
 	COALESCE(fs_total_bytes, 0) AS fs_total_bytes,
 	COALESCE(fs_free_bytes, 0) AS fs_free_bytes,
 	COALESCE(fs_available_bytes, 0) AS fs_available_bytes,
-	COALESCE(fs_used_bytes, 0) AS fs_used_bytes
+	COALESCE(fs_used_bytes, 0) AS fs_used_bytes,
+	COALESCE(guest_mem_total_bytes, 0)     AS guest_mem_total_bytes,
+	COALESCE(guest_mem_available_bytes, 0) AS guest_mem_available_bytes,
+	COALESCE(guest_cached_bytes, 0)        AS guest_cached_bytes,
+	COALESCE(guest_reclaimable_bytes, 0)   AS guest_reclaimable_bytes,
+	COALESCE(guest_dirty_bytes, 0)         AS guest_dirty_bytes,
+	COALESCE(guest_psi_some_avg60, 0)      AS guest_psi_some_avg60,
+	COALESCE(guest_psi_full_avg60, 0)      AS guest_psi_full_avg60,
+	COALESCE(guest_refault_rate, 0)        AS guest_refault_rate
 FROM vm_metrics_all
 WHERE timestamp > now() - INTERVAL '%d' HOUR
 ORDER BY vm_name, timestamp ASC

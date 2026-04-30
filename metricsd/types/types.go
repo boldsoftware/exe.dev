@@ -49,6 +49,17 @@ type Metric struct {
 	FsFreeBytes      int64 `json:"fs_free_bytes,omitempty"`
 	FsAvailableBytes int64 `json:"fs_available_bytes,omitempty"`
 	FsUsedBytes      int64 `json:"fs_used_bytes,omitempty"`
+
+	// Guest memory observability (memwatch v0). Populated from memd
+	// scrapes inside the VM. Zero when no fresh sample is available.
+	GuestMemTotalBytes     int64   `json:"guest_mem_total_bytes,omitempty"`
+	GuestMemAvailableBytes int64   `json:"guest_mem_available_bytes,omitempty"`
+	GuestCachedBytes       int64   `json:"guest_cached_bytes,omitempty"`
+	GuestReclaimableBytes  int64   `json:"guest_reclaimable_bytes,omitempty"`
+	GuestDirtyBytes        int64   `json:"guest_dirty_bytes,omitempty"`
+	GuestPSISomeAvg60      float64 `json:"guest_psi_some_avg60,omitempty"`
+	GuestPSIFullAvg60      float64 `json:"guest_psi_full_avg60,omitempty"`
+	GuestRefaultRate       float64 `json:"guest_refault_rate,omitempty"`
 }
 
 // MetricsBatch allows submitting multiple metrics at once.

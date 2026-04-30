@@ -54,7 +54,15 @@ CREATE TABLE IF NOT EXISTS vm_metrics (
 	fs_total_bytes              Int64 DEFAULT 0,
 	fs_free_bytes               Int64 DEFAULT 0,
 	fs_available_bytes          Int64 DEFAULT 0,
-	fs_used_bytes               Int64 DEFAULT 0
+	fs_used_bytes               Int64 DEFAULT 0,
+	guest_mem_total_bytes       Int64 DEFAULT 0,
+	guest_mem_available_bytes   Int64 DEFAULT 0,
+	guest_cached_bytes          Int64 DEFAULT 0,
+	guest_reclaimable_bytes     Int64 DEFAULT 0,
+	guest_dirty_bytes           Int64 DEFAULT 0,
+	guest_psi_some_avg60        Float64 DEFAULT 0,
+	guest_psi_full_avg60        Float64 DEFAULT 0,
+	guest_refault_rate          Float64 DEFAULT 0
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (vm_name, timestamp)
@@ -74,6 +82,14 @@ var clickHouseAlterStatements = []string{
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_free_bytes Int64 DEFAULT 0`,
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_available_bytes Int64 DEFAULT 0`,
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_used_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_mem_total_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_mem_available_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_cached_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_reclaimable_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_dirty_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_psi_some_avg60 Float64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_psi_full_avg60 Float64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS guest_refault_rate Float64 DEFAULT 0`,
 }
 
 const clickHouseInsertSQL = `INSERT INTO vm_metrics (
@@ -85,7 +101,10 @@ const clickHouseInsertSQL = `INSERT INTO vm_metrics (
 	io_read_bytes, io_write_bytes,
 	memory_anon_bytes, memory_file_bytes, memory_kernel_bytes,
 	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes,
-	fs_total_bytes, fs_free_bytes, fs_available_bytes, fs_used_bytes
+	fs_total_bytes, fs_free_bytes, fs_available_bytes, fs_used_bytes,
+	guest_mem_total_bytes, guest_mem_available_bytes,
+	guest_cached_bytes, guest_reclaimable_bytes, guest_dirty_bytes,
+	guest_psi_some_avg60, guest_psi_full_avg60, guest_refault_rate
 )`
 
 // ClickHouseConfig configures the async ClickHouse mirror.
@@ -340,6 +359,9 @@ func (s *ClickHouseSync) doInsert(ctx context.Context, metrics []types.Metric) e
 			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
 			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
 			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes, m.FsUsedBytes,
+			m.GuestMemTotalBytes, m.GuestMemAvailableBytes,
+			m.GuestCachedBytes, m.GuestReclaimableBytes, m.GuestDirtyBytes,
+			m.GuestPSISomeAvg60, m.GuestPSIFullAvg60, m.GuestRefaultRate,
 		); err != nil {
 			return fmt.Errorf("append row: %w", err)
 		}
