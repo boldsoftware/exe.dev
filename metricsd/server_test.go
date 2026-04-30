@@ -564,6 +564,20 @@ func TestQueryVMsPool(t *testing.T) {
 				t.Errorf("point %d: mem sum (%f) < avg (%f)", i, p.MemBytes.Sum, p.MemBytes.Avg)
 			}
 		}
+
+		// At least one point must have non-zero CPU. The test data has
+		// monotonically increasing cpu_used_cumulative_seconds across
+		// buckets, so the LAG-based rate calculation must produce > 0.
+		var anyCPU bool
+		for _, p := range result.Points {
+			if p.CPUCores.Avg > 0 || p.CPUCores.Sum > 0 {
+				anyCPU = true
+				break
+			}
+		}
+		if !anyCPU {
+			t.Errorf("expected at least one pool point with non-zero CPU, got all zeros: %+v", result.Points)
+		}
 	})
 
 	t.Run("single VM", func(t *testing.T) {

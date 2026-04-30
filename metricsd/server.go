@@ -736,8 +736,9 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 		bucketInterval = "6 HOUR"
 	}
 
-	// Query: bucket timestamps, compute CPU delta per VM using LAG,
-	// then aggregate across VMs per bucket.
+	// Query: bucket timestamps, compute CPU rate per VM using LAG across
+	// buckets (not FIRST/LAST within a bucket, which yields 0 when a bucket
+	// has only a single data point), then aggregate across VMs per bucket.
 	query := fmt.Sprintf(`
 		WITH raw AS (
 			SELECT
@@ -745,13 +746,22 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 				vm_name,
 				LAST(memory_rss_bytes ORDER BY timestamp) AS mem_bytes,
 				LAST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum,
-				FIRST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum_first,
-				LAST(timestamp ORDER BY timestamp) AS last_ts,
-				FIRST(timestamp ORDER BY timestamp) AS first_ts
+				LAST(timestamp ORDER BY timestamp) AS last_ts
 			FROM vm_metrics_all
 			WHERE vm_name IN (%s)
 				AND timestamp > now() - INTERVAL '%d' HOUR
 			GROUP BY bucket, vm_name
+		),
+		lagged AS (
+			SELECT
+				bucket,
+				vm_name,
+				mem_bytes,
+				cpu_cum,
+				last_ts,
+				LAG(cpu_cum) OVER (PARTITION BY vm_name ORDER BY bucket) AS prev_cpu_cum,
+				LAG(last_ts) OVER (PARTITION BY vm_name ORDER BY bucket) AS prev_ts
+			FROM raw
 		),
 		deltas AS (
 			SELECT
@@ -759,12 +769,13 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 				vm_name,
 				mem_bytes,
 				CASE
-					WHEN epoch(last_ts) - epoch(first_ts) > 0
-						AND cpu_cum >= cpu_cum_first
-					THEN (cpu_cum - cpu_cum_first) / (epoch(last_ts) - epoch(first_ts))
+					WHEN prev_cpu_cum IS NOT NULL
+						AND cpu_cum >= prev_cpu_cum
+						AND epoch(last_ts) - epoch(prev_ts) > 0
+					THEN (cpu_cum - prev_cpu_cum) / (epoch(last_ts) - epoch(prev_ts))
 					ELSE 0
 				END AS cpu_cores
-			FROM raw
+			FROM lagged
 		)
 		SELECT
 			bucket,
