@@ -67,8 +67,8 @@ func (ss *SSHServer) handleCpCommand(ctx context.Context, cc *exemenu.CommandCon
 	effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, user.ID)
 
 	// Determine max limits based on effective limits
-	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits)
-	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits)
+	maxMemory := GetMaxMemory(ss.server.env, effectiveLimits, 0)
+	maxCPUs := GetMaxCPUs(ss.server.env, effectiveLimits, 0)
 
 	// Disk ceiling: plan quota is the base, support override takes precedence.
 	var userMaxDisk uint64

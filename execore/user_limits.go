@@ -70,23 +70,27 @@ func GetMaxTeamBoxes(teamLimits *UserLimits, tierMaxTeamVMs int) int {
 }
 
 // GetMaxMemory returns the effective max memory for a user.
-// Uses user-specific limit if set, otherwise falls back to environment default.
-func GetMaxMemory(env stage.Env, userLimits *UserLimits) uint64 {
-	// Use user-specific limit if set
+// Resolution order: user-specific override > plan tier cap > stage default.
+// Pass tierMaxMemory=0 when no plan/tier context is available.
+func GetMaxMemory(env stage.Env, userLimits *UserLimits, tierMaxMemory uint64) uint64 {
 	if userLimits != nil && userLimits.MaxMemory > 0 {
 		return userLimits.MaxMemory
 	}
-	// Fall back to environment default (but at least the minimum)
+	if tierMaxMemory > 0 {
+		return tierMaxMemory
+	}
 	return max(env.DefaultMemory, stage.MinMemory)
 }
 
 // GetMaxCPUs returns the effective max CPUs for a user.
-// Uses user-specific limit if set, otherwise falls back to environment default.
-func GetMaxCPUs(env stage.Env, userLimits *UserLimits) uint64 {
-	// Use user-specific limit if set
+// Resolution order: user-specific override > plan tier cap > stage default.
+// Pass tierMaxCPUs=0 when no plan/tier context is available.
+func GetMaxCPUs(env stage.Env, userLimits *UserLimits, tierMaxCPUs uint64) uint64 {
 	if userLimits != nil && userLimits.MaxCPUs > 0 {
 		return userLimits.MaxCPUs
 	}
-	// Fall back to environment default (but at least the minimum)
+	if tierMaxCPUs > 0 {
+		return tierMaxCPUs
+	}
 	return max(env.DefaultCPUs, uint64(stage.MinCPUs))
 }

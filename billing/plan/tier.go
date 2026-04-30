@@ -290,7 +290,7 @@ var tiers = map[string]Tier{
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
+			MaxCPUs: 2, MaxMemory: 8 * gb,
 			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
@@ -305,7 +305,7 @@ var tiers = map[string]Tier{
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
+			MaxCPUs: 2, MaxMemory: 8 * gb,
 			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
@@ -320,7 +320,7 @@ var tiers = map[string]Tier{
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
+			MaxCPUs: 2, MaxMemory: 8 * gb,
 			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
@@ -335,7 +335,7 @@ var tiers = map[string]Tier{
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
+			MaxCPUs: 2, MaxMemory: 8 * gb,
 			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,
@@ -350,7 +350,7 @@ var tiers = map[string]Tier{
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{
-			MaxCPUs: 0, MaxMemory: 0,
+			MaxCPUs: 2, MaxMemory: 8 * gb,
 			MaxUserVMs:       50,
 			MaxTeamVMs:       0,
 			DefaultDisk:      25 * gb,

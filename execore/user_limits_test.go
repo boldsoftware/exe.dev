@@ -8,38 +8,52 @@ import (
 )
 
 func TestGetMaxMemory(t *testing.T) {
+	const gb = 1024 * 1024 * 1024
 	tests := []struct {
-		name       string
-		defMem     uint64
-		userLimits *UserLimits
-		want       uint64
+		name          string
+		defMem        uint64
+		userLimits    *UserLimits
+		tierMaxMemory uint64
+		want          uint64
 	}{
-		{
-			name:       "user limit set",
-			defMem:     1 * 1024 * 1024 * 1024,
-			userLimits: &UserLimits{MaxMemory: 16 * 1024 * 1024 * 1024},
-			want:       16 * 1024 * 1024 * 1024,
-		},
-		{
-			name:       "no user limit",
-			defMem:     8 * 1024 * 1024 * 1024,
-			userLimits: nil,
-			want:       8 * 1024 * 1024 * 1024,
-		},
-		{
-			name:       "env below min",
-			defMem:     512 * 1024 * 1024,
-			userLimits: nil,
-			want:       stage.MinMemory,
-		},
+		{"user override", 1 * gb, &UserLimits{MaxMemory: 16 * gb}, 0, 16 * gb},
+		{"no overrides", 8 * gb, nil, 0, 8 * gb},
+		{"env below min", 512 * 1024 * 1024, nil, 0, stage.MinMemory},
+		{"tier quota used when no user override", 1 * gb, nil, 8 * gb, 8 * gb},
+		{"user override beats tier", 1 * gb, &UserLimits{MaxMemory: 16 * gb}, 8 * gb, 16 * gb},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			env := stage.Test()
 			env.DefaultMemory = tt.defMem
-			got := GetMaxMemory(env, tt.userLimits)
+			got := GetMaxMemory(env, tt.userLimits, tt.tierMaxMemory)
 			if got != tt.want {
 				t.Errorf("GetMaxMemory() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetMaxCPUs(t *testing.T) {
+	tests := []struct {
+		name        string
+		defCPUs     uint64
+		userLimits  *UserLimits
+		tierMaxCPUs uint64
+		want        uint64
+	}{
+		{"no overrides", 2, nil, 0, 2},
+		{"tier quota", 2, nil, 4, 4},
+		{"user override beats tier", 2, &UserLimits{MaxCPUs: 8}, 4, 8},
+		{"env below min", 0, nil, 0, uint64(stage.MinCPUs)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := stage.Test()
+			env.DefaultCPUs = tt.defCPUs
+			got := GetMaxCPUs(env, tt.userLimits, tt.tierMaxCPUs)
+			if got != tt.want {
+				t.Errorf("GetMaxCPUs() = %d, want %d", got, tt.want)
 			}
 		})
 	}

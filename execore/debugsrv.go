@@ -6091,7 +6091,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxMem = limits.MaxMemory
 			}
-			effMaxMem := GetMaxMemory(s.env, limits)
+			effMaxMem := GetMaxMemory(s.env, limits, 0)
 			if cgroupMemBytes > 0 && cgroupMemBytes < effMaxMem {
 				effMaxMem = cgroupMemBytes
 			}
@@ -6102,7 +6102,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxCPUs = limits.MaxCPUs
 			}
-			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			effMaxCPUs := GetMaxCPUs(s.env, limits, 0)
 			if cgroupCPUCores > 0 && uint64(cgroupCPUCores) < effMaxCPUs {
 				effMaxCPUs = uint64(cgroupCPUCores)
 			}
@@ -6754,7 +6754,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxMem = limits.MaxMemory
 			}
-			effMaxMem := GetMaxMemory(s.env, limits)
+			effMaxMem := GetMaxMemory(s.env, limits, 0)
 			if cgroupMemBytes > 0 && cgroupMemBytes < effMaxMem {
 				effMaxMem = cgroupMemBytes
 			}
@@ -6765,7 +6765,7 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 			if limits != nil {
 				userMaxCPUs = limits.MaxCPUs
 			}
-			effMaxCPUs := GetMaxCPUs(s.env, limits)
+			effMaxCPUs := GetMaxCPUs(s.env, limits, 0)
 			if cgroupCPUCores > 0 && uint64(cgroupCPUCores) < effMaxCPUs {
 				effMaxCPUs = uint64(cgroupCPUCores)
 			}

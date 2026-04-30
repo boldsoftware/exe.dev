@@ -249,8 +249,8 @@ func cpCommandFlags() *flag.FlagSet {
 
 func resizeCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("resize", flag.ContinueOnError)
-	fs.String("memory", "", "[hidden] memory allocation (e.g., 4, 4GB, 8G)")
-	fs.Uint("cpu", 0, "[hidden] number of CPUs")
+	fs.String("memory", "", "memory allocation (e.g., 4, 4GB, 8G)")
+	fs.Uint("cpu", 0, "number of CPUs")
 	fs.String("disk", "", "new total disk size (e.g., 25, 25GB) - must be larger than current size")
 	fs.Bool("json", false, "output in JSON format")
 	return fs
@@ -395,8 +395,8 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "resize",
-			Description:       "Resize a VM's disk",
-			Usage:             "resize <vmname> --disk=<size>",
+			Description:       "Resize a VM's resources (memory, CPU, disk)",
+			Usage:             "resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]",
 			HasPositionalArgs: true,
 			FlagSetFunc:       resizeCommandFlags,
 			CompleterFunc:     ss.completeBoxNames,
@@ -2166,10 +2166,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
 
 	if len(cc.Args) != 1 {
-		if isSudo {
-			return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8 GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
-		}
-		return cc.Errorf("usage: resize <vmname> --disk=<size>\nDisk size is in GiB (e.g., '25' for 25 GiB). Disk can only be grown, not shrunk.")
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nMemory/disk are in GB (e.g., '8' for 8 GB). CPU is the number of vCPUs. Disk can only be grown, not shrunk.")
 	}
 
 	boxName := ss.normalizeBoxName(cc.Args[0])
@@ -2179,15 +2176,12 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 	// Validate at least one option is specified
 	if memoryStr == "" && cpuVal == 0 && diskStr == "" {
-		if isSudo {
-			return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
-		}
-		return cc.Errorf("usage: resize <vmname> --disk=<size>\nThe --disk flag is required.")
+		return cc.Errorf("usage: resize <vmname> [--memory=<size>] [--cpu=<count>] [--disk=<size>]\nAt least one of --memory, --cpu, or --disk must be specified.")
 	}
 
-	// Memory and CPU resize are support-only. Non-sudo users can only resize disk.
-	if (memoryStr != "" || cpuVal > 0) && !isSudo {
-		return cc.Errorf("%s is not in the sudoers file. This incident will be reported.", cc.User.Email)
+	// VMResize entitlement is required for all resize operations (unless sudo).
+	if !isSudo && !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMResize, cc.User.ID) {
+		return cc.Errorf("resize is not available on your current plan")
 	}
 
 	// Look up the box by name.
@@ -2225,10 +2219,6 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	// Handle disk resize if specified
 	var diskGrowResult *api.GrowDiskResponse
 	if diskStr != "" {
-		if !isSudo && !ss.server.UserHasEntitlement(ctx, plan.SourceSSH, plan.VMResize, cc.User.ID) {
-			return cc.Errorf("disk resize is not available on your current plan")
-		}
-
 		newDiskSize, err := parseSize(diskStr)
 		if err != nil {
 			return cc.Errorf("invalid --disk value: %s", err)
@@ -2310,6 +2300,24 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			ID: *box.ContainerID,
 		}
 
+		// Determine plan-based limits for non-sudo users.
+		var maxMemory, maxCPUs uint64
+		if isSudo {
+			maxMemory = stage.SupportMaxMemory
+			maxCPUs = stage.SupportMaxCPUs
+		} else {
+			ownerID := box.CreatedByUserID
+			effectiveLimits, _ := ss.server.GetEffectiveLimits(ctx, ownerID)
+			var tierMaxMemory, tierMaxCPUs uint64
+			planRow, planErr := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, ownerID)
+			if planErr == nil {
+				tierMaxMemory = plan.MaxMemoryForPlan(planRow.PlanID)
+				tierMaxCPUs = plan.MaxCPUsForPlan(planRow.PlanID)
+			}
+			maxMemory = GetMaxMemory(ss.server.env, effectiveLimits, tierMaxMemory)
+			maxCPUs = GetMaxCPUs(ss.server.env, effectiveLimits, tierMaxCPUs)
+		}
+
 		// Parse and validate memory if specified
 		if memoryStr != "" {
 			memoryBytes, err := parseSize(memoryStr)
@@ -2319,8 +2327,11 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			if memoryBytes < stage.MinMemory {
 				return cc.Errorf("--memory must be at least %s", fmtBytes(stage.MinMemory))
 			}
-			if memoryBytes > stage.SupportMaxMemory {
-				return cc.Errorf("--memory cannot exceed %s", fmtBytes(stage.SupportMaxMemory))
+			if memoryBytes > maxMemory {
+				if isSudo {
+					return cc.Errorf("--memory cannot exceed %s", fmtBytes(maxMemory))
+				}
+				return cc.Errorf("--memory cannot exceed %s — contact support@exe.dev if you need more", fmtBytes(maxMemory))
 			}
 			req.Memory = &memoryBytes
 		}
@@ -2330,8 +2341,11 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			if cpuVal < stage.MinCPUs {
 				return cc.Errorf("--cpu must be at least %d", stage.MinCPUs)
 			}
-			if cpuVal > stage.SupportMaxCPUs {
-				return cc.Errorf("--cpu cannot exceed %d", stage.SupportMaxCPUs)
+			if cpuVal > maxCPUs {
+				if isSudo {
+					return cc.Errorf("--cpu cannot exceed %d", maxCPUs)
+				}
+				return cc.Errorf("--cpu cannot exceed %d — contact support@exe.dev if you need more", maxCPUs)
 			}
 			req.CPUs = &cpuVal
 		}

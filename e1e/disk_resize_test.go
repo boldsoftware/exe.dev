@@ -1,6 +1,5 @@
-// This file tests self-serve disk resize end-to-end.
-// Regular users can resize their own VM's disk within plan limits.
-// Memory/CPU resize remains support-only.
+// This file tests self-serve VM resize end-to-end.
+// Regular users can resize their own VM's memory, CPU, and disk within plan limits.
 
 package e1e
 
@@ -125,20 +124,58 @@ func TestSelfServeResize(t *testing.T) {
 		repl.Disconnect()
 	})
 
-	// Memory resize is still support-only.
-	t.Run("memory_denied", func(t *testing.T) {
+	// Memory resize within plan limits should work.
+	t.Run("memory_resize", func(t *testing.T) {
+		noGolden(t)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "resize", box, "--memory=4", "--json")
+		if err != nil {
+			t.Fatalf("resize --memory=4 failed: %v\n%s", err, out)
+		}
+		var result struct {
+			NewMemory uint64 `json:"new_memory"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("failed to parse JSON: %v\n%s", err, out)
+		}
+		if result.NewMemory != 4*1024*1024*1024 {
+			t.Errorf("expected 4 GiB memory, got %d", result.NewMemory)
+		}
+	})
+
+	// Memory exceeding plan limit should be rejected.
+	t.Run("memory_exceeds_plan", func(t *testing.T) {
+		noGolden(t)
 		repl := sshToExeDev(t, keyFile)
-		repl.SendLine(fmt.Sprintf("resize %s --memory=4", box))
-		repl.Want("not in the sudoers file")
+		repl.SendLine(fmt.Sprintf("resize %s --memory=64", box))
+		repl.Want("cannot exceed")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
 
-	// CPU resize is still support-only.
-	t.Run("cpu_denied", func(t *testing.T) {
+	// CPU resize within plan limits should work.
+	t.Run("cpu_resize", func(t *testing.T) {
+		noGolden(t)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, "resize", box, "--cpu=2", "--json")
+		if err != nil {
+			t.Fatalf("resize --cpu=2 failed: %v\n%s", err, out)
+		}
+		var result struct {
+			NewCPUs uint64 `json:"new_cpus"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("failed to parse JSON: %v\n%s", err, out)
+		}
+		if result.NewCPUs != 2 {
+			t.Errorf("expected 2 CPUs, got %d", result.NewCPUs)
+		}
+	})
+
+	// CPU exceeding plan limit should be rejected.
+	t.Run("cpu_exceeds_plan", func(t *testing.T) {
+		noGolden(t)
 		repl := sshToExeDev(t, keyFile)
-		repl.SendLine(fmt.Sprintf("resize %s --cpu=2", box))
-		repl.Want("not in the sudoers file")
+		repl.SendLine(fmt.Sprintf("resize %s --cpu=32", box))
+		repl.Want("cannot exceed")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
@@ -169,8 +206,8 @@ func TestSelfServeResize(t *testing.T) {
 	cleanupBox(t, keyFile, box)
 }
 
-// TestSelfServeResizeEntitlement tests that plans without VMResize entitlement
-// cannot use the resize command for disk.
+// TestSelfServeResizeEntitlement tests that the VMResize entitlement is
+// correctly granted/denied by plan category.
 func TestSelfServeResizeEntitlement(t *testing.T) {
 	t.Parallel()
 	reserveVMs(t, 0)

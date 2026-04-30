@@ -29,13 +29,16 @@ func TestResize(t *testing.T) {
 
 	waitForSSH(t, box, ownerKeyFile)
 
-	// Non-support user can resize disk (self-serve) but not memory/CPU.
-	t.Run("non_support_memory_denied", func(t *testing.T) {
-		ownerPTY = sshToExeDev(t, ownerKeyFile)
-		ownerPTY.SendLine(fmt.Sprintf("resize %s --memory=2", box))
-		ownerPTY.Want("not in the sudoers file")
-		ownerPTY.WantPrompt()
-		ownerPTY.Disconnect()
+	// Non-support user can resize memory within plan limits.
+	t.Run("non_support_memory_allowed", func(t *testing.T) {
+		noGolden(t)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), ownerKeyFile, "resize", box, "--memory=2", "--json")
+		if err != nil {
+			t.Fatalf("resize --memory=2 failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "new_memory") {
+			t.Fatalf("expected memory resize result, got: %s", out)
+		}
 	})
 
 	enableRootSupport(t, supportEmail)
