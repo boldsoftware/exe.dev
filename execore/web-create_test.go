@@ -289,6 +289,23 @@ func TestRemoveCreationStreamIfMatchStalePointer(t *testing.T) {
 	}
 }
 
+func TestParseCreateVMTags(t *testing.T) {
+	t.Parallel()
+
+	tags, err := parseCreateVMTags("prod, web,prod")
+	if err != nil {
+		t.Fatalf("parseCreateVMTags returned error: %v", err)
+	}
+	want := []string{"prod", "web"}
+	if fmt.Sprint(tags) != fmt.Sprint(want) {
+		t.Fatalf("tags = %v, want %v", tags, want)
+	}
+
+	if _, err := parseCreateVMTags("Prod"); err == nil {
+		t.Fatal("expected invalid uppercase tag to fail")
+	}
+}
+
 func TestAPICheckoutParams(t *testing.T) {
 	server := newTestServer(t)
 

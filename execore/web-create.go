@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -186,7 +187,7 @@ func (s *Server) getActiveCreationHostnames(userID string) []string {
 }
 
 // startBoxCreation starts creating a box in the background
-func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, userID string) {
+func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, userID string, tags ...string) {
 	// Check if already creating
 	if cs := s.getCreationStream(userID, hostname); cs != nil {
 		cs.mu.Lock()
@@ -225,6 +226,9 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, image, 
 		}
 		if image != "" {
 			_ = fs.Set("image", image)
+		}
+		for _, tag := range tags {
+			_ = fs.Set("tag", tag)
 		}
 		userEmail, _ := withRxRes1(s, createCtx, (*exedb.Queries).GetEmailByUserID, userID)
 
@@ -381,6 +385,29 @@ func (s *Server) handleHostnameCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func parseCreateVMTags(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	seen := make(map[string]bool)
+	var tags []string
+	for _, part := range strings.Split(raw, ",") {
+		tag := strings.TrimSpace(part)
+		if tag == "" {
+			continue
+		}
+		if err := validateTagName(tag); err != nil {
+			return nil, err
+		}
+		if !seen[tag] {
+			seen[tag] = true
+			tags = append(tags, tag)
+		}
+	}
+	slices.Sort(tags)
+	return tags, nil
+}
+
 // handleCreateVM handles VM creation request
 func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -392,8 +419,13 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	image := strings.TrimSpace(r.FormValue("image"))
 	inviteCodeStr := strings.TrimSpace(r.FormValue("invite"))
+	tags, tagErr := parseCreateVMTags(r.FormValue("tags"))
+	if tagErr != nil {
+		http.Error(w, tagErr.Error(), http.StatusBadRequest)
+		return
+	}
 
-	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt, "image", image)
+	s.slog().InfoContext(r.Context(), "Web VM creation request", "hostname", hostname, "prompt", prompt, "image", image, "tags", tags)
 
 	// If user is logged in, check entitlements before proceeding
 	if userID, err := s.validateAuthCookie(r); err == nil {
@@ -430,6 +462,9 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 				if image != "" {
 					redirectURL += "&image=" + url.QueryEscape(image)
 				}
+				if len(tags) > 0 {
+					redirectURL += "&tags=" + url.QueryEscape(strings.Join(tags, ","))
+				}
 				http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 				return
 			}
@@ -443,7 +478,7 @@ func (s *Server) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Start box creation in background
-		s.startBoxCreation(r.Context(), hostname, prompt, image, userID)
+		s.startBoxCreation(r.Context(), hostname, prompt, image, userID, tags...)
 		http.Redirect(w, r, "/vm/"+url.PathEscape(hostname), http.StatusSeeOther)
 		return
 	}

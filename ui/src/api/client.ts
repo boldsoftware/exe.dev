@@ -274,6 +274,12 @@ export interface ProfileData {
   discount?: { name: string; percentOff?: number; amountOffCents?: number; duration: string; durationInMonths?: number }
 }
 
+export interface TagIntegrationSummary {
+  tag: string
+  integrations: string[]
+  more: number
+}
+
 export interface IntegrationsData {
   integrations: IntegrationInfo[]
   githubIntegrations: IntegrationInfo[]
@@ -285,6 +291,7 @@ export interface IntegrationsData {
   hasPushTokens: boolean
   allTags: string[]
   tagVMs: Record<string, string[]>
+  tagIntegrationSummaries: TagIntegrationSummary[]
   boxes: { name: string; status: string }[]
   integrationScheme: string
   boxHost: string

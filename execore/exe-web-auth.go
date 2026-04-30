@@ -493,7 +493,6 @@ func (s *Server) handleBillingSuccess(w http.ResponseWriter, r *http.Request) {
 	vmName = cmp.Or(vmName, strings.TrimSpace(r.URL.Query().Get("name")))
 	vmPrompt = cmp.Or(vmPrompt, strings.TrimSpace(r.URL.Query().Get("prompt")))
 	vmImage = cmp.Or(vmImage, strings.TrimSpace(r.URL.Query().Get("image")))
-
 	// Activate the account if we have a valid session_id (or dev bypass).
 	// Verify the session with Stripe to prevent bypass attacks where users
 	// craft fake session_id parameters without completing checkout.

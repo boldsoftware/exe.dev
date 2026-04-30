@@ -211,7 +211,6 @@ func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.String("name", "", "VM name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
-	fs.String("tag", "", "comma-separated tags to apply to the new VM")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
 	fs.String("prompt", "", "initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin")
 	fs.Bool("json", false, "output in JSON format")
@@ -229,7 +228,9 @@ func newCommandFlags() *flag.FlagSet {
 	// Environment variables (can be specified multiple times)
 	var envVars repeatedStringFlag
 	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
-	// Integrations to attach (can be specified multiple times, comma-separated)
+	// Tags and integrations to attach (can be specified multiple times, comma-separated)
+	var tags repeatedStringFlag
+	fs.Var(&tags, "tag", "tag to add to the VM (can be specified multiple times or comma-separated)")
 	var integrations repeatedStringFlag
 	fs.Var(&integrations, "integration", "integration name to attach (can be specified multiple times or comma-separated)")
 	fs.Var(&integrations, "int", "[hidden] alias for --integration")

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -359,21 +360,28 @@ type jsonGitHubAccount struct {
 	InstallationID int64  `json:"installationID"`
 }
 
+type jsonTagIntegrationSummary struct {
+	Tag          string   `json:"tag"`
+	Integrations []string `json:"integrations"`
+	More         int      `json:"more"`
+}
+
 type jsonIntegrationsData struct {
-	Integrations           []jsonIntegrationInfo `json:"integrations"`
-	GitHubIntegrations     []jsonIntegrationInfo `json:"githubIntegrations"`
-	ProxyIntegrations      []jsonIntegrationInfo `json:"proxyIntegrations"`
-	ReflectionIntegrations []jsonIntegrationInfo `json:"reflectionIntegrations"`
-	GitHubAccounts         []jsonGitHubAccount   `json:"githubAccounts"`
-	GitHubEnabled          bool                  `json:"githubEnabled"`
-	GitHubAppSlug          string                `json:"githubAppSlug"`
-	HasPushTokens          bool                  `json:"hasPushTokens"`
-	AllTags                []string              `json:"allTags"`
-	TagVMs                 map[string][]string   `json:"tagVMs"`
-	Boxes                  []jsonBoxMinimal      `json:"boxes"`
-	IntegrationScheme      string                `json:"integrationScheme"`
-	BoxHost                string                `json:"boxHost"`
-	HasTeam                bool                  `json:"hasTeam"`
+	Integrations            []jsonIntegrationInfo       `json:"integrations"`
+	GitHubIntegrations      []jsonIntegrationInfo       `json:"githubIntegrations"`
+	ProxyIntegrations       []jsonIntegrationInfo       `json:"proxyIntegrations"`
+	ReflectionIntegrations  []jsonIntegrationInfo       `json:"reflectionIntegrations"`
+	GitHubAccounts          []jsonGitHubAccount         `json:"githubAccounts"`
+	GitHubEnabled           bool                        `json:"githubEnabled"`
+	GitHubAppSlug           string                      `json:"githubAppSlug"`
+	HasPushTokens           bool                        `json:"hasPushTokens"`
+	AllTags                 []string                    `json:"allTags"`
+	TagVMs                  map[string][]string         `json:"tagVMs"`
+	TagIntegrationSummaries []jsonTagIntegrationSummary `json:"tagIntegrationSummaries"`
+	Boxes                   []jsonBoxMinimal            `json:"boxes"`
+	IntegrationScheme       string                      `json:"integrationScheme"`
+	BoxHost                 string                      `json:"boxHost"`
+	HasTeam                 bool                        `json:"hasTeam"`
 }
 
 type jsonBoxMinimal struct {
@@ -1240,16 +1248,17 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 
 	if !showIntegrations {
 		writeJSONOK(w, jsonIntegrationsData{
-			Integrations:           make([]jsonIntegrationInfo, 0),
-			GitHubIntegrations:     make([]jsonIntegrationInfo, 0),
-			ProxyIntegrations:      make([]jsonIntegrationInfo, 0),
-			ReflectionIntegrations: make([]jsonIntegrationInfo, 0),
-			GitHubAccounts:         make([]jsonGitHubAccount, 0),
-			AllTags:                make([]string, 0),
-			TagVMs:                 map[string][]string{},
-			Boxes:                  make([]jsonBoxMinimal, 0),
-			IntegrationScheme:      s.integrationScheme(),
-			BoxHost:                s.env.BoxHost,
+			Integrations:            make([]jsonIntegrationInfo, 0),
+			GitHubIntegrations:      make([]jsonIntegrationInfo, 0),
+			ProxyIntegrations:       make([]jsonIntegrationInfo, 0),
+			ReflectionIntegrations:  make([]jsonIntegrationInfo, 0),
+			GitHubAccounts:          make([]jsonGitHubAccount, 0),
+			AllTags:                 make([]string, 0),
+			TagVMs:                  map[string][]string{},
+			TagIntegrationSummaries: make([]jsonTagIntegrationSummary, 0),
+			Boxes:                   make([]jsonBoxMinimal, 0),
+			IntegrationScheme:       s.integrationScheme(),
+			BoxHost:                 s.env.BoxHost,
 		})
 		return
 	}
@@ -1268,23 +1277,60 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 	for t := range tagVMs {
 		allTags = append(allTags, t)
 	}
+	slices.Sort(allTags)
+	tagIntegrationSummaries := summarizeIntegrationsByTag(allTags, integrations)
 
 	writeJSONOK(w, jsonIntegrationsData{
-		Integrations:           nonNil(integrations),
-		GitHubIntegrations:     nonNil(ghIntegrations),
-		ProxyIntegrations:      nonNil(proxyIntegrations),
-		ReflectionIntegrations: nonNil(reflectionIntegrations),
-		GitHubAccounts:         ghAccounts,
-		GitHubEnabled:          ghEnabled,
-		GitHubAppSlug:          ghAppSlug,
-		HasPushTokens:          hasPushTokens,
-		AllTags:                nonNil(allTags),
-		TagVMs:                 tagVMs,
-		Boxes:                  nonNil(profileBoxes),
-		IntegrationScheme:      s.integrationScheme(),
-		BoxHost:                s.env.BoxHost,
-		HasTeam:                hasTeam,
+		Integrations:            nonNil(integrations),
+		GitHubIntegrations:      nonNil(ghIntegrations),
+		ProxyIntegrations:       nonNil(proxyIntegrations),
+		ReflectionIntegrations:  nonNil(reflectionIntegrations),
+		GitHubAccounts:          ghAccounts,
+		GitHubEnabled:           ghEnabled,
+		GitHubAppSlug:           ghAppSlug,
+		HasPushTokens:           hasPushTokens,
+		AllTags:                 nonNil(allTags),
+		TagVMs:                  tagVMs,
+		TagIntegrationSummaries: tagIntegrationSummaries,
+		Boxes:                   nonNil(profileBoxes),
+		IntegrationScheme:       s.integrationScheme(),
+		BoxHost:                 s.env.BoxHost,
+		HasTeam:                 hasTeam,
 	})
+}
+
+func summarizeIntegrationsByTag(allTags []string, integrations []jsonIntegrationInfo) []jsonTagIntegrationSummary {
+	tagIntegrations := make(map[string][]string)
+	known := make(map[string]bool, len(allTags))
+	for _, tag := range allTags {
+		known[tag] = true
+	}
+	for _, ig := range integrations {
+		for _, a := range ig.Attachments {
+			tag, ok := strings.CutPrefix(a, "tag:")
+			if !ok || tag == "" || !known[tag] {
+				continue
+			}
+			tagIntegrations[tag] = append(tagIntegrations[tag], ig.Name)
+		}
+	}
+
+	summaries := make([]jsonTagIntegrationSummary, 0, len(allTags))
+	for _, tag := range allTags {
+		names := tagIntegrations[tag]
+		slices.Sort(names)
+		more := 0
+		if len(names) > 3 {
+			more = len(names) - 3
+			names = names[:3]
+		}
+		summaries = append(summaries, jsonTagIntegrationSummary{
+			Tag:          tag,
+			Integrations: nonNil(names),
+			More:         more,
+		})
+	}
+	return summaries
 }
 
 // nonNil returns the slice if non-nil, or an empty slice. This ensures JSON

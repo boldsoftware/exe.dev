@@ -168,6 +168,30 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 	}
 
+	// Parse tags to add after creation.
+	var tagNames []string
+	if tagFlag := cc.FlagSet.Lookup("tag"); tagFlag != nil {
+		if repeated, ok := tagFlag.Value.(*repeatedStringFlag); ok && repeated != nil {
+			seen := make(map[string]bool)
+			for _, raw := range *repeated {
+				for _, tag := range strings.Split(raw, ",") {
+					tag = strings.TrimSpace(tag)
+					if tag == "" {
+						continue
+					}
+					if err := validateTagName(tag); err != nil {
+						return cc.Errorf("%s", err)
+					}
+					if !seen[tag] {
+						seen[tag] = true
+						tagNames = append(tagNames, tag)
+					}
+				}
+			}
+			slices.Sort(tagNames)
+		}
+	}
+
 	// Parse integration names to attach after creation.
 	var integrationNames []string
 	if intFlag := cc.FlagSet.Lookup("integration"); intFlag != nil {
