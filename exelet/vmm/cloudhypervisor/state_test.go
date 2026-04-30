@@ -12,6 +12,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -36,6 +38,10 @@ func TestIsStopped(t *testing.T) {
 		{"wrapped DeadlineExceeded", fmt.Errorf("request: %w", context.DeadlineExceeded), true},
 		{"Client.Timeout string", errors.New("Get \"http://localhost/api/v1/vm.info\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"), true},
 		{"connection reset string", errors.New("read: connection reset by peer"), true},
+		{"broken pipe string", errors.New("write: broken pipe"), true},
+		{"EPIPE", syscall.EPIPE, true},
+		{"wrapped EPIPE", fmt.Errorf("write: %w", syscall.EPIPE), true},
+		{"ECONNRESET", syscall.ECONNRESET, true},
 		{"EOF string", errors.New("unexpected EOF in response"), true},
 		{"random error", errors.New("something else"), false},
 	}
@@ -76,14 +82,31 @@ func TestStateTimeoutOnHungVMM(t *testing.T) {
 	}
 	defer ln.Close()
 
-	// Accept connections but never write a response.
+	// Accept connections but never write a response. Keep them alive
+	// for the duration of the test so the kernel doesn't surface
+	// EPIPE/ECONNRESET to the client before our timeout fires —
+	// without an explicit reference, the *net.UnixConn would become
+	// unreachable each iteration and its finalizer could close the fd.
+	var (
+		hungMu    sync.Mutex
+		hungConns []net.Conn
+	)
+	t.Cleanup(func() {
+		hungMu.Lock()
+		defer hungMu.Unlock()
+		for _, c := range hungConns {
+			_ = c.Close()
+		}
+	})
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			_ = conn
+			hungMu.Lock()
+			hungConns = append(hungConns, conn)
+			hungMu.Unlock()
 		}
 	}()
 

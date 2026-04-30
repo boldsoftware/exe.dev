@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+	"syscall"
 	"time"
 
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
@@ -82,6 +83,8 @@ func isStopped(err error) bool {
 		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, io.ErrClosedPipe) ||
 		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
 		// When the VMM is stopped it removes the socket, producing a file not found error.
 		errors.Is(err, fs.ErrNotExist) {
 		return true
@@ -90,6 +93,7 @@ func isStopped(err error) bool {
 	errStr := err.Error()
 	if strings.Contains(errStr, "EOF") ||
 		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "broken pipe") ||
 		// http.Client.Timeout produces an error containing this string.
 		strings.Contains(errStr, "Client.Timeout") {
 		return true
