@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>metricsd / debug sql</title>
+<link rel="stylesheet" href="/static/sparklines.css">
+<link rel="stylesheet" href="/static/debug_sql.css">
+</head>
+<body>
+<h1><a href="/">metricsd</a> / debug sql <span id="meta"></span></h1>
+<p class="hint">
+  Read-only queries against the live <code>vm_metrics</code> DuckDB.
+  Single statement only. DuckDB classifies the query and only <code>SELECT</code> /
+  <code>EXPLAIN</code> are accepted &mdash; this covers <code>WITH</code> /
+  <code>FROM</code> / <code>VALUES</code> / <code>DESCRIBE</code> /
+  <code>SHOW</code> and read-only <code>PRAGMA</code>s. Mutating pragmas
+  (e.g. <code>PRAGMA memory_limit</code>), CTE-wrapped writes, and
+  <code>EXPLAIN&nbsp;ANALYZE</code> are rejected.
+  Try <code>DESCRIBE vm_metrics</code> or <code>SHOW TABLES</code>.
+</p>
+<form id="sqlForm">
+  <textarea id="q" name="q" rows="6" spellcheck="false" placeholder="SELECT vm_name, count(*) FROM vm_metrics GROUP BY 1 ORDER BY 2 DESC LIMIT 20"></textarea>
+  <div id="controls">
+    <button type="submit" id="run">Run (⌘/Ctrl-Enter)</button>
+    <label>Limit: <input type="number" id="limit" value="1000" min="1" max="100000"></label>
+    <label>Timeout: <input type="text" id="timeout" value="30s" size="6"></label>
+    <a id="csvLink" href="#" target="_blank" rel="noopener">Download CSV</a>
+    <span id="status"></span>
+  </div>
+</form>
+<div id="error"></div>
+<div id="resultWrap"><table id="result"></table></div>
+<script src="/static/debug_sql.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+body { font-family: system-ui, sans-serif; margin: 10px; background: #fff; }
+.hint { font-size: 0.85em; color: #555; margin: 4px 0 8px; }
+.hint code { background: #f4f4f4; padding: 0 4px; border-radius: 3px; }
+#sqlForm textarea { width: 100%; box-sizing: border-box;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em;
+  padding: 6px; border: 1px solid #ccc; border-radius: 3px; }
+#controls { display: flex; gap: 12px; align-items: center; margin: 6px 0; flex-wrap: wrap;
+  font-size: 0.85em; }
+#controls button { font-size: 0.9em; padding: 3px 12px; border: 1px solid #333;
+  background: #333; color: #fff; border-radius: 3px; cursor: pointer; }
+#controls button:disabled { opacity: 0.5; cursor: wait; }
+#controls input[type=number], #controls input[type=text] { font-size: 0.85em; padding: 2px 4px; }
+#status { color: #666; font-family: ui-monospace, monospace; font-size: 0.8em; }
+#error { color: #c00; font-family: ui-monospace, monospace; white-space: pre-wrap;
+  margin: 6px 0; }
+#resultWrap { overflow: auto; max-height: 70vh; border: 1px solid #eee; }
+#result { border-collapse: collapse; font-size: 0.8em; font-family: ui-monospace, monospace;
+  width: 100%; }
+#result th, #result td { padding: 2px 6px; border-bottom: 1px solid #f0f0f0;
+  text-align: left; vertical-align: top; white-space: pre; }
+#result thead th { position: sticky; top: 0; background: #fafafa;
+  border-bottom: 1px solid #ccc; }
+#result td.null { color: #aaa; font-style: italic; }
+#result td.num { text-align: right; }

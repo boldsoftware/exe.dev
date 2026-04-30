@@ -261,6 +261,11 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /debug/pprof/mutex", pprof.Handler("mutex"))
 	mux.Handle("GET /debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 
+	// Read-only SQL console.
+	mux.HandleFunc("GET /debug/sql", s.handleDebugSQLPage)
+	mux.HandleFunc("GET /debug/sql/run", s.handleDebugSQL)
+	mux.HandleFunc("POST /debug/sql/run", s.handleDebugSQL)
+
 	if s.requireTailscale {
 		return tailscaleOnly(mux)
 	}
@@ -313,6 +318,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 <li><a href="/health">/health</a> - health check</li>
 <li><a href="/query">/query</a> - query metrics (add ?vm_name=...&amp;limit=...)</li>
 <li><a href="/sparklines">/sparklines</a> - sparklines dashboard</li>
+<li><a href="/debug/sql">/debug/sql</a> - read-only SQL console</li>
 </ul>
 </body>
 </html>
