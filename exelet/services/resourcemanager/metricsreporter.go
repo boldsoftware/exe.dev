@@ -222,6 +222,7 @@ func (m *ResourceManager) collectMetricsFromRM(host string) []types.Metric {
 			FsTotalBytes:            int64(state.fsTotalBytes),
 			FsFreeBytes:             int64(state.fsFreeBytes),
 			FsAvailableBytes:        int64(state.fsAvailableBytes),
+			FsUsedBytes:             int64(state.fsUsedBytes),
 		}
 
 		metrics = append(metrics, metric)

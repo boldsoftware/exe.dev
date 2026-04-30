@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS vm_metrics (
 	memory_inactive_file_bytes  Int64 DEFAULT 0,
 	fs_total_bytes              Int64 DEFAULT 0,
 	fs_free_bytes               Int64 DEFAULT 0,
-	fs_available_bytes          Int64 DEFAULT 0
+	fs_available_bytes          Int64 DEFAULT 0,
+	fs_used_bytes               Int64 DEFAULT 0
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (vm_name, timestamp)
@@ -70,6 +71,7 @@ var clickHouseAlterStatements = []string{
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_total_bytes Int64 DEFAULT 0`,
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_free_bytes Int64 DEFAULT 0`,
 	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_available_bytes Int64 DEFAULT 0`,
+	`ALTER TABLE vm_metrics ADD COLUMN IF NOT EXISTS fs_used_bytes Int64 DEFAULT 0`,
 }
 
 const clickHouseInsertSQL = `INSERT INTO vm_metrics (
@@ -81,7 +83,7 @@ const clickHouseInsertSQL = `INSERT INTO vm_metrics (
 	io_read_bytes, io_write_bytes,
 	memory_anon_bytes, memory_file_bytes, memory_kernel_bytes,
 	memory_shmem_bytes, memory_slab_bytes, memory_inactive_file_bytes,
-	fs_total_bytes, fs_free_bytes, fs_available_bytes
+	fs_total_bytes, fs_free_bytes, fs_available_bytes, fs_used_bytes
 )`
 
 // ClickHouseConfig configures the async ClickHouse mirror.
@@ -297,7 +299,7 @@ func (s *ClickHouseSync) doInsert(ctx context.Context, metrics []types.Metric) e
 			m.IOReadBytes, m.IOWriteBytes,
 			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
 			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
-			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes,
+			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes, m.FsUsedBytes,
 		); err != nil {
 			return fmt.Errorf("append row: %w", err)
 		}

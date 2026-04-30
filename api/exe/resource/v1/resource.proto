@@ -111,10 +111,13 @@ message VMUsage {
   // matches statvfs f_bfree (free blocks including the root-reserved
   // pool); fs_available_bytes matches statvfs f_bavail (free blocks
   // minus the root reservation, i.e. what `df` shows in the "Avail"
-  // column for a non-root user).
+  // column for a non-root user). fs_used_bytes is the obvious
+  // complement of fs_free_bytes: block_size * (blocks_count -
+  // free_blocks_count).
   uint64 fs_total_bytes = 22;
   uint64 fs_free_bytes = 23;
   uint64 fs_available_bytes = 24;
+  uint64 fs_used_bytes = 25;
 }
 
 enum VMPriority {

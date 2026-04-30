@@ -509,10 +509,13 @@ type VMUsage struct {
 	// matches statvfs f_bfree (free blocks including the root-reserved
 	// pool); fs_available_bytes matches statvfs f_bavail (free blocks
 	// minus the root reservation, i.e. what `df` shows in the "Avail"
-	// column for a non-root user).
+	// column for a non-root user). fs_used_bytes is the obvious
+	// complement of fs_free_bytes: block_size * (blocks_count -
+	// free_blocks_count).
 	FsTotalBytes     uint64 `protobuf:"varint,22,opt,name=fs_total_bytes,json=fsTotalBytes,proto3" json:"fs_total_bytes,omitempty"`
 	FsFreeBytes      uint64 `protobuf:"varint,23,opt,name=fs_free_bytes,json=fsFreeBytes,proto3" json:"fs_free_bytes,omitempty"`
 	FsAvailableBytes uint64 `protobuf:"varint,24,opt,name=fs_available_bytes,json=fsAvailableBytes,proto3" json:"fs_available_bytes,omitempty"`
+	FsUsedBytes      uint64 `protobuf:"varint,25,opt,name=fs_used_bytes,json=fsUsedBytes,proto3" json:"fs_used_bytes,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -711,6 +714,13 @@ func (x *VMUsage) GetFsFreeBytes() uint64 {
 func (x *VMUsage) GetFsAvailableBytes() uint64 {
 	if x != nil {
 		return x.FsAvailableBytes
+	}
+	return 0
+}
+
+func (x *VMUsage) GetFsUsedBytes() uint64 {
+	if x != nil {
+		return x.FsUsedBytes
 	}
 	return 0
 }
@@ -1248,7 +1258,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xa9\a\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xcd\a\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1280,7 +1290,8 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x1amemory_inactive_file_bytes\x18\x15 \x01(\x04R\x17memoryInactiveFileBytes\x12$\n" +
 	"\x0efs_total_bytes\x18\x16 \x01(\x04R\ffsTotalBytes\x12\"\n" +
 	"\rfs_free_bytes\x18\x17 \x01(\x04R\vfsFreeBytes\x12,\n" +
-	"\x12fs_available_bytes\x18\x18 \x01(\x04R\x10fsAvailableBytes\"d\n" +
+	"\x12fs_available_bytes\x18\x18 \x01(\x04R\x10fsAvailableBytes\x12\"\n" +
+	"\rfs_used_bytes\x18\x19 \x01(\x04R\vfsUsedBytes\"d\n" +
 	"\x14SetVMPriorityRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x127\n" +
 	"\bpriority\x18\x02 \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"\x17\n" +

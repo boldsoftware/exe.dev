@@ -43,6 +43,7 @@ type usageData struct {
 	fsTotalBytes     uint64 // ext4 capacity (block_size * blocks_count)
 	fsFreeBytes      uint64 // ext4 free bytes (block_size * free_blocks_count)
 	fsAvailableBytes uint64 // ext4 free bytes minus root reservation
+	fsUsedBytes      uint64 // ext4 used bytes (TotalBytes - FreeBytes)
 	netRxBytes       uint64
 	netTxBytes       uint64
 	ioReadBytes      uint64 // cumulative IO read bytes from cgroup io.stat
@@ -121,6 +122,7 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 			usage.fsTotalBytes = fsUsage.TotalBytes()
 			usage.fsFreeBytes = fsUsage.FreeBytes()
 			usage.fsAvailableBytes = fsUsage.AvailableBytes()
+			usage.fsUsedBytes = fsUsage.UsedBytes()
 		}
 	}
 

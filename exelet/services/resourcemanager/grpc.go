@@ -124,6 +124,7 @@ func (m *ResourceManager) maybeFillExt4Usage(ctx context.Context, id, groupID st
 	u.FsTotalBytes = fs.TotalBytes()
 	u.FsFreeBytes = fs.FreeBytes()
 	u.FsAvailableBytes = fs.AvailableBytes()
+	u.FsUsedBytes = fs.UsedBytes()
 }
 
 // ListVMUsage streams usage information for all VMs.

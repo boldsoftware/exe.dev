@@ -53,6 +53,7 @@ type vmUsageRow struct {
 	FsTotalBytes     uint64
 	FsFreeBytes      uint64
 	FsAvailableBytes uint64
+	FsUsedBytes      uint64
 }
 
 // DisplayMemBytes returns the user-facing memory figure: cgroup memory.current
@@ -648,6 +649,7 @@ func (ss *SSHServer) fetchVMUsageForUser(ctx context.Context, userID string, col
 					row.FsTotalBytes = u.FsTotalBytes
 					row.FsFreeBytes = u.FsFreeBytes
 					row.FsAvailableBytes = u.FsAvailableBytes
+					row.FsUsedBytes = u.FsUsedBytes
 				}
 				allRows = append(allRows, row)
 			}
@@ -811,6 +813,7 @@ type topJSONRow struct {
 	FsTotalBytes     uint64  `json:"fs_total_bytes,omitempty"`
 	FsFreeBytes      uint64  `json:"fs_free_bytes,omitempty"`
 	FsAvailableBytes uint64  `json:"fs_available_bytes,omitempty"`
+	FsUsedBytes      uint64  `json:"fs_used_bytes,omitempty"`
 }
 
 func rowToJSON(r vmUsageRow, rxRate, txRate float64) topJSONRow {
@@ -836,6 +839,7 @@ func rowToJSON(r vmUsageRow, rxRate, txRate float64) topJSONRow {
 		FsTotalBytes:     r.FsTotalBytes,
 		FsFreeBytes:      r.FsFreeBytes,
 		FsAvailableBytes: r.FsAvailableBytes,
+		FsUsedBytes:      r.FsUsedBytes,
 	}
 }
 

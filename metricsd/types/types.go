@@ -48,6 +48,7 @@ type Metric struct {
 	FsTotalBytes     int64 `json:"fs_total_bytes,omitempty"`
 	FsFreeBytes      int64 `json:"fs_free_bytes,omitempty"`
 	FsAvailableBytes int64 `json:"fs_available_bytes,omitempty"`
+	FsUsedBytes      int64 `json:"fs_used_bytes,omitempty"`
 }
 
 // MetricsBatch allows submitting multiple metrics at once.

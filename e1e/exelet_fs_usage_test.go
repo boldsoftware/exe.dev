@@ -112,9 +112,9 @@ func TestVMFilesystemUsage(t *testing.T) {
 	noFlag := listUsage(t, false)
 	t.Logf("no-flag: fs_total=%d fs_free=%d fs_avail=%d disk_capacity=%d",
 		noFlag.FsTotalBytes, noFlag.FsFreeBytes, noFlag.FsAvailableBytes, noFlag.DiskCapacityBytes)
-	if noFlag.FsTotalBytes != 0 || noFlag.FsFreeBytes != 0 || noFlag.FsAvailableBytes != 0 {
-		t.Errorf("fs_*_bytes leaked through without collect_filesystem_usage: total=%d free=%d avail=%d",
-			noFlag.FsTotalBytes, noFlag.FsFreeBytes, noFlag.FsAvailableBytes)
+	if noFlag.FsTotalBytes != 0 || noFlag.FsFreeBytes != 0 || noFlag.FsAvailableBytes != 0 || noFlag.FsUsedBytes != 0 {
+		t.Errorf("fs_*_bytes leaked through without collect_filesystem_usage: total=%d free=%d avail=%d used=%d",
+			noFlag.FsTotalBytes, noFlag.FsFreeBytes, noFlag.FsAvailableBytes, noFlag.FsUsedBytes)
 	}
 
 	// (1) With the flag, the exelet performs the on-demand probe and
@@ -140,6 +140,12 @@ func TestVMFilesystemUsage(t *testing.T) {
 	}
 	if withFlag.FsAvailableBytes > withFlag.FsFreeBytes {
 		t.Errorf("FsAvailableBytes (%d) > FsFreeBytes (%d)", withFlag.FsAvailableBytes, withFlag.FsFreeBytes)
+	}
+	// fs_used_bytes is the obvious complement of fs_free_bytes; with a
+	// well-formed superblock these always sum to fs_total_bytes.
+	if withFlag.FsUsedBytes == 0 || withFlag.FsUsedBytes+withFlag.FsFreeBytes != withFlag.FsTotalBytes {
+		t.Errorf("FsUsedBytes (%d) + FsFreeBytes (%d) != FsTotalBytes (%d)",
+			withFlag.FsUsedBytes, withFlag.FsFreeBytes, withFlag.FsTotalBytes)
 	}
 	// Cross-check capacity: ext4 capacity must be ≤ zvol provisioned
 	// size (mkfs may round down by a few MiB).
@@ -170,7 +176,7 @@ func TestVMFilesystemUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetVMUsage(collect=false): %v", err)
 	}
-	if u := getNoFlag.GetUsage(); u.FsTotalBytes != 0 || u.FsFreeBytes != 0 || u.FsAvailableBytes != 0 {
+	if u := getNoFlag.GetUsage(); u.FsTotalBytes != 0 || u.FsFreeBytes != 0 || u.FsAvailableBytes != 0 || u.FsUsedBytes != 0 {
 		t.Errorf("GetVMUsage with collect=false leaked fs_*_bytes: total=%d free=%d avail=%d",
 			u.FsTotalBytes, u.FsFreeBytes, u.FsAvailableBytes)
 	}

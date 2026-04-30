@@ -429,7 +429,7 @@ func (s *Server) InsertMetrics(ctx context.Context, metrics []Metric) error {
 			m.VMID,
 			m.MemoryAnonBytes, m.MemoryFileBytes, m.MemoryKernelBytes,
 			m.MemoryShmemBytes, m.MemorySlabBytes, m.MemoryInactiveFileBytes,
-			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes,
+			m.FsTotalBytes, m.FsFreeBytes, m.FsAvailableBytes, m.FsUsedBytes,
 		)
 		s.insertRowSeconds.Observe(time.Since(rowStart).Seconds())
 		if err != nil {
@@ -493,7 +493,7 @@ func scanMetric(rows *sql.Rows, m *Metric) error {
 		&m.VMID,
 		&m.MemoryAnonBytes, &m.MemoryFileBytes, &m.MemoryKernelBytes,
 		&m.MemoryShmemBytes, &m.MemorySlabBytes, &m.MemoryInactiveFileBytes,
-		&m.FsTotalBytes, &m.FsFreeBytes, &m.FsAvailableBytes,
+		&m.FsTotalBytes, &m.FsFreeBytes, &m.FsAvailableBytes, &m.FsUsedBytes,
 	); err != nil {
 		return fmt.Errorf("scan row: %w", err)
 	}
@@ -624,7 +624,8 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			COALESCE(memory_inactive_file_bytes, 0) AS memory_inactive_file_bytes,
 			COALESCE(fs_total_bytes, 0) AS fs_total_bytes,
 			COALESCE(fs_free_bytes, 0) AS fs_free_bytes,
-			COALESCE(fs_available_bytes, 0) AS fs_available_bytes
+			COALESCE(fs_available_bytes, 0) AS fs_available_bytes,
+			COALESCE(fs_used_bytes, 0) AS fs_used_bytes
 		FROM (
 			SELECT *,
 				row_number() OVER (PARTITION BY vm_name ORDER BY timestamp) AS rn
@@ -672,6 +673,7 @@ func (s *Server) handleQueryVMs(w http.ResponseWriter, r *http.Request) {
 			&m.FsTotalBytes,
 			&m.FsFreeBytes,
 			&m.FsAvailableBytes,
+			&m.FsUsedBytes,
 		); err != nil {
 			slog.ErrorContext(ctx, "failed to scan row", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)

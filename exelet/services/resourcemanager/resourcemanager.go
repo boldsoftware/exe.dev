@@ -123,6 +123,7 @@ type vmUsageState struct {
 	fsTotalBytes            uint64 // ext4 capacity from zvol superblock (0 if unavailable)
 	fsFreeBytes             uint64 // ext4 free bytes from zvol superblock
 	fsAvailableBytes        uint64 // ext4 free bytes minus root reservation
+	fsUsedBytes             uint64 // ext4 used bytes (TotalBytes - FreeBytes)
 	netRxBytes              uint64
 	netTxBytes              uint64
 	ioReadBytes             uint64
@@ -457,6 +458,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 				usage.fsTotalBytes = fsUsage.TotalBytes()
 				usage.fsFreeBytes = fsUsage.FreeBytes()
 				usage.fsAvailableBytes = fsUsage.AvailableBytes()
+				usage.fsUsedBytes = fsUsage.UsedBytes()
 			}
 		}
 	} else {
@@ -542,6 +544,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	state.fsTotalBytes = usage.fsTotalBytes
 	state.fsFreeBytes = usage.fsFreeBytes
 	state.fsAvailableBytes = usage.fsAvailableBytes
+	state.fsUsedBytes = usage.fsUsedBytes
 	state.netRxBytes = usage.netRxBytes
 	state.netTxBytes = usage.netTxBytes
 	state.ioReadBytes = usage.ioReadBytes

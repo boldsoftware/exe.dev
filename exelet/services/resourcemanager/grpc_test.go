@@ -54,7 +54,7 @@ func TestGetVMUsageGate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if u := resp.GetUsage(); u.FsTotalBytes != 0 || u.FsFreeBytes != 0 || u.FsAvailableBytes != 0 {
+		if u := resp.GetUsage(); u.FsTotalBytes != 0 || u.FsFreeBytes != 0 || u.FsAvailableBytes != 0 || u.FsUsedBytes != 0 {
 			t.Fatalf("fs fields leaked when flag=false: %+v", u)
 		}
 	})
@@ -80,6 +80,9 @@ func TestGetVMUsageGate(t *testing.T) {
 		}
 		if u.FsFreeBytes == 0 {
 			t.Fatal("FsFreeBytes = 0")
+		}
+		if u.FsUsedBytes != usageWithFs.UsedBytes() {
+			t.Fatalf("FsUsedBytes = %d, want %d", u.FsUsedBytes, usageWithFs.UsedBytes())
 		}
 	})
 	t.Run("flag true, gate allows by env", func(t *testing.T) {
