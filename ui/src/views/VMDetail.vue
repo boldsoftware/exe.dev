@@ -207,18 +207,32 @@
       :visible="modal.visible"
       :title="modal.title"
       :description="modal.description"
-      :command="modal.command"
-      :display-command="modal.displayCommand"
-      :command-prefix="modal.commandPrefix"
+      :command="modalCommand"
+      :display-command="modalDisplayCommand"
+      :command-prefix="modal.title === 'Add Tag' ? '' : modal.commandPrefix"
       :input-placeholder="modal.inputPlaceholder"
       :default-value="modal.defaultValue"
       :danger="modal.danger"
       :success-format="modal.successFormat"
       :suggestions="modal.suggestions"
+      :split-input-args="modal.splitInputArgs"
       :allow-empty-input="modal.allowEmptyInput"
-      @close="modal.visible = false"
+      :can-run="modal.title !== 'Add Tag' || modalTagSelection.length > 0"
+      @close="closeModal"
       @success="onModalSuccess"
-    />
+    >
+      <template v-if="modal.title === 'Add Tag'" #input>
+        <div class="modal-tag-picker">
+          <label class="modal-field-label">Tags</label>
+          <MultiTagPicker
+            v-model="modalTagSelection"
+            :tag-summaries="modalTagSummaries"
+            :excluded-tags="box?.displayTags || []"
+            hint="Type spaces or commas to add multiple tags."
+          />
+        </div>
+      </template>
+    </CommandModal>
   </div>
 </template>
 
@@ -233,6 +247,7 @@ import {
   type BoxLLMUsageResponse,
   type IntegrationInfo,
   type IntegrationsData,
+  type TagIntegrationSummary,
   shellQuote,
 } from '../api/client'
 import StatusDot from '../components/StatusDot.vue'
@@ -242,6 +257,7 @@ import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import VMDetailSections from '../components/VMDetailSections.vue'
+import MultiTagPicker from '../components/MultiTagPicker.vue'
 import PoolCharts from '../components/PoolCharts.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
@@ -295,6 +311,8 @@ const llmUsage = ref<BoxLLMUsageResponse | null>(null)
 
 // Attached integrations
 const integrationsData = ref<IntegrationsData | null>(null)
+const modalTagSelection = ref<string[]>([])
+const modalTagSummaries = ref<TagIntegrationSummary[]>([])
 
 interface AttachedIntegrationRow {
   name: string
@@ -457,6 +475,7 @@ async function load() {
 
       fetchIntegrations().then(d => {
         integrationsData.value = d
+        modalTagSummaries.value = d.tagIntegrationSummaries || (d.allTags ?? []).map(tag => ({ tag, integrations: [], more: 0 }))
       }).catch(err => {
         console.error('Failed to load integrations:', err)
       })
@@ -482,8 +501,34 @@ const modal = reactive({
   danger: false,
   successFormat: '',
   suggestions: [] as string[],
+  splitInputArgs: false,
   allowEmptyInput: false,
 })
+
+const modalCommand = computed(() => {
+  if (modal.title === 'Add Tag') {
+    if (!modal.commandPrefix || modalTagSelection.value.length === 0) return ''
+    return [modal.commandPrefix, ...modalTagSelection.value.map(shellQuote)].join(' ')
+  }
+  return modal.command
+})
+
+const modalDisplayCommand = computed(() => {
+  if (modal.title === 'Add Tag') {
+    return modalCommand.value || `${modal.commandPrefix} <tag>`
+  }
+  return modal.displayCommand
+})
+
+async function ensureModalTagSummaries() {
+  try {
+    const d = await fetchIntegrations()
+    integrationsData.value = d
+    modalTagSummaries.value = d.tagIntegrationSummaries || (d.allTags ?? []).map(tag => ({ tag, integrations: [], more: 0 }))
+  } catch (err) {
+    console.error('Failed to load tag summaries:', err)
+  }
+}
 
 function openModal(opts: Partial<typeof modal>) {
   Object.assign(modal, {
@@ -498,6 +543,7 @@ function openModal(opts: Partial<typeof modal>) {
     danger: false,
     successFormat: '',
     suggestions: [],
+    splitInputArgs: false,
     allowEmptyInput: false,
     ...opts,
   })
@@ -589,19 +635,20 @@ function doAction(type: string, extra?: any) {
       })
       break
     case 'add-tag': {
-      // Suggest existing tags that aren't already on this VM.
-      const existing = new Set(box.value.displayTags || [])
-      const allKnownTags = new Set<string>()
-      for (const b of allBoxes.value) {
-        for (const t of b.displayTags || []) allKnownTags.add(t)
+      modalTagSelection.value = []
+      // Seed summaries from dashboard tags if integrations data has not loaded yet.
+      if (modalTagSummaries.value.length === 0) {
+        const allKnownTags = new Set<string>()
+        for (const b of allBoxes.value) {
+          for (const t of b.displayTags || []) allKnownTags.add(t)
+        }
+        modalTagSummaries.value = [...allKnownTags].sort((a, b) => a.localeCompare(b)).map(tag => ({ tag, integrations: [], more: 0 }))
+        ensureModalTagSummaries()
       }
-      const suggestions = [...allKnownTags].filter(t => !existing.has(t)).sort((a, b) => a.localeCompare(b))
       openModal({
         title: 'Add Tag',
         commandPrefix: `tag ${q}`,
-        inputPlaceholder: 'tag name (e.g. prod)',
-        description: 'Tags are usually used for attaching integrations and organization.',
-        suggestions,
+        description: 'Choose one or more tags to add to this VM.',
       })
       break
     }
@@ -649,6 +696,11 @@ function doAction(type: string, extra?: any) {
       break
     }
   }
+}
+
+function closeModal() {
+  modal.visible = false
+  modalTagSelection.value = []
 }
 
 async function onModalSuccess() {
@@ -925,6 +977,18 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--surface-border);
   display: flex;
   justify-content: flex-end;
+}
+
+.modal-tag-picker {
+  margin-top: 12px;
+}
+
+.modal-field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  margin-bottom: 6px;
 }
 
 .field-label {

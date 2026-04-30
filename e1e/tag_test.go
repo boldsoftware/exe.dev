@@ -57,11 +57,12 @@ func TestTag(t *testing.T) {
 		repl.Disconnect()
 	})
 
-	t.Run("AddSecondTag", func(t *testing.T) {
+	t.Run("AddMultipleTags", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.SendLine("tag " + box + " staging")
+		repl.SendLine("tag " + box + " staging qa")
 		repl.Want("Added")
 		repl.Want("staging")
+		repl.Want("qa")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
@@ -93,12 +94,12 @@ func TestTag(t *testing.T) {
 		for _, vm := range result.VMs {
 			if vm.VMName == box {
 				found = true
-				if len(vm.Tags) != 2 {
-					t.Fatalf("expected 2 tags, got %d: %v", len(vm.Tags), vm.Tags)
+				if len(vm.Tags) != 3 {
+					t.Fatalf("expected 3 tags, got %d: %v", len(vm.Tags), vm.Tags)
 				}
 				// Tags are sorted
-				if vm.Tags[0] != "prod" || vm.Tags[1] != "staging" {
-					t.Fatalf("expected [prod, staging], got %v", vm.Tags)
+				if vm.Tags[0] != "prod" || vm.Tags[1] != "qa" || vm.Tags[2] != "staging" {
+					t.Fatalf("expected [prod, qa, staging], got %v", vm.Tags)
 				}
 			}
 		}
@@ -122,8 +123,8 @@ func TestTag(t *testing.T) {
 		if result.VMName != box {
 			t.Fatalf("expected vm_name %q, got %q", box, result.VMName)
 		}
-		if len(result.Tags) != 3 {
-			t.Fatalf("expected 3 tags, got %d: %v", len(result.Tags), result.Tags)
+		if len(result.Tags) != 4 {
+			t.Fatalf("expected 4 tags, got %d: %v", len(result.Tags), result.Tags)
 		}
 	})
 
@@ -135,11 +136,12 @@ func TestTag(t *testing.T) {
 		repl.Disconnect()
 	})
 
-	t.Run("DeleteTag", func(t *testing.T) {
+	t.Run("DeleteMultipleTags", func(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
-		repl.SendLine("tag -d " + box + " prod")
+		repl.SendLine("tag -d " + box + " prod qa")
 		repl.Want("Removed")
 		repl.Want("prod")
+		repl.Want("qa")
 		repl.WantPrompt()
 		repl.Disconnect()
 	})
@@ -156,6 +158,7 @@ func TestTag(t *testing.T) {
 		repl := sshToExeDev(t, keyFile)
 		repl.SendLine("ls")
 		repl.Reject("#prod")
+		repl.Reject("#qa")
 		repl.Want("#staging")
 		repl.Want("#web")
 		repl.WantPrompt()

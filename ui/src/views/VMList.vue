@@ -158,18 +158,32 @@
       :visible="modal.visible"
       :title="modal.title"
       :description="modal.description"
-      :command="modal.command"
-      :display-command="modal.displayCommand"
-      :command-prefix="modal.commandPrefix"
+      :command="modalCommand"
+      :display-command="modalDisplayCommand"
+      :command-prefix="modal.title === 'Add Tag' ? '' : modal.commandPrefix"
       :input-placeholder="modal.inputPlaceholder"
       :default-value="modal.defaultValue"
       :danger="modal.danger"
       :success-format="modal.successFormat"
       :suggestions="modal.suggestions"
+      :split-input-args="modal.splitInputArgs"
       :allow-empty-input="modal.allowEmptyInput"
+      :can-run="modal.title !== 'Add Tag' || modalTagSelection.length > 0"
       @close="closeModal"
       @success="onModalSuccess"
-    />
+    >
+      <template v-if="modal.title === 'Add Tag'" #input>
+        <div class="modal-tag-picker">
+          <label class="modal-field-label">Tags</label>
+          <MultiTagPicker
+            v-model="modalTagSelection"
+            :tag-summaries="modalTagSummaries"
+            :excluded-tags="modalExistingTags"
+            hint="Type spaces or commas to add multiple tags."
+          />
+        </div>
+      </template>
+    </CommandModal>
 
     <!-- Copy VM Modal -->
     <div v-if="copyModalOpen" class="prompt-overlay" @click="blurActiveElement(); copyModalOpen = false">
@@ -286,7 +300,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDashboard, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, type TrialInfo, shellQuote } from '../api/client'
+import { fetchDashboard, fetchIntegrations, runCommand, type BoxInfo, type SharedBoxInfo, type TeamBoxInfo, type TeamSharedBoxInfo, type TrialInfo, type TagIntegrationSummary, shellQuote } from '../api/client'
 import VMCard from '../components/VMCard.vue'
 import StatusDot from '../components/StatusDot.vue'
 import CopyButton from '../components/CopyButton.vue'
@@ -295,6 +309,7 @@ import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import ViewPopover from '../components/ViewPopover.vue'
 import TrialBanner from '../components/TrialBanner.vue'
 import UsageView from '../components/UsageView.vue'
+import MultiTagPicker from '../components/MultiTagPicker.vue'
 import type { SortField, GroupField, ViewOptions } from '../components/ViewPopover.vue'
 
 const route = useRoute()
@@ -313,6 +328,9 @@ const trialInfo = ref<TrialInfo | null>(null)
 const viewMode = computed(() => route.name === 'vms-usage' ? 'usage' as const : 'list' as const)
 const usageHours = ref(24)
 const hasUsage = ref(false)
+const modalTagSelection = ref<string[]>([])
+const modalTagSummaries = ref<TagIntegrationSummary[]>([])
+const modalExistingTags = ref<string[]>([])
 
 // View options (sort, order, group) — persisted to localStorage
 const STORAGE_KEY = 'exe-vm-view-options'
@@ -440,6 +458,7 @@ const modal = reactive({
   danger: false,
   successFormat: '',
   suggestions: [] as string[],
+  splitInputArgs: false,
   allowEmptyInput: false,
 })
 
@@ -452,6 +471,30 @@ const allKnownTags = computed(() => {
   }
   return [...set].sort((a, b) => a.localeCompare(b))
 })
+
+const modalCommand = computed(() => {
+  if (modal.title === 'Add Tag') {
+    if (!modal.commandPrefix || modalTagSelection.value.length === 0) return ''
+    return [modal.commandPrefix, ...modalTagSelection.value.map(shellQuote)].join(' ')
+  }
+  return modal.command
+})
+
+const modalDisplayCommand = computed(() => {
+  if (modal.title === 'Add Tag') {
+    return modalCommand.value || `${modal.commandPrefix} <tag>`
+  }
+  return modal.displayCommand
+})
+
+async function ensureModalTagSummaries() {
+  try {
+    const integrations = await fetchIntegrations()
+    modalTagSummaries.value = integrations.tagIntegrationSummaries || (integrations.allTags ?? []).map(tag => ({ tag, integrations: [], more: 0 }))
+  } catch (err) {
+    console.error('Failed to load tag summaries:', err)
+  }
+}
 
 // Emojis the user has already used on their boxes, in MRU order.
 const recentEmojis = computed(() => {
@@ -771,15 +814,16 @@ function handleAction(action: ActionEvent) {
       break
     }
     case 'add-tag': {
-      // Suggest existing tags that aren't already on this VM.
-      const existing = new Set(boxes.value.find(b => b.name === action.boxName)?.displayTags || [])
-      const suggestions = allKnownTags.value.filter(t => !existing.has(t))
+      modalTagSelection.value = []
+      modalExistingTags.value = boxes.value.find(b => b.name === action.boxName)?.displayTags || []
+      if (modalTagSummaries.value.length === 0) {
+        modalTagSummaries.value = allKnownTags.value.map(tag => ({ tag, integrations: [], more: 0 }))
+        ensureModalTagSummaries()
+      }
       openModal({
         title: 'Add Tag',
         commandPrefix: `tag ${q}`,
-        inputPlaceholder: 'tag name (e.g. prod)',
-        description: 'Tags are usually used for attaching integrations and organization.',
-        suggestions,
+        description: 'Choose one or more tags to add to this VM.',
       })
       break
     }
@@ -811,6 +855,7 @@ function openModal(opts: Partial<typeof modal>) {
     danger: false,
     successFormat: '',
     suggestions: [],
+    splitInputArgs: false,
     allowEmptyInput: false,
     ...opts,
   })
@@ -818,6 +863,8 @@ function openModal(opts: Partial<typeof modal>) {
 
 function closeModal() {
   modal.visible = false
+  modalTagSelection.value = []
+  modalExistingTags.value = []
 }
 
 async function onModalSuccess() {
@@ -1392,6 +1439,18 @@ async function submitPrompt() {
   color: var(--text-color-secondary);
   margin-bottom: 12px;
   line-height: 1.5;
+}
+
+.modal-tag-picker {
+  margin-top: 12px;
+}
+
+.modal-field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  margin-bottom: 6px;
 }
 
 .copy-cmd-display {

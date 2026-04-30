@@ -265,6 +265,52 @@ describe('VMDetail', () => {
     expect(tagsRow.text()).toContain('Add Tag')
   })
 
+  it('opens Add Tag modal configured for multiple tags', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({
+      boxes: [
+        makeBox({ name: 'my-vm', displayTags: ['prod'] }),
+        makeBox({ name: 'other-vm', displayTags: ['web', 'qa'] }),
+      ],
+    }))
+    mockFetchIntegrations.mockResolvedValue({
+      integrations: [],
+      githubIntegrations: [],
+      proxyIntegrations: [],
+      reflectionIntegrations: [],
+      githubAccounts: [],
+      githubEnabled: false,
+      githubAppSlug: '',
+      hasPushTokens: false,
+      allTags: ['prod', 'qa', 'web'],
+      tagVMs: {},
+      tagIntegrationSummaries: [
+        { tag: 'prod', integrations: ['repo'], more: 0 },
+        { tag: 'qa', integrations: [], more: 0 },
+        { tag: 'web', integrations: ['proxy'], more: 0 },
+      ],
+      boxes: [],
+      integrationScheme: 'https',
+      boxHost: 'example.com',
+      hasTeam: false,
+    })
+    const wrapper = await mountVMDetail()
+
+    const addTag = wrapper.findAll('.tags-row .detail-btn').find(btn => btn.text() === 'Add Tag')
+    expect(addTag).toBeTruthy()
+    await addTag!.trigger('click')
+
+    const modal = wrapper.findComponent({ name: 'CommandModal' })
+    expect(modal.props('visible')).toBe(true)
+    expect(modal.props('title')).toBe('Add Tag')
+    expect(modal.props('commandPrefix')).toBe('')
+    expect(modal.props('command')).toBe('')
+    expect(modal.props('displayCommand')).toBe('tag my-vm <tag>')
+    expect(modal.props('canRun')).toBe(false)
+    expect(wrapper.text()).not.toContain('Options')
+    expect(wrapper.text()).toContain('#qa')
+    expect(wrapper.text()).toContain('#web')
+  })
+
   // --- Action buttons ---
 
   it('renders HTTPS and Terminal action buttons', async () => {

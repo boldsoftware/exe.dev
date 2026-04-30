@@ -1,0 +1,14 @@
+
+
+●
+● ssh localhost
+●
+
+tag BOX_NAME staging qa
+
+- help to see a list of commands
+
+PROMPT ▶ tag BOX_NAME staging qa
+Added tags "staging", "qa" to BOX_NAME
+PROMPT ▶ exit
+Goodbye!

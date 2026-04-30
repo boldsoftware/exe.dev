@@ -66,56 +66,11 @@
         <div class="options-body">
           <div v-if="showTagPicker" class="form-group tags-form-group">
             <label class="form-label">Tags</label>
-            <div v-if="selectedTags.length > 0" class="selected-tags">
-              <button
-                v-for="tag in selectedTags"
-                :key="tag"
-                type="button"
-                class="selected-tag"
-                :title="`Remove ${tag}`"
-                @click="removeTag(tag)"
-              >
-                #{{ tag }} <span aria-hidden="true">×</span>
-              </button>
-            </div>
-            <div class="tag-input-wrap">
-              <input
-                v-model="tagSearch"
-                type="text"
-                class="form-input"
-                placeholder="Search or add a tag..."
-                autocomplete="off"
-                autocapitalize="none"
-                autocorrect="off"
-                spellcheck="false"
-                @keydown.enter.prevent="addHighlightedTag"
-                @keydown.tab="addHighlightedTag"
-                @keydown.backspace="onTagBackspace"
-              />
-            </div>
-            <div v-if="tagOptions.length > 0" class="tag-options" aria-label="Available tags">
-              <button
-                v-for="opt in tagOptions"
-                :key="opt.tag"
-                type="button"
-                class="tag-option"
-                @click="addTag(opt.tag)"
-              >
-                <span class="tag-option-name">#{{ opt.tag }}</span>
-                <span v-if="opt.integrations.length > 0" class="tag-option-integrations">
-                  {{ opt.integrations.join(', ') }}<span v-if="opt.more > 0"> +{{ opt.more }}</span>
-                </span>
-                <span v-else class="tag-option-integrations muted">No integrations</span>
-              </button>
-            </div>
-            <div v-else-if="creatableTag" class="tag-options" aria-label="Add tag">
-              <button type="button" class="tag-option" @click="addTag(creatableTag)">
-                <span class="tag-option-name">Create #{{ creatableTag }}</span>
-                <span class="tag-option-integrations muted">No integrations yet</span>
-              </button>
-            </div>
-            <div v-if="tagError" class="form-hint error">{{ tagError }}</div>
-            <div v-else class="form-hint">Tags can attach matching integrations to this VM.</div>
+            <MultiTagPicker
+              v-model="selectedTags"
+              :tag-summaries="tagSummaries"
+              hint="Tags can attach matching integrations to this VM."
+            />
           </div>
 
           <div class="form-group">
@@ -189,6 +144,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { checkHostname, fetchIntegrations } from '../api/client'
 import type { TagIntegrationSummary } from '../api/client'
+import MultiTagPicker from '../components/MultiTagPicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -223,7 +179,6 @@ const prompt = ref(queryScalar(route.query.prompt))
 const image = ref(queryScalar(route.query.image))
 const inviteCode = ref(queryScalar(route.query.invite))
 const selectedTags = ref(parseTagsParam(queryString(route.query.tags)))
-const tagSearch = ref('')
 const tagSummaries = ref<TagIntegrationSummary[]>([])
 const showTagPicker = ref(false)
 const errorMessage = ref('')
@@ -260,53 +215,6 @@ const ideas = ref<Idea[]>([])
 const selectedIdea = ref<Idea | null>(null)
 const ideaSlug = computed(() => selectedIdea.value?.slug || '')
 
-const tagError = computed(() => {
-  const q = tagSearch.value.trim()
-  if (!q || tagNameRe.test(q)) return ''
-  return 'Tag names must match [a-z][a-z0-9_-]*'
-})
-
-const tagSummaryMap = computed(() => new Map(tagSummaries.value.map(s => [s.tag, s])))
-
-const creatableTag = computed(() => {
-  const q = tagSearch.value.trim()
-  if (!q || !tagNameRe.test(q) || selectedTags.value.includes(q) || tagSummaryMap.value.has(q)) return ''
-  return q
-})
-
-const tagOptions = computed(() => {
-  const q = tagSearch.value.trim().toLowerCase()
-  const selected = new Set(selectedTags.value)
-  return tagSummaries.value
-    .filter(s => !selected.has(s.tag))
-    .filter(s => !q || s.tag.toLowerCase().includes(q) || s.integrations.some(name => name.toLowerCase().includes(q)))
-    .slice(0, 6)
-})
-
-function addTag(tag: string) {
-  tag = tag.trim()
-  if (!tagNameRe.test(tag) || selectedTags.value.includes(tag)) return
-  selectedTags.value = [...selectedTags.value, tag].sort()
-  tagSearch.value = ''
-}
-
-function removeTag(tag: string) {
-  selectedTags.value = selectedTags.value.filter(t => t !== tag)
-}
-
-function addHighlightedTag() {
-  if (tagOptions.value.length > 0) {
-    addTag(tagOptions.value[0].tag)
-    return
-  }
-  if (creatableTag.value) addTag(creatableTag.value)
-}
-
-function onTagBackspace() {
-  if (!tagSearch.value && selectedTags.value.length > 0) {
-    selectedTags.value = selectedTags.value.slice(0, -1)
-  }
-}
 
 const categories = [
   { slug: 'dev-tools', label: 'Dev Tools' },
@@ -911,85 +819,6 @@ onMounted(async () => {
 
 .tags-form-group {
   margin-bottom: 18px;
-}
-
-.selected-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.selected-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border: 1px solid var(--surface-border);
-  border-radius: 999px;
-  background: var(--tag-bg);
-  color: var(--tag-text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.selected-tag:hover {
-  border-color: var(--danger-color);
-  color: var(--danger-color);
-}
-
-.tag-input-wrap {
-  margin-bottom: 6px;
-}
-
-.tag-options {
-  display: grid;
-  gap: 4px;
-  max-height: 178px;
-  overflow-y: auto;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 4px;
-  background: var(--surface-card);
-}
-
-.tag-option {
-  display: grid;
-  grid-template-columns: minmax(80px, auto) 1fr;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  padding: 5px 7px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-color);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tag-option:hover {
-  background: var(--surface-hover);
-}
-
-.tag-option-name {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.tag-option-integrations {
-  color: var(--text-color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.tag-option-integrations.muted {
-  opacity: 0.75;
 }
 
 .submit-btn {

@@ -11,6 +11,7 @@
         <div class="cmd-display">
           <code>{{ shownCommand }}</code>
         </div>
+        <slot name="input" />
         <div v-if="showTextInput" class="cmd-input-wrap">
           <input
             ref="inputRef"
@@ -79,7 +80,7 @@
         <button
           v-else
           class="btn" :class="danger ? 'btn-danger' : 'btn-primary'"
-          :disabled="cmd.loading.value"
+          :disabled="cmd.loading.value || !canRunCommand"
           @click="run"
         >
           {{ cmd.loading.value ? 'Running...' : 'Run' }}
@@ -94,7 +95,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useCommand } from '../composables/useCommand'
 import { shellQuote } from '../api/client'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   visible: boolean
   title: string
   description?: string
@@ -106,11 +107,16 @@ const props = defineProps<{
   danger?: boolean
   successFormat?: string
   suggestions?: string[]
+  /** When true, split text input on spaces/commas and pass each token as a separate argument. */
+  splitInputArgs?: boolean
   choices?: { value: string; label?: string; hint?: string; disabled?: boolean; disabledReason?: string }[]
   defaultChoice?: string
+  canRun?: boolean
   /** When true, allow submitting with an empty text input (for clearing-style commands like `comment`). */
   allowEmptyInput?: boolean
-}>()
+}>(), {
+  canRun: true,
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -130,8 +136,14 @@ const suggestOpen = ref(false)
 const suggestIndex = ref(-1)
 const filteredSuggestions = computed(() => {
   const list = props.suggestions || []
-  const q = inputValue.value.trim().toLowerCase()
-  const matches = q ? list.filter(s => s.toLowerCase().includes(q)) : list.slice()
+  const parsed = parseInputArgs(inputValue.value)
+  const selected = props.splitInputArgs ? new Set(parsed) : new Set<string>()
+  const current = props.splitInputArgs
+    ? (inputValue.value.match(/(?:^|[\s,])([^\s,]*)$/)?.[1] || '')
+    : inputValue.value.trim()
+  const q = current.toLowerCase()
+  const matches = (q ? list.filter(s => s.toLowerCase().includes(q)) : list.slice())
+    .filter(s => !selected.has(s) || s === current)
   return matches.slice(0, 8)
 })
 function onSuggestInput() {
@@ -148,7 +160,14 @@ function moveSuggest(delta: number) {
   else suggestIndex.value = next
 }
 function selectSuggestion(s: string) {
-  inputValue.value = s
+  if (props.splitInputArgs) {
+    const raw = inputValue.value
+    const separatorMatch = raw.match(/[\s,]*[^\s,]*$/)
+    const prefix = separatorMatch ? raw.slice(0, separatorMatch.index) : ''
+    inputValue.value = prefix ? `${prefix} ${s}` : s
+  } else {
+    inputValue.value = s
+  }
   suggestOpen.value = false
   suggestIndex.value = -1
   inputRef.value?.focus()
@@ -219,14 +238,23 @@ const showTextInput = computed(
 const showChoices = computed(() => !!props.commandPrefix && !props.command && hasChoices.value)
 const needsInput = computed(() => showTextInput.value || showChoices.value)
 
+const canRunCommand = computed(() => props.canRun)
+
+function parseInputArgs(value: string): string[] {
+  return value.split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
+}
+
 function buildCommand(placeholders: boolean): string {
   if (props.command) return props.command
   if (!props.commandPrefix) return ''
   const parts = [props.commandPrefix]
   if (showTextInput.value) {
     const v = inputValue.value.trim()
-    if (v) parts.push(shellQuote(v))
-    else if (placeholders && props.inputPlaceholder) parts.push(`<${props.inputPlaceholder}>`)
+    if (v) {
+      const args = props.splitInputArgs ? parseInputArgs(v) : [v]
+      if (args.length === 0) return ''
+      parts.push(...args.map(shellQuote))
+    } else if (placeholders && props.inputPlaceholder) parts.push(`<${props.inputPlaceholder}>`)
     else if (props.allowEmptyInput) parts.push(shellQuote('')) // explicit "" arg
     else return ''
   }
@@ -344,7 +372,7 @@ watch(() => props.visible, (v) => {
 })
 
 async function run() {
-  if (cmd.loading.value || cmd.success.value) return
+  if (cmd.loading.value || cmd.success.value || !canRunCommand.value) return
   const command = fullCommand.value
   if (!command) {
     inputRef.value?.focus()

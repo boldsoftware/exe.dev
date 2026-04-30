@@ -1,7 +1,7 @@
 ---
 # DO NOT EDIT; rebuild with go run ./cmd/gencmddocs
 title: "tag"
-description: "Add or remove a tag on a VM"
+description: "Add or remove tags on a VM"
 subheading: "9. CLI Reference"
 suborder: 8
 published: true
@@ -9,12 +9,12 @@ published: true
 
 # tag
 
-Add or remove a tag on a VM
+Add or remove tags on a VM
 
 ## Usage
 
 ```
-tag [-d] <vm> <tag-name>
+tag [-d] <vm> <tag-name> [tag-name...]
 ```
 
 ## Options
@@ -25,7 +25,7 @@ tag [-d] <vm> <tag-name>
 ## Examples
 
 ```
-tag my-vm prod        # add tag
-tag -d my-vm prod     # remove tag
+tag my-vm prod web        # add tags
+tag -d my-vm prod web     # remove tags
 ```
 

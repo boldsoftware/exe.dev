@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
+	"strings"
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -25,8 +26,8 @@ func validateTagName(name string) error {
 func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	deleteMode := cc.FlagSet.Lookup("d").Value.String() == "true"
 
-	if len(cc.Args) != 2 {
-		return cc.Errorf("usage: tag [-d] <vm> <tag-name>")
+	if len(cc.Args) < 2 {
+		return cc.Errorf("usage: tag [-d] <vm> <tag-name> [tag-name...]")
 	}
 
 	// Tag-scoped keys cannot modify tags; the tag association is the basis of
@@ -36,13 +37,20 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	vmName := ss.normalizeBoxName(cc.Args[0])
-	tagName := cc.Args[1]
+	tagNames := cc.Args[1:]
 
 	CommandLogAddAttr(ctx, slog.String("vm_name", vmName))
-	CommandLogAddAttr(ctx, slog.String("tag_name", tagName))
+	CommandLogAddAttr(ctx, slog.Any("tag_names", tagNames))
 
-	if !tagNameRe.MatchString(tagName) {
-		return cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_-]*", tagName)
+	seenRequested := make(map[string]bool, len(tagNames))
+	for _, tagName := range tagNames {
+		if !tagNameRe.MatchString(tagName) {
+			return cc.Errorf("invalid tag name %q: must match [a-z][a-z0-9_-]*", tagName)
+		}
+		if seenRequested[tagName] {
+			return cc.Errorf("tag %q specified more than once", tagName)
+		}
+		seenRequested[tagName] = true
 	}
 
 	box, _, err := ss.server.FindAccessibleBox(ctx, cc.User.ID, vmName)
@@ -55,16 +63,22 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 	tags := box.GetTags()
 
 	if deleteMode {
-		idx := slices.Index(tags, tagName)
-		if idx < 0 {
-			return cc.Errorf("tag %q not found on %s", tagName, vmName)
+		for _, tagName := range tagNames {
+			if !slices.Contains(tags, tagName) {
+				return cc.Errorf("tag %q not found on %s", tagName, vmName)
+			}
 		}
-		tags = slices.Delete(tags, idx, idx+1)
+		for _, tagName := range tagNames {
+			idx := slices.Index(tags, tagName)
+			tags = slices.Delete(tags, idx, idx+1)
+		}
 	} else {
-		if slices.Contains(tags, tagName) {
-			return cc.Errorf("tag %q already exists on %s", tagName, vmName)
+		for _, tagName := range tagNames {
+			if slices.Contains(tags, tagName) {
+				return cc.Errorf("tag %q already exists on %s", tagName, vmName)
+			}
 		}
-		tags = append(tags, tagName)
+		tags = append(tags, tagNames...)
 		slices.Sort(tags)
 	}
 
@@ -86,11 +100,22 @@ func (ss *SSHServer) handleTagCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	if deleteMode {
-		cc.Writeln("Removed tag %q from %s", tagName, vmName)
+		cc.Writeln("Removed %s from %s", formatTagList(tagNames), vmName)
 	} else {
-		cc.Writeln("Added tag %q to %s", tagName, vmName)
+		cc.Writeln("Added %s to %s", formatTagList(tagNames), vmName)
 	}
 	return nil
+}
+
+func formatTagList(tags []string) string {
+	if len(tags) == 1 {
+		return fmt.Sprintf("tag %q", tags[0])
+	}
+	quoted := make([]string, len(tags))
+	for i, tag := range tags {
+		quoted[i] = fmt.Sprintf("%q", tag)
+	}
+	return fmt.Sprintf("tags %s", strings.Join(quoted, ", "))
 }
 
 // parseTags parses a tags JSON string into a slice.

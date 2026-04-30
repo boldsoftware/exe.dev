@@ -9,6 +9,6 @@ tag
 - help to see a list of commands
 
 PROMPT ▶ tag
-usage: tag [-d] <vm> <tag-name>
+usage: tag [-d] <vm> <tag-name> [tag-name...]
 PROMPT ▶ exit
 Goodbye!

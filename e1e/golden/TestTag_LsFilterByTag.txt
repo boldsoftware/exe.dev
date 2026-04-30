@@ -10,6 +10,6 @@ ls prod
 
 PROMPT ▶ ls prod
 Your VMs:
-  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu) #prod #staging #web
+  • BOX_NAME.exe.cloud - running (boldsoftware/exeuntu) #prod #qa #staging #web
 PROMPT ▶ exit
 Goodbye!

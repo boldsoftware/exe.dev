@@ -366,15 +366,15 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		{
 			Name:              "tag",
 			AllowTagScoped:    true,
-			Description:       "Add or remove a tag on a VM",
-			Usage:             "tag [-d] <vm> <tag-name>",
+			Description:       "Add or remove tags on a VM",
+			Usage:             "tag [-d] <vm> <tag-name> [tag-name...]",
 			FlagSetFunc:       tagCommandFlags,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 			Handler:           ss.handleTagCommand,
 			Examples: []string{
-				"tag my-vm prod        # add tag",
-				"tag -d my-vm prod     # remove tag",
+				"tag my-vm prod web        # add tags",
+				"tag -d my-vm prod web     # remove tags",
 			},
 		},
 		{
