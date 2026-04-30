@@ -206,6 +206,43 @@ func TestSSHKeyTagScope(t *testing.T) {
 		}
 	})
 
+	t.Run("new_with_matching_tag_allowed", func(t *testing.T) {
+		reserveVMs(t, 1)
+		vmName := boxName(t)
+		defer func() {
+			_, _ = Env.servers.RunExeDevSSHCommand(Env.context(t), tagKey, "rm", vmName)
+		}()
+
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), tagKey, "new", "--json", "--name="+vmName, "--tag=ci")
+		if err != nil {
+			t.Fatalf("new with matching --tag should succeed for tag-scoped key: %v\n%s", err, out)
+		}
+		var result struct {
+			VMName string   `json:"vm_name"`
+			Tags   []string `json:"tags"`
+		}
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatalf("parse new --json with matching --tag: %v\n%s", err, out)
+		}
+		if result.VMName != vmName {
+			t.Errorf("vm_name = %q, want %q", result.VMName, vmName)
+		}
+		if len(result.Tags) != 1 || result.Tags[0] != "ci" {
+			t.Errorf("tags = %v, want [ci]", result.Tags)
+		}
+	})
+
+	t.Run("new_with_other_tag_blocked", func(t *testing.T) {
+		vmName := boxName(t)
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), tagKey, "new", "--name="+vmName, "--tag=deploy")
+		if err == nil {
+			t.Fatalf("new with non-matching --tag should fail for tag-scoped key, got: %s", out)
+		}
+		if !strings.Contains(string(out), "can only use --tag=ci") {
+			t.Errorf("expected scope restriction error, got: %s", out)
+		}
+	})
+
 	// ── 6. rm: allowed for tagged VMs ───────────────────────────────
 	t.Run("rm_allowed_for_tagged_vm", func(t *testing.T) {
 		if newVMName == "" {

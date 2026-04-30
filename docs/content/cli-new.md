@@ -24,12 +24,14 @@ Create a new VM
 - `--no-email`: do not send email notification
 - `--prompt`: initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin
 - `--setup-script`: setup script to run on first boot (max 10KiB); supports \n for newlines; use /dev/stdin to pipe from stdin
+- `--tag`: comma-separated tags to apply to the new VM
 
 ## Examples
 
 ```
 new                                     # just give me a computer
 new --name=b --image=ubuntu:22.04       # custom image and name
+new --tag=prod,staging                  # create with tags
 new --env FOO=bar --env BAZ=qux         # with environment variables
 new --integration=myproxy               # attach an integration
 echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin

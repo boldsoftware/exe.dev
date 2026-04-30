@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -80,10 +81,13 @@ func TestExeDevAPI(t *testing.T) {
 		t.Fatalf("expected whoami output to include email %q, got: %s", who.Email, string(whoPlain))
 	}
 
-	nbo := runParseExeDevJSON[newBoxOutput](t, keyFile, "new", "--command=bash", "--json")
+	nbo := runParseExeDevJSON[newBoxOutput](t, keyFile, "new", "--command=bash", "--json", "--tag=staging,prod,staging")
 	// TODO: actually use these values: ssh to the box, curl the https url, list the boxname using the exe.dev server, etc.
 	if nbo.VMName == "" {
 		t.Errorf("expected vm_name in JSON output, got empty string")
+	}
+	if want := []string{"prod", "staging"}; !slices.Equal(nbo.Tags, want) {
+		t.Errorf("expected tags %v in JSON output, got %v", want, nbo.Tags)
 	}
 	if nbo.HTTPS == "" {
 		t.Errorf("expected https_url in JSON output, got empty string")
@@ -133,6 +137,9 @@ func TestExeDevAPI(t *testing.T) {
 	vm0 := vms[0]
 	if vm0.VMName != nbo.VMName {
 		t.Errorf("expected VM name %q in ls output, got %q", nbo.VMName, vms[0].VMName)
+	}
+	if want := []string{"prod", "staging"}; !slices.Equal(vm0.Tags, want) {
+		t.Errorf("expected tags %v in ls output, got %v", want, vm0.Tags)
 	}
 	if vm0.Status != "running" {
 		t.Errorf("expected status 'running' in ls output, got %q", vms[0].Status)
@@ -268,24 +275,26 @@ func TestExeDevAPI(t *testing.T) {
 }
 
 type newBoxOutput struct {
-	VMName  string `json:"vm_name"`
-	SSH     string `json:"ssh_command"`
-	SSHDest string `json:"ssh_dest"`
-	SSHPort int    `json:"ssh_port"`
-	HTTPS   string `json:"https_url"`
+	VMName  string   `json:"vm_name"`
+	Tags    []string `json:"tags"`
+	SSH     string   `json:"ssh_command"`
+	SSHDest string   `json:"ssh_dest"`
+	SSHPort int      `json:"ssh_port"`
+	HTTPS   string   `json:"https_url"`
 }
 
 type vmListEntry struct {
-	VMName              string `json:"vm_name"`
-	SSHDest             string `json:"ssh_dest"`
-	Status              string `json:"status"`
-	Region              string `json:"region"`
-	HTTPS               string `json:"https_url"`
-	ShelleyURL          string `json:"shelley_url"`
-	CreatedAt           string `json:"created_at"`
-	DiskCapacityBytes   uint64 `json:"disk_capacity_bytes"`
-	MemoryCapacityBytes uint64 `json:"memory_capacity_bytes"`
-	AllocatedCPUs       uint64 `json:"allocated_cpus"`
+	Tags                []string `json:"tags"`
+	VMName              string   `json:"vm_name"`
+	SSHDest             string   `json:"ssh_dest"`
+	Status              string   `json:"status"`
+	Region              string   `json:"region"`
+	HTTPS               string   `json:"https_url"`
+	ShelleyURL          string   `json:"shelley_url"`
+	CreatedAt           string   `json:"created_at"`
+	DiskCapacityBytes   uint64   `json:"disk_capacity_bytes"`
+	MemoryCapacityBytes uint64   `json:"memory_capacity_bytes"`
+	AllocatedCPUs       uint64   `json:"allocated_cpus"`
 }
 
 type vmListOutput struct {

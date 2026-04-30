@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,48 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func parseTagList(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{})
+	var tags []string
+	for _, part := range strings.Split(raw, ",") {
+		tag := strings.TrimSpace(part)
+		if tag == "" {
+			return nil, fmt.Errorf("contains an empty tag")
+		}
+		if err := validateTagName(tag); err != nil {
+			return nil, err
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+	slices.Sort(tags)
+	return tags, nil
+}
+
+func resolveNewCommandTags(raw string, perms *SSHKeyPerms) ([]string, error) {
+	tags, err := parseTagList(raw)
+	if err != nil {
+		return nil, err
+	}
+	if perms == nil || perms.Tag == "" {
+		return tags, nil
+	}
+	if len(tags) == 0 {
+		return []string{perms.Tag}, nil
+	}
+	if len(tags) == 1 && tags[0] == perms.Tag {
+		return tags, nil
+	}
+	return nil, fmt.Errorf("SSH key scoped to tag %q can only use --tag=%s", perms.Tag, perms.Tag)
+}
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	user := cc.User
@@ -54,6 +97,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	noEmail := cc.IsSSHExec() || cc.FlagSet.Lookup("no-email").Value.String() == "true" || !ss.getUserDefaultNewVMEmail(ctx, cc.User.ID)
 	noShard := cc.FlagSet.Lookup("no-shard").Value.String() == "true"
 	exeletOverride := cc.FlagSet.Lookup("exelet").Value.String()
+	tagFlag := cc.FlagSet.Lookup("tag").Value.String()
+	newBoxTags, err := resolveNewCommandTags(tagFlag, getSSHKeyPerms(ctx))
+	if err != nil {
+		return cc.Errorf("--tag %v", err)
+	}
 
 	// Parse --setup-script flag
 	emojiFlag := strings.TrimSpace(cc.FlagSet.Lookup("emoji").Value.String())
@@ -334,9 +382,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
-	// If the SSH key is tag-scoped, automatically tag the new VM.
-	if perms := getSSHKeyPerms(ctx); perms != nil && perms.Tag != "" {
-		tagsJSON := exedb.TagsJSON([]string{perms.Tag})
+	if len(newBoxTags) > 0 {
+		tagsJSON := exedb.TagsJSON(newBoxTags)
 		if err := withTx1(ss.server, ctx, (*exedb.Queries).UpdateBoxTags, exedb.UpdateBoxTagsParams{
 			Tags: tagsJSON,
 			ID:   boxID,
@@ -806,6 +853,7 @@ done:
 	}
 	details := newBoxDetails{
 		VMName:     boxName,
+		Tags:       nonNil(newBoxTags),
 		SSHDest:    ss.server.env.BoxDest(boxName),
 		SSHCommand: ss.server.boxSSHConnectionCommand(boxName),
 		SSHPort:    ss.server.boxSSHPort(),

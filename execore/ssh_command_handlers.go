@@ -211,6 +211,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.String("name", "", "VM name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
+	fs.String("tag", "", "comma-separated tags to apply to the new VM")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
 	fs.String("prompt", "", "initial prompt to send to Shelley after VM creation (requires exeuntu image); use /dev/stdin to read from stdin")
 	fs.Bool("json", false, "output in JSON format")
@@ -298,6 +299,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Examples: []string{
 				"new                                     # just give me a computer",
 				"new --name=b --image=ubuntu:22.04       # custom image and name",
+				"new --tag=prod,staging                  # create with tags",
 				"new --env FOO=bar --env BAZ=qux         # with environment variables",
 				"new --integration=myproxy               # attach an integration",
 				"echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin",
@@ -1081,15 +1083,16 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 type newBoxDetails struct {
-	VMName     string `json:"vm_name"`
-	SSHCommand string `json:"ssh_command"`
-	SSHDest    string `json:"ssh_dest"`
-	SSHPort    int    `json:"ssh_port"`
-	ProxyAddr  string `json:"https_url"`
-	ProxyPort  int    `json:"proxy_port"`
-	ShelleyURL string `json:"shelley_url,omitempty"`
-	VSCodeURL  string `json:"vscode_url,omitempty"`
-	XTermURL   string `json:"xterm_url,omitempty"`
+	VMName     string   `json:"vm_name"`
+	Tags       []string `json:"tags"`
+	SSHCommand string   `json:"ssh_command"`
+	SSHDest    string   `json:"ssh_dest"`
+	SSHPort    int      `json:"ssh_port"`
+	ProxyAddr  string   `json:"https_url"`
+	ProxyPort  int      `json:"proxy_port"`
+	ShelleyURL string   `json:"shelley_url,omitempty"`
+	VSCodeURL  string   `json:"vscode_url,omitempty"`
+	XTermURL   string   `json:"xterm_url,omitempty"`
 }
 
 func (ss *SSHServer) handleRestartCommand(ctx context.Context, cc *exemenu.CommandContext) error {
