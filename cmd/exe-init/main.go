@@ -36,6 +36,12 @@ func main() {
 			Action: runOperatorSSHAction,
 			Hidden: true,
 		},
+		{
+			Name:   "memd",
+			Usage:  "run the in-guest memory-stat server on AF_VSOCK (internal)",
+			Action: runMemdAction,
+			Hidden: true,
+		},
 	}
 	app.Flags = []cli.Flag{
 		&cli.BoolFlag{

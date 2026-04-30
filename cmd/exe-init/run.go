@@ -113,6 +113,9 @@ func runAction(clix *cli.Context) error {
 	// operator ssh server on vsock. Best-effort; does not block boot.
 	startOperatorSSH()
 
+	// memd: in-guest memory-stat server on vsock. Best-effort.
+	startMemd()
+
 	// entrypoint
 	slog.Info("starting entrypoint")
 	pid, err := runEntrypoint(imageConfig)

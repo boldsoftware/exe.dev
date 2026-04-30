@@ -22,12 +22,6 @@ import (
 	"exe.dev/exelet/utils"
 )
 
-// OperatorSSHVsockPort is the AF_VSOCK port exe-init's operator SSH server
-// listens on inside the guest. Operators reach it by speaking the
-// cloud-hypervisor hybrid-vsock handshake ("CONNECT <port>\n") on the
-// unix-domain socket CH binds on the host.
-const OperatorSSHVsockPort = 2222
-
 // startOperatorSSH launches a child process that runs the vsock SSH server.
 //
 // We fork rather than start a goroutine because exe-init execs the guest's
@@ -38,11 +32,6 @@ const OperatorSSHVsockPort = 2222
 //
 // Best-effort: any failure here is logged and boot continues.
 func startOperatorSSH() {
-	exe, err := os.Executable()
-	if err != nil {
-		slog.Warn("operator-ssh: os.Executable", "err", err)
-		return
-	}
 	if _, err := os.Stat(config.InstanceSSHHostKeyPath); err != nil {
 		slog.Warn("operator-ssh: host key missing; not starting", "path", config.InstanceSSHHostKeyPath, "err", err)
 		return
@@ -51,17 +40,33 @@ func startOperatorSSH() {
 		slog.Warn("operator-ssh: authorized_keys missing; not starting", "path", config.InstanceSSHPublicKeysPath, "err", err)
 		return
 	}
+	spawnDetachedSubcommand("operator-ssh", "op-ssh")
+}
 
-	cmd := exec.Command(exe, "op-ssh")
+// spawnDetachedSubcommand re-execs this binary with the named subcommand
+// once and detaches via Process.Release(). The child is in a new
+// session (Setsid) so it survives exe-init's exec into the guest's init
+// system; reaping is handled by the PID-1 Wait4(-1) loop in run.go.
+//
+// We deliberately do NOT cmd.Wait() here: PID-1 already wait4(-1)'s any
+// child, so a parallel cmd.Wait() would race with it. v0 supervises
+// nothing — if the child crashes, it stays dead until the VM reboots.
+func spawnDetachedSubcommand(label, subcommand string) {
+	exe, err := os.Executable()
+	if err != nil {
+		slog.Warn(label+": os.Executable", "err", err)
+		return
+	}
+	cmd := exec.Command(exe, subcommand)
 	cmd.Stdin = nil
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		slog.Warn("operator-ssh: spawn child", "err", err)
+		slog.Warn(label+": spawn child", "err", err)
 		return
 	}
-	slog.Info("operator-ssh: spawned child", "pid", cmd.Process.Pid)
+	slog.Info(label+": spawned child", "pid", cmd.Process.Pid)
 	_ = cmd.Process.Release()
 }
 
