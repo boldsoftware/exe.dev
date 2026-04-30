@@ -5,6 +5,7 @@ package metricsd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"exe.dev/metricsd/types"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/proto"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -120,7 +122,45 @@ type ClickHouseSync struct {
 
 	dropLogMu   sync.Mutex
 	lastDropLog time.Time
-} // StartClickHouseSync connects, creates the vm_metrics table if it doesn't
+} // execAlterWithReplicaSync runs an ALTER, retrying on ClickHouse error 517
+// ("replica doesn't catchup with latest ALTER query updates ... please retry
+// this query"), which happens on SharedMergeTree / replicated tables when a
+// previous ALTER hasn't propagated yet. We SYSTEM SYNC REPLICA between
+// attempts so the local replica catches up before retrying.
+func execAlterWithReplicaSync(ctx context.Context, conn clickhouse.Conn, alter string, log *slog.Logger) error {
+	const maxAttempts = 6
+	backoff := 500 * time.Millisecond
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := conn.Exec(ctx, alter)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		var chErr *proto.Exception
+		if !errors.As(err, &chErr) || chErr.Code != 517 {
+			return err
+		}
+		log.WarnContext(ctx, "clickhouse alter not yet replicated, syncing replica and retrying",
+			"attempt", attempt, "alter", alter, "error", err)
+		// Best-effort: tell this replica to catch up before retrying. Errors
+		// here are not fatal — we still retry the ALTER.
+		if syncErr := conn.Exec(ctx, "SYSTEM SYNC REPLICA vm_metrics"); syncErr != nil {
+			log.WarnContext(ctx, "clickhouse SYSTEM SYNC REPLICA failed", "error", syncErr)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 8*time.Second {
+			backoff *= 2
+		}
+	}
+	return fmt.Errorf("after %d retries: %w", maxAttempts, lastErr)
+}
+
+// StartClickHouseSync connects, creates the vm_metrics table if it doesn't
 // exist, and spawns a background goroutine that drains enqueued batches
 // until ctx is canceled. Returns nil (and no error) when cfg.DSN is empty.
 func StartClickHouseSync(ctx context.Context, cfg ClickHouseConfig) (*ClickHouseSync, error) {
@@ -151,7 +191,7 @@ func StartClickHouseSync(ctx context.Context, cfg ClickHouseConfig) (*ClickHouse
 		return nil, fmt.Errorf("create clickhouse table: %w", err)
 	}
 	for _, alter := range clickHouseAlterStatements {
-		if err := conn.Exec(ctx, alter); err != nil {
+		if err := execAlterWithReplicaSync(ctx, conn, alter, log); err != nil {
 			conn.Close()
 			return nil, fmt.Errorf("alter clickhouse table: %w", err)
 		}
