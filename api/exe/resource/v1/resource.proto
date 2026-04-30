@@ -118,6 +118,49 @@ message VMUsage {
   uint64 fs_free_bytes = 23;
   uint64 fs_available_bytes = 24;
   uint64 fs_used_bytes = 25;
+
+  // Guest-side memory stats scraped from memd inside the VM (v0). Optional;
+  // absent when memwatch has no fresh sample for this VM.
+  GuestMemoryStats guest_memory = 26;
+}
+
+// GuestMemoryStats is a host-normalised view of one /proc scrape from
+// memd. All sizes are bytes; PSI averages are percent (0..100).
+message GuestMemoryStats {
+  // Wall-clock instant the sample was captured inside the guest.
+  int64 captured_at_unix_nano = 1;
+  // Wall-clock instant the host received the sample.
+  int64 fetched_at_unix_nano = 2;
+  double uptime_sec = 3;
+
+  uint64 mem_total_bytes = 4;
+  uint64 mem_available_bytes = 5;
+  uint64 cached_bytes = 6;
+  uint64 active_file_bytes = 7;
+  uint64 inactive_file_bytes = 8;
+  uint64 mlocked_bytes = 9;
+  uint64 dirty_bytes = 10;
+  uint64 swap_total_bytes = 11;
+  uint64 swap_free_bytes = 12;
+  uint64 sreclaimable_bytes = 13;
+  // Reclaimable estimate for drop_caches=1 (host policy):
+  // Active(file)+Inactive(file)−Mlocked−Dirty.
+  uint64 reclaimable_bytes = 14;
+
+  uint64 workingset_refault_file = 15;
+  uint64 workingset_refault_anon = 16;
+  uint64 pgmajfault = 17;
+
+  bool psi_available = 18;
+  double psi_some_avg10 = 19;
+  double psi_some_avg60 = 20;
+  double psi_some_avg300 = 21;
+  double psi_full_avg10 = 22;
+  double psi_full_avg60 = 23;
+  double psi_full_avg300 = 24;
+
+  // Refaults/sec computed over the most recent ~60s of samples.
+  double refault_rate = 25;
 }
 
 enum VMPriority {

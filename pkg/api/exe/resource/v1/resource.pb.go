@@ -516,8 +516,11 @@ type VMUsage struct {
 	FsFreeBytes      uint64 `protobuf:"varint,23,opt,name=fs_free_bytes,json=fsFreeBytes,proto3" json:"fs_free_bytes,omitempty"`
 	FsAvailableBytes uint64 `protobuf:"varint,24,opt,name=fs_available_bytes,json=fsAvailableBytes,proto3" json:"fs_available_bytes,omitempty"`
 	FsUsedBytes      uint64 `protobuf:"varint,25,opt,name=fs_used_bytes,json=fsUsedBytes,proto3" json:"fs_used_bytes,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Guest-side memory stats scraped from memd inside the VM (v0). Optional;
+	// absent when memwatch has no fresh sample for this VM.
+	GuestMemory   *GuestMemoryStats `protobuf:"bytes,26,opt,name=guest_memory,json=guestMemory,proto3" json:"guest_memory,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *VMUsage) Reset() {
@@ -725,6 +728,256 @@ func (x *VMUsage) GetFsUsedBytes() uint64 {
 	return 0
 }
 
+func (x *VMUsage) GetGuestMemory() *GuestMemoryStats {
+	if x != nil {
+		return x.GuestMemory
+	}
+	return nil
+}
+
+// GuestMemoryStats is a host-normalised view of one /proc scrape from
+// memd. All sizes are bytes; PSI averages are percent (0..100).
+type GuestMemoryStats struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Wall-clock instant the sample was captured inside the guest.
+	CapturedAtUnixNano int64 `protobuf:"varint,1,opt,name=captured_at_unix_nano,json=capturedAtUnixNano,proto3" json:"captured_at_unix_nano,omitempty"`
+	// Wall-clock instant the host received the sample.
+	FetchedAtUnixNano int64   `protobuf:"varint,2,opt,name=fetched_at_unix_nano,json=fetchedAtUnixNano,proto3" json:"fetched_at_unix_nano,omitempty"`
+	UptimeSec         float64 `protobuf:"fixed64,3,opt,name=uptime_sec,json=uptimeSec,proto3" json:"uptime_sec,omitempty"`
+	MemTotalBytes     uint64  `protobuf:"varint,4,opt,name=mem_total_bytes,json=memTotalBytes,proto3" json:"mem_total_bytes,omitempty"`
+	MemAvailableBytes uint64  `protobuf:"varint,5,opt,name=mem_available_bytes,json=memAvailableBytes,proto3" json:"mem_available_bytes,omitempty"`
+	CachedBytes       uint64  `protobuf:"varint,6,opt,name=cached_bytes,json=cachedBytes,proto3" json:"cached_bytes,omitempty"`
+	ActiveFileBytes   uint64  `protobuf:"varint,7,opt,name=active_file_bytes,json=activeFileBytes,proto3" json:"active_file_bytes,omitempty"`
+	InactiveFileBytes uint64  `protobuf:"varint,8,opt,name=inactive_file_bytes,json=inactiveFileBytes,proto3" json:"inactive_file_bytes,omitempty"`
+	MlockedBytes      uint64  `protobuf:"varint,9,opt,name=mlocked_bytes,json=mlockedBytes,proto3" json:"mlocked_bytes,omitempty"`
+	DirtyBytes        uint64  `protobuf:"varint,10,opt,name=dirty_bytes,json=dirtyBytes,proto3" json:"dirty_bytes,omitempty"`
+	SwapTotalBytes    uint64  `protobuf:"varint,11,opt,name=swap_total_bytes,json=swapTotalBytes,proto3" json:"swap_total_bytes,omitempty"`
+	SwapFreeBytes     uint64  `protobuf:"varint,12,opt,name=swap_free_bytes,json=swapFreeBytes,proto3" json:"swap_free_bytes,omitempty"`
+	SreclaimableBytes uint64  `protobuf:"varint,13,opt,name=sreclaimable_bytes,json=sreclaimableBytes,proto3" json:"sreclaimable_bytes,omitempty"`
+	// Reclaimable estimate for drop_caches=1 (host policy):
+	// Active(file)+Inactive(file)−Mlocked−Dirty.
+	ReclaimableBytes      uint64  `protobuf:"varint,14,opt,name=reclaimable_bytes,json=reclaimableBytes,proto3" json:"reclaimable_bytes,omitempty"`
+	WorkingsetRefaultFile uint64  `protobuf:"varint,15,opt,name=workingset_refault_file,json=workingsetRefaultFile,proto3" json:"workingset_refault_file,omitempty"`
+	WorkingsetRefaultAnon uint64  `protobuf:"varint,16,opt,name=workingset_refault_anon,json=workingsetRefaultAnon,proto3" json:"workingset_refault_anon,omitempty"`
+	Pgmajfault            uint64  `protobuf:"varint,17,opt,name=pgmajfault,proto3" json:"pgmajfault,omitempty"`
+	PsiAvailable          bool    `protobuf:"varint,18,opt,name=psi_available,json=psiAvailable,proto3" json:"psi_available,omitempty"`
+	PsiSomeAvg10          float64 `protobuf:"fixed64,19,opt,name=psi_some_avg10,json=psiSomeAvg10,proto3" json:"psi_some_avg10,omitempty"`
+	PsiSomeAvg60          float64 `protobuf:"fixed64,20,opt,name=psi_some_avg60,json=psiSomeAvg60,proto3" json:"psi_some_avg60,omitempty"`
+	PsiSomeAvg300         float64 `protobuf:"fixed64,21,opt,name=psi_some_avg300,json=psiSomeAvg300,proto3" json:"psi_some_avg300,omitempty"`
+	PsiFullAvg10          float64 `protobuf:"fixed64,22,opt,name=psi_full_avg10,json=psiFullAvg10,proto3" json:"psi_full_avg10,omitempty"`
+	PsiFullAvg60          float64 `protobuf:"fixed64,23,opt,name=psi_full_avg60,json=psiFullAvg60,proto3" json:"psi_full_avg60,omitempty"`
+	PsiFullAvg300         float64 `protobuf:"fixed64,24,opt,name=psi_full_avg300,json=psiFullAvg300,proto3" json:"psi_full_avg300,omitempty"`
+	// Refaults/sec computed over the most recent ~60s of samples.
+	RefaultRate   float64 `protobuf:"fixed64,25,opt,name=refault_rate,json=refaultRate,proto3" json:"refault_rate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GuestMemoryStats) Reset() {
+	*x = GuestMemoryStats{}
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GuestMemoryStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GuestMemoryStats) ProtoMessage() {}
+
+func (x *GuestMemoryStats) ProtoReflect() protoreflect.Message {
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GuestMemoryStats.ProtoReflect.Descriptor instead.
+func (*GuestMemoryStats) Descriptor() ([]byte, []int) {
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GuestMemoryStats) GetCapturedAtUnixNano() int64 {
+	if x != nil {
+		return x.CapturedAtUnixNano
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetFetchedAtUnixNano() int64 {
+	if x != nil {
+		return x.FetchedAtUnixNano
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetUptimeSec() float64 {
+	if x != nil {
+		return x.UptimeSec
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetMemTotalBytes() uint64 {
+	if x != nil {
+		return x.MemTotalBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetMemAvailableBytes() uint64 {
+	if x != nil {
+		return x.MemAvailableBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetCachedBytes() uint64 {
+	if x != nil {
+		return x.CachedBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetActiveFileBytes() uint64 {
+	if x != nil {
+		return x.ActiveFileBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetInactiveFileBytes() uint64 {
+	if x != nil {
+		return x.InactiveFileBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetMlockedBytes() uint64 {
+	if x != nil {
+		return x.MlockedBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetDirtyBytes() uint64 {
+	if x != nil {
+		return x.DirtyBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetSwapTotalBytes() uint64 {
+	if x != nil {
+		return x.SwapTotalBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetSwapFreeBytes() uint64 {
+	if x != nil {
+		return x.SwapFreeBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetSreclaimableBytes() uint64 {
+	if x != nil {
+		return x.SreclaimableBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetReclaimableBytes() uint64 {
+	if x != nil {
+		return x.ReclaimableBytes
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetWorkingsetRefaultFile() uint64 {
+	if x != nil {
+		return x.WorkingsetRefaultFile
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetWorkingsetRefaultAnon() uint64 {
+	if x != nil {
+		return x.WorkingsetRefaultAnon
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPgmajfault() uint64 {
+	if x != nil {
+		return x.Pgmajfault
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiAvailable() bool {
+	if x != nil {
+		return x.PsiAvailable
+	}
+	return false
+}
+
+func (x *GuestMemoryStats) GetPsiSomeAvg10() float64 {
+	if x != nil {
+		return x.PsiSomeAvg10
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiSomeAvg60() float64 {
+	if x != nil {
+		return x.PsiSomeAvg60
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiSomeAvg300() float64 {
+	if x != nil {
+		return x.PsiSomeAvg300
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiFullAvg10() float64 {
+	if x != nil {
+		return x.PsiFullAvg10
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiFullAvg60() float64 {
+	if x != nil {
+		return x.PsiFullAvg60
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetPsiFullAvg300() float64 {
+	if x != nil {
+		return x.PsiFullAvg300
+	}
+	return 0
+}
+
+func (x *GuestMemoryStats) GetRefaultRate() float64 {
+	if x != nil {
+		return x.RefaultRate
+	}
+	return 0
+}
+
 type SetVMPriorityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	VmID          string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
@@ -735,7 +988,7 @@ type SetVMPriorityRequest struct {
 
 func (x *SetVMPriorityRequest) Reset() {
 	*x = SetVMPriorityRequest{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[9]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +1000,7 @@ func (x *SetVMPriorityRequest) String() string {
 func (*SetVMPriorityRequest) ProtoMessage() {}
 
 func (x *SetVMPriorityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[9]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +1013,7 @@ func (x *SetVMPriorityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVMPriorityRequest.ProtoReflect.Descriptor instead.
 func (*SetVMPriorityRequest) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{9}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SetVMPriorityRequest) GetVmID() string {
@@ -785,7 +1038,7 @@ type SetVMPriorityResponse struct {
 
 func (x *SetVMPriorityResponse) Reset() {
 	*x = SetVMPriorityResponse{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[10]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -797,7 +1050,7 @@ func (x *SetVMPriorityResponse) String() string {
 func (*SetVMPriorityResponse) ProtoMessage() {}
 
 func (x *SetVMPriorityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[10]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -810,7 +1063,7 @@ func (x *SetVMPriorityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVMPriorityResponse.ProtoReflect.Descriptor instead.
 func (*SetVMPriorityResponse) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{10}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{11}
 }
 
 type GetMachineUsageRequest struct {
@@ -821,7 +1074,7 @@ type GetMachineUsageRequest struct {
 
 func (x *GetMachineUsageRequest) Reset() {
 	*x = GetMachineUsageRequest{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[11]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +1086,7 @@ func (x *GetMachineUsageRequest) String() string {
 func (*GetMachineUsageRequest) ProtoMessage() {}
 
 func (x *GetMachineUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[11]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +1099,7 @@ func (x *GetMachineUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMachineUsageRequest.ProtoReflect.Descriptor instead.
 func (*GetMachineUsageRequest) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{11}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{12}
 }
 
 type GetMachineUsageResponse struct {
@@ -859,7 +1112,7 @@ type GetMachineUsageResponse struct {
 
 func (x *GetMachineUsageResponse) Reset() {
 	*x = GetMachineUsageResponse{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[12]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -871,7 +1124,7 @@ func (x *GetMachineUsageResponse) String() string {
 func (*GetMachineUsageResponse) ProtoMessage() {}
 
 func (x *GetMachineUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[12]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -884,7 +1137,7 @@ func (x *GetMachineUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMachineUsageResponse.ProtoReflect.Descriptor instead.
 func (*GetMachineUsageResponse) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{12}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetMachineUsageResponse) GetAvailable() bool {
@@ -911,7 +1164,7 @@ type SetMachineUsageRequest struct {
 
 func (x *SetMachineUsageRequest) Reset() {
 	*x = SetMachineUsageRequest{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[13]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -923,7 +1176,7 @@ func (x *SetMachineUsageRequest) String() string {
 func (*SetMachineUsageRequest) ProtoMessage() {}
 
 func (x *SetMachineUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[13]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -936,7 +1189,7 @@ func (x *SetMachineUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMachineUsageRequest.ProtoReflect.Descriptor instead.
 func (*SetMachineUsageRequest) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{13}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SetMachineUsageRequest) GetAvailable() bool {
@@ -961,7 +1214,7 @@ type SetMachineUsageResponse struct {
 
 func (x *SetMachineUsageResponse) Reset() {
 	*x = SetMachineUsageResponse{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[14]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -973,7 +1226,7 @@ func (x *SetMachineUsageResponse) String() string {
 func (*SetMachineUsageResponse) ProtoMessage() {}
 
 func (x *SetMachineUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[14]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -986,7 +1239,7 @@ func (x *SetMachineUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMachineUsageResponse.ProtoReflect.Descriptor instead.
 func (*SetMachineUsageResponse) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{14}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{15}
 }
 
 type MachineUsage struct {
@@ -1011,7 +1264,7 @@ type MachineUsage struct {
 
 func (x *MachineUsage) Reset() {
 	*x = MachineUsage{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[15]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1023,7 +1276,7 @@ func (x *MachineUsage) String() string {
 func (*MachineUsage) ProtoMessage() {}
 
 func (x *MachineUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[15]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1036,7 +1289,7 @@ func (x *MachineUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MachineUsage.ProtoReflect.Descriptor instead.
 func (*MachineUsage) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{15}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *MachineUsage) GetLoadAverage() float32 {
@@ -1123,7 +1376,7 @@ type ThrottleVMRequest struct {
 
 func (x *ThrottleVMRequest) Reset() {
 	*x = ThrottleVMRequest{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[16]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1135,7 +1388,7 @@ func (x *ThrottleVMRequest) String() string {
 func (*ThrottleVMRequest) ProtoMessage() {}
 
 func (x *ThrottleVMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[16]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1148,7 +1401,7 @@ func (x *ThrottleVMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThrottleVMRequest.ProtoReflect.Descriptor instead.
 func (*ThrottleVMRequest) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{16}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ThrottleVMRequest) GetVmID() string {
@@ -1201,7 +1454,7 @@ type ThrottleVMResponse struct {
 
 func (x *ThrottleVMResponse) Reset() {
 	*x = ThrottleVMResponse{}
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[17]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1213,7 +1466,7 @@ func (x *ThrottleVMResponse) String() string {
 func (*ThrottleVMResponse) ProtoMessage() {}
 
 func (x *ThrottleVMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_resource_v1_resource_proto_msgTypes[17]
+	mi := &file_exe_resource_v1_resource_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1226,7 +1479,7 @@ func (x *ThrottleVMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThrottleVMResponse.ProtoReflect.Descriptor instead.
 func (*ThrottleVMResponse) Descriptor() ([]byte, []int) {
-	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{17}
+	return file_exe_resource_v1_resource_proto_rawDescGZIP(), []int{18}
 }
 
 var File_exe_resource_v1_resource_proto protoreflect.FileDescriptor
@@ -1258,7 +1511,7 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x04cpus\x18\x01 \x01(\x04R\x04cpus\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\xcd\a\n" +
+	"disk_bytes\x18\x03 \x01(\x04R\tdiskBytes\"\x93\b\n" +
 	"\aVMUsage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -1291,7 +1544,39 @@ const file_exe_resource_v1_resource_proto_rawDesc = "" +
 	"\x0efs_total_bytes\x18\x16 \x01(\x04R\ffsTotalBytes\x12\"\n" +
 	"\rfs_free_bytes\x18\x17 \x01(\x04R\vfsFreeBytes\x12,\n" +
 	"\x12fs_available_bytes\x18\x18 \x01(\x04R\x10fsAvailableBytes\x12\"\n" +
-	"\rfs_used_bytes\x18\x19 \x01(\x04R\vfsUsedBytes\"d\n" +
+	"\rfs_used_bytes\x18\x19 \x01(\x04R\vfsUsedBytes\x12D\n" +
+	"\fguest_memory\x18\x1a \x01(\v2!.exe.resource.v1.GuestMemoryStatsR\vguestMemory\"\xa0\b\n" +
+	"\x10GuestMemoryStats\x121\n" +
+	"\x15captured_at_unix_nano\x18\x01 \x01(\x03R\x12capturedAtUnixNano\x12/\n" +
+	"\x14fetched_at_unix_nano\x18\x02 \x01(\x03R\x11fetchedAtUnixNano\x12\x1d\n" +
+	"\n" +
+	"uptime_sec\x18\x03 \x01(\x01R\tuptimeSec\x12&\n" +
+	"\x0fmem_total_bytes\x18\x04 \x01(\x04R\rmemTotalBytes\x12.\n" +
+	"\x13mem_available_bytes\x18\x05 \x01(\x04R\x11memAvailableBytes\x12!\n" +
+	"\fcached_bytes\x18\x06 \x01(\x04R\vcachedBytes\x12*\n" +
+	"\x11active_file_bytes\x18\a \x01(\x04R\x0factiveFileBytes\x12.\n" +
+	"\x13inactive_file_bytes\x18\b \x01(\x04R\x11inactiveFileBytes\x12#\n" +
+	"\rmlocked_bytes\x18\t \x01(\x04R\fmlockedBytes\x12\x1f\n" +
+	"\vdirty_bytes\x18\n" +
+	" \x01(\x04R\n" +
+	"dirtyBytes\x12(\n" +
+	"\x10swap_total_bytes\x18\v \x01(\x04R\x0eswapTotalBytes\x12&\n" +
+	"\x0fswap_free_bytes\x18\f \x01(\x04R\rswapFreeBytes\x12-\n" +
+	"\x12sreclaimable_bytes\x18\r \x01(\x04R\x11sreclaimableBytes\x12+\n" +
+	"\x11reclaimable_bytes\x18\x0e \x01(\x04R\x10reclaimableBytes\x126\n" +
+	"\x17workingset_refault_file\x18\x0f \x01(\x04R\x15workingsetRefaultFile\x126\n" +
+	"\x17workingset_refault_anon\x18\x10 \x01(\x04R\x15workingsetRefaultAnon\x12\x1e\n" +
+	"\n" +
+	"pgmajfault\x18\x11 \x01(\x04R\n" +
+	"pgmajfault\x12#\n" +
+	"\rpsi_available\x18\x12 \x01(\bR\fpsiAvailable\x12$\n" +
+	"\x0epsi_some_avg10\x18\x13 \x01(\x01R\fpsiSomeAvg10\x12$\n" +
+	"\x0epsi_some_avg60\x18\x14 \x01(\x01R\fpsiSomeAvg60\x12&\n" +
+	"\x0fpsi_some_avg300\x18\x15 \x01(\x01R\rpsiSomeAvg300\x12$\n" +
+	"\x0epsi_full_avg10\x18\x16 \x01(\x01R\fpsiFullAvg10\x12$\n" +
+	"\x0epsi_full_avg60\x18\x17 \x01(\x01R\fpsiFullAvg60\x12&\n" +
+	"\x0fpsi_full_avg300\x18\x18 \x01(\x01R\rpsiFullAvg300\x12!\n" +
+	"\frefault_rate\x18\x19 \x01(\x01R\vrefaultRate\"d\n" +
 	"\x14SetVMPriorityRequest\x12\x13\n" +
 	"\x05vm_id\x18\x01 \x01(\tR\x04vmId\x127\n" +
 	"\bpriority\x18\x02 \x01(\x0e2\x1b.exe.resource.v1.VMPriorityR\bpriority\"\x17\n" +
@@ -1361,7 +1646,7 @@ func file_exe_resource_v1_resource_proto_rawDescGZIP() []byte {
 }
 
 var file_exe_resource_v1_resource_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_exe_resource_v1_resource_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_exe_resource_v1_resource_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_exe_resource_v1_resource_proto_goTypes = []any{
 	(VMPriority)(0),                 // 0: exe.resource.v1.VMPriority
 	(*GetNodeStatusRequest)(nil),    // 1: exe.resource.v1.GetNodeStatusRequest
@@ -1373,15 +1658,16 @@ var file_exe_resource_v1_resource_proto_goTypes = []any{
 	(*NodeCapacity)(nil),            // 7: exe.resource.v1.NodeCapacity
 	(*NodeAllocation)(nil),          // 8: exe.resource.v1.NodeAllocation
 	(*VMUsage)(nil),                 // 9: exe.resource.v1.VMUsage
-	(*SetVMPriorityRequest)(nil),    // 10: exe.resource.v1.SetVMPriorityRequest
-	(*SetVMPriorityResponse)(nil),   // 11: exe.resource.v1.SetVMPriorityResponse
-	(*GetMachineUsageRequest)(nil),  // 12: exe.resource.v1.GetMachineUsageRequest
-	(*GetMachineUsageResponse)(nil), // 13: exe.resource.v1.GetMachineUsageResponse
-	(*SetMachineUsageRequest)(nil),  // 14: exe.resource.v1.SetMachineUsageRequest
-	(*SetMachineUsageResponse)(nil), // 15: exe.resource.v1.SetMachineUsageResponse
-	(*MachineUsage)(nil),            // 16: exe.resource.v1.MachineUsage
-	(*ThrottleVMRequest)(nil),       // 17: exe.resource.v1.ThrottleVMRequest
-	(*ThrottleVMResponse)(nil),      // 18: exe.resource.v1.ThrottleVMResponse
+	(*GuestMemoryStats)(nil),        // 10: exe.resource.v1.GuestMemoryStats
+	(*SetVMPriorityRequest)(nil),    // 11: exe.resource.v1.SetVMPriorityRequest
+	(*SetVMPriorityResponse)(nil),   // 12: exe.resource.v1.SetVMPriorityResponse
+	(*GetMachineUsageRequest)(nil),  // 13: exe.resource.v1.GetMachineUsageRequest
+	(*GetMachineUsageResponse)(nil), // 14: exe.resource.v1.GetMachineUsageResponse
+	(*SetMachineUsageRequest)(nil),  // 15: exe.resource.v1.SetMachineUsageRequest
+	(*SetMachineUsageResponse)(nil), // 16: exe.resource.v1.SetMachineUsageResponse
+	(*MachineUsage)(nil),            // 17: exe.resource.v1.MachineUsage
+	(*ThrottleVMRequest)(nil),       // 18: exe.resource.v1.ThrottleVMRequest
+	(*ThrottleVMResponse)(nil),      // 19: exe.resource.v1.ThrottleVMResponse
 }
 var file_exe_resource_v1_resource_proto_depIdxs = []int32{
 	7,  // 0: exe.resource.v1.GetNodeStatusResponse.capacity:type_name -> exe.resource.v1.NodeCapacity
@@ -1389,28 +1675,29 @@ var file_exe_resource_v1_resource_proto_depIdxs = []int32{
 	9,  // 2: exe.resource.v1.GetVMUsageResponse.usage:type_name -> exe.resource.v1.VMUsage
 	9,  // 3: exe.resource.v1.ListVMUsageResponse.usage:type_name -> exe.resource.v1.VMUsage
 	0,  // 4: exe.resource.v1.VMUsage.priority:type_name -> exe.resource.v1.VMPriority
-	0,  // 5: exe.resource.v1.SetVMPriorityRequest.priority:type_name -> exe.resource.v1.VMPriority
-	16, // 6: exe.resource.v1.GetMachineUsageResponse.usage:type_name -> exe.resource.v1.MachineUsage
-	16, // 7: exe.resource.v1.SetMachineUsageRequest.usage:type_name -> exe.resource.v1.MachineUsage
-	1,  // 8: exe.resource.v1.ResourceManagerService.GetNodeStatus:input_type -> exe.resource.v1.GetNodeStatusRequest
-	3,  // 9: exe.resource.v1.ResourceManagerService.GetVMUsage:input_type -> exe.resource.v1.GetVMUsageRequest
-	5,  // 10: exe.resource.v1.ResourceManagerService.ListVMUsage:input_type -> exe.resource.v1.ListVMUsageRequest
-	10, // 11: exe.resource.v1.ResourceManagerService.SetVMPriority:input_type -> exe.resource.v1.SetVMPriorityRequest
-	12, // 12: exe.resource.v1.ResourceManagerService.GetMachineUsage:input_type -> exe.resource.v1.GetMachineUsageRequest
-	14, // 13: exe.resource.v1.ResourceManagerService.SetMachineUsage:input_type -> exe.resource.v1.SetMachineUsageRequest
-	17, // 14: exe.resource.v1.ResourceManagerService.ThrottleVM:input_type -> exe.resource.v1.ThrottleVMRequest
-	2,  // 15: exe.resource.v1.ResourceManagerService.GetNodeStatus:output_type -> exe.resource.v1.GetNodeStatusResponse
-	4,  // 16: exe.resource.v1.ResourceManagerService.GetVMUsage:output_type -> exe.resource.v1.GetVMUsageResponse
-	6,  // 17: exe.resource.v1.ResourceManagerService.ListVMUsage:output_type -> exe.resource.v1.ListVMUsageResponse
-	11, // 18: exe.resource.v1.ResourceManagerService.SetVMPriority:output_type -> exe.resource.v1.SetVMPriorityResponse
-	13, // 19: exe.resource.v1.ResourceManagerService.GetMachineUsage:output_type -> exe.resource.v1.GetMachineUsageResponse
-	15, // 20: exe.resource.v1.ResourceManagerService.SetMachineUsage:output_type -> exe.resource.v1.SetMachineUsageResponse
-	18, // 21: exe.resource.v1.ResourceManagerService.ThrottleVM:output_type -> exe.resource.v1.ThrottleVMResponse
-	15, // [15:22] is the sub-list for method output_type
-	8,  // [8:15] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	10, // 5: exe.resource.v1.VMUsage.guest_memory:type_name -> exe.resource.v1.GuestMemoryStats
+	0,  // 6: exe.resource.v1.SetVMPriorityRequest.priority:type_name -> exe.resource.v1.VMPriority
+	17, // 7: exe.resource.v1.GetMachineUsageResponse.usage:type_name -> exe.resource.v1.MachineUsage
+	17, // 8: exe.resource.v1.SetMachineUsageRequest.usage:type_name -> exe.resource.v1.MachineUsage
+	1,  // 9: exe.resource.v1.ResourceManagerService.GetNodeStatus:input_type -> exe.resource.v1.GetNodeStatusRequest
+	3,  // 10: exe.resource.v1.ResourceManagerService.GetVMUsage:input_type -> exe.resource.v1.GetVMUsageRequest
+	5,  // 11: exe.resource.v1.ResourceManagerService.ListVMUsage:input_type -> exe.resource.v1.ListVMUsageRequest
+	11, // 12: exe.resource.v1.ResourceManagerService.SetVMPriority:input_type -> exe.resource.v1.SetVMPriorityRequest
+	13, // 13: exe.resource.v1.ResourceManagerService.GetMachineUsage:input_type -> exe.resource.v1.GetMachineUsageRequest
+	15, // 14: exe.resource.v1.ResourceManagerService.SetMachineUsage:input_type -> exe.resource.v1.SetMachineUsageRequest
+	18, // 15: exe.resource.v1.ResourceManagerService.ThrottleVM:input_type -> exe.resource.v1.ThrottleVMRequest
+	2,  // 16: exe.resource.v1.ResourceManagerService.GetNodeStatus:output_type -> exe.resource.v1.GetNodeStatusResponse
+	4,  // 17: exe.resource.v1.ResourceManagerService.GetVMUsage:output_type -> exe.resource.v1.GetVMUsageResponse
+	6,  // 18: exe.resource.v1.ResourceManagerService.ListVMUsage:output_type -> exe.resource.v1.ListVMUsageResponse
+	12, // 19: exe.resource.v1.ResourceManagerService.SetVMPriority:output_type -> exe.resource.v1.SetVMPriorityResponse
+	14, // 20: exe.resource.v1.ResourceManagerService.GetMachineUsage:output_type -> exe.resource.v1.GetMachineUsageResponse
+	16, // 21: exe.resource.v1.ResourceManagerService.SetMachineUsage:output_type -> exe.resource.v1.SetMachineUsageResponse
+	19, // 22: exe.resource.v1.ResourceManagerService.ThrottleVM:output_type -> exe.resource.v1.ThrottleVMResponse
+	16, // [16:23] is the sub-list for method output_type
+	9,  // [9:16] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_exe_resource_v1_resource_proto_init() }
@@ -1418,14 +1705,14 @@ func file_exe_resource_v1_resource_proto_init() {
 	if File_exe_resource_v1_resource_proto != nil {
 		return
 	}
-	file_exe_resource_v1_resource_proto_msgTypes[16].OneofWrappers = []any{}
+	file_exe_resource_v1_resource_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_resource_v1_resource_proto_rawDesc), len(file_exe_resource_v1_resource_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   18,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
