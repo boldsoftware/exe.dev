@@ -11,7 +11,7 @@ Anthropic, OpenAI, and Fireworks APIs. Your subscription includes a monthly
 token allocation, and you can purchase additional tokens at
 [https://exe.dev/user](https://exe.dev/user).
 
-See the [full list of supported models](/llm-gateway-models).
+See the [full list of supported models](/llm-gateway-models) ([JSON](/llm-gateway-models.json)).
 
 The gateway is available inside your VM at
 `http://169.254.169.254/gateway/llm/provider`, where `provider` is one of

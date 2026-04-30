@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -533,39 +530,117 @@ func TestAllowedModels(t *testing.T) {
 	}
 }
 
-func TestPiExtensionFireworksModelsInPricing(t *testing.T) {
-	// Verify that every Fireworks model ID registered in the Pi extension
-	// has a corresponding entry in llmpricing.
-	src, err := os.ReadFile(filepath.Join("..", "exeuntu", "pi-extension", "index.ts"))
-	if err != nil {
-		t.Fatalf("Could not read pi-extension index.ts: %v", err)
-	}
-
-	re := regexp.MustCompile(`id:\s*"(accounts/fireworks/models/[^"]+)"`)
-	matches := re.FindAllSubmatch(src, -1)
-	if len(matches) == 0 {
-		t.Fatal("No Fireworks model IDs found in pi-extension index.ts")
-	}
-
-	for _, m := range matches {
-		modelID := string(m[1])
-		if !IsModelAllowed(ProviderFireworks, modelID) {
-			t.Errorf("Pi extension model %q not found in llmpricing allowlist", modelID)
-		}
-	}
-	t.Logf("Checked %d Fireworks model IDs from pi-extension", len(matches))
-
-	// Reverse check: every Fireworks chat model in pricing should be in the extension.
-	piModels := make(map[string]bool)
-	for _, m := range matches {
-		piModels[string(m[1])] = true
-	}
+// TestFireworksChatModelsHaveCatalogMetadata enforces that every Fireworks
+// chat model in the allowlist also has the metadata required for the gateway
+// catalog (and therefore for pi to register it). Embedding/reranker models
+// are exempt — they are pricing-only.
+func TestFireworksChatModelsHaveCatalogMetadata(t *testing.T) {
 	for modelID, cost := range allowedModels[ProviderFireworks] {
 		if cost.Type != "" {
-			continue // embedding/reranker models are pricing-only
+			continue
 		}
-		if !piModels[modelID] {
-			t.Errorf("Pricing model %q has no pi-extension entry", modelID)
+		meta, ok := gatewayMeta[ProviderFireworks][modelID]
+		if !ok {
+			t.Errorf("Fireworks chat model %q has no gatewayMeta entry", modelID)
+			continue
+		}
+		if meta.DisplayName == "" {
+			t.Errorf("Fireworks model %q: missing DisplayName", modelID)
+		}
+		if meta.ContextWindow == 0 {
+			t.Errorf("Fireworks model %q: missing ContextWindow", modelID)
+		}
+		if meta.MaxOutputTokens == 0 {
+			t.Errorf("Fireworks model %q: missing MaxOutputTokens", modelID)
+		}
+		if len(meta.Inputs) == 0 {
+			t.Errorf("Fireworks model %q: missing Inputs", modelID)
+		}
+	}
+}
+
+// TestBuildCatalog sanity-checks the JSON catalog structure: every advertised
+// provider has the expected shape, costs are converted to USD per 1M tokens,
+// and Fireworks chat models are exposed with their full metadata.
+func TestBuildCatalog(t *testing.T) {
+	cat := BuildCatalog()
+	if cat.SchemaVersion != CatalogSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", cat.SchemaVersion, CatalogSchemaVersion)
+	}
+
+	wantProviders := map[string]string{"anthropic": "anthropic", "openai": "openai/v1", "fireworks": "fireworks/inference/v1"}
+	got := make(map[string]CatalogProvider)
+	for _, p := range cat.Providers {
+		got[p.ID] = p
+	}
+	for id, path := range wantProviders {
+		p, ok := got[id]
+		if !ok {
+			t.Errorf("missing provider %q", id)
+			continue
+		}
+		if p.Path != path {
+			t.Errorf("provider %q: path = %q, want %q", id, p.Path, path)
+		}
+	}
+	if got["fireworks"].API != "openai-completions" {
+		t.Errorf("fireworks api = %q, want openai-completions", got["fireworks"].API)
+	}
+
+	// Spot-check a Fireworks reasoning model: cost converted, metadata present, compat set.
+	var kimi *CatalogModel
+	for i, m := range got["fireworks"].Models {
+		if m.ID == "accounts/fireworks/models/kimi-k2p6" {
+			kimi = &got["fireworks"].Models[i]
+			break
+		}
+	}
+	if kimi == nil {
+		t.Fatal("kimi-k2p6 not in catalog")
+	}
+	if kimi.Name != "Kimi K2.6 (Fireworks)" {
+		t.Errorf("kimi name = %q", kimi.Name)
+	}
+	if !kimi.Reasoning {
+		t.Error("kimi reasoning = false, want true")
+	}
+	if kimi.ContextWindow != 262144 || kimi.MaxTokens != 16384 {
+		t.Errorf("kimi context/max = %d/%d", kimi.ContextWindow, kimi.MaxTokens)
+	}
+	// 95 cents per 1M tokens -> $0.95 per 1M tokens.
+	if kimi.Cost.Input != 0.95 {
+		t.Errorf("kimi cost.input = %v, want 0.95", kimi.Cost.Input)
+	}
+	if kimi.Compat == nil || kimi.Compat.MaxTokensField != "max_tokens" || kimi.Compat.ThinkingFormat != "openai" {
+		t.Errorf("kimi compat = %+v", kimi.Compat)
+	}
+	if kimi.Compat.SupportsDeveloperRole == nil || *kimi.Compat.SupportsDeveloperRole {
+		t.Errorf("kimi compat.supportsDeveloperRole = %v, want pointer to false", kimi.Compat.SupportsDeveloperRole)
+	}
+}
+
+// TestCatalogJSONShape locks the exact wire format. Test loops over every
+// model and checks invariants we care about; it does not pin every byte.
+func TestCatalogJSONShape(t *testing.T) {
+	b, err := json.MarshalIndent(BuildCatalog(), "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var cat Catalog
+	if err := json.Unmarshal(b, &cat); err != nil {
+		t.Fatalf("round-trip: %v", err)
+	}
+	if cat.SchemaVersion != CatalogSchemaVersion {
+		t.Errorf("schemaVersion not preserved")
+	}
+	for _, p := range cat.Providers {
+		if p.ID == "" || p.Path == "" {
+			t.Errorf("provider missing id/path: %+v", p)
+		}
+		for _, m := range p.Models {
+			if m.ID == "" {
+				t.Errorf("provider %s: model missing id", p.ID)
+			}
 		}
 	}
 }

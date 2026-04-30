@@ -440,3 +440,236 @@ func GatewayModels() []GatewayModel {
 	})
 	return result
 }
+
+// ModelMeta is optional per-model metadata exposed via the gateway catalog.
+// It complements ModelCost with information that callers (e.g. pi) need to
+// configure themselves without hardcoding model details. Cost lives in
+// ModelCost; ModelMeta does not duplicate it.
+type ModelMeta struct {
+	DisplayName     string
+	Reasoning       bool
+	Inputs          []string // e.g. ["text"], ["text", "image"]
+	ContextWindow   uint64
+	MaxOutputTokens uint64
+	Compat          ModelCompat
+}
+
+// ModelCompat captures provider-specific quirks used by OpenAI-compatible
+// clients. Fields are emitted only when set.
+type ModelCompat struct {
+	SupportsDeveloperRole   *bool
+	MaxTokensField          string
+	SupportsReasoningEffort *bool
+	ThinkingFormat          string
+	CacheControlFormat      string
+}
+
+// fwOpenAICompat is the compat baseline shared by Fireworks chat models served
+// via the OpenAI Chat Completions API. Fireworks rejects the developer role
+// and the max_completion_tokens field.
+var fwOpenAICompat = ModelCompat{
+	SupportsDeveloperRole: new(false),
+	MaxTokensField:        "max_tokens",
+}
+
+// fwOpenAIReasoningCompat extends fwOpenAICompat for reasoning models that
+// emit thinking blocks in OpenAI's format.
+var fwOpenAIReasoningCompat = func() ModelCompat {
+	c := fwOpenAICompat
+	c.ThinkingFormat = "openai"
+	return c
+}()
+
+// gatewayMeta provides per-model metadata for the gateway catalog. Models
+// without an entry are exposed with cost only; consumers that need richer
+// info should treat the entry as not-yet-available and fall back to defaults.
+var gatewayMeta = map[Provider]map[string]ModelMeta{
+	ProviderFireworks: {
+		"accounts/fireworks/models/qwen3-8b": {
+			DisplayName: "Qwen3 8B (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 40960, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/glm-5p1": {
+			DisplayName: "GLM 5.1 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 202752, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/glm-5": {
+			DisplayName: "GLM 5 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 202752, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/glm-4p7": {
+			DisplayName: "GLM 4.7 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 202752, MaxOutputTokens: 16384, Reasoning: true, Compat: fwOpenAIReasoningCompat,
+		},
+		"accounts/fireworks/models/kimi-k2p6": {
+			DisplayName: "Kimi K2.6 (Fireworks)", Inputs: []string{"text", "image"},
+			ContextWindow: 262144, MaxOutputTokens: 16384, Reasoning: true, Compat: fwOpenAIReasoningCompat,
+		},
+		"accounts/fireworks/models/kimi-k2p5": {
+			DisplayName: "Kimi K2.5 (Fireworks)", Inputs: []string{"text", "image"},
+			ContextWindow: 262144, MaxOutputTokens: 16384, Reasoning: true, Compat: fwOpenAIReasoningCompat,
+		},
+		"accounts/fireworks/models/deepseek-v4-pro": {
+			DisplayName: "DeepSeek V4 Pro (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 1048576, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/deepseek-v3p2": {
+			DisplayName: "DeepSeek V3p2 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 163840, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/deepseek-v3p1": {
+			DisplayName: "DeepSeek V3p1 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 163840, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/minimax-m2p5": {
+			DisplayName: "MiniMax M2.5 (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 196608, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/gpt-oss-120b": {
+			DisplayName: "GPT-OSS 120B (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 131072, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/gpt-oss-20b": {
+			DisplayName: "GPT-OSS 20B (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 131072, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+		"accounts/fireworks/models/llama-v3p3-70b-instruct": {
+			DisplayName: "Llama 3.3 70B (Fireworks)", Inputs: []string{"text"},
+			ContextWindow: 131072, MaxOutputTokens: 16384, Compat: fwOpenAICompat,
+		},
+	},
+}
+
+// CatalogSchemaVersion is the schema version for the gateway catalog JSON.
+// Bump on incompatible changes.
+const CatalogSchemaVersion = 1
+
+// Catalog is the JSON shape served at /llm-gateway-models.json. It groups
+// models by provider so that callers can configure themselves with one
+// provider registration per group.
+type Catalog struct {
+	SchemaVersion int               `json:"schemaVersion"`
+	Providers     []CatalogProvider `json:"providers"`
+}
+
+// CatalogProvider describes one routing group under the gateway base URL.
+// Path is the prefix to append to the gateway base to reach this provider's
+// upstream API (e.g. "fireworks/inference/v1").
+type CatalogProvider struct {
+	ID     string         `json:"id"`
+	Path   string         `json:"path"`
+	API    string         `json:"api,omitempty"`
+	Models []CatalogModel `json:"models"`
+}
+
+// CatalogModel describes a single model exposed by the gateway.
+type CatalogModel struct {
+	ID            string         `json:"id"`
+	Name          string         `json:"name,omitempty"`
+	Type          ModelType      `json:"type,omitempty"`
+	Reasoning     bool           `json:"reasoning,omitempty"`
+	Input         []string       `json:"input,omitempty"`
+	ContextWindow uint64         `json:"contextWindow,omitempty"`
+	MaxTokens     uint64         `json:"maxTokens,omitempty"`
+	Cost          CatalogCost    `json:"cost"`
+	Compat        *CatalogCompat `json:"compat,omitempty"`
+}
+
+// CatalogCost is the model's price in USD per 1M tokens.
+type CatalogCost struct {
+	Input      float64 `json:"input"`
+	Output     float64 `json:"output"`
+	CacheRead  float64 `json:"cacheRead"`
+	CacheWrite float64 `json:"cacheWrite"`
+}
+
+// CatalogCompat is the JSON form of ModelCompat. Fields are omitted when
+// unset so consumers can apply their own defaults.
+type CatalogCompat struct {
+	SupportsDeveloperRole   *bool  `json:"supportsDeveloperRole,omitempty"`
+	MaxTokensField          string `json:"maxTokensField,omitempty"`
+	SupportsReasoningEffort *bool  `json:"supportsReasoningEffort,omitempty"`
+	ThinkingFormat          string `json:"thinkingFormat,omitempty"`
+	CacheControlFormat      string `json:"cacheControlFormat,omitempty"`
+}
+
+// providerCatalogInfo describes the static routing info for a provider.
+type providerCatalogInfo struct {
+	id   string
+	path string
+	api  string // optional; only set when we want callers to use a specific API
+}
+
+// providerCatalog is the source of truth for how the gateway exposes each
+// provider over HTTP. Path is relative to the gateway base URL.
+var providerCatalog = []providerCatalogInfo{
+	{id: "anthropic", path: "anthropic"},
+	{id: "openai", path: "openai/v1"},
+	{id: "fireworks", path: "fireworks/inference/v1", api: "openai-completions"},
+}
+
+// BuildCatalog returns the catalog of providers and models exposed by the
+// gateway. It is deterministic: providers and models are sorted by ID.
+func BuildCatalog() Catalog {
+	cat := Catalog{SchemaVersion: CatalogSchemaVersion}
+	for _, p := range providerCatalog {
+		entry := CatalogProvider{ID: p.id, Path: p.path, API: p.api, Models: []CatalogModel{}}
+		for name, cost := range allowedModels[Provider(p.id)] {
+			entry.Models = append(entry.Models, buildCatalogModel(Provider(p.id), name, cost))
+		}
+		sort.Slice(entry.Models, func(i, j int) bool { return entry.Models[i].ID < entry.Models[j].ID })
+		cat.Providers = append(cat.Providers, entry)
+	}
+	sort.Slice(cat.Providers, func(i, j int) bool { return cat.Providers[i].ID < cat.Providers[j].ID })
+	return cat
+}
+
+func buildCatalogModel(provider Provider, name string, cost ModelCost) CatalogModel {
+	m := CatalogModel{
+		ID:   name,
+		Type: modelType(name, cost),
+		Cost: CatalogCost{
+			Input:      centsPer1MtoUSD(cost.Input),
+			Output:     centsPer1MtoUSD(cost.Output),
+			CacheRead:  centsPer1MtoUSD(cost.CacheRead),
+			CacheWrite: centsPer1MtoUSD(cost.CacheCreation),
+		},
+	}
+	// Hide the default chat type to keep JSON terse; it is implied.
+	if m.Type == ModelTypeChat {
+		m.Type = ""
+	}
+	if meta, ok := gatewayMeta[provider][name]; ok {
+		m.Name = meta.DisplayName
+		m.Reasoning = meta.Reasoning
+		m.Input = meta.Inputs
+		m.ContextWindow = meta.ContextWindow
+		m.MaxTokens = meta.MaxOutputTokens
+		if c := catalogCompat(meta.Compat); c != nil {
+			m.Compat = c
+		}
+	}
+	return m
+}
+
+// centsPer1MtoUSD converts cents per 1M tokens to USD per 1M tokens.
+func centsPer1MtoUSD(cents uint64) float64 { return float64(cents) / 100.0 }
+
+// catalogCompat converts an internal ModelCompat to its JSON wire form.
+// Returns nil when nothing has been set.
+func catalogCompat(c ModelCompat) *CatalogCompat {
+	if c.SupportsDeveloperRole == nil &&
+		c.MaxTokensField == "" &&
+		c.SupportsReasoningEffort == nil &&
+		c.ThinkingFormat == "" &&
+		c.CacheControlFormat == "" {
+		return nil
+	}
+	return &CatalogCompat{
+		SupportsDeveloperRole:   c.SupportsDeveloperRole,
+		MaxTokensField:          c.MaxTokensField,
+		SupportsReasoningEffort: c.SupportsReasoningEffort,
+		ThinkingFormat:          c.ThinkingFormat,
+		CacheControlFormat:      c.CacheControlFormat,
+	}
+}
