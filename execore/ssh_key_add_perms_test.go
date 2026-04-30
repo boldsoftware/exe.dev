@@ -18,8 +18,13 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// createTestUserWithSSHKeyAddPerm creates a test user whose token allows ssh-key add.
+// createTestUserWithSSHKeyAddPerm creates a test root-support user whose token allows ssh-key add.
 func createTestUserWithSSHKeyAddPerm(t *testing.T, s *Server) (userID, email, token string) {
+	return createTestUserWithSSHKeyAddToken(t, s, true, "")
+}
+
+// createTestUserWithSSHKeyAddToken creates a test user whose token allows ssh-key add.
+func createTestUserWithSSHKeyAddToken(t *testing.T, s *Server, rootSupport bool, teamID string) (userID, email, token string) {
 	t.Helper()
 	ctx := t.Context()
 	userID = "usr" + generateRegistrationToken()
@@ -35,11 +40,23 @@ func createTestUserWithSSHKeyAddPerm(t *testing.T, s *Server) (userID, email, to
 	fingerprint := strings.TrimPrefix(ssh.FingerprintSHA256(sshPubKey), "SHA256:")
 
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO users (user_id, email, root_support) VALUES (?, ?, 1)`, userID, email); err != nil {
+		rootSupportValue := 0
+		if rootSupport {
+			rootSupportValue = 1
+		}
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email, root_support) VALUES (?, ?, ?)`, userID, email, rootSupportValue); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key, fingerprint) VALUES (?, ?, ?)`, userID, pubKeyStr, fingerprint); err != nil {
 			return err
+		}
+		if teamID != "" {
+			if _, err := tx.Exec(`INSERT INTO teams (team_id, display_name) VALUES (?, ?)`, teamID, "Scoped SSH Key Test Team"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`INSERT INTO team_members (team_id, user_id, role) VALUES (?, ?, 'user')`, teamID, userID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -183,6 +200,64 @@ func TestSSHKeyAddPermissions(t *testing.T) {
 		resp, body = execWithBearer(t, s, token, "ssh-key add --json --exp=30d "+pk3)
 		if resp.StatusCode == http.StatusOK {
 			t.Fatalf("non-sudoer should be denied --exp, got 200: %s", body)
+		}
+		if !strings.Contains(body, "root support privileges") {
+			t.Errorf("expected root support error, got: %s", body)
+		}
+	})
+
+	t.Run("allowlisted_team_member_can_add_vm_scoped_key", func(t *testing.T) {
+		ctx := t.Context()
+		testTeamID := s.env.ScopedSSHKeyPermissionTeamIDs[0]
+		userID, _, token := createTestUserWithSSHKeyAddToken(t, s, false, testTeamID)
+
+		err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`INSERT INTO boxes (ctrhost, name, status, image, created_by_user_id, tags, region) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				"ctr1", "team-feature-vm", "running", "exeuntu", userID, `[]`, "pdx")
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		pk := generateTestSSHKey(t)
+		resp, body := execWithBearer(t, s, token, "ssh-key add --json --vm=team-feature-vm "+pk)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("allowlisted team member should be able to use --vm, got %d: %s", resp.StatusCode, body)
+		}
+		var result map[string]any
+		if err := json.Unmarshal([]byte(body), &result); err != nil {
+			t.Fatalf("Decode: %v", err)
+		}
+		permsRaw, ok := result["permissions"]
+		if !ok {
+			t.Fatal("expected permissions in JSON output")
+		}
+		permsMap, ok := permsRaw.(map[string]any)
+		if !ok {
+			t.Fatalf("expected permissions to be object, got %T", permsRaw)
+		}
+		if permsMap["vm"] != "team-feature-vm" {
+			t.Errorf("expected vm=team-feature-vm, got %v", permsMap["vm"])
+		}
+
+		pk = generateTestSSHKey(t)
+		resp, body = execWithBearer(t, s, token, "ssh-key add --json --cmds=whoami "+pk)
+		if resp.StatusCode == http.StatusOK {
+			t.Fatalf("allowlisted team member should not get non-VM permission flags, got 200: %s", body)
+		}
+		if !strings.Contains(body, "root support privileges") {
+			t.Errorf("expected root support error, got: %s", body)
+		}
+	})
+
+	t.Run("other_team_member_denied_perms", func(t *testing.T) {
+		_, _, token := createTestUserWithSSHKeyAddToken(t, s, false, "tm_other_scoped_ssh_test")
+
+		pk := generateTestSSHKey(t)
+		resp, body := execWithBearer(t, s, token, "ssh-key add --json --cmds=whoami "+pk)
+		if resp.StatusCode == http.StatusOK {
+			t.Fatalf("member of another team should be denied permission flags, got 200: %s", body)
 		}
 		if !strings.Contains(body, "root support privileges") {
 			t.Errorf("expected root support error, got: %s", body)

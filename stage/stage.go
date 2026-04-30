@@ -106,6 +106,8 @@ type Env struct {
 
 	ProdLockEnv string // prodlock environment to lock during mass VM migrations; empty means no locking
 
+	ScopedSSHKeyPermissionTeamIDs []string // teams allowed to preview VM-scoped SSH key creation without root support
+
 	DebugLabel   string // short stage label for the /debug UI badge ("prod", "staging", "dev")
 	DebugColor   string // CSS background color for the /debug UI badge (e.g. "#dc3545")
 	DebugBgColor string // subtle CSS page background tint keyed to stage (e.g. "#fff5f5" for prod)
@@ -174,6 +176,8 @@ func Invalid() Env {
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "",
+
+		ScopedSSHKeyPermissionTeamIDs: nil,
 
 		DebugLabel:   "INVALID",
 		DebugColor:   "#999999",
@@ -253,6 +257,8 @@ func Local() Env {
 
 		ProdLockEnv: "",
 
+		ScopedSSHKeyPermissionTeamIDs: nil,
+
 		DebugLabel:   "dev",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
@@ -324,6 +330,8 @@ func Test() Env {
 
 		ProdLockEnv: "",
 
+		ScopedSSHKeyPermissionTeamIDs: []string{"tm_test_scoped_ssh_key_permissions"},
+
 		DebugLabel:   "test",
 		DebugColor:   "#2d6a30",
 		DebugBgColor: "#f0fdf4",
@@ -392,6 +400,8 @@ func Staging() Env {
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "staging",
+
+		ScopedSSHKeyPermissionTeamIDs: nil,
 
 		DebugLabel:   "staging",
 		DebugColor:   "#5b3a9e",
@@ -477,6 +487,8 @@ func Prod() Env {
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
 		ProdLockEnv: "prod",
+
+		ScopedSSHKeyPermissionTeamIDs: []string{"tm_LXLIJXYK4JJUC"},
 
 		DebugLabel:   "prod",
 		DebugColor:   "#8b6914",

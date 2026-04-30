@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -194,6 +195,23 @@ func (ss *SSHServer) sshKeyCommand() *exemenu.Command {
 	}
 }
 
+func (ss *SSHServer) canUseSSHKeyPermissionFlags(ctx context.Context, user *exemenu.UserInfo, cmdsFlag, vmFlag, tagFlag, expFlag string) bool {
+	if ss == nil || ss.server == nil || user == nil {
+		return false
+	}
+	if ss.server.UserHasExeSudo(ctx, user.ID) {
+		return true
+	}
+	if cmdsFlag != "" || vmFlag == "" || tagFlag != "" || expFlag != "" {
+		return false
+	}
+	team, err := ss.server.GetTeamForUser(ctx, user.ID)
+	if err != nil || team == nil {
+		return false
+	}
+	return slices.Contains(ss.server.env.ScopedSSHKeyPermissionTeamIDs, team.TeamID)
+}
+
 func (ss *SSHServer) handleSSHKeyHelp(ctx context.Context, cc *exemenu.CommandContext) error {
 	cmd := ss.commands.FindCommand([]string{"ssh-key"})
 	if cmd != nil {
@@ -301,10 +319,11 @@ func (ss *SSHServer) handleSSHKeyAddCmd(ctx context.Context, cc *exemenu.Command
 	tagFlag := cc.FlagSet.Lookup("tag").Value.String()
 	expFlag := cc.FlagSet.Lookup("exp").Value.String()
 
-	// Permission flags on ssh-key add require root support privileges.
+	// Permission flags on ssh-key add require root support privileges, except
+	// the scoped SSH key feature allowlist can use --vm by itself.
 	if cmdsFlag != "" || vmFlag != "" || tagFlag != "" || expFlag != "" {
-		if cc.User == nil || !ss.server.UserHasExeSudo(ctx, cc.User.ID) {
-			return cc.Errorf("--cmds, --vm, --tag, and --exp flags require root support privileges")
+		if !ss.canUseSSHKeyPermissionFlags(ctx, cc.User, cmdsFlag, vmFlag, tagFlag, expFlag) {
+			return cc.Errorf("--cmds, --vm, --tag, and --exp flags require root support privileges or scoped SSH key feature access")
 		}
 	}
 
