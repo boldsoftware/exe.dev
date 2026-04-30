@@ -22,7 +22,7 @@ var (
 func (ss *SSHServer) teamCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "team",
-		Hidden:      true,
+		Hidden:      false,
 		Description: "View and manage your team",
 		Handler:     ss.handleTeamCommand,
 		FlagSetFunc: jsonOnlyFlags("team"),

@@ -45,9 +45,9 @@ func TestHiddenCommandsAreNotGenerated(t *testing.T) {
 	ss := &execore.SSHServer{}
 	ct := execore.NewCommandTree(ss)
 
-	team := ct.FindCommand([]string{"team"})
-	require.NotNil(t, team, "team command must remain in the command tree")
-	require.True(t, team.Hidden, "team command must be hidden")
+	defaults := ct.FindCommand([]string{"defaults"})
+	require.NotNil(t, defaults, "defaults command must remain in the command tree")
+	require.True(t, defaults.Hidden, "defaults command must be hidden")
 
 	generated := make(map[string]bool, len(ct.Commands))
 	for _, cmd := range ct.Commands {
@@ -57,5 +57,5 @@ func TestHiddenCommandsAreNotGenerated(t *testing.T) {
 		generated[fmt.Sprintf("cli-%s.md", cmd.Name)] = true
 	}
 
-	require.NotContains(t, generated, "cli-team.md", "hidden commands must not be generated")
+	require.NotContains(t, generated, "cli-defaults.md", "hidden commands must not be generated")
 }

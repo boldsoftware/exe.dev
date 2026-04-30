@@ -142,6 +142,9 @@ func (c *Command) Help(cc *CommandContext) error {
 			if sub.Hidden {
 				continue
 			}
+			if sub.Available != nil && !sub.Available(cc) {
+				continue
+			}
 			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\n", sub.Name, sub.Description)
 		}
 		tabw.Flush()
@@ -190,6 +193,9 @@ func (c *Command) helpJSON(cc *CommandContext) error {
 		var subs []map[string]string
 		for _, sub := range c.Subcommands {
 			if sub.Hidden {
+				continue
+			}
+			if sub.Available != nil && !sub.Available(cc) {
 				continue
 			}
 			subs = append(subs, map[string]string{
@@ -494,6 +500,9 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 			if sub.Hidden && !ct.DevMode {
 				continue
 			}
+			if sub.Available != nil && !sub.Available(cc) {
+				continue
+			}
 			subNameStr := fmt.Sprintf("%s %s", cmd.Name, sub.Name)
 			var subHidden string
 			if sub.Hidden {
@@ -521,6 +530,9 @@ func (ct *CommandTree) HelpJSON(cc *CommandContext) {
 		var subs []map[string]string
 		for _, sub := range cmd.Subcommands {
 			if sub.Hidden && !ct.DevMode {
+				continue
+			}
+			if sub.Available != nil && !sub.Available(cc) {
 				continue
 			}
 			subs = append(subs, map[string]string{
