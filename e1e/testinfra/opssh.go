@@ -11,25 +11,25 @@ import (
 	"io"
 	"net"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"exe.dev/exelet/client"
+	"exe.dev/exelet/vsockdial"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"golang.org/x/crypto/ssh"
 )
 
 // OperatorSSHVsockPort mirrors cmd/exe-init's OperatorSSHVsockPort. Hard-coded
 // in the test to avoid importing guest-side init code from test infra.
-const OperatorSSHVsockPort = 2222
+const OperatorSSHVsockPort = vsockdial.OperatorSSHVsockPort
 
 // OperatorSSHSocketPath returns the on-host unix-domain socket path that
 // cloud-hypervisor binds for the given instance's operator-SSH vsock. Mirrors
 // exelet/vmm/cloudhypervisor.(*VMM).OperatorSSHSocketPath.
 func OperatorSSHSocketPath(dataDir, instanceID string) string {
-	return filepath.Join(dataDir, "runtime", instanceID, "opssh.sock")
+	return vsockdial.SocketPath(dataDir, instanceID)
 }
 
 // DialOperatorSSH opens a net.Conn to the in-guest operator SSH server via
@@ -101,7 +101,7 @@ func DialOperatorSSH(ctx context.Context, exelet *ExeletInstance, instanceID str
 		return nil, nil, fmt.Errorf("unexpected CH vsock response: %q (stderr=%q)", line, stderrBuf.String())
 	}
 
-	return &opSSHConn{r: br, w: stdin, closer: cleanup}, cleanup, nil
+	return &vsockdial.StdioConn{R: br, W: stdin, CloseFunc: cleanup}, cleanup, nil
 }
 
 // OperatorSSHClient dials operator SSH and performs the SSH handshake,
@@ -139,35 +139,6 @@ func OperatorSSHClient(ctx context.Context, exelet *ExeletInstance, instanceID s
 type opSSHStderr struct{ b *strings.Builder }
 
 func (w *opSSHStderr) Write(p []byte) (int, error) { return w.b.Write(p) }
-
-type opSSHConn struct {
-	r         io.Reader
-	w         io.WriteCloser
-	closeOnce sync.Once
-	closer    func()
-}
-
-func (c *opSSHConn) Read(p []byte) (int, error)  { return c.r.Read(p) }
-func (c *opSSHConn) Write(p []byte) (int, error) { return c.w.Write(p) }
-func (c *opSSHConn) Close() error {
-	c.closeOnce.Do(func() {
-		if c.closer != nil {
-			c.closer()
-		}
-	})
-	return nil
-}
-
-type opSSHAddr struct{}
-
-func (opSSHAddr) Network() string { return "vsock" }
-func (opSSHAddr) String() string  { return "vsock" }
-
-func (c *opSSHConn) LocalAddr() net.Addr                { return opSSHAddr{} }
-func (c *opSSHConn) RemoteAddr() net.Addr               { return opSSHAddr{} }
-func (c *opSSHConn) SetDeadline(t time.Time) error      { return nil }
-func (c *opSSHConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *opSSHConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // InstanceIDByName scans the exelet's ListInstances stream and returns the
 // instance ID for the given instance name. Returns "" if not found.
