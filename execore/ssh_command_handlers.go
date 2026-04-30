@@ -2162,6 +2162,16 @@ const (
 	maxDiskGrowth = 250 * 1024 * 1024 * 1024 // 250GB max growth in a single operation
 )
 
+// resizeLimitMsg returns a user-facing error message when a resize exceeds
+// the plan limit. If the user can upgrade to a larger tier, it suggests
+// "billing update"; otherwise it directs them to contact support.
+func resizeLimitMsg(resource, limit, currentPlanID string) string {
+	if next := plan.NextTier(currentPlanID); next != nil {
+		return fmt.Sprintf("--%s cannot exceed %s — run `billing update` to upgrade to a larger plan with more cpu/memory", resource, limit)
+	}
+	return fmt.Sprintf("--%s cannot exceed %s — contact support@exe.dev if you need more", resource, limit)
+}
+
 func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	isSudo := ss.server.UserHasExeSudo(ctx, cc.User.ID)
 
@@ -2302,6 +2312,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 
 		// Determine plan-based limits for non-sudo users.
 		var maxMemory, maxCPUs uint64
+		var currentPlanID string
 		if isSudo {
 			maxMemory = stage.SupportMaxMemory
 			maxCPUs = stage.SupportMaxCPUs
@@ -2311,6 +2322,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 			var tierMaxMemory, tierMaxCPUs uint64
 			planRow, planErr := withRxRes1(ss.server, ctx, (*exedb.Queries).GetActivePlanForUser, ownerID)
 			if planErr == nil {
+				currentPlanID = planRow.PlanID
 				tierMaxMemory = plan.MaxMemoryForPlan(planRow.PlanID)
 				tierMaxCPUs = plan.MaxCPUsForPlan(planRow.PlanID)
 			}
@@ -2331,7 +2343,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				if isSudo {
 					return cc.Errorf("--memory cannot exceed %s", fmtBytes(maxMemory))
 				}
-				return cc.Errorf("--memory cannot exceed %s — contact support@exe.dev if you need more", fmtBytes(maxMemory))
+				return cc.Errorf("%s", resizeLimitMsg("memory", fmtBytes(maxMemory), currentPlanID))
 			}
 			req.Memory = &memoryBytes
 		}
@@ -2345,7 +2357,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 				if isSudo {
 					return cc.Errorf("--cpu cannot exceed %d", maxCPUs)
 				}
-				return cc.Errorf("--cpu cannot exceed %d — contact support@exe.dev if you need more", maxCPUs)
+				return cc.Errorf("%s", resizeLimitMsg("cpu", fmt.Sprintf("%d", maxCPUs), currentPlanID))
 			}
 			req.CPUs = &cpuVal
 		}
