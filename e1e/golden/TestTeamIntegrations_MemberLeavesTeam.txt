@@ -31,7 +31,7 @@ integrations list
 - help to see a list of commands
 
 PROMPT ▶ integrations list
-survive-leave  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+survive-leave  http-proxy  target=https://example.com header=X-Auth:***  (none)  (team)
 PROMPT ▶ exit
 Goodbye!
 
@@ -61,7 +61,7 @@ integrations list
 - help to see a list of commands
 
 PROMPT ▶ integrations list
-survive-leave  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+survive-leave  http-proxy  target=https://example.com header=X-Auth:***  (none)  (team)
 PROMPT ▶
 
 ●

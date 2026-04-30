@@ -347,7 +347,7 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 			items = append(items, map[string]any{
 				"name":        ig.Name,
 				"type":        ig.Type,
-				"config":      json.RawMessage(ig.Config),
+				"config":      redactedIntegrationConfigJSON(ig.Type, ig.Config),
 				"attachments": ig.GetAttachments(),
 				"comment":     ig.Comment,
 			})
@@ -356,7 +356,7 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 			items = append(items, map[string]any{
 				"name":        ig.Name,
 				"type":        ig.Type,
-				"config":      json.RawMessage(ig.Config),
+				"config":      redactedIntegrationConfigJSON(ig.Type, ig.Config),
 				"attachments": ig.GetAttachments(),
 				"comment":     ig.Comment,
 				"team":        true,
@@ -394,9 +394,8 @@ func (ss *SSHServer) handleIntegrationsList(ctx context.Context, cc *exemenu.Com
 func summarizeConfig(typ, configJSON string) string {
 	switch typ {
 	case "http-proxy":
-		var cfg httpProxyConfig
-		if err := json.Unmarshal([]byte(configJSON), &cfg); err == nil {
-			parts := []string{"target=" + redactURLPassword(cfg.Target)}
+		if cfg, ok := redactedHTTPProxyConfig(configJSON); ok {
+			parts := []string{"target=" + cfg.Target}
 			if cfg.PeerVM != "" {
 				parts = append(parts, "peer="+cfg.PeerVM)
 			} else if cfg.Header != "" {
@@ -419,6 +418,46 @@ func summarizeConfig(typ, configJSON string) string {
 		}
 	}
 	return configJSON
+}
+
+func redactedIntegrationConfigJSON(typ, configJSON string) json.RawMessage {
+	switch typ {
+	case "http-proxy":
+		if cfg, ok := redactedHTTPProxyConfig(configJSON); ok {
+			raw, err := json.Marshal(cfg)
+			if err == nil {
+				return json.RawMessage(raw)
+			}
+		}
+	}
+	return json.RawMessage(configJSON)
+}
+
+func redactedHTTPProxyConfig(configJSON string) (httpProxyConfig, bool) {
+	var cfg httpProxyConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return httpProxyConfig{}, false
+	}
+	cfg.Target = redactURLPassword(cfg.Target)
+	cfg.Header = redactInjectedHeader(cfg.Header)
+	return cfg, true
+}
+
+// redactInjectedHeader keeps enough structure to identify the configured
+// header key while hiding its value.
+func redactInjectedHeader(header string) string {
+	if header == "" {
+		return ""
+	}
+	key, _, ok := strings.Cut(header, ":")
+	if !ok {
+		return "***"
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "***"
+	}
+	return key + ":***"
 }
 
 // redactURLPassword replaces the password in a URL's userinfo with "***".

@@ -11,7 +11,7 @@ integrations attach testint auto:all
 PROMPT ▶ integrations attach testint auto:all
 Attached testint to auto:all
 PROMPT ▶ integrations list
-testint  http-proxy  target=https://example.com header=X-Auth:secret  auto:all
+testint  http-proxy  target=https://example.com header=X-Auth:***  auto:all
 PROMPT ▶ integrations attach testint auto:all
 testint is already attached via auto:all
 PROMPT ▶ integrations detach testint auto:all

@@ -1,7 +1,9 @@
 package e1e
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +33,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	pty.Want("myproxy")
 	pty.Want("http-proxy")
 	pty.Want("target=https://example.com")
+	pty.Want("header=X-Auth:***")
 	pty.WantPrompt()
 
 	// Add another integration.
@@ -41,6 +44,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	// List should show two (most recent first).
 	pty.SendLine("integrations list")
 	pty.Want("otherproxy")
+	pty.Want("header=Authorization:***")
 	pty.Want("myproxy")
 	pty.WantPrompt()
 
@@ -52,6 +56,7 @@ func TestIntegrationsCommand(t *testing.T) {
 	// List should show one remaining.
 	pty.SendLine("integrations list")
 	pty.Want("otherproxy")
+	pty.Want("header=Authorization:***")
 	pty.WantPrompt()
 
 	// Try removing a non-existent integration.
@@ -163,10 +168,10 @@ func TestIntegrationsBearerFlag(t *testing.T) {
 	pty.Want("Added integration bearerproxy")
 	pty.WantPrompt()
 
-	// List should show the expanded Authorization:Bearer header.
+	// List should show the redacted Authorization header.
 	pty.SendLine("integrations list")
 	pty.Want("bearerproxy")
-	pty.Want("header=Authorization:Bearer my-secret-token")
+	pty.Want("header=Authorization:***")
 	pty.WantPrompt()
 
 	// Add a second integration with --bearer to verify it works consistently.
@@ -175,7 +180,7 @@ func TestIntegrationsBearerFlag(t *testing.T) {
 	pty.WantPrompt()
 
 	pty.SendLine("integrations list")
-	pty.Want("header=Authorization:Bearer another-token-456")
+	pty.Want("header=Authorization:***")
 	pty.WantPrompt()
 
 	// Error: --bearer and --header together.
@@ -196,6 +201,63 @@ func TestIntegrationsBearerFlag(t *testing.T) {
 	pty.SendLine("integrations remove bearerproxy2")
 	pty.Want("Removed")
 	pty.WantPrompt()
+}
+
+func TestIntegrationsListJSONRedactsSecrets(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	pty.Disconnect()
+
+	run := func(args ...string) []byte {
+		t.Helper()
+		out, err := Env.servers.RunExeDevSSHCommand(Env.context(t), keyFile, args...)
+		if err != nil {
+			t.Fatalf("%s failed: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return out
+	}
+
+	run("integrations", "add", "http-proxy", "--name=jsonheader", "--target=https://example.com", "--header=X-Auth:secret123")
+	run("integrations", "add", "http-proxy", "--name=jsonbearer", "--target=https://other.com", "--bearer=my-secret-token")
+	run("integrations", "add", "http-proxy", "--name=jsonbasic", "--target=https://testuser:testpass@example.com")
+
+	out := run("integrations", "list", "--json")
+
+	type integrationListItem struct {
+		Name   string `json:"name"`
+		Type   string `json:"type"`
+		Config struct {
+			Target string `json:"target"`
+			Header string `json:"header"`
+		} `json:"config"`
+	}
+
+	var items []integrationListItem
+	if err := json.Unmarshal(out, &items); err != nil {
+		t.Fatalf("integrations list --json returned invalid JSON: %v\n%s", err, out)
+	}
+
+	byName := make(map[string]integrationListItem, len(items))
+	for _, item := range items {
+		byName[item.Name] = item
+	}
+
+	if got := byName["jsonheader"].Config.Header; got != "X-Auth:***" {
+		t.Fatalf("jsonheader header = %q, want %q", got, "X-Auth:***")
+	}
+	if got := byName["jsonbearer"].Config.Header; got != "Authorization:***" {
+		t.Fatalf("jsonbearer header = %q, want %q", got, "Authorization:***")
+	}
+	if got := byName["jsonbasic"].Config.Target; got != "https://testuser:%2A%2A%2A@example.com" {
+		t.Fatalf("jsonbasic target = %q, want %q", got, "https://testuser:%2A%2A%2A@example.com")
+	}
+	if strings.Contains(string(out), "secret123") || strings.Contains(string(out), "my-secret-token") || strings.Contains(string(out), "testpass") {
+		t.Fatalf("integrations list --json leaked a secret: %s", out)
+	}
 }
 
 // TestIntegrationsAttachDetach tests the attach and detach subcommands.

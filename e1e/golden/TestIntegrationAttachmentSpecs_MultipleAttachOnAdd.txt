@@ -14,8 +14,8 @@ Added integration multiint
 Usage from a VM:
   ssh BOX_NAME curl http://multiint.int.exe.cloud/
 PROMPT ▶ integrations list
-multiint  http-proxy  target=https://example.com header=X-Auth:secret  vm:BOX_NAME auto:all
-testint  http-proxy  target=https://example.com header=X-Auth:secret  (none)
+multiint  http-proxy  target=https://example.com header=X-Auth:***  vm:BOX_NAME auto:all
+testint  http-proxy  target=https://example.com header=X-Auth:***  (none)
 PROMPT ▶ integrations remove multiint
 Removed integration multiint
 PROMPT ▶ exit

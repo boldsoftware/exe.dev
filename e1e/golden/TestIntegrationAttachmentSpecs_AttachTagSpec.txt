@@ -11,7 +11,7 @@ integrations attach testint tag:prod
 PROMPT ▶ integrations attach testint tag:prod
 Attached testint to tag:prod
 PROMPT ▶ integrations list
-testint  http-proxy  target=https://example.com header=X-Auth:secret  tag:prod
+testint  http-proxy  target=https://example.com header=X-Auth:***  tag:prod
 PROMPT ▶ integrations attach testint tag:prod
 testint is already attached via tag:prod
 PROMPT ▶ integrations detach testint tag:prod

@@ -31,7 +31,7 @@ integrations list
 - help to see a list of commands
 
 PROMPT ▶ integrations list
-team-shared  http-proxy  target=https://example.com header=X-Auth:secret  (none)  (team)
+team-shared  http-proxy  target=https://example.com header=X-Auth:***  (none)  (team)
 PROMPT ▶ integrations attach team-shared tag:staging
 Attached team-shared to tag:staging
 PROMPT ▶ integrations detach team-shared tag:staging

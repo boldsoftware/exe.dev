@@ -47,7 +47,7 @@ To use this integration, attach it to a VM first:
 Usage from a VM:
   curl http://myproxy.int.exe.cloud/
 PROMPT ▶ integrations list
-myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
+myproxy  http-proxy  target=https://example.com header=X-Auth:***  (none)
 PROMPT ▶ integrations add http-proxy --name=otherproxy --target=https://other.com --header=Authorization:Bearer-tok
 Added integration otherproxy
 
@@ -57,12 +57,12 @@ To use this integration, attach it to a VM first:
 Usage from a VM:
   curl http://otherproxy.int.exe.cloud/
 PROMPT ▶ integrations list
-otherproxy  http-proxy  target=https://other.com header=Authorization:Bearer-tok  (none)
-myproxy  http-proxy  target=https://example.com header=X-Auth:secret123  (none)
+otherproxy  http-proxy  target=https://other.com header=Authorization:***  (none)
+myproxy  http-proxy  target=https://example.com header=X-Auth:***  (none)
 PROMPT ▶ integrations remove myproxy
 Removed integration myproxy
 PROMPT ▶ integrations list
-otherproxy  http-proxy  target=https://other.com header=Authorization:Bearer-tok  (none)
+otherproxy  http-proxy  target=https://other.com header=Authorization:***  (none)
 PROMPT ▶ integrations remove doesnotexist
 integration "doesnotexist" not found
 PROMPT ▶ integrations add http-proxy --target=https://x.com --header=X-Foo:bar
