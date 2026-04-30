@@ -199,6 +199,26 @@ func main() {
 			Usage:   "enable hugepage memory for VMs (requires hugepages to be configured on the host)",
 			EnvVars: []string{"EXELET_ENABLE_HUGEPAGES"},
 		},
+		&cli.BoolFlag{
+			Name:    "memwatch-disable",
+			Usage:   "disable guest memory scraping and host pressure classification",
+			EnvVars: []string{"EXELET_MEMWATCH_DISABLE"},
+		},
+		&cli.DurationFlag{
+			Name:  "guest-metrics-poll-interval-calm",
+			Usage: "guest memory scrape interval while host pressure is calm",
+			Value: time.Minute,
+		},
+		&cli.DurationFlag{
+			Name:  "guest-metrics-poll-interval-normal",
+			Usage: "guest memory scrape interval while host pressure is normal",
+			Value: 15 * time.Second,
+		},
+		&cli.DurationFlag{
+			Name:  "guest-metrics-poll-interval-pressured",
+			Usage: "guest memory scrape interval while host is pressured",
+			Value: 5 * time.Second,
+		},
 		&cli.StringFlag{
 			Name:    "proxy-bind-ip",
 			Usage:   "IP address to bind SSH proxies to (empty means all interfaces, use Tailscale IP for production)",
@@ -395,6 +415,7 @@ func serveAction(clix *cli.Context) error {
 	instanceDomain := clix.String("instance-domain")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
+	memwatchDisable := clix.Bool("memwatch-disable")
 	proxyBindIP := clix.String("proxy-bind-ip")
 	backupFallback := clix.Bool("storage-backup-fallback")
 	replicationEnabled := clix.Bool("storage-replication-enabled")
@@ -447,53 +468,57 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	cfg := &config.ExeletConfig{
-		Name:                        name,
-		ListenAddress:               listenAddress,
-		DataDir:                     dataDir,
-		Region:                      region,
-		Zone:                        zone,
-		RuntimeAddress:              runtimeAddress,
-		NetworkManagerAddress:       networkManagerAddress,
-		StorageManagerAddress:       storageManagerAddress,
-		StorageTiers:                storageTiers,
-		StorageTierMigrationWorkers: storageTierMigrationWorkers,
-		EnableInstanceBootOnStartup: enableInstanceBootOnStartup,
-		ProxyPortMin:                proxyPortMin,
-		ProxyPortMax:                proxyPortMax,
-		ExedURL:                     exedURL,
-		MetadataURL:                 metadataURL,
-		ExepipeAddress:              exepipeAddress,
-		StopSocatListeners:          stopSocatListeners,
-		InstanceDomain:              instanceDomain,
-		ResourceManagerInterval:     resourceManagerInterval,
-		EnableHugepages:             enableHugepages,
-		ProxyBindIP:                 proxyBindIP,
-		ProxyBindDevFunc:            proxyBindDevFunc(networkManagerAddress),
-		ProxyNetnsFunc:              proxyNetnsFunc(networkManagerAddress),
-		BackupPoolFallback:          backupFallback,
-		ReplicationEnabled:          replicationEnabled,
-		ReplicationInterval:         replicationInterval,
-		ReplicationTarget:           replicationTarget,
-		ReplicationSSHKey:           replicationSSHKey,
-		ReplicationSSHCommand:       replicationSSHCommand,
-		ReplicationKnownHostsPath:   replicationKnownHosts,
-		ReplicationRetention:        replicationRetention,
-		ReplicationBandwidthLimit:   replicationBandwidthLimit,
-		ReplicationPrune:            replicationPrune,
-		ReplicationPruneRetention:   replicationPruneRetention,
-		ReplicationWorkers:          replicationWorkers,
-		ReplicationVolumeTimeout:    replicationVolumeTimeout,
-		MetricsDaemonURL:            metricsDaemonURL,
-		MetricsDaemonInterval:       metricsDaemonInterval,
-		CollectExt4Usage:            env.CollectExt4Usage,
-		CollectExt4UsageGroupIDs:    env.ExtraExt4UsageGroupIDs,
-		ReservedCPUs:                reservedCPUs,
-		PktFlowEnabled:              pktflowEnabled,
-		PktFlowInterval:             pktflowInterval,
-		PktFlowHostID:               pktflowHostID,
-		PktFlowMappingRefresh:       pktflowMappingRefresh,
-		PktFlowSampleRate:           uint32(pktflowSampleRate),
-		PktFlowMaxFlows:             pktflowMaxFlows,
+		Name:                              name,
+		ListenAddress:                     listenAddress,
+		DataDir:                           dataDir,
+		Region:                            region,
+		Zone:                              zone,
+		RuntimeAddress:                    runtimeAddress,
+		NetworkManagerAddress:             networkManagerAddress,
+		StorageManagerAddress:             storageManagerAddress,
+		StorageTiers:                      storageTiers,
+		StorageTierMigrationWorkers:       storageTierMigrationWorkers,
+		EnableInstanceBootOnStartup:       enableInstanceBootOnStartup,
+		ProxyPortMin:                      proxyPortMin,
+		ProxyPortMax:                      proxyPortMax,
+		ExedURL:                           exedURL,
+		MetadataURL:                       metadataURL,
+		ExepipeAddress:                    exepipeAddress,
+		StopSocatListeners:                stopSocatListeners,
+		InstanceDomain:                    instanceDomain,
+		ResourceManagerInterval:           resourceManagerInterval,
+		MemwatchDisable:                   memwatchDisable,
+		GuestMetricsPollIntervalCalm:      clix.Duration("guest-metrics-poll-interval-calm"),
+		GuestMetricsPollIntervalNormal:    clix.Duration("guest-metrics-poll-interval-normal"),
+		GuestMetricsPollIntervalPressured: clix.Duration("guest-metrics-poll-interval-pressured"),
+		EnableHugepages:                   enableHugepages,
+		ProxyBindIP:                       proxyBindIP,
+		ProxyBindDevFunc:                  proxyBindDevFunc(networkManagerAddress),
+		ProxyNetnsFunc:                    proxyNetnsFunc(networkManagerAddress),
+		BackupPoolFallback:                backupFallback,
+		ReplicationEnabled:                replicationEnabled,
+		ReplicationInterval:               replicationInterval,
+		ReplicationTarget:                 replicationTarget,
+		ReplicationSSHKey:                 replicationSSHKey,
+		ReplicationSSHCommand:             replicationSSHCommand,
+		ReplicationKnownHostsPath:         replicationKnownHosts,
+		ReplicationRetention:              replicationRetention,
+		ReplicationBandwidthLimit:         replicationBandwidthLimit,
+		ReplicationPrune:                  replicationPrune,
+		ReplicationPruneRetention:         replicationPruneRetention,
+		ReplicationWorkers:                replicationWorkers,
+		ReplicationVolumeTimeout:          replicationVolumeTimeout,
+		MetricsDaemonURL:                  metricsDaemonURL,
+		MetricsDaemonInterval:             metricsDaemonInterval,
+		CollectExt4Usage:                  env.CollectExt4Usage,
+		CollectExt4UsageGroupIDs:          env.ExtraExt4UsageGroupIDs,
+		ReservedCPUs:                      reservedCPUs,
+		PktFlowEnabled:                    pktflowEnabled,
+		PktFlowInterval:                   pktflowInterval,
+		PktFlowHostID:                     pktflowHostID,
+		PktFlowMappingRefresh:             pktflowMappingRefresh,
+		PktFlowSampleRate:                 uint32(pktflowSampleRate),
+		PktFlowMaxFlows:                   pktflowMaxFlows,
 	}
 
 	opts := []exelet.ServerOpt{
@@ -630,6 +655,7 @@ func serveAction(clix *cli.Context) error {
 	// Register test fault-injection handlers on the HTTP server.
 	// Only available in local/test stages to prevent accidental or
 	// malicious disruption of sideband transfers in production.
+	resourceMgrSvc.(*resourcemanagerservice.ResourceManager).RegisterDebugHandlers(httpSrv.Mux)
 	if stageName == "local" || stageName == "test" {
 		computeSvc.(*computeservice.Service).RegisterTestHandlers(httpSrv.Mux)
 	}

@@ -146,6 +146,12 @@ type ExeletConfig struct {
 	InstanceDomain string
 	// ResourceManagerInterval controls how frequently the resource manager polls VMs
 	ResourceManagerInterval time.Duration
+	// MemwatchDisable disables guest memory observability and host pressure classification.
+	MemwatchDisable bool
+	// GuestMetricsPollInterval* configure guest memory scraping cadence by host pressure tier.
+	GuestMetricsPollIntervalCalm      time.Duration
+	GuestMetricsPollIntervalNormal    time.Duration
+	GuestMetricsPollIntervalPressured time.Duration
 	// EnableHugepages enables hugepage memory for VMs (requires hugepages to be configured on the host)
 	EnableHugepages bool
 	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)
