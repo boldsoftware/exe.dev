@@ -221,14 +221,12 @@
       @close="closeModal"
       @success="onModalSuccess"
     >
-      <template v-if="modal.title === 'Add Tag'" #input>
+      <template v-if="modal.title === 'Add Tag'" #inputAbove>
         <div class="modal-tag-picker">
-          <label class="modal-field-label">Tags</label>
           <MultiTagPicker
             v-model="modalTagSelection"
             :tag-summaries="modalTagSummaries"
             :excluded-tags="box?.displayTags || []"
-            hint="Type spaces or commas to add multiple tags."
           />
         </div>
       </template>

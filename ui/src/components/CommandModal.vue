@@ -8,6 +8,7 @@
       <div class="modal-body" role="document">
         <!-- eslint-disable-next-line vue/no-v-html -- descriptions are built from trusted code, not user data -->
         <div v-if="description" ref="descRef" class="modal-description" v-html="description"></div>
+        <slot name="inputAbove" />
         <div class="cmd-display">
           <code>{{ shownCommand }}</code>
         </div>
