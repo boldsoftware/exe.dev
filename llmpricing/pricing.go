@@ -3,8 +3,13 @@
 package llmpricing
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 )
 
 // Provider represents an LLM API provider.
@@ -623,6 +628,25 @@ func BuildCatalog() Catalog {
 	sort.Slice(cat.Providers, func(i, j int) bool { return cat.Providers[i].ID < cat.Providers[j].ID })
 	return cat
 }
+
+// CatalogJSON returns the indented JSON encoding of BuildCatalog along with a
+// quoted sha256 ETag. Both are computed once per process; new builds get
+// fresh bytes (and a fresh ETag) automatically.
+func CatalogJSON() (body []byte, etag string) {
+	return catalogJSONOnce()
+}
+
+var catalogJSONOnce = sync.OnceValues(func() ([]byte, string) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(BuildCatalog()); err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+	return buf.Bytes(), etag
+})
 
 func buildCatalogModel(provider Provider, name string, cost ModelCost) CatalogModel {
 	m := CatalogModel{

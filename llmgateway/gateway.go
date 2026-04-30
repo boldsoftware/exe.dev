@@ -222,6 +222,21 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve the model catalog. Available inside every VM even when the
+	// public internet is blocked, so pi (and other clients) can self-configure.
+	if r.URL.Path == "/_/gateway/models.json" {
+		body, etag := llmpricing.CatalogJSON()
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "no-cache")
+		if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(body)
+		return
+	}
+
 	// Check credit before allowing LLM request
 	creditInfo, err := m.creditMgr.CheckAndRefreshCredit(r.Context(), userID)
 	billingBacked := false

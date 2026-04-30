@@ -5,11 +5,9 @@ package execore
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1293,27 +1291,12 @@ func (s *Server) handleLLMGatewayModels(w http.ResponseWriter, r *http.Request) 
 	s.renderTemplate(r.Context(), w, "llm-gateway-models.html", data)
 }
 
-// llmGatewayCatalogJSON returns the marshaled catalog and its ETag. The
-// catalog is derived from compiled-in data, so we compute it once per
-// process; new builds get fresh bytes (and a fresh ETag) automatically.
-var llmGatewayCatalogJSON = sync.OnceValues(func() ([]byte, string) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(llmpricing.BuildCatalog()); err != nil {
-		panic(err)
-	}
-	sum := sha256.Sum256(buf.Bytes())
-	etag := `"` + hex.EncodeToString(sum[:]) + `"`
-	return buf.Bytes(), etag
-})
-
 // handleLLMGatewayModelsJSON serves the gateway model catalog as JSON. The
 // catalog has enough metadata for callers (pi, shelley, etc.) to configure
 // themselves without hardcoding model details. We use ETag revalidation so
 // clients pick up new compiled data on the next request after a deploy.
 func (s *Server) handleLLMGatewayModelsJSON(w http.ResponseWriter, r *http.Request) {
-	body, etag := llmGatewayCatalogJSON()
+	body, etag := llmpricing.CatalogJSON()
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "no-cache")
 	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
