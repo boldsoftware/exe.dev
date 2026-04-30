@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/guestmetrics"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/storage/ext4"
@@ -79,6 +80,13 @@ type ResourceManager struct {
 
 	// Polling
 	pollInterval time.Duration
+
+	// Guest memory observability (memwatch v0). guestPool is nil when the
+	// kill switch is set; guestMetrics is registered either way so the
+	// `enabled` gauge is observable.
+	guestPool    *guestmetrics.Pool
+	hostPressure *hostPressure
+	guestMetrics *guestmetrics.Metrics
 
 	// ext4 usage gate, derived once at construction.
 	collectExt4Usage         bool
@@ -249,6 +257,33 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 	}
 	m.context = ctx
 	m.metrics = newPrometheusMetrics(ctx.MetricsRegistry)
+
+	// Memwatch v0 wiring. Pure observability: scrape memd in each running
+	// VM, classify host pressure, expose Prom + debug. Policy is off in v0.
+	m.guestMetrics = guestmetrics.NewMetrics(ctx.MetricsRegistry)
+	if m.memwatchEnabled() {
+		m.guestMetrics.Enabled.Set(1)
+		m.hostPressure = newHostPressure().withMetrics(m.guestMetrics)
+		cadences := guestmetrics.DefaultCadences
+		if d := m.config.GuestMetricsPollIntervalCalm; d > 0 {
+			cadences.Calm = d
+		}
+		if d := m.config.GuestMetricsPollIntervalNormal; d > 0 {
+			cadences.Normal = d
+		}
+		if d := m.config.GuestMetricsPollIntervalPressured; d > 0 {
+			cadences.Pressured = d
+		}
+		m.guestPool = guestmetrics.NewPool(guestmetrics.PoolConfig{
+			Cadences:    cadences,
+			HostSampler: m.hostPressure.Sample,
+			Metrics:     m.guestMetrics,
+			Log:         m.log,
+		})
+	} else {
+		m.guestMetrics.Enabled.Set(0)
+		m.log.Info("resource manager: memwatch disabled", "env", EnvMemwatchDisable)
+	}
 	api.RegisterResourceManagerServiceServer(server, m)
 
 	// Register as the memory reclaimer so other services (compute)
@@ -313,6 +348,11 @@ func (m *ResourceManager) Start(ctx context.Context) error {
 		m.metricsReporter.Start(ctx)
 	}
 
+	// Start guest memory pool (memwatch v0).
+	if m.guestPool != nil {
+		m.guestPool.Start(ctx)
+	}
+
 	return nil
 }
 
@@ -330,6 +370,9 @@ func (m *ResourceManager) Stop(ctx context.Context) error {
 	// Stop metrics daemon reporter
 	if m.metricsReporter != nil {
 		m.metricsReporter.Stop()
+	}
+	if m.guestPool != nil {
+		m.guestPool.Stop()
 	}
 
 	cancel()
@@ -375,6 +418,9 @@ func (m *ResourceManager) poll(ctx context.Context) {
 
 	// Check for duplicate IPv4 addresses across instances.
 	m.checkDuplicateIPs(ctx, instances)
+
+	// Reconcile guest-metrics pool membership with current instances.
+	m.updatePoolMembership(instances)
 
 	// Cleanup state for removed instances
 	m.cleanupMissing(ctx, seen)

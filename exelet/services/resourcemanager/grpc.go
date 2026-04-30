@@ -2,10 +2,12 @@ package resourcemanager
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"exe.dev/exelet/guestmetrics"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	api "exe.dev/pkg/api/exe/resource/v1"
 )
@@ -62,19 +64,21 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 		m.usageMu.Unlock()
 		return nil, status.Errorf(codes.NotFound, "no usage data for VM %s", req.VmID)
 	}
-	u := vmUsageProto(req.VmID, state)
 	groupID := state.groupID
+	u := vmUsageProto(req.VmID, state, m.guestMemoryProto(req.VmID))
 	m.usageMu.Unlock()
 
 	m.maybeFillExt4Usage(ctx, req.VmID, groupID, req.GetCollectFilesystemUsage(), u)
 	return &api.GetVMUsageResponse{Usage: u}, nil
 }
 
-// vmUsageProto builds an api.VMUsage from a vmUsageState. It does NOT
-// populate the fs_*_bytes fields: those are gated and filled by
+// vmUsageProto builds an api.VMUsage from a vmUsageState. Caller passes a
+// guest-memory snapshot if any; nil renders the field as omitted. It does
+// NOT populate the fs_*_bytes fields: those are gated and filled by
 // maybeFillExt4Usage on the request paths that opt in.
-func vmUsageProto(id string, state *vmUsageState) *api.VMUsage {
+func vmUsageProto(id string, state *vmUsageState, guest *api.GuestMemoryStats) *api.VMUsage {
 	return &api.VMUsage{
+		GuestMemory:             guest,
 		ID:                      id,
 		Name:                    state.name,
 		CpuSeconds:              state.cpuSeconds,
@@ -95,6 +99,49 @@ func vmUsageProto(id string, state *vmUsageState) *api.VMUsage {
 		MemoryShmemBytes:        state.memoryShmemBytes,
 		MemorySlabBytes:         state.memorySlabBytes,
 		MemoryInactiveFileBytes: state.memoryInactiveFileBytes,
+	}
+}
+
+// guestMemoryProto returns a freshly-populated GuestMemoryStats for the
+// given VM, or nil when no fresh sample is available.
+func (m *ResourceManager) guestMemoryProto(id string) *api.GuestMemoryStats {
+	if m.guestPool == nil {
+		return nil
+	}
+	s, ok := m.guestPool.LatestFresh(id, time.Now())
+	if !ok {
+		return nil
+	}
+	return sampleToGuestMemoryProto(s, m.guestPool.RefaultRate(id, 60*time.Second))
+}
+
+func sampleToGuestMemoryProto(s guestmetrics.Sample, refaultRate float64) *api.GuestMemoryStats {
+	return &api.GuestMemoryStats{
+		CapturedAtUnixNano:    s.CapturedAt.UnixNano(),
+		FetchedAtUnixNano:     s.FetchedAt.UnixNano(),
+		UptimeSec:             s.UptimeSec,
+		MemTotalBytes:         s.MemTotalBytes,
+		MemAvailableBytes:     s.MemAvailableBytes,
+		CachedBytes:           s.CachedBytes,
+		ActiveFileBytes:       s.ActiveFileBytes,
+		InactiveFileBytes:     s.InactiveFileBytes,
+		MlockedBytes:          s.MlockedBytes,
+		DirtyBytes:            s.DirtyBytes,
+		SwapTotalBytes:        s.SwapTotalBytes,
+		SwapFreeBytes:         s.SwapFreeBytes,
+		SreclaimableBytes:     s.SReclaimableBytes,
+		ReclaimableBytes:      s.ReclaimableBytes(),
+		WorkingsetRefaultFile: s.WorkingsetRefaultFile,
+		WorkingsetRefaultAnon: s.WorkingsetRefaultAnon,
+		Pgmajfault:            s.Pgmajfault,
+		PsiAvailable:          s.PSIAvailable,
+		PsiSomeAvg10:          s.PSISome.Avg10,
+		PsiSomeAvg60:          s.PSISome.Avg60,
+		PsiSomeAvg300:         s.PSISome.Avg300,
+		PsiFullAvg10:          s.PSIFull.Avg10,
+		PsiFullAvg60:          s.PSIFull.Avg60,
+		PsiFullAvg300:         s.PSIFull.Avg300,
+		RefaultRate:           refaultRate,
 	}
 }
 
@@ -128,6 +175,11 @@ func (m *ResourceManager) maybeFillExt4Usage(ctx context.Context, id, groupID st
 }
 
 // ListVMUsage streams usage information for all VMs.
+//
+// We snapshot the usage map (and per-id guest-memory protos) under
+// usageMu, then release the lock before issuing any stream.Send.
+// Holding usageMu across an RPC write would block the poll loop (which
+// also takes usageMu) for as long as the gRPC client takes to drain.
 func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.ResourceManagerService_ListVMUsageServer) error {
 	// Snapshot under the lock; do the I/O for ext4 outside of it so a
 	// stalled zvol can't block other usage state mutations.
@@ -139,10 +191,13 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 	m.usageMu.Lock()
 	snapshots := make([]snapshot, 0, len(m.usageState))
 	for id, state := range m.usageState {
+		// guestMemoryProto reads from m.guestPool (its own lock); it
+		// is safe to call here, and we want the guest snapshot to line
+		// up with the usage snapshot we are emitting.
 		snapshots = append(snapshots, snapshot{
 			id:      id,
 			groupID: state.groupID,
-			usage:   vmUsageProto(id, state),
+			usage:   vmUsageProto(id, state, m.guestMemoryProto(id)),
 		})
 	}
 	m.usageMu.Unlock()
@@ -154,7 +209,6 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 			return err
 		}
 	}
-
 	return nil
 }
 

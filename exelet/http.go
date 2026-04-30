@@ -90,6 +90,7 @@ func handleDebugIndex(w http.ResponseWriter, r *http.Request) {
     <li><a href="/debug/version">version</a></li>
     <li><a href="/debug/gitsha">gitsha</a></li>
     <li><a href="/metrics">metrics</a></li>
+    <li><a href="/debug/vms/guest-metrics">guest memory metrics</a></li>
 </ul>
 </body></html>
 `)

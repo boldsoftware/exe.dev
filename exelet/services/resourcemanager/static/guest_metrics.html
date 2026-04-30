@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>guest memory metrics</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<h1>VM guest memory metrics</h1>
+{{if not .Enabled}}
+<p><em>memwatch disabled</em></p>
+{{else}}
+<p>host tier: <span class="tag {{.HostTier}}">{{.HostTier}}</span> &mdash;
+MemAvail {{printf "%.1f" .HostAvailPct}}% &middot;
+PSI some60={{printf "%.2f" .HostPSISome60}} full60={{printf "%.2f" .HostPSIFull60}}</p>
+<table>
+<thead>
+<tr>
+<th>id</th><th>name</th><th>age</th><th>MemTotal</th><th>MemAvail</th>
+<th>Cached</th><th>Reclaim</th><th>Dirty</th><th>Mlocked</th>
+<th>PSI s60</th><th>PSI f60</th><th>refault/s</th><th>n</th>
+</tr>
+</thead>
+<tbody>
+{{range .Rows}}
+<tr{{if .Stale}} class="stale"{{end}}>
+<td>{{.ID}}</td><td>{{.Name}}</td><td>{{.Age}}</td>
+{{if .HaveLatest}}
+<td>{{.MemTotal}}</td><td>{{.MemAvail}}</td><td>{{.Cached}}</td>
+<td>{{.Reclaim}}</td><td>{{.Dirty}}</td><td>{{.Mlocked}}</td>
+<td>{{printf "%.2f" .PSISome60}}</td><td>{{printf "%.2f" .PSIFull60}}</td>
+<td>{{printf "%.1f" .RefaultRate}}</td><td>{{.NumSamples}}</td>
+{{else}}
+<td colspan="10">(no sample yet)</td>
+{{end}}
+</tr>
+{{end}}
+</tbody>
+</table>
+<p><a href="/debug/vms/guest-metrics.json">json</a></p>
+{{end}}
+</body>
+</html>

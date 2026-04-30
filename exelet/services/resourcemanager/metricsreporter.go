@@ -181,6 +181,7 @@ func (m *ResourceManager) collectMetricsFromRM(host string) []types.Metric {
 		}
 	}
 
+	now2 := time.Now()
 	metrics := make([]types.Metric, 0, len(m.usageState))
 	for id, state := range m.usageState {
 		var nominalCPUs float64
@@ -223,6 +224,21 @@ func (m *ResourceManager) collectMetricsFromRM(host string) []types.Metric {
 			FsFreeBytes:             int64(state.fsFreeBytes),
 			FsAvailableBytes:        int64(state.fsAvailableBytes),
 			FsUsedBytes:             int64(state.fsUsedBytes),
+		}
+
+		// Guest memory observability rollup (memwatch v0). Use the most
+		// recent sample if it's still fresh; otherwise leave fields zero.
+		if m.guestPool != nil {
+			if s, ok := m.guestPool.LatestFresh(id, now2); ok {
+				metric.GuestMemTotalBytes = int64(s.MemTotalBytes)
+				metric.GuestMemAvailableBytes = int64(s.MemAvailableBytes)
+				metric.GuestCachedBytes = int64(s.CachedBytes)
+				metric.GuestReclaimableBytes = int64(s.ReclaimableBytes())
+				metric.GuestDirtyBytes = int64(s.DirtyBytes)
+				metric.GuestPSISomeAvg60 = s.PSISome.Avg60
+				metric.GuestPSIFullAvg60 = s.PSIFull.Avg60
+				metric.GuestRefaultRate = m.guestPool.RefaultRate(id, 60*time.Second)
+			}
 		}
 
 		metrics = append(metrics, metric)
