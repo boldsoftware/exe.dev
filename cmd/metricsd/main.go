@@ -66,9 +66,6 @@ func run() error {
 		archiver.RunPeriodic(ctx, 1*time.Hour)
 	}
 
-	// Start periodic rollup (every hour).
-	metricsd.NewRollup(db).RunPeriodic(ctx, time.Hour)
-
 	srv := metricsd.NewServer(connector, db, env.ListenOnTailscaleOnly)
 	defer srv.Close()
 

@@ -839,32 +839,51 @@ func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {
 	phStr := strings.Join(placeholders, ", ")
 
 	querySQL := fmt.Sprintf(`
-		SELECT
-			vm_id AS vm_key,
-			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
-			LAST(vm_name ORDER BY day_start)    AS vm_name,
-			resource_group,
-			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
-			MAX(disk_logical_max_bytes)          AS disk_max_bytes,
-			MAX(disk_provisioned_max_bytes)      AS disk_provisioned_max_bytes,
-			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes,
-			SUM(cpu_seconds)                    AS cpu_seconds,
-			SUM(io_read_bytes)                  AS io_read_bytes,
-			SUM(io_write_bytes)                 AS io_write_bytes,
-			COUNT(*)                            AS days_with_data
-		FROM vm_metrics_daily
-		WHERE resource_group IN (%s)
-		  AND day_start >= ?
-		  AND day_start < ?
-		GROUP BY vm_id, resource_group
-		ORDER BY resource_group, vm_name
+WITH windowed AS (
+    SELECT
+        vm_id AS vm_key,
+        timestamp,
+        vm_id, vm_name, resource_group,
+        disk_logical_used_bytes,
+        disk_size_bytes,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes)) AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes)) AS rx_delta,
+        GREATEST(0, cpu_used_cumulative_seconds - COALESCE(LAG(cpu_used_cumulative_seconds) OVER w, cpu_used_cumulative_seconds)) AS cpu_delta,
+        GREATEST(0, io_read_bytes - COALESCE(LAG(io_read_bytes) OVER w, io_read_bytes)) AS io_read_delta,
+        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes)) AS io_write_delta
+    FROM (
+        SELECT *, vm_id AS vm_key_inner
+        FROM vm_metrics_all
+        WHERE resource_group IN (%s)
+          AND timestamp >= ? AND timestamp < ?
+    ) raw
+    WINDOW w AS (PARTITION BY vm_id ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+)
+SELECT
+    vm_key,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '') AS vm_id,
+    LAST(vm_name ORDER BY timestamp) AS vm_name,
+    LAST(resource_group ORDER BY timestamp) AS resource_group,
+    AVG(disk_logical_used_bytes)::BIGINT AS disk_avg_bytes,
+    MAX(disk_logical_used_bytes) AS disk_max_bytes,
+    MAX(disk_size_bytes) AS disk_provisioned_max_bytes,
+    SUM(tx_delta + rx_delta) AS bandwidth_bytes,
+    SUM(cpu_delta) AS cpu_seconds,
+    SUM(io_read_delta) AS io_read_bytes,
+    SUM(io_write_delta) AS io_write_bytes,
+    COUNT(DISTINCT date_trunc('day', timestamp)) AS days_with_data
+FROM windowed
+WHERE timestamp >= ? AND timestamp < ?
+GROUP BY vm_key, resource_group
+ORDER BY resource_group, vm_name
 	`, phStr)
 
-	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	lookback := req.Start.Add(-15 * time.Minute)
+	args := make([]interface{}, 0, len(req.ResourceGroups)+4)
 	for _, rg := range req.ResourceGroups {
 		args = append(args, rg)
 	}
-	args = append(args, req.Start, req.End)
+	args = append(args, lookback, req.End, req.Start, req.End)
 
 	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -1095,54 +1114,70 @@ func (s *Server) handleQueryDaily(w http.ResponseWriter, r *http.Request) {
 	}
 	phStr := strings.Join(placeholders, ", ")
 
-	var querySQL string
+	// Windowed CTE computes deltas from cumulative counters.
+	// A 15-minute lookback before Start seeds the LAG() window function.
+	var groupByClause, orderByClause, selectIdentity string
 	if req.GroupByVM {
-		querySQL = fmt.Sprintf(`
-			SELECT
-				day_start, host, vm_id, vm_name, resource_group,
-				disk_logical_avg_bytes, disk_logical_max_bytes,
-				disk_compressed_avg_bytes, disk_provisioned_max_bytes,
-				network_tx_bytes, network_rx_bytes,
-				cpu_seconds,
-				io_read_bytes, io_write_bytes,
-				memory_rss_max_bytes, memory_swap_max_bytes,
-				hours_with_data
-			FROM vm_metrics_daily
-			WHERE resource_group IN (%s)
-			  AND day_start >= ?
-			  AND day_start < ?
-			ORDER BY vm_name, day_start
-		`, phStr)
+		groupByClause = "date_trunc('day', timestamp), vm_key"
+		orderByClause = "vm_name, day_start"
+		selectIdentity = `LAST(host ORDER BY timestamp) AS host,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '') AS vm_id,
+    LAST(vm_name ORDER BY timestamp) AS vm_name,
+    LAST(resource_group ORDER BY timestamp) AS resource_group,`
 	} else {
-		querySQL = fmt.Sprintf(`
-			SELECT
-				day_start, '' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,
-				SUM(disk_logical_avg_bytes)::BIGINT,
-				SUM(disk_logical_max_bytes)::BIGINT,
-				SUM(disk_compressed_avg_bytes)::BIGINT,
-				SUM(disk_provisioned_max_bytes)::BIGINT,
-				SUM(network_tx_bytes)::BIGINT,
-				SUM(network_rx_bytes)::BIGINT,
-				SUM(cpu_seconds),
-				SUM(io_read_bytes)::BIGINT,
-				SUM(io_write_bytes)::BIGINT,
-				MAX(memory_rss_max_bytes),
-				MAX(memory_swap_max_bytes),
-				SUM(hours_with_data)
-			FROM vm_metrics_daily
-			WHERE resource_group IN (%s)
-			  AND day_start >= ?
-			  AND day_start < ?
-			GROUP BY day_start
-			ORDER BY day_start
-		`, phStr)
+		groupByClause = "date_trunc('day', timestamp)"
+		orderByClause = "day_start"
+		selectIdentity = `'' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,`
 	}
 
-	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	querySQL := fmt.Sprintf(`
+WITH windowed AS (
+    SELECT
+        vm_id AS vm_key,
+        timestamp,
+        host, vm_id, vm_name, resource_group,
+        disk_logical_used_bytes, disk_used_bytes, disk_size_bytes,
+        memory_rss_bytes, memory_swap_bytes,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes)) AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes)) AS rx_delta,
+        GREATEST(0, cpu_used_cumulative_seconds - COALESCE(LAG(cpu_used_cumulative_seconds) OVER w, cpu_used_cumulative_seconds)) AS cpu_delta,
+        GREATEST(0, io_read_bytes - COALESCE(LAG(io_read_bytes) OVER w, io_read_bytes)) AS io_read_delta,
+        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes)) AS io_write_delta
+    FROM (
+        SELECT *, vm_id AS vm_key_inner
+        FROM vm_metrics_all
+        WHERE resource_group IN (%s)
+          AND timestamp >= ? AND timestamp < ?
+    ) raw
+    WINDOW w AS (PARTITION BY vm_id ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+)
+SELECT
+    CAST(date_trunc('day', timestamp) AS DATE) AS day_start,
+    %s
+    AVG(disk_logical_used_bytes)::BIGINT AS disk_logical_avg_bytes,
+    MAX(disk_logical_used_bytes) AS disk_logical_max_bytes,
+    AVG(disk_used_bytes)::BIGINT AS disk_compressed_avg_bytes,
+    MAX(disk_size_bytes) AS disk_provisioned_max_bytes,
+    SUM(tx_delta) AS network_tx_bytes,
+    SUM(rx_delta) AS network_rx_bytes,
+    SUM(cpu_delta) AS cpu_seconds,
+    SUM(io_read_delta) AS io_read_bytes,
+    SUM(io_write_delta) AS io_write_bytes,
+    MAX(memory_rss_bytes) AS memory_rss_max_bytes,
+    MAX(memory_swap_bytes) AS memory_swap_max_bytes,
+    COUNT(*) AS hours_with_data
+FROM windowed
+WHERE timestamp >= ? AND timestamp < ?
+GROUP BY %s
+ORDER BY %s
+	`, phStr, selectIdentity, groupByClause, orderByClause)
+
+	lookback := req.Start.Add(-15 * time.Minute)
+	args := make([]interface{}, 0, len(req.ResourceGroups)+4)
 	for _, rg := range req.ResourceGroups {
 		args = append(args, rg)
 	}
-	args = append(args, req.Start, req.End)
+	args = append(args, lookback, req.End, req.Start, req.End)
 
 	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -1207,54 +1242,70 @@ func (s *Server) handleQueryMonthly(w http.ResponseWriter, r *http.Request) {
 	}
 	phStr := strings.Join(placeholders, ", ")
 
-	var querySQL string
+	// Windowed CTE computes deltas from cumulative counters.
+	// A 15-minute lookback before Start seeds the LAG() window function.
+	var groupByClause, orderByClause, selectIdentity string
 	if req.GroupByVM {
-		querySQL = fmt.Sprintf(`
-			SELECT
-				month_start, host, vm_id, vm_name, resource_group,
-				disk_logical_avg_bytes, disk_logical_max_bytes,
-				disk_compressed_avg_bytes, disk_provisioned_max_bytes,
-				network_tx_bytes, network_rx_bytes,
-				cpu_seconds,
-				io_read_bytes, io_write_bytes,
-				memory_rss_max_bytes, memory_swap_max_bytes,
-				days_with_data
-			FROM vm_metrics_monthly
-			WHERE resource_group IN (%s)
-			  AND month_start >= ?
-			  AND month_start < ?
-			ORDER BY vm_name, month_start
-		`, phStr)
+		groupByClause = "date_trunc('month', timestamp), vm_key"
+		orderByClause = "vm_name, month_start"
+		selectIdentity = `LAST(host ORDER BY timestamp) AS host,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '') AS vm_id,
+    LAST(vm_name ORDER BY timestamp) AS vm_name,
+    LAST(resource_group ORDER BY timestamp) AS resource_group,`
 	} else {
-		querySQL = fmt.Sprintf(`
-			SELECT
-				month_start, '' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,
-				SUM(disk_logical_avg_bytes)::BIGINT,
-				SUM(disk_logical_max_bytes)::BIGINT,
-				SUM(disk_compressed_avg_bytes)::BIGINT,
-				SUM(disk_provisioned_max_bytes)::BIGINT,
-				SUM(network_tx_bytes)::BIGINT,
-				SUM(network_rx_bytes)::BIGINT,
-				SUM(cpu_seconds),
-				SUM(io_read_bytes)::BIGINT,
-				SUM(io_write_bytes)::BIGINT,
-				MAX(memory_rss_max_bytes),
-				MAX(memory_swap_max_bytes),
-				MAX(days_with_data)
-			FROM vm_metrics_monthly
-			WHERE resource_group IN (%s)
-			  AND month_start >= ?
-			  AND month_start < ?
-			GROUP BY month_start
-			ORDER BY month_start
-		`, phStr)
+		groupByClause = "date_trunc('month', timestamp)"
+		orderByClause = "month_start"
+		selectIdentity = `'' AS host, '' AS vm_id, '' AS vm_name, '' AS resource_group,`
 	}
 
-	args := make([]interface{}, 0, len(req.ResourceGroups)+2)
+	querySQL := fmt.Sprintf(`
+WITH windowed AS (
+    SELECT
+        vm_id AS vm_key,
+        timestamp,
+        host, vm_id, vm_name, resource_group,
+        disk_logical_used_bytes, disk_used_bytes, disk_size_bytes,
+        memory_rss_bytes, memory_swap_bytes,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes)) AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes)) AS rx_delta,
+        GREATEST(0, cpu_used_cumulative_seconds - COALESCE(LAG(cpu_used_cumulative_seconds) OVER w, cpu_used_cumulative_seconds)) AS cpu_delta,
+        GREATEST(0, io_read_bytes - COALESCE(LAG(io_read_bytes) OVER w, io_read_bytes)) AS io_read_delta,
+        GREATEST(0, io_write_bytes - COALESCE(LAG(io_write_bytes) OVER w, io_write_bytes)) AS io_write_delta
+    FROM (
+        SELECT *, vm_id AS vm_key_inner
+        FROM vm_metrics_all
+        WHERE resource_group IN (%s)
+          AND timestamp >= ? AND timestamp < ?
+    ) raw
+    WINDOW w AS (PARTITION BY vm_id ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+)
+SELECT
+    CAST(date_trunc('month', timestamp) AS DATE) AS month_start,
+    %s
+    AVG(disk_logical_used_bytes)::BIGINT AS disk_logical_avg_bytes,
+    MAX(disk_logical_used_bytes) AS disk_logical_max_bytes,
+    AVG(disk_used_bytes)::BIGINT AS disk_compressed_avg_bytes,
+    MAX(disk_size_bytes) AS disk_provisioned_max_bytes,
+    SUM(tx_delta) AS network_tx_bytes,
+    SUM(rx_delta) AS network_rx_bytes,
+    SUM(cpu_delta) AS cpu_seconds,
+    SUM(io_read_delta) AS io_read_bytes,
+    SUM(io_write_delta) AS io_write_bytes,
+    MAX(memory_rss_bytes) AS memory_rss_max_bytes,
+    MAX(memory_swap_bytes) AS memory_swap_max_bytes,
+    COUNT(DISTINCT date_trunc('day', timestamp)) AS days_with_data
+FROM windowed
+WHERE timestamp >= ? AND timestamp < ?
+GROUP BY %s
+ORDER BY %s
+	`, phStr, selectIdentity, groupByClause, orderByClause)
+
+	lookback := req.Start.Add(-15 * time.Minute)
+	args := make([]interface{}, 0, len(req.ResourceGroups)+4)
 	for _, rg := range req.ResourceGroups {
 		args = append(args, rg)
 	}
-	args = append(args, req.Start, req.End)
+	args = append(args, lookback, req.End, req.Start, req.End)
 
 	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -1321,24 +1372,39 @@ func (s *Server) handleQueryVMsOverLimit(w http.ResponseWriter, r *http.Request)
 	phStr := strings.Join(placeholders, ", ")
 
 	querySQL := fmt.Sprintf(`
-		SELECT
-			vm_id AS vm_key,
-			COALESCE(LAST(vm_id ORDER BY day_start), '')      AS vm_id,
-			LAST(vm_name ORDER BY day_start)    AS vm_name,
-			AVG(disk_logical_avg_bytes)::BIGINT  AS disk_avg_bytes,
-			SUM(network_tx_bytes + network_rx_bytes) AS bandwidth_bytes
-		FROM vm_metrics_daily
-		WHERE vm_id IN (%s)
-		  AND day_start >= ?
-		  AND day_start < ?
-		GROUP BY vm_id
+WITH windowed AS (
+    SELECT
+        vm_id AS vm_key,
+        timestamp,
+        vm_id, vm_name,
+        disk_logical_used_bytes,
+        GREATEST(0, network_tx_bytes - COALESCE(LAG(network_tx_bytes) OVER w, network_tx_bytes)) AS tx_delta,
+        GREATEST(0, network_rx_bytes - COALESCE(LAG(network_rx_bytes) OVER w, network_rx_bytes)) AS rx_delta
+    FROM (
+        SELECT *, vm_id AS vm_key_inner
+        FROM vm_metrics_all
+        WHERE vm_id IN (%s)
+          AND timestamp >= ? AND timestamp < ?
+    ) raw
+    WINDOW w AS (PARTITION BY vm_id ORDER BY timestamp ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+)
+SELECT
+    vm_key,
+    COALESCE(LAST(vm_id ORDER BY timestamp), '') AS vm_id,
+    LAST(vm_name ORDER BY timestamp) AS vm_name,
+    AVG(disk_logical_used_bytes)::BIGINT AS disk_avg_bytes,
+    SUM(tx_delta + rx_delta) AS bandwidth_bytes
+FROM windowed
+WHERE timestamp >= ? AND timestamp < ?
+GROUP BY vm_key
 	`, phStr)
 
-	args := make([]interface{}, 0, len(req.VMIDs)+2)
+	lookback := monthStart.Add(-15 * time.Minute)
+	args := make([]interface{}, 0, len(req.VMIDs)+4)
 	for _, id := range req.VMIDs {
 		args = append(args, id)
 	}
-	args = append(args, monthStart, monthEnd)
+	args = append(args, lookback, monthEnd, monthStart, monthEnd)
 
 	rows, err := s.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
