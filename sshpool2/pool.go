@@ -383,6 +383,12 @@ func (p *Pool) connectTo(ctx context.Context, host, user string, port int, signe
 
 // retryLoop retries work until success or retries exhausted.
 // Returns the result and any errors (may include errors from prior attempts even on success).
+//
+// Errors that are clearly *not* transient (auth failures, sshd closing the
+// transport mid-handshake — typical OpenSSH PerSourcePenalties behavior)
+// short-circuit the loop: retrying just burns more failed-auth budget at the
+// remote and lengthens the penalty cooldown, while never producing a
+// different outcome on the same (host, user, key) tuple.
 func retryLoop[T any](ctx context.Context, retries []time.Duration, work func() (T, error)) (T, error) {
 	retries = slices.Clone(retries)
 	retries = append(retries, 0) // final attempt has no sleep after it
@@ -399,6 +405,9 @@ func retryLoop[T any](ctx context.Context, retries []time.Duration, work func() 
 			return result, errors.Join(errs...)
 		}
 		errs = append(errs, err)
+		if isNonRetryableAuthErr(err) {
+			return zero, errors.Join(errs...)
+		}
 
 		backoff.Sleep(ctx, delay)
 	}
@@ -407,6 +416,37 @@ func retryLoop[T any](ctx context.Context, retries []time.Duration, work func() 
 		errs = append(errs, err)
 	}
 	return zero, errors.Join(errs...)
+}
+
+// isNonRetryableAuthErr reports whether err is an SSH-server-side rejection
+// that won't change on retry against the same (host, user, key) tuple, and
+// where retrying actively hurts: each repeat trips OpenSSH's
+// PerSourcePenalties (default-on since 9.8), keeping subsequent connections
+// from the same source IP closed mid-handshake ("handshake failed: EOF")
+// for tens of seconds.
+//
+// We match two flavors observed against real sshd:
+//
+//  1. "unable to authenticate" / "no supported methods remain" — the
+//     polite SSH_MSG_DISCONNECT path. The client and server agreed kex,
+//     userauth ran, server denied. Retrying the same key always denies again.
+//  2. "handshake failed: EOF" — sshd closed the transport without sending
+//     a disconnect message. The dominant cause in practice is
+//     PerSourcePenalties cooldown (after a recent failed-auth burst from
+//     the same IP), which a retry cannot defeat — it just extends the
+//     penalty.
+//
+// We deliberately do NOT match "SSH dial failed" / "failed to set deadline"
+// (network-class) or kex-mismatch errors: those are genuinely transient and
+// retrying is the right behavior.
+func isNonRetryableAuthErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unable to authenticate") ||
+		strings.Contains(msg, "no supported methods remain") ||
+		strings.Contains(msg, "handshake failed: EOF")
 }
 
 // connectToWithRetries returns a pooled connection, retrying on failure.

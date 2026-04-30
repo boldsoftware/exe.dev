@@ -2965,3 +2965,49 @@ func TestRunCommandShortCallerDeadlineDoesNotEvict(t *testing.T) {
 		t.Fatalf("pooled connection was replaced: original %p, after %p", original, after)
 	}
 }
+
+func TestRetryLoopShortCircuitsOnAuthErrors(t *testing.T) {
+	// retryLoop must not retry sshd auth-class failures: each retry trips
+	// OpenSSH PerSourcePenalties and the next attempt is closed mid-handshake
+	// with "handshake failed: EOF". The first attempt is therefore the
+	// *only* one that has a chance of differing from "deny".
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"unable to authenticate", errors.New("SSH new client conn failed: ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remain")},
+		{"no supported methods", errors.New("ssh: no supported methods remain")},
+		{"handshake EOF (per-source penalty)", errors.New("SSH new client conn failed: ssh: handshake failed: EOF")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			_, err := retryLoop(t.Context(), []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}, func() (struct{}, error) {
+				calls++
+				return struct{}{}, tc.err
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if calls != 1 {
+				t.Errorf("work() called %d times, want exactly 1 (auth errors must short-circuit)", calls)
+			}
+		})
+	}
+}
+
+func TestRetryLoopRetriesTransientErrors(t *testing.T) {
+	// Network-class errors should still retry: TCP refused, deadline, etc.
+	// are genuinely transient and a backoff-then-retry is the correct shape.
+	calls := 0
+	_, err := retryLoop(t.Context(), []time.Duration{time.Millisecond, time.Millisecond}, func() (struct{}, error) {
+		calls++
+		return struct{}{}, errors.New("SSH dial failed: connection refused")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 3 { // initial + 2 retries
+		t.Errorf("work() called %d times, want 3 (transient errors must retry)", calls)
+	}
+}
