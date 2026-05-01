@@ -10,13 +10,13 @@
 
     <div v-else class="chart-grid">
       <div class="chart-card">
-        <div class="chart-label">CPU <span class="chart-current">{{ cpuCurrent }}</span></div>
+        <div class="chart-label">CPU Usage <span class="chart-current">{{ cpuCurrent }}</span></div>
         <div class="chart-wrap">
           <canvas ref="cpuCanvas"></canvas>
         </div>
       </div>
       <div v-if="memLimit > 0" class="chart-card">
-        <div class="chart-label">Memory <span class="chart-current">{{ memCurrent }}</span></div>
+        <div class="chart-label">Memory Allocated <span class="chart-current">{{ memCurrent }}</span></div>
         <div class="chart-wrap">
           <canvas ref="memCanvas"></canvas>
         </div>
@@ -242,7 +242,7 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.cpu_cores.sum),
       cpuLimit.value,
-      (v) => v.toFixed(1),
+      (v) => v.toFixed(1) + ' vCPUs',
       vmCPU,
       props.highlightVM,
     )
@@ -254,7 +254,7 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.mem_bytes.sum),
       memLimit.value,
-      (v) => fmtGiB(v),
+      (v) => fmtGiB(v) + ' allocated',
       vmMem,
       props.highlightVM,
     )
