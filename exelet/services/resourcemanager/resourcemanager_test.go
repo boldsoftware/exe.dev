@@ -651,7 +651,7 @@ func TestPollInstanceStoppedZerosRuntimeMetrics(t *testing.T) {
 	}
 
 	now := time.Now()
-	m.pollInstance(t.Context(), "vm-stopped", "stopped-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+	m.pollInstance(t.Context(), "vm-stopped", "stopped-vm", "grp1", nil, computeapi.VMState_STOPPED, now, nil)
 
 	m.usageMu.Lock()
 	state, exists := m.usageState["vm-stopped"]
@@ -713,7 +713,7 @@ func TestPollInstanceStoppedToRunningRetriesCgroup(t *testing.T) {
 	now := time.Now()
 
 	// Step 1: Poll as STOPPED — state is created, applyPriority is skipped.
-	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now, nil)
 
 	m.usageMu.Lock()
 	state, exists := m.usageState["vm-transition"]
@@ -731,7 +731,7 @@ func TestPollInstanceStoppedToRunningRetriesCgroup(t *testing.T) {
 
 	// Step 2: Poll as RUNNING — applyPriority must be retried and succeed.
 	now2 := now.Add(30 * time.Second)
-	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now2)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now2, nil)
 
 	m.usageMu.Lock()
 	state = m.usageState["vm-transition"]
@@ -747,7 +747,7 @@ func TestPollInstanceStoppedToRunningRetriesCgroup(t *testing.T) {
 	// Step 3: Poll as RUNNING again — applyPriority should NOT be called
 	// again since cgroupApplied is now true and priority/group are unchanged.
 	now3 := now.Add(60 * time.Second)
-	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now3)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_RUNNING, now3, nil)
 
 	if applyPriorityCalls != 1 {
 		t.Errorf("applyPriority should not be called again when cgroup is already applied, got %d calls", applyPriorityCalls)
@@ -768,7 +768,7 @@ func TestPollInstancePausedAttemptsFullCollection(t *testing.T) {
 	}
 
 	now := time.Now()
-	m.pollInstance(t.Context(), "vm-paused", "paused-vm", "grp1", nil, computeapi.VMState_PAUSED, now)
+	m.pollInstance(t.Context(), "vm-paused", "paused-vm", "grp1", nil, computeapi.VMState_PAUSED, now, nil)
 
 	// collectUsage fails → returns early → no state entry created
 	m.usageMu.Lock()
@@ -803,7 +803,7 @@ func TestPollInstanceStoppedCPUPercentNotNegative(t *testing.T) {
 	}
 
 	now := time.Now()
-	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now)
+	m.pollInstance(t.Context(), "vm-transition", "transition-vm", "grp1", nil, computeapi.VMState_STOPPED, now, nil)
 
 	m.usageMu.Lock()
 	state := m.usageState["vm-transition"]

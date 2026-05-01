@@ -100,15 +100,8 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 		usage.memoryInactiveFileBytes = breakdown.inactiveFile
 	}
 
-	// Disk info from ZFS (volsize, used, and logicalused)
-	zfsInfo, err := m.readZFSVolumeInfo(ctx, id)
-	if err != nil {
-		m.log.DebugContext(ctx, "failed to read ZFS volume info", "id", id, "error", err)
-	} else if zfsInfo != nil {
-		usage.diskVolsizeBytes = zfsInfo.Volsize
-		usage.diskBytes = zfsInfo.Used
-		usage.diskLogicalBytes = zfsInfo.LogicalUsed
-	}
+	// Disk info from ZFS is collected once per poll iteration in poll()
+	// and overlaid on the result. See collectZFSVolumes / pollInstance.
 
 	// Filesystem-level usage from the zvol's ext4 superblock. Read-only,
 	// non-blocking, safe against a live VM (see exelet/storage/ext4).
@@ -502,4 +495,142 @@ func (m *ResourceManager) readFilesystemUsage(ctx context.Context, id string) (e
 		return ext4.Usage{}, false
 	}
 	return res.u, true
+}
+
+// zfsVolumeMap holds bulk-fetched per-volume info indexed by instance ID.
+// Populated once per poll iteration so we don't fork one `zfs get` per VM.
+type zfsVolumeMap map[string]zfsVolumeInfo
+
+// lookup returns the volume info for the given instance ID.
+func (z zfsVolumeMap) lookup(id string) (zfsVolumeInfo, bool) {
+	if z == nil {
+		return zfsVolumeInfo{}, false
+	}
+	v, ok := z[id]
+	return v, ok
+}
+
+// collectZFSVolumes fetches volsize/used/logicalused for every dataset
+// directly under each configured ZFS dataset, in a single `zfs list`
+// invocation per dataset. Failures are logged at debug level and the
+// affected pool is simply omitted from the result — callers fall back
+// to no disk info for those VMs (same observable behavior as a failed
+// per-VM read).
+func (m *ResourceManager) collectZFSVolumes(ctx context.Context) zfsVolumeMap {
+	addrs := make([]string, 0, 1+len(m.config.StorageTiers))
+	if m.config.StorageManagerAddress != "" {
+		addrs = append(addrs, m.config.StorageManagerAddress)
+	}
+	addrs = append(addrs, m.config.StorageTiers...)
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	out := make(zfsVolumeMap)
+	// Track IDs we've already accepted from a previous dataset so we can
+	// detect split-brain (same instance ID present on multiple pools).
+	// Mirrors TieredStorageManager.PoolForInstance, which fails closed
+	// rather than silently picking one. We err on the side of dropping
+	// the metric for the offending ID so disk usage isn't reported from
+	// the wrong dataset; per-VM-per-poll fallback to no metric matches
+	// what happens when a per-VM `zfs get` fails on the old code path.
+	fromDataset := make(map[string]string)
+	seen := make(map[string]struct{}, len(addrs))
+	for _, addr := range addrs {
+		u, err := url.Parse(addr)
+		if err != nil || !strings.EqualFold(u.Scheme, "zfs") {
+			continue
+		}
+		dataset := u.Query().Get("dataset")
+		if dataset == "" {
+			continue
+		}
+		if _, dup := seen[dataset]; dup {
+			continue
+		}
+		seen[dataset] = struct{}{}
+
+		perPool := zfsVolumeMap{}
+		if err := m.fetchZFSVolumes(ctx, dataset, perPool); err != nil {
+			// One failed pool degrades disk metrics for VMs on that pool
+			// to "unknown" for this poll — same observable behavior the
+			// old per-VM path would have produced for those VMs.
+			m.log.DebugContext(ctx, "resource manager: bulk zfs list failed",
+				"dataset", dataset, "error", err)
+			continue
+		}
+		for id, info := range perPool {
+			if other, ok := fromDataset[id]; ok {
+				m.log.WarnContext(ctx, "resource manager: instance present on multiple ZFS datasets, skipping disk metric",
+					"id", id, "datasets", []string{other, dataset})
+				delete(out, id)
+				continue
+			}
+			fromDataset[id] = dataset
+			out[id] = info
+		}
+	}
+	return out
+}
+
+func (m *ResourceManager) fetchZFSVolumes(ctx context.Context, dataset string, out zfsVolumeMap) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// One subprocess per pool. -d 1 limits to direct children of the
+	// dataset; -t volume,filesystem matches the same dataset universe
+	// as ListDatasets in the storage layer.
+	cmd := exec.CommandContext(ctx, "zfs", "list", "-Hp",
+		"-o", "name,volsize,used,logicalused",
+		"-t", "volume,filesystem",
+		"-r", "-d", "1", dataset)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	parseZFSListOutput(string(stdout), dataset, out)
+	return nil
+}
+
+// parseZFSListOutput parses the tab-separated output of
+// `zfs list -Hp -o name,volsize,used,logicalused` and merges direct
+// children of dataset into out keyed by the child name (the instance
+// ID). Base image datasets (sha256:*) and the pool root itself are
+// skipped.
+func parseZFSListOutput(out, dataset string, dst zfsVolumeMap) {
+	prefix := dataset + "/"
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		name := fields[0]
+		if !strings.HasPrefix(name, prefix) {
+			continue // skip the pool root row itself
+		}
+		id := strings.TrimPrefix(name, prefix)
+		if strings.ContainsRune(id, '/') {
+			continue // -d 1 should prevent this, but be defensive
+		}
+		if strings.HasPrefix(id, "sha256:") {
+			continue // base images, not VM volumes
+		}
+		info := zfsVolumeInfo{}
+		// volsize is "-" on filesystem datasets; tolerate that.
+		if v, perr := strconv.ParseUint(fields[1], 10, 64); perr == nil {
+			info.Volsize = v
+		}
+		if v, perr := strconv.ParseUint(fields[2], 10, 64); perr == nil {
+			info.Used = v
+		}
+		if v, perr := strconv.ParseUint(fields[3], 10, 64); perr == nil {
+			info.LogicalUsed = v
+		}
+		dst[id] = info
+	}
 }

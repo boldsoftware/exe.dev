@@ -86,3 +86,34 @@ func TestZvolDevicePath(t *testing.T) {
 		})
 	}
 }
+
+func TestParseZFSListOutput(t *testing.T) {
+	// Sample output from `zfs list -Hp -o name,volsize,used,logicalused -t volume,filesystem -r -d 1 tank`.
+	// Includes the pool root, a sha256 base image (skipped), and two volumes.
+	output := "tank\t-\t1234\t5678\n" +
+		"tank/sha256:abc\t-\t100\t200\n" +
+		"tank/vm-1\t10737418240\t1048576\t2097152\n" +
+		"tank/vm-2\t21474836480\t2097152\t4194304\n"
+
+	dst := zfsVolumeMap{}
+	parseZFSListOutput(output, "tank", dst)
+
+	if len(dst) != 2 {
+		t.Fatalf("got %d entries, want 2: %+v", len(dst), dst)
+	}
+	if got, want := dst["vm-1"].Volsize, uint64(10737418240); got != want {
+		t.Errorf("vm-1 volsize = %d, want %d", got, want)
+	}
+	if got, want := dst["vm-1"].Used, uint64(1048576); got != want {
+		t.Errorf("vm-1 used = %d, want %d", got, want)
+	}
+	if got, want := dst["vm-1"].LogicalUsed, uint64(2097152); got != want {
+		t.Errorf("vm-1 logicalused = %d, want %d", got, want)
+	}
+	if got, want := dst["vm-2"].Volsize, uint64(21474836480); got != want {
+		t.Errorf("vm-2 volsize = %d, want %d", got, want)
+	}
+	if _, ok := dst["sha256:abc"]; ok {
+		t.Errorf("base image should be skipped")
+	}
+}

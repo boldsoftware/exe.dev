@@ -35,6 +35,18 @@ func (s *Service) GetInstance(ctx context.Context, req *api.GetInstanceRequest) 
 }
 
 func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, error) {
+	return s.getInstanceWithDiskSize(ctx, id, nil, false)
+}
+
+// getInstanceWithDiskSize is like getInstance but allows callers (e.g.
+// listInstances) to pass a precomputed disk-size map fetched in one
+// shot. If bulkAttempted is false, this falls back to the per-VM
+// readDiskSizeBytes path. If bulkAttempted is true, the persisted
+// VMConfig.Disk is left untouched for instances missing from
+// diskSizes — we deliberately avoid re-entering the per-VM fork path
+// (the whole point of the bulk lookup) and accept showing the last
+// persisted size on transient bulk-fetch failures.
+func (s *Service) getInstanceWithDiskSize(ctx context.Context, id string, diskSizes map[string]*storageapi.Filesystem, bulkAttempted bool) (*api.Instance, error) {
 	configPath := s.getInstanceConfigPath(id)
 	data, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
@@ -61,11 +73,16 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 	}
 
 	i.State = state
-	if size, ok := s.readDiskSizeBytes(ctx, id); ok && i.VMConfig != nil {
-		// The zvol volsize is the source of truth for provisioned disk size.
-		// Overwrite the persisted VMConfig.Disk so callers always see the live
-		// value (and so drift between config.json and the zvol is invisible).
-		i.VMConfig.Disk = size
+	if i.VMConfig != nil {
+		if fs, ok := diskSizes[id]; ok {
+			// Bulk-fetched volsize: source of truth. Overrides persisted
+			// VMConfig.Disk so callers always see the live value.
+			i.VMConfig.Disk = fs.Size
+		} else if !bulkAttempted {
+			if size, ok := s.readDiskSizeBytes(ctx, id); ok {
+				i.VMConfig.Disk = size
+			}
+		}
 	}
 
 	return i, nil

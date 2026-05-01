@@ -13,6 +13,12 @@ type StorageManager interface {
 	Type() string
 	// Get returns the specified filesystem
 	Get(ctx context.Context, id string) (*api.Filesystem, error)
+	// GetAll returns metadata for every instance filesystem managed by
+	// this storage manager (volsize, path) keyed by instance ID. Base
+	// images and other internal datasets are excluded. Implementations
+	// must batch — callers use this on hot paths to avoid one
+	// subprocess fork per VM.
+	GetAll(ctx context.Context) (map[string]*api.Filesystem, error)
 	// Create creates a new instance fs
 	Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error)
 	// Clone clones a source instance FS to the target

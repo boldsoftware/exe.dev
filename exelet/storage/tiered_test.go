@@ -31,6 +31,17 @@ func newMockSM(name string, instanceIDs ...string) *mockStorageManager {
 }
 
 func (m *mockStorageManager) Type() string { return "mock" }
+func (m *mockStorageManager) GetAll(_ context.Context) (map[string]*api.Filesystem, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	out := make(map[string]*api.Filesystem, len(m.datasets))
+	for id, fs := range m.datasets {
+		out[id] = fs
+	}
+	return out, nil
+}
+
 func (m *mockStorageManager) Get(_ context.Context, id string) (*api.Filesystem, error) {
 	fs, ok := m.datasets[id]
 	if !ok {
@@ -454,5 +465,68 @@ func TestTieredStorageManager_SinglePool(t *testing.T) {
 	}
 	if name != "tank" {
 		t.Errorf("PoolForInstance pool = %q, want %q", name, "tank")
+	}
+}
+
+func TestTieredStorageManager_GetAll_Merge(t *testing.T) {
+	primary := newMockSM("tank", "vm-1", "vm-2")
+	nvme := newMockSM("nvme", "vm-3")
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"nvme": nvme,
+	})
+
+	got, err := tiered.GetAll(context.Background())
+	if err != nil {
+		t.Fatalf("GetAll error: %v", err)
+	}
+	for _, id := range []string{"vm-1", "vm-2", "vm-3"} {
+		if _, ok := got[id]; !ok {
+			t.Errorf("GetAll missing %q; got %v", id, got)
+		}
+	}
+}
+
+func TestTieredStorageManager_GetAll_SplitBrainDropsAndWarns(t *testing.T) {
+	// Same instance ID on two pools must be dropped, not silently picked.
+	primary := newMockSM("tank", "vm-1", "vm-only-primary")
+	nvme := newMockSM("nvme", "vm-1", "vm-only-nvme")
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"nvme": nvme,
+	})
+
+	got, err := tiered.GetAll(context.Background())
+	if err != nil {
+		t.Fatalf("GetAll error: %v", err)
+	}
+	if _, ok := got["vm-1"]; ok {
+		t.Errorf("GetAll should drop split-brain ID vm-1; got %v", got["vm-1"])
+	}
+	if _, ok := got["vm-only-primary"]; !ok {
+		t.Errorf("GetAll should keep non-conflicting vm-only-primary")
+	}
+	if _, ok := got["vm-only-nvme"]; !ok {
+		t.Errorf("GetAll should keep non-conflicting vm-only-nvme")
+	}
+}
+
+func TestTieredStorageManager_GetAll_PartialFailure(t *testing.T) {
+	// One pool failing must not nuke the other pool's results, but the
+	// error must surface so callers know the map is partial.
+	primary := newMockSM("tank", "vm-1")
+	primary.getErr = errors.New("primary down")
+	nvme := newMockSM("nvme", "vm-2")
+	tiered := NewTieredStorageManager("tank", primary, map[string]StorageManager{
+		"nvme": nvme,
+	})
+
+	got, err := tiered.GetAll(context.Background())
+	if err == nil {
+		t.Fatal("GetAll should surface error when a pool fails")
+	}
+	if _, ok := got["vm-2"]; !ok {
+		t.Errorf("GetAll should still return entries from healthy pools; got %v", got)
+	}
+	if _, ok := got["vm-1"]; ok {
+		t.Errorf("GetAll should not return entries from failed pool")
 	}
 }

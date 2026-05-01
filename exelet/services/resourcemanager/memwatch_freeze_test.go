@@ -46,14 +46,14 @@ func TestPollInstancePushesActivity(t *testing.T) {
 	}
 
 	// First poll: sets up state with prevCPUSeconds.
-	m.pollInstance(t.Context(), "vm-run", "runner", "grp", nil, computeapi.VMState_RUNNING, now)
+	m.pollInstance(t.Context(), "vm-run", "runner", "grp", nil, computeapi.VMState_RUNNING, now, nil)
 
 	// Second poll: should compute cpuPercent and push NoteActivity.
 	now2 := now.Add(30 * time.Second)
 	m.collectUsageFn = func(ctx context.Context, id, name, groupID string) (*usageData, error) {
 		return &usageData{cpuSeconds: 13.0}, nil
 	}
-	m.pollInstance(t.Context(), "vm-run", "runner", "grp", nil, computeapi.VMState_RUNNING, now2)
+	m.pollInstance(t.Context(), "vm-run", "runner", "grp", nil, computeapi.VMState_RUNNING, now2, nil)
 
 	// Check that the pool recorded the state.
 	tier, ok := pool.VMTier("vm-run")
@@ -88,7 +88,7 @@ func TestPollInstanceNoActivityForNonRunning(t *testing.T) {
 	}
 
 	// Stopped VM: only ZFS usage path, no collectUsage.
-	m.pollInstance(t.Context(), "vm-stop", "stopped", "grp", nil, computeapi.VMState_STOPPED, now)
+	m.pollInstance(t.Context(), "vm-stop", "stopped", "grp", nil, computeapi.VMState_STOPPED, now, nil)
 
 	// The state should exist with zero cpuPercent and no NoteActivity
 	// was pushed (VM tier stays Active default).

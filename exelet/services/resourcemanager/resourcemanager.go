@@ -409,9 +409,13 @@ func (m *ResourceManager) poll(ctx context.Context) {
 	now := time.Now()
 	seen := make(map[string]struct{}, len(instances))
 
+	// Fetch ZFS volume usage info for all instances in one shot per pool.
+	// Avoids one `zfs get` fork per VM in pollInstance below.
+	zfsVols := m.collectZFSVolumes(ctx)
+
 	for _, inst := range instances {
 		seen[inst.GetID()] = struct{}{}
-		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), inst.GetState(), now)
+		m.pollInstance(ctx, inst.GetID(), inst.GetName(), inst.GetGroupID(), inst.GetVMConfig(), inst.GetState(), now, zfsVols)
 	}
 
 	// Check for duplicate IPv4 addresses across instances.
@@ -476,7 +480,7 @@ func (m *ResourceManager) checkDuplicateIPs(ctx context.Context, instances []*co
 	}
 }
 
-func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, vmState computeapi.VMState, now time.Time) {
+func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID string, vmCfg interface{}, vmState computeapi.VMState, now time.Time, zfsVols zfsVolumeMap) {
 	// Collect usage metrics
 	var usage *usageData
 	var err error
@@ -485,10 +489,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		// Stopped: only collect disk (ZFS volume still exists), zero runtime metrics.
 		// The VM process, cgroups, and tap device don't exist so skip collectUsage.
 		usage = &usageData{}
-		zfsInfo, zfsErr := m.readZFSVolumeInfo(ctx, id)
-		if zfsErr != nil {
-			m.log.DebugContext(ctx, "resource manager: failed to read ZFS info for stopped instance", "id", id, "error", zfsErr)
-		} else if zfsInfo != nil {
+		if zfsInfo, ok := zfsVols.lookup(id); ok {
 			usage.diskVolsizeBytes = zfsInfo.Volsize
 			usage.diskBytes = zfsInfo.Used
 			usage.diskLogicalBytes = zfsInfo.LogicalUsed
@@ -513,6 +514,13 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 		if err != nil {
 			m.log.DebugContext(ctx, "resource manager: failed to collect usage", "id", id, "error", err)
 			return
+		}
+		// Overlay bulk-fetched ZFS volume info; collectUsage skips the
+		// per-VM `zfs get` because we already have it for every instance.
+		if zfsInfo, ok := zfsVols.lookup(id); ok {
+			usage.diskVolsizeBytes = zfsInfo.Volsize
+			usage.diskBytes = zfsInfo.Used
+			usage.diskLogicalBytes = zfsInfo.LogicalUsed
 		}
 	}
 

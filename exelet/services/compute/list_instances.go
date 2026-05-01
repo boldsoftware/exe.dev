@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
 func (s *Service) ListInstances(req *api.ListInstancesRequest, stream api.ComputeService_ListInstancesServer) error {
@@ -41,39 +42,55 @@ func (s *Service) ListInstances(req *api.ListInstancesRequest, stream api.Comput
 // recovery, gRPC ListInstances) can proceed on the partial list after
 // logging the error.
 //
-// listInstances forks `zfs` subprocesses (one per instance, twice: list +
-// get volsize) and dials each VMM socket. Callers that only need the
-// persisted config (e.g. IP-to-instance lookup on the metadata hot path)
-// should use listInstanceConfigs instead.
+// Disk sizes are obtained with one StorageManager.GetAll call per
+// invocation (which on ZFS is one `zfs list` per pool), instead of one
+// `zfs get` per VM per pool. State is refreshed per-VM via the VMM
+// (unix-socket call, not a fork). Callers that only need the persisted
+// config (e.g. IP-to-instance lookup on the metadata hot path) should
+// use listInstanceConfigs instead.
 func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 	configs, err := filepath.Glob(filepath.Join(s.getInstanceDir("*"), "config.json"))
 	if err != nil {
 		return nil, err
 	}
+
+	// Bulk-fetch disk sizes once per invocation. We deliberately do NOT
+	// fall back to per-VM readDiskSizeBytes on bulk failure: that would
+	// reintroduce the O(N·P) fork storm this code path was added to
+	// eliminate, and a transient storage hiccup would torch the host's
+	// CPU. On error we proceed with whatever partial map we got (or
+	// none) and let getInstanceWithDiskSize keep the persisted
+	// VMConfig.Disk for missing entries.
+	var diskSizes map[string]*storageapi.Filesystem
+	bulkAttempted := false
+	if s.context != nil && s.context.StorageManager != nil {
+		bulkAttempted = true
+		diskSizes, err = s.context.StorageManager.GetAll(ctx)
+		if err != nil {
+			s.log.WarnContext(ctx, "listInstances: bulk storage GetAll failed; reporting persisted disk sizes for missing IDs", "error", err)
+		}
+	}
+
 	instances := []*api.Instance{}
 	var loadErrs []string
 	for _, config := range configs {
 		id := filepath.Base(filepath.Dir(config))
-		r, err := s.GetInstance(ctx, &api.GetInstanceRequest{
-			ID: id,
-		})
+		i, err := s.getInstanceWithDiskSize(ctx, id, diskSizes, bulkAttempted)
 		if err != nil {
 			// A legitimate race: filepath.Glob saw the directory, but
-			// DeleteInstance removed it before GetInstance could read
+			// DeleteInstance removed it before getInstance could read
 			// the config. Treat this as "not present" and move on.
-			if status.Code(err) == codes.NotFound {
+			if errors.Is(err, api.ErrNotFound) {
 				continue
 			}
 			loadErrs = append(loadErrs, fmt.Sprintf("%s: %v", id, err))
 			continue
 		}
-		// update instance placement
-		r.Instance.Placement = &api.Placement{
+		i.Placement = &api.Placement{
 			Region: s.config.Region,
 			Zone:   s.config.Zone,
 		}
-
-		instances = append(instances, r.Instance)
+		instances = append(instances, i)
 	}
 
 	if len(loadErrs) > 0 {

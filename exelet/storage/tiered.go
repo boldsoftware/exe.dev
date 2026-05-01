@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	api "exe.dev/pkg/api/exe/storage/v1"
 )
@@ -159,6 +160,39 @@ func (t *TieredStorageManager) Type() string {
 
 func (t *TieredStorageManager) Get(ctx context.Context, id string) (*api.Filesystem, error) {
 	return t.primary.Get(ctx, id)
+}
+
+// GetAll merges GetAll results from every configured pool. Split-brain
+// (same ID present on multiple pools) is fail-closed: the offending
+// entry is dropped from the result and a warning is logged, mirroring
+// PoolForInstance's behavior so we don't silently return the wrong
+// volsize/path. Callers that need precise per-pool placement should use
+// PoolForInstance/GetAnyPool.
+func (t *TieredStorageManager) GetAll(ctx context.Context) (map[string]*api.Filesystem, error) {
+	result := make(map[string]*api.Filesystem)
+	fromPool := make(map[string]string)
+	var firstErr error
+	for _, name := range t.poolNames {
+		sm := t.pools[name]
+		m, err := sm.GetAll(ctx)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("pool %s: %w", name, err)
+			}
+			continue
+		}
+		for id, fs := range m {
+			if other, dup := fromPool[id]; dup {
+				slog.WarnContext(ctx, "tiered storage: instance present on multiple pools, dropping disk metadata",
+					"id", id, "pools", []string{other, name})
+				delete(result, id)
+				continue
+			}
+			fromPool[id] = name
+			result[id] = fs
+		}
+	}
+	return result, firstErr
 }
 
 // GetAnyPool scans all pools for a dataset by ID. Use this for VM lookups
