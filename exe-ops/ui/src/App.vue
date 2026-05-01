@@ -82,6 +82,9 @@
     >edit with shelley</a>
 
     <div class="layout-content-wrapper">
+      <div v-if="environmentRibbon" class="environment-ribbon" :class="environmentRibbon.className">
+        {{ environmentRibbon.label }}
+      </div>
       <header class="mobile-topbar">
         <button class="mobile-menu-btn" @click="sidebarOpen = true" aria-label="Open navigation">
           <i class="pi pi-bars"></i>
@@ -158,6 +161,17 @@ const shelleyRibbonURL = computed(() => {
     tags: 'github-exe',
   })
   return `https://exe.dev/new?${params.toString()}`
+})
+
+const environmentRibbon = computed(() => {
+  switch (serverVersion.value?.environment) {
+    case 'prod':
+      return { label: 'PROD', className: 'prod' }
+    case 'staging':
+      return { label: 'STAGING', className: 'staging' }
+    default:
+      return null
+  }
 })
 
 watch(titleText, (t) => { document.title = t }, { immediate: true })
@@ -397,6 +411,33 @@ a:hover {
 ::selection {
   background: rgba(var(--primary-rgb), 0.3);
   color: var(--text-color);
+}
+
+/* ── Environment ribbon ── */
+.environment-ribbon {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  width: 100%;
+  padding: 0.55rem 1rem;
+  color: #ffffff;
+  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.environment-ribbon.prod {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.environment-ribbon.staging {
+  background: #facc15;
+  color: #111827;
 }
 
 /* ── Shelley ribbon ── */
@@ -731,6 +772,11 @@ a:hover {
 
 /* ── Responsive ── */
 @media (max-width: 991px) {
+  .environment-ribbon {
+    padding: 0.45rem 1rem;
+    font-size: 0.95rem;
+  }
+
   .mobile-topbar {
     display: flex;
     align-items: center;
