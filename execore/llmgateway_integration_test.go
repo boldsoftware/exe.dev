@@ -32,6 +32,22 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)
 		}
+		acctID := "acct-" + userID
+		if err := queries.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        acctID,
+			CreatedBy: userID,
+		}); err != nil {
+			return fmt.Errorf("insert account: %w", err)
+		}
+		changedBy := "test:setupTestBox"
+		if err := queries.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acctID,
+			PlanID:    "basic:monthly:20260106",
+			StartedAt: time.Now().UTC(),
+			ChangedBy: &changedBy,
+		}); err != nil {
+			return fmt.Errorf("insert account_plan: %w", err)
+		}
 
 		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
 			Ctrhost:         "test-ctrhost",

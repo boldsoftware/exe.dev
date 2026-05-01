@@ -63,6 +63,7 @@ func TestAllEntitlements(t *testing.T) {
 		"billing:seats":       true,
 		"billing:trialaccess": true,
 		"account:delete":      true,
+		"credits:refresh":     true,
 	}
 	got := make(map[string]bool)
 	for _, e := range all {
@@ -156,6 +157,34 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 		got := Grants(p.ID, AccountDelete)
 		if got != want {
 			t.Errorf("plan %q: Grants(AccountDelete) = %v, want %v", cat, got, want)
+		}
+	}
+}
+
+// TestCreditRefreshEntitlementByPlan verifies which plans grant credits:refresh.
+// Paid subscriber tiers (Individual, Team, Business) refresh monthly; everyone
+// else does not.
+func TestCreditRefreshEntitlementByPlan(t *testing.T) {
+	wantRefresh := map[Category]bool{
+		CategoryBusiness:      true,
+		CategoryTeam:          true,
+		CategoryIndividual:    true,
+		CategoryFriend:        false,
+		CategoryGrandfathered: false,
+		CategoryTrial:         false,
+		CategoryBasic:         false,
+		CategoryRestricted:    false,
+	}
+
+	for cat, want := range wantRefresh {
+		p, ok := plans[cat]
+		if !ok {
+			t.Errorf("plan %q not found in plans map", cat)
+			continue
+		}
+		got := Grants(p.ID, CreditRefresh)
+		if got != want {
+			t.Errorf("plan %q: Grants(CreditRefresh) = %v, want %v", cat, got, want)
 		}
 	}
 }

@@ -29,11 +29,30 @@ func setupTestDB(t *testing.T) *sqlite.DB {
 
 func createTestUser(t *testing.T, db *sqlite.DB, userID, email string) {
 	t.Helper()
+	now := time.Now().UTC()
 	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
-		return q.InsertUser(ctx, exedb.InsertUserParams{
+		if err := q.InsertUser(ctx, exedb.InsertUserParams{
 			UserID: userID,
 			Email:  email,
 			Region: "pdx",
+		}); err != nil {
+			return err
+		}
+		// Mirror production: every user gets an account and an active
+		// account_plans row (default Basic).
+		acctID := "acct-" + userID
+		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
+			ID:        acctID,
+			CreatedBy: userID,
+		}); err != nil {
+			return err
+		}
+		changedBy := "test:createTestUser"
+		return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
+			AccountID: acctID,
+			PlanID:    "basic:monthly:20260106",
+			StartedAt: now,
+			ChangedBy: &changedBy,
 		})
 	})
 	if err != nil {
@@ -62,22 +81,52 @@ func createTestBox(t *testing.T, db *sqlite.DB, name, userID string) int {
 	return int(boxID)
 }
 
-func createBillingAccount(t *testing.T, db *sqlite.DB, userID, accountID string, now time.Time) {
+// createBillingAccount activates billing for an existing test user (which
+// already has an account from createTestUser) and upgrades them to the
+// Individual plan, mirroring a real Stripe checkout completion.
+func createBillingAccount(t *testing.T, db *sqlite.DB, userID, _ string, now time.Time) {
 	t.Helper()
 	err := exedb.WithTx(db, context.Background(), func(ctx context.Context, q *exedb.Queries) error {
-		if err := q.InsertAccount(ctx, exedb.InsertAccountParams{
-			ID:        accountID,
+		if err := q.ActivateAccount(ctx, exedb.ActivateAccountParams{
 			CreatedBy: userID,
+			EventAt:   now,
 		}); err != nil {
 			return err
 		}
-		return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
-			CreatedBy: userID,
-			EventAt:   now,
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    "individual:small:monthly:20260106",
+			At:        now,
+			ChangedBy: "test:createBillingAccount",
 		})
 	})
 	if err != nil {
 		t.Fatalf("failed to create billing account: %v", err)
+	}
+}
+
+// setUserPlan replaces the active account_plan row for an existing test user.
+func setUserPlan(t *testing.T, db *sqlite.DB, userID, planID string, now time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		acct, err := q.GetAccountByUserID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
+			AccountID: acct.ID,
+			PlanID:    planID,
+			At:        now,
+			ChangedBy: "test:setUserPlan",
+		})
+	})
+	if err != nil {
+		t.Fatalf("failed to set user plan %q: %v", planID, err)
 	}
 }
 
@@ -596,24 +645,8 @@ func TestPlanCategories(t *testing.T) {
 
 	t.Run("friend", func(t *testing.T) {
 		userID := "friend-user"
-		accountID := "exe_friend_acct001"
 		createTestUser(t, db, userID, "friend@example.com")
-		// Set 'friend' plan via account_plans (billing_exemption was dropped in migration 122).
-		err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-			if err := q.InsertAccount(ctx, exedb.InsertAccountParams{ID: accountID, CreatedBy: userID}); err != nil {
-				return err
-			}
-			changedBy := "test:friend"
-			return q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
-				AccountID: accountID,
-				PlanID:    "friend",
-				StartedAt: now,
-				ChangedBy: &changedBy,
-			})
-		})
-		if err != nil {
-			t.Fatalf("failed to set friend plan: %v", err)
-		}
+		setUserPlan(t, db, userID, "friend", now)
 
 		info, err := mgr.CheckAndRefreshCredit(ctx, userID)
 		if err != nil {
@@ -692,6 +725,73 @@ func TestPlanCategories(t *testing.T) {
 			t.Fatalf("refresh_per_hour = %f, want 25", info.RefreshPerHour)
 		}
 	})
+}
+
+// TestCreditRefreshDrivenByEntitlement verifies that the monthly credit refresh
+// is gated by the credits:refresh plan entitlement, not by the legacy
+// "MonthlyLLMCreditUSD >= 100" heuristic. Subscribers (Individual, Team,
+// Business) refresh monthly. Friend, Trial, and Basic do not.
+func TestCreditRefreshDrivenByEntitlement(t *testing.T) {
+	cases := []struct {
+		name        string
+		planID      string
+		wantRefresh bool
+	}{
+		{"individual", "individual:small:monthly:20260106", true},
+		{"team", "team:monthly:20260106", true},
+		{"business", "business:monthly:20260106", true},
+		{"friend", "friend", false},
+		{"trial", "trial:monthly:20260106", false},
+		{"basic", "basic:monthly:20260106", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
+
+			ctx := context.Background()
+			userID := "user-" + tc.name
+			createTestUser(t, db, userID, tc.name+"@example.com")
+
+			now := time.Date(2025, 1, 31, 23, 30, 0, 0, time.UTC)
+			mgr := &CreditManager{
+				data: &DBGatewayData{db},
+				now:  func() time.Time { return now },
+			}
+			setUserPlan(t, db, userID, tc.planID, now)
+
+			// Initialize credit row, then drain to zero.
+			info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != nil {
+				t.Fatalf("initial check: %v", err)
+			}
+			if info.Available > 0 {
+				if _, err := mgr.DebitCredit(ctx, userID, info.Available, nil); err != nil {
+					t.Fatalf("debit drain: %v", err)
+				}
+			}
+
+			// Cross a UTC month boundary.
+			now = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+			info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+			if tc.wantRefresh {
+				if err != nil {
+					t.Fatalf("after rollover with refresh entitlement: %v", err)
+				}
+				if !floatClose(info.Available, monthlyTopUpSubscribedUSD, 0.000001) {
+					t.Fatalf("available after rollover = %f, want %f", info.Available, monthlyTopUpSubscribedUSD)
+				}
+			} else {
+				if err != ErrInsufficientCredit {
+					t.Fatalf("after rollover without refresh entitlement: err = %v, want ErrInsufficientCredit", err)
+				}
+				if !floatClose(info.Available, 0, 0.000001) {
+					t.Fatalf("available after rollover = %f, want 0", info.Available)
+				}
+			}
+		})
+	}
 }
 
 func TestCreditManager_TopUpOnBillingUpgrade(t *testing.T) {

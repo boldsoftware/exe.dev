@@ -280,6 +280,7 @@ var plans = map[Category]Plan{
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
+			CreditRefresh:  true,
 			InviteRequest:  true,
 			VMCreate:       true,
 			VMRun:          true,
@@ -297,6 +298,7 @@ var plans = map[Category]Plan{
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,
+			CreditRefresh:  true,
 			InviteRequest:  true,
 			BillingSeats:   true,
 			VMCreate:       true,
@@ -319,6 +321,7 @@ var plans = map[Category]Plan{
 		Entitlements: map[Entitlement]bool{
 			LLMUse:           true,
 			CreditPurchase:   true,
+			CreditRefresh:    true,
 			InviteRequest:    true,
 			TeamCreate:       true,
 			VMCreate:         true,

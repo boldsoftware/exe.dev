@@ -18,6 +18,7 @@ var (
 
 	// Credit operations.
 	CreditPurchase = Entitlement{"credit:purchase", "Purchase Credits"}
+	CreditRefresh  = Entitlement{"credits:refresh", "Monthly LLM Credit Refresh"}
 
 	// Invite operations.
 	InviteRequest = Entitlement{"invite:request", "Request Invites"}
@@ -51,6 +52,7 @@ func AllEntitlements() []Entitlement {
 	return []Entitlement{
 		LLMUse,
 		CreditPurchase,
+		CreditRefresh,
 		InviteRequest,
 		InviteClaim,
 		TeamCreate,

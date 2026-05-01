@@ -58,51 +58,26 @@ var (
 	}
 )
 
-// planForUser determines the appropriate Plan for a user based on their account_plans record.
-// If the user has explicit overrides for max_credit or refresh_per_hour, those are applied
-// on top of the base plan.
-// Falls back to GetUserPlanCategory if no account_plans row exists (legacy/migration path).
-// This version takes a *exedb.Queries to be used within an existing transaction.
+// planForUser determines the appropriate Plan for a user based on their
+// account_plans record. If the user has explicit overrides for max_credit or
+// refresh_per_hour, those are applied on top of the base plan. The user must
+// have an active account_plans row; missing rows are an error.
 func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *exedb.UserLlmCredit) (Plan, error) {
-	// Primary path: resolve plan from account_plans table.
 	planRow, err := q.GetActivePlanForUser(ctx, userID)
-	var monthlyCredit float64
-	var planCategory plan.Category
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return Plan{}, fmt.Errorf("failed to get active plan for user: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return Plan{}, fmt.Errorf("no active account_plans row for user %s", userID)
 		}
-		// Legacy fallback: user has no account_plans row yet (pre-backfill).
-		catResult, err := q.GetUserPlanCategory(ctx, userID)
-		if err != nil {
-			return Plan{}, fmt.Errorf("failed to get user plan category (legacy): %w", err)
-		}
-		// Map legacy categories to credit amounts
-		switch catResult {
-		case "has_billing":
-			monthlyCredit = 100.0
-			planCategory = plan.CategoryIndividual
-		case "friend":
-			monthlyCredit = 100.0
-			planCategory = plan.CategoryFriend
-		case "no_billing":
-			monthlyCredit = 0
-			planCategory = plan.CategoryBasic
-		default:
-			return Plan{}, fmt.Errorf("unknown plan category %q for user %s", catResult, userID)
-		}
-	} else {
-		p, ok := plan.ByID(planRow.PlanID)
-		if !ok {
-			return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
-		}
-		monthlyCredit = p.MonthlyLLMCreditUSD
-		planCategory = p.Category
+		return Plan{}, fmt.Errorf("failed to get active plan for user: %w", err)
+	}
+	planData, ok := plan.ByID(planRow.PlanID)
+	if !ok {
+		return Plan{}, fmt.Errorf("unknown plan %q for user %s", planRow.PlanID, userID)
 	}
 
-	// Determine base plan based on plan category
+	// Determine base plan based on plan category.
 	var p Plan
-	switch planCategory {
+	switch planData.Category {
 	case plan.CategoryFriend:
 		p = planFriend
 	case plan.CategoryIndividual, plan.CategoryTeam, plan.CategoryBusiness:
@@ -111,7 +86,8 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		p = planNoBilling
 	}
 
-	// Apply explicit per-user overrides when configured.
+	// Apply explicit per-user overrides when configured. Overrides always
+	// imply a monthly bucket reset to the override max.
 	if credit != nil && (credit.MaxCredit != nil || credit.RefreshPerHour != nil) {
 		if credit.MaxCredit != nil {
 			p.MaxCredit = *credit.MaxCredit
@@ -125,9 +101,9 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 		return p, nil
 	}
 
-	// Set up refresh behavior based on monthly credit amount
-	if monthlyCredit >= 100.0 {
-		// Paid plans: monthly top-up
+	// Refresh behavior is gated by the credits:refresh entitlement.
+	if plan.Grants(planRow.PlanID, plan.CreditRefresh) {
+		// Subscriber plans: monthly top-up.
 		p.MaxCredit = monthlyTopUpSubscribedUSD
 		p.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			now = now.UTC()
@@ -137,7 +113,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 			return available, lastRefresh
 		}
 	} else {
-		// Free/trial plans: no refresh
+		// Non-refresh plans: available stays where it is.
 		p.MaxCredit = initialFreeCreditNoSubscriptionUSD
 		p.Refresh = func(available float64, lastRefresh, now time.Time) (float64, time.Time) {
 			return available, lastRefresh
