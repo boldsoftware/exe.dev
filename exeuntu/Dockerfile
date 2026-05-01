@@ -298,6 +298,25 @@ RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --max-time 30 \
       /home/exedev/.pi/agent/extensions/exe-dev/catalog.json > /dev/null
 RUN chown -R exedev:exedev /home/exedev/.pi/agent
 
+# Pre-install fd at the path pi checks first (~/.pi/agent/bin/fd), so pi
+# doesn't try (and on a fresh VM, often fail with a GitHub API 403) to
+# download it on first use.
+RUN ARCH=$(uname -m) && \
+    case ${ARCH} in \
+        x86_64) FD_ARCH="x86_64-unknown-linux-gnu" ;; \
+        aarch64|arm64) FD_ARCH="aarch64-unknown-linux-gnu" ;; \
+        *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+    esac && \
+    FD_VERSION=$(curl -fsSL https://api.github.com/repos/sharkdp/fd/releases/latest | jq -r '.tag_name') && \
+    mkdir -p /home/exedev/.pi/agent/bin && \
+    TMPDIR=$(mktemp -d) && \
+    curl -fsSL "https://github.com/sharkdp/fd/releases/download/${FD_VERSION}/fd-${FD_VERSION}-${FD_ARCH}.tar.gz" | \
+        tar -xz -C "${TMPDIR}" && \
+    mv "${TMPDIR}/fd-${FD_VERSION}-${FD_ARCH}/fd" /home/exedev/.pi/agent/bin/fd && \
+    rm -rf "${TMPDIR}" && \
+    chmod 0755 /home/exedev/.pi/agent/bin/fd && \
+    chown -R exedev:exedev /home/exedev/.pi/agent/bin
+
 # Custom nginx config and index page (nginx is installed but disabled by default)
 COPY nginx.conf /etc/nginx/sites-available/default
 COPY index.html /var/www/html/index.html
