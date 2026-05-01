@@ -20,7 +20,7 @@
 
     <!-- Usage Table -->
     <template v-else-if="filteredRows.length > 0">
-    <div class="table-heading">VMs <span class="table-heading-range">{{ rangeLabel }}</span></div>
+    <div class="table-heading">VMs</div>
     <div class="totals-row">
       <div class="totals-name">Total ({{ filteredRows.length }} VMs)</div>
       <div class="totals-metric">{{ totalCpuLabel }} <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }}</span></div>
@@ -105,13 +105,6 @@ const router = useRouter()
 const pool = ref<VMsPoolResponse | null>(null)
 const history = ref<UsageHistoryResponse>({})
 const historyLoading = ref(false)
-const ranges = [
-  { hours: 24, label: '24h' },
-  { hours: 168, label: '7d' },
-  { hours: 720, label: '30d' },
-]
-
-const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.label ?? '')
 
 const cpuMax = computed(() => pool.value?.cpu_max ?? 0)
 
@@ -298,12 +291,6 @@ const totalDiskLabel = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.table-heading-range {
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 10px;
 }
 
 .totals-row {
