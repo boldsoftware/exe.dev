@@ -117,13 +117,14 @@ const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.l
 
 const cpuMax = computed(() => pool.value?.cpu_max ?? 0)
 
-// Pool capacity alert: check both CPU and memory allocation against limits.
+// Pool capacity alert: CPU uses actual usage, memory uses allocation.
 const poolPct = computed(() => {
   const p = pool.value
   if (!p) return 0
   let maxPct = 0
   if (p.cpu_max > 0) {
-    maxPct = Math.max(maxPct, (p.cpu_allocated / p.cpu_max) * 100)
+    const cpuUsed = filteredRows.value.reduce((acc, r) => acc + r.cpuSort, 0)
+    maxPct = Math.max(maxPct, (cpuUsed / p.cpu_max) * 100)
   }
   if (p.mem_max_bytes > 0) {
     maxPct = Math.max(maxPct, (p.mem_allocated_bytes / p.mem_max_bytes) * 100)
