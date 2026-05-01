@@ -35,7 +35,7 @@
           </div>
         </template>
       </Column>
-      <Column field="cpuSort" header="CPU Usage" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
+      <Column field="cpuSort" header="CPU" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
         <template #body="{ data }">
           <div class="metric-cell">
             <span class="metric-value">{{ data.cpuLabel }}</span>
@@ -43,7 +43,7 @@
           </div>
         </template>
       </Column>
-      <Column field="memSort" header="Memory Allocated" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
+      <Column field="memSort" header="Memory" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
         <template #body="{ data }">
           <div class="metric-cell">
             <span class="metric-value">{{ data.memLabel }}</span>

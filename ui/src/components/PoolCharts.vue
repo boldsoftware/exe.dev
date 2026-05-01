@@ -98,6 +98,7 @@ function buildChart(
   totalData: number[],
   limit: number,
   formatY: (v: number) => string,
+  tooltipSuffix: string,
   vmData: Record<string, number[]>,
   highlightVM?: string,
 ): Chart {
@@ -184,7 +185,8 @@ function buildChart(
           usePointStyle: true,
           callbacks: {
             label: (ctx) => {
-              return `${ctx.dataset.label}: ${formatY(ctx.parsed.y ?? 0)}`
+              const base = formatY(ctx.parsed.y ?? 0)
+              return `${ctx.dataset.label}: ${base}${tooltipSuffix}`
             },
             labelColor: (ctx) => {
               const c = (ctx.dataset.borderColor as string) || colors.muted
@@ -242,7 +244,8 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.cpu_cores.sum),
       cpuLimit.value,
-      (v) => v.toFixed(1) + ' vCPUs',
+      (v) => v.toFixed(1),
+      ' vCPUs',
       vmCPU,
       props.highlightVM,
     )
@@ -254,7 +257,8 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.mem_bytes.sum),
       memLimit.value,
-      (v) => fmtGiB(v) + ' allocated',
+      (v) => fmtGiB(v),
+      ' allocated',
       vmMem,
       props.highlightVM,
     )
