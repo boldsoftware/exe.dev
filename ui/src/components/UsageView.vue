@@ -23,7 +23,7 @@
     <div class="table-heading">VMs</div>
     <div class="totals-row">
       <div class="totals-name">Total ({{ filteredRows.length }} VMs)</div>
-      <div class="totals-metric">{{ totalCpuLabel }} <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }}</span></div>
+      <div class="totals-metric">{{ totalCpuLabel }} <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }} vCPUs</span></div>
       <div class="totals-metric">{{ totalMemLabel }} <span v-if="memMaxLabel" class="metric-denom">/ {{ memMaxLabel }}</span></div>
       <div class="totals-metric">{{ totalDiskLabel }}</div>
     </div>
