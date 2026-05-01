@@ -345,17 +345,11 @@ const totalDiskLabel = computed(() => {
 }
 
 .metric-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: center;
+  text-align: center;
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-color);
-}
-.metric-value {
-  text-align: center;
 }
 .metric-denom {
   color: var(--text-color-muted);
