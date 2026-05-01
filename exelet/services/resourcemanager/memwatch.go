@@ -20,6 +20,10 @@ import (
 // honoured at start time only — a running RM will not pick up a flip.
 const EnvMemwatchDisable = "EXELET_MEMWATCH_DISABLE"
 
+// EnvMemwatchFreezeDisable, when set to a truthy value, disables the
+// per-VM freeze/wake state machine while keeping normal scraping active.
+const EnvMemwatchFreezeDisable = "EXELET_MEMWATCH_FREEZE_DISABLE"
+
 // memwatchEnabled reports whether the kill switch is off. Both the
 // EXELET_MEMWATCH_DISABLE env var and the equivalent ExeletConfig field
 // are honoured.
@@ -28,6 +32,18 @@ func (m *ResourceManager) memwatchEnabled() bool {
 		return false
 	}
 	return !memwatchDisabledByEnv(os.Getenv)
+}
+
+func memwatchFreezeDisabledByEnv(getenv func(string) string) bool {
+	v := strings.TrimSpace(getenv(EnvMemwatchFreezeDisable))
+	if v == "" {
+		return false
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	}
+	return true
 }
 
 func memwatchDisabledByEnv(getenv func(string) string) bool {

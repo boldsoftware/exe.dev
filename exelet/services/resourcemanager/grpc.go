@@ -108,11 +108,15 @@ func (m *ResourceManager) guestMemoryProto(id string) *api.GuestMemoryStats {
 	if m.guestPool == nil {
 		return nil
 	}
-	s, ok := m.guestPool.LatestFresh(id, time.Now())
-	if !ok {
-		return nil
+	if s, ok := m.guestPool.LatestFresh(id, time.Now()); ok {
+		return sampleToGuestMemoryProto(s, m.guestPool.RefaultRate(id, 60*time.Second))
 	}
-	return sampleToGuestMemoryProto(s, m.guestPool.RefaultRate(id, 60*time.Second))
+	// No fresh sample. If the VM is Frozen, wake it so the next tick
+	// fires a scrape — the caller is actively looking.
+	if t, ok := m.guestPool.VMTier(id); ok && t == guestmetrics.VMTierFrozen {
+		m.guestPool.WakeForRPC(id)
+	}
+	return nil
 }
 
 func sampleToGuestMemoryProto(s guestmetrics.Sample, refaultRate float64) *api.GuestMemoryStats {

@@ -148,10 +148,19 @@ type ExeletConfig struct {
 	ResourceManagerInterval time.Duration
 	// MemwatchDisable disables guest memory observability and host pressure classification.
 	MemwatchDisable bool
+	// MemwatchFreezeDisable disables the per-VM freeze/wake state machine.
+	// Scraping continues at host-tier cadence.
+	MemwatchFreezeDisable bool
 	// GuestMetricsPollInterval* configure guest memory scraping cadence by host pressure tier.
 	GuestMetricsPollIntervalCalm      time.Duration
 	GuestMetricsPollIntervalNormal    time.Duration
 	GuestMetricsPollIntervalPressured time.Duration
+	// Memwatch freeze knobs override DefaultFreezeConfig and the
+	// guestmetrics PoolConfig.Frozen* defaults when non-zero.
+	MemwatchFreezeIdleWindow time.Duration
+	MemwatchFreezeMinUptime  time.Duration
+	MemwatchFrozenCadence    time.Duration
+	MemwatchFrozenStaleAfter time.Duration
 	// EnableHugepages enables hugepage memory for VMs (requires hugepages to be configured on the host)
 	EnableHugepages bool
 	// ProxyBindIP is the IP address to bind SSH proxies to (empty means all interfaces)

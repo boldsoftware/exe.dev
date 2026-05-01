@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,6 +143,7 @@ type vmUsageState struct {
 	// Previous poll values for delta calculation
 	prevCPUSeconds float64
 	prevPollTime   time.Time
+	startedAt      time.Time // when the VM was first observed running
 
 	// idle tracks history used by the page-cache drop probe for idle VMs.
 	// Lazily allocated. See pagecache.go.
@@ -274,12 +276,34 @@ func (m *ResourceManager) Register(ctx *services.ServiceContext, server *grpc.Se
 		if d := m.config.GuestMetricsPollIntervalPressured; d > 0 {
 			cadences.Pressured = d
 		}
-		m.guestPool = guestmetrics.NewPool(guestmetrics.PoolConfig{
+		freeze := guestmetrics.DefaultFreezeConfig
+		if !memwatchFreezeDisabledByEnv(os.Getenv) && (m.config == nil || !m.config.MemwatchFreezeDisable) {
+			freeze.Enabled = true
+		}
+		if m.config != nil {
+			if d := m.config.MemwatchFreezeIdleWindow; d > 0 {
+				freeze.IdleWindow = d
+			}
+			if d := m.config.MemwatchFreezeMinUptime; d > 0 {
+				freeze.MinUptime = d
+			}
+		}
+		poolCfg := guestmetrics.PoolConfig{
 			Cadences:    cadences,
 			HostSampler: m.hostPressure.Sample,
 			Metrics:     m.guestMetrics,
 			Log:         m.log,
-		})
+			Freeze:      freeze,
+		}
+		if m.config != nil {
+			if d := m.config.MemwatchFrozenCadence; d > 0 {
+				poolCfg.FrozenCadence = d
+			}
+			if d := m.config.MemwatchFrozenStaleAfter; d > 0 {
+				poolCfg.FrozenStaleAfter = d
+			}
+		}
+		m.guestPool = guestmetrics.NewPool(poolCfg)
 	} else {
 		m.guestMetrics.Enabled.Set(0)
 		m.log.Info("resource manager: memwatch disabled", "env", EnvMemwatchDisable)
@@ -536,6 +560,7 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 			groupID:              groupID,
 			priority:             api.VMPriority_PRIORITY_NORMAL,
 			prevPollTime:         now,
+			startedAt:            now,
 			allocatedMemoryBytes: allocatedMemory,
 			allocatedCPUs:        allocatedCPUs,
 		}
@@ -620,6 +645,17 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 	// Update Prometheus metrics
 	if m.metrics != nil {
 		m.metrics.update(id, name, state)
+	}
+
+	// Push activity witness to the guest metrics pool so it can drive
+	// the per-VM freeze/wake state machine.
+	if m.guestPool != nil && vmState == computeapi.VMState_RUNNING {
+		m.guestPool.NoteActivity(id, guestmetrics.ActivityWitness{
+			Now:        now,
+			CPUPercent: cpuPercent,
+			HostTier:   m.guestPool.Tier(),
+			VMUptime:   now.Sub(state.startedAt),
+		})
 	}
 
 	// For idle running VMs, occasionally ask exed to drop the guest page

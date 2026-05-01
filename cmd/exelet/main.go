@@ -219,6 +219,31 @@ func main() {
 			Usage: "guest memory scrape interval while host is pressured",
 			Value: 5 * time.Second,
 		},
+		&cli.BoolFlag{
+			Name:    "memwatch-freeze-disable",
+			Usage:   "disable memwatch per-VM frozen tier (scraping continues at host-tier cadence)",
+			EnvVars: []string{"EXELET_MEMWATCH_FREEZE_DISABLE"},
+		},
+		&cli.DurationFlag{
+			Name:    "memwatch-freeze-idle-window",
+			Usage:   "quiet-CPU dwell required before memwatch freezes a VM (zero = default)",
+			EnvVars: []string{"EXELET_MEMWATCH_FREEZE_IDLE_WINDOW"},
+		},
+		&cli.DurationFlag{
+			Name:    "memwatch-freeze-min-uptime",
+			Usage:   "minimum VM uptime before memwatch may freeze it (zero = default)",
+			EnvVars: []string{"EXELET_MEMWATCH_FREEZE_MIN_UPTIME"},
+		},
+		&cli.DurationFlag{
+			Name:    "memwatch-frozen-cadence",
+			Usage:   "guest-memory heartbeat cadence for frozen VMs (zero = 24h default)",
+			EnvVars: []string{"EXELET_MEMWATCH_FROZEN_CADENCE"},
+		},
+		&cli.DurationFlag{
+			Name:    "memwatch-frozen-stale-after",
+			Usage:   "LatestFresh staleness ceiling for frozen VMs (zero = FrozenCadence + 30m default)",
+			EnvVars: []string{"EXELET_MEMWATCH_FROZEN_STALE_AFTER"},
+		},
 		&cli.StringFlag{
 			Name:    "proxy-bind-ip",
 			Usage:   "IP address to bind SSH proxies to (empty means all interfaces, use Tailscale IP for production)",
@@ -416,6 +441,7 @@ func serveAction(clix *cli.Context) error {
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
 	memwatchDisable := clix.Bool("memwatch-disable")
+	memwatchFreezeDisable := clix.Bool("memwatch-freeze-disable")
 	proxyBindIP := clix.String("proxy-bind-ip")
 	backupFallback := clix.Bool("storage-backup-fallback")
 	replicationEnabled := clix.Bool("storage-replication-enabled")
@@ -488,9 +514,14 @@ func serveAction(clix *cli.Context) error {
 		InstanceDomain:                    instanceDomain,
 		ResourceManagerInterval:           resourceManagerInterval,
 		MemwatchDisable:                   memwatchDisable,
+		MemwatchFreezeDisable:             memwatchFreezeDisable,
 		GuestMetricsPollIntervalCalm:      clix.Duration("guest-metrics-poll-interval-calm"),
 		GuestMetricsPollIntervalNormal:    clix.Duration("guest-metrics-poll-interval-normal"),
 		GuestMetricsPollIntervalPressured: clix.Duration("guest-metrics-poll-interval-pressured"),
+		MemwatchFreezeIdleWindow:          clix.Duration("memwatch-freeze-idle-window"),
+		MemwatchFreezeMinUptime:           clix.Duration("memwatch-freeze-min-uptime"),
+		MemwatchFrozenCadence:             clix.Duration("memwatch-frozen-cadence"),
+		MemwatchFrozenStaleAfter:          clix.Duration("memwatch-frozen-stale-after"),
 		EnableHugepages:                   enableHugepages,
 		ProxyBindIP:                       proxyBindIP,
 		ProxyBindDevFunc:                  proxyBindDevFunc(networkManagerAddress),
