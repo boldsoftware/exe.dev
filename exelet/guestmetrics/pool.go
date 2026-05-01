@@ -306,8 +306,17 @@ func (p *Pool) tick(ctx context.Context, now time.Time, workers chan struct{}) {
 
 	for _, e := range entries {
 		e.sched.Lock()
+		// Defensive: host pressure forces wake even if NoteActivity
+		// hasn't run since the line was crossed.
+		if tier == TierPressured && e.vmTier == VMTierFrozen {
+			p.transitionToActiveLocked(e, now, WakeHostPressure)
+		}
 		due := !now.Before(e.next)
 		if due {
+			// Tag the wake reason for metrics if this was a heartbeat.
+			if e.vmTier == VMTierFrozen {
+				e.lastWakeReason = WakeHeartbeat
+			}
 			e.next = now.Add(p.effectiveCadence(tier, e.vmTier))
 		}
 		e.sched.Unlock()
@@ -357,6 +366,20 @@ func (p *Pool) scrape(parent context.Context, e *entry) {
 	e.ring.Push(s)
 	if p.cfg.Metrics != nil {
 		p.cfg.Metrics.Update(e.info.ID, e.info.Name, s, e.ring.RefaultRate(60*time.Second))
+	}
+
+	// Guest PSI safety net: if the scrape (including a heartbeat scrape)
+	// reveals high guest memory pressure, force the VM back to Active.
+	if p.cfg.Freeze.Enabled && s.PSIAvailable && s.PSIFull.Avg60 >= p.cfg.Freeze.GuestPSIWake {
+		e.sched.Lock()
+		if e.vmTier == VMTierFrozen {
+			p.transitionToActiveLocked(e, time.Now(), WakeGuestPSI)
+		}
+		e.sched.Unlock()
+		select {
+		case p.wakeCh <- struct{}{}:
+		default:
+		}
 	}
 }
 

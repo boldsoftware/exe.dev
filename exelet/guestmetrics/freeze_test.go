@@ -434,6 +434,203 @@ func TestFreezeWakeForRPC(t *testing.T) {
 	}
 }
 
+// Test 7: 24h heartbeat fires exactly one scrape, VM remains Frozen.
+func TestFreezeHeartbeat(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var scrapes atomic.Int64
+		cfg := DefaultFreezeConfig
+		cfg.Enabled = true
+		cfg.IdleWindow = 0
+		cfg.MinUptime = 0
+
+		dial := func(ctx context.Context, vmID string) (net.Conn, error) {
+			a, b := net.Pipe()
+			go func() {
+				defer b.Close()
+				buf := make([]byte, 64)
+				n, _ := b.Read(buf)
+				if string(buf[:n]) != memdRequest {
+					return
+				}
+				scrapes.Add(1)
+				raw := RawSample{
+					Version:    ProtocolVersion,
+					CapturedAt: time.Now(),
+					Meminfo:    map[string]uint64{"MemTotal": 1024},
+					Vmstat:     map[string]uint64{},
+				}
+				data, _ := json.Marshal(&raw)
+				data = append(data, '\n')
+				_, _ = b.Write(data)
+			}()
+			return a, nil
+		}
+
+		p := NewPool(PoolConfig{
+			Cadences:      Cadences{Calm: time.Second, Normal: time.Second, Pressured: time.Second},
+			DialFunc:      dial,
+			HostSampler:   func() HostSample { return HostSample{MemTotalBytes: 1 << 30, MemAvailableBytes: 1 << 29} },
+			StaleAfter:    90 * time.Second,
+			Workers:       4,
+			ScrapeTimeout: 5 * time.Second,
+			Freeze:        cfg,
+			FrozenCadence: 24 * time.Hour,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		p.Start(ctx)
+		defer p.Stop()
+
+		p.Add(VMInfo{ID: "vm1", Name: "test"})
+
+		// Wait for initial scrape.
+		time.Sleep(2 * time.Second)
+
+		p.mu.RLock()
+		e := p.entries["vm1"]
+		p.mu.RUnlock()
+
+		// Freeze the VM via NoteActivity.
+		freshQuietSample(e)
+		p.NoteActivity("vm1", ActivityWitness{
+			Now: time.Now(), CPUPercent: 0.1, HostTier: TierCalm, VMUptime: 10 * time.Minute,
+		})
+
+		e.sched.Lock()
+		if e.vmTier != VMTierFrozen {
+			t.Fatalf("expected Frozen, got %v", e.vmTier)
+		}
+		e.sched.Unlock()
+
+		// Give a few seconds for any in-flight active scrapes to drain,
+		// then record the baseline.
+		time.Sleep(3 * time.Second)
+		before := scrapes.Load()
+
+		// Advance 24h so the heartbeat fires.
+		time.Sleep(24 * time.Hour)
+		// Wait a few more seconds for the scrape to complete.
+		time.Sleep(5 * time.Second)
+
+		after := scrapes.Load()
+		heartbeatScrapes := after - before
+		if heartbeatScrapes != 1 {
+			t.Errorf("heartbeat scrapes = %d, want 1", heartbeatScrapes)
+		}
+
+		// VM should still be Frozen (heartbeat doesn't flip to Active permanently).
+		e.sched.Lock()
+		got := e.vmTier
+		reason := e.lastWakeReason
+		e.sched.Unlock()
+
+		if got != VMTierFrozen {
+			t.Errorf("after heartbeat: vmTier=%v, want Frozen", got)
+		}
+		if reason != WakeHeartbeat {
+			t.Errorf("wake reason=%v, want WakeHeartbeat", reason)
+		}
+	})
+}
+
+// Test 8: Heartbeat wakes via guest PSI.
+func TestFreezeHeartbeatWakesOnGuestPSI(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		cfg := DefaultFreezeConfig
+		cfg.Enabled = true
+		cfg.IdleWindow = 0
+		cfg.MinUptime = 0
+		cfg.GuestPSIWake = 5.0
+
+		// Dial returns high-PSI sample.
+		dial := func(ctx context.Context, vmID string) (net.Conn, error) {
+			a, b := net.Pipe()
+			go func() {
+				defer b.Close()
+				buf := make([]byte, 64)
+				n, _ := b.Read(buf)
+				if string(buf[:n]) != memdRequest {
+					return
+				}
+				raw := RawSample{
+					Version:    ProtocolVersion,
+					CapturedAt: time.Now(),
+					Meminfo:    map[string]uint64{"MemTotal": 1024},
+					Vmstat:     map[string]uint64{},
+					PSI: map[string]PSILine{
+						"full": {Avg60: 8.0}, // high PSI!
+						"some": {Avg60: 10.0},
+					},
+				}
+				data, _ := json.Marshal(&raw)
+				data = append(data, '\n')
+				_, _ = b.Write(data)
+			}()
+			return a, nil
+		}
+
+		p := NewPool(PoolConfig{
+			Cadences:      Cadences{Calm: time.Second, Normal: time.Second, Pressured: time.Second},
+			DialFunc:      dial,
+			HostSampler:   func() HostSample { return HostSample{MemTotalBytes: 1 << 30, MemAvailableBytes: 1 << 29} },
+			StaleAfter:    90 * time.Second,
+			Workers:       4,
+			ScrapeTimeout: 5 * time.Second,
+			Freeze:        cfg,
+			FrozenCadence: 24 * time.Hour,
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		p.Start(ctx)
+		defer p.Stop()
+
+		p.Add(VMInfo{ID: "vm1", Name: "test"})
+
+		// Wait for initial scrape. (It will return high PSI, but VM is Active,
+		// so the PSI wake net is a no-op.)
+		time.Sleep(2 * time.Second)
+
+		p.mu.RLock()
+		e := p.entries["vm1"]
+		p.mu.RUnlock()
+
+		// Push a low-PSI sample to satisfy shouldFreeze, then freeze.
+		e.ring.Push(Sample{
+			FetchedAt:    time.Now(),
+			CapturedAt:   time.Now(),
+			PSIAvailable: true,
+			PSIFull:      PSILine{Avg60: 0.0},
+		})
+		p.NoteActivity("vm1", ActivityWitness{
+			Now: time.Now(), CPUPercent: 0.1, HostTier: TierCalm, VMUptime: 10 * time.Minute,
+		})
+
+		e.sched.Lock()
+		if e.vmTier != VMTierFrozen {
+			t.Fatalf("expected Frozen, got %v", e.vmTier)
+		}
+		e.sched.Unlock()
+
+		// Advance 24h so heartbeat fires (which scrapes high-PSI response).
+		time.Sleep(24 * time.Hour)
+		time.Sleep(5 * time.Second)
+
+		e.sched.Lock()
+		got := e.vmTier
+		reason := e.lastWakeReason
+		e.sched.Unlock()
+
+		if got != VMTierActive {
+			t.Errorf("after heartbeat with high PSI: vmTier=%v, want Active", got)
+		}
+		if reason != WakeGuestPSI {
+			t.Errorf("wake reason=%v, want WakeGuestPSI", reason)
+		}
+	})
+}
+
 // Test 11: Concurrency / race. Dispatcher + 8 goroutines hammering
 // NoteActivity for 5 simulated minutes. -race clean.
 func TestFreezeConcurrencyRace(t *testing.T) {
