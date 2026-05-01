@@ -22,10 +22,12 @@ const idleCacheDropCPUThreshold = 0.1
 
 // idleCacheDropProbability is the per-poll probability of probing an idle
 // VM's page cache. With a 30s poll interval and 30-min eligibility window,
-// 1/1000 yields roughly one probe every ~8 hours per idle VM. Note that
+// 1/100 yields roughly one probe every ~50 minutes per idle VM. Note that
 // the rate scales with ResourceManagerInterval — a slower poll yields
-// proportionally fewer probes.
-const idleCacheDropProbability = 1.0 / 1000.0
+// proportionally fewer probes. The 20%-memory-growth gate above keeps us
+// from re-dropping when an idle VM's working set hasn't actually grown,
+// so a higher rate here mostly affects VMs that are accumulating cache.
+const idleCacheDropProbability = 1.0 / 100.0
 
 // idleCacheDropTimeout is the upper bound on the entire drop flow, including
 // the HTTP call to exed and the SSH session into the VM. The whole thing
@@ -179,7 +181,7 @@ func (m *ResourceManager) maybeProbeIdleCacheDrop(ctx context.Context, id, name,
 		m.usageMu.Unlock()
 		return
 	}
-	// Roll the dice. 1/1000 per poll for idle VMs.
+	// Roll the dice. 1/100 per poll for idle VMs.
 	if m.idleCacheDropRand() >= idleCacheDropProbability {
 		m.usageMu.Unlock()
 		return

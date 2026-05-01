@@ -137,7 +137,7 @@ func TestMaybeProbeIdleCacheDropProbabilityGate(t *testing.T) {
 		usageState:          map[string]*vmUsageState{},
 		log:                 slog.Default(),
 		cgroupRoot:          t.TempDir(),
-		idleCacheDropRandFn: func() float64 { return 0.5 }, // far above 1/1000
+		idleCacheDropRandFn: func() float64 { return 0.5 }, // far above 1/100
 	}
 	state := &vmUsageState{name: "idle-vm", groupID: "g", idle: &idleProbe{}}
 	t0 := time.Unix(0, 0)
