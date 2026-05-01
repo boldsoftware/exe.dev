@@ -365,13 +365,19 @@ select { padding: 8px; font-size: 14px; }
 
     submitBtn.addEventListener('click', function() {
         var sel = getSelected();
-        if (!sel.length || !confirm('Are you sure you want to evacuate ALL ' + vmCount + ' VM(s) from this exelet?')) return;
+        if (!sel.length) return;
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Evacuating...';
         var resultsDiv = document.getElementById('evacuateResults');
         resultsDiv.style.display = '';
         resultsDiv.textContent = 'Starting evacuation...\n';
+
+        var autoScroll = true;
+        resultsDiv.addEventListener('scroll', function() {
+            var atBottom = resultsDiv.scrollHeight - resultsDiv.scrollTop - resultsDiv.clientHeight < 30;
+            autoScroll = atBottom;
+        });
 
         var params = new URLSearchParams();
         sel.forEach(function(addr) { params.append('target_addrs[]', addr); });
@@ -398,7 +404,7 @@ select { padding: 8px; font-size: 14px; }
                     }
                     var text = decoder.decode(result.value, {stream: true});
                     resultsDiv.textContent += text;
-                    resultsDiv.scrollTop = resultsDiv.scrollHeight;
+                    if (autoScroll) resultsDiv.scrollTop = resultsDiv.scrollHeight;
                     read();
                 });
             }

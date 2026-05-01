@@ -4245,21 +4245,29 @@ func (s *Server) handleDebugExeletEvacuate(w http.ResponseWriter, r *http.Reques
 	writeProgress("Found %d VM(s) to evacuate.", len(boxes))
 	writeProgress("")
 
+	// Track how many VMs we've sent to each target so the least-loaded
+	// selection accounts for migrations we've already done this run.
+	// ec.count.Load() is only refreshed every ~10 min by the background poller.
+	extraCount := make(map[string]int32, len(targetAddrList))
+
 	var succeeded int
 	for i, box := range boxes {
 		boxName := box.Name
 		writeProgress("=== [%d/%d] %s ===", i+1, len(boxes), boxName)
 
-		// Pick the least-loaded target.
+		// Pick the least-loaded target (base count + VMs we've already sent there).
 		var targetAddr string
 		var targetClient *exeletClient
+		var bestLoad int32
 		for idx, ec := range targets {
-			if targetClient == nil || ec.count.Load() < targetClient.count.Load() {
+			load := ec.count.Load() + extraCount[targetAddrList[idx]]
+			if targetClient == nil || load < bestLoad {
 				targetAddr = targetAddrList[idx]
 				targetClient = ec
+				bestLoad = load
 			}
 		}
-		writeProgress("Target: %s (instances: %d)", targetAddr, targetClient.count.Load())
+		writeProgress("Target: %s (instances: %d)", targetAddr, bestLoad)
 
 		if box.ContainerID == nil {
 			writeError("box %q has no container_id", boxName)
@@ -4469,6 +4477,7 @@ func (s *Server) handleDebugExeletEvacuate(w http.ResponseWriter, r *http.Reques
 
 		writeProgress("Box %s migrated successfully.", boxName)
 		s.slog().InfoContext(ctx, "evacuate: box migrated", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+		extraCount[targetAddr]++
 		succeeded++
 		writeProgress("")
 	}
