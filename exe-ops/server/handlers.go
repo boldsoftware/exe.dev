@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
@@ -30,10 +29,11 @@ func NewHandlers(log *slog.Logger, environment string, inv *inventory.Inventory,
 
 // HandleServerVersion handles GET /api/v1/version.
 func (h *Handlers) HandleServerVersion(w http.ResponseWriter, r *http.Request) {
+	v, commit, date := version.Resolved()
 	resp := map[string]any{
-		"version": version.Version,
-		"commit":  version.Commit,
-		"date":    version.Date,
+		"version": v,
+		"commit":  commit,
+		"date":    date,
 	}
 	if h.environment != "" {
 		resp["environment"] = h.environment
@@ -81,17 +81,7 @@ func (h *Handlers) HandleHealth(w http.ResponseWriter, r *http.Request) {
 // HandleDebugGitSHA handles GET /debug/gitsha — returns the raw commit SHA.
 func (h *Handlers) HandleDebugGitSHA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	sha := version.Commit
-	if sha == "unknown" || sha == "" {
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" {
-					sha = s.Value
-					break
-				}
-			}
-		}
-	}
+	_, sha, _ := version.Resolved()
 	fmt.Fprint(w, sha)
 }
 

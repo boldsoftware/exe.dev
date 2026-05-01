@@ -49,7 +49,13 @@ echo "Building $BINARY..."
 GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "$BINARY" ./cmd/exe-ops-server
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-VERSIONED_BINARY="${BINARY}-${TIMESTAMP}"
+# Match Manager.upload's naming so `ls /opt/exe-ops/bin/` is a usable
+# self-deploy history: <binary>.<ts>-<sha[:12]>.
+SHA12="$(echo "$COMMIT" | head -c 12)"
+if [ -z "$SHA12" ] || [ "$SHA12" = "unknown" ]; then
+    SHA12="nosha-------"
+fi
+VERSIONED_BINARY="${BINARY}.${TIMESTAMP}-${SHA12}"
 
 LOCAL_SHA=$(sha256sum "$BINARY" | awk '{print $1}')
 echo "Local binary sha256: $LOCAL_SHA"
@@ -96,9 +102,11 @@ ssh "$TARGET" "sudo systemctl daemon-reload && sudo systemctl enable $SERVICE_FI
 echo "Checking service status..."
 ssh "$TARGET" "sudo systemctl status $SERVICE_FILE --no-pager"
 
-# Prune old versioned binaries, keeping the 5 most recent.
+# Prune old versioned binaries, keeping the 5 most recent. The glob
+# matches both the legacy "${BINARY}-<ts>" naming and the new
+# "${BINARY}.<ts>-<sha>" naming; mixed states phase out as old files age.
 echo "Pruning old binaries..."
-ssh "$TARGET" "ls -1t $REMOTE_BIN_DIR/${BINARY}-* | tail -n +6 | xargs -r rm -f"
+ssh "$TARGET" "ls -1t $REMOTE_BIN_DIR/${BINARY}[.-]* 2>/dev/null | tail -n +6 | xargs -r rm -f"
 
 rm -f "$PROJECT_DIR/$BINARY"
 echo "Done."
