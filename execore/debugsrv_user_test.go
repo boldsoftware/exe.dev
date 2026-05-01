@@ -402,3 +402,66 @@ func TestDebugRevokeTrialShowsInUI(t *testing.T) {
 		t.Error("expected Revoke Trial on trial user")
 	}
 }
+
+func TestDebugUserShowsLLMCreditRefreshControlsWithoutCreditRow(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-llm-credit-controls@example.com")
+
+	body := debugUserPageBody(t, s, userID)
+	if !strings.Contains(body, "<h2>LLM Gateway Credit</h2>") {
+		t.Fatal("expected LLM Gateway Credit section")
+	}
+	if !strings.Contains(body, "No credit row in DB yet") {
+		t.Fatal("expected missing credit row message")
+	}
+	if !strings.Contains(body, "/debug/users/gift-credits") {
+		t.Fatal("expected Gift Credits form in LLM Gateway Credit section")
+	}
+	if !strings.Contains(body, "/debug/users/refresh-llm-credit") {
+		t.Fatal("expected Refresh LLM Credit form")
+	}
+}
+
+func TestDebugRefreshUserLLMCredit(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	ctx := t.Context()
+	userID := createTestUser(t, s, "debug-refresh-llm-credit@example.com")
+
+	staleRefresh := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	maxCredit := 35.0
+	if err := s.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpsertUserLLMCredit(ctx, exedb.UpsertUserLLMCreditParams{
+			UserID:          userID,
+			AvailableCredit: 0,
+			MaxCredit:       &maxCredit,
+			LastRefreshAt:   staleRefresh,
+		})
+	}); err != nil {
+		t.Fatalf("UpsertUserLLMCredit: %v", err)
+	}
+
+	form := url.Values{"user_id": {userID}}
+	req := httptest.NewRequest(http.MethodPost, "/debug/users/refresh-llm-credit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	s.handleDebugRefreshUserLLMCredit(w, req)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Location"); got != "/debug/user?userId="+url.QueryEscape(userID) {
+		t.Fatalf("redirect location = %q, want %q", got, "/debug/user?userId="+url.QueryEscape(userID))
+	}
+
+	credit, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMCredit, userID)
+	if err != nil {
+		t.Fatalf("GetUserLLMCredit: %v", err)
+	}
+	if credit.AvailableCredit != maxCredit {
+		t.Fatalf("available credit = %f, want %f after refresh", credit.AvailableCredit, maxCredit)
+	}
+	if !credit.LastRefreshAt.After(staleRefresh) {
+		t.Fatalf("last_refresh_at = %s, want after %s", credit.LastRefreshAt, staleRefresh)
+	}
+}

@@ -450,13 +450,6 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 </form>
 {{end}}
 
-<h3 style="margin-top:15px;">Gift Credits</h3>
-<form method="post" action="/debug/users/gift-credits" style="max-width: 300px;">
-<input type="hidden" name="user_id" value="{{.UserID}}">
-<p><label>Amount (USD):<br><input type="number" name="amount" step="0.01" min="0.01" required placeholder="e.g. 10.00" style="width:100%;"></label></p>
-<p><label>Note (optional):<br><input type="text" name="note" placeholder="Reason for gift" style="width:100%;"></label></p>
-<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Gift Credits</button>
-</form>
 </div>
 </div>
 
@@ -497,10 +490,10 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 </div>
 </div>
 
-{{if .HasCredit}}
 <div class="section">
 <h2>LLM Gateway Credit</h2>
 <div class="section-content">
+{{if .HasCredit}}
 <table class="info">
 <tr><th>Plan</th><td>{{.PlanName}}</td></tr>
 <tr><th>Has Billing</th><td>{{if eq .CreditPlanName "has_billing"}}Yes{{else}}No{{end}}</td></tr>
@@ -512,6 +505,29 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 <tr><th>Lifetime Usage</th><td>${{printf "%.2f" .CreditTotalUsedUSD}}</td></tr>
 <tr><th>Last Refresh</th><td>{{.CreditLastRefreshAt}}</td></tr>
 </table>
+{{else}}
+<p>No credit row in DB yet. Run a refresh to create or update it for this user.</p>
+{{end}}
+<div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+<div style="max-width:300px;">
+<h3>Gift Credits</h3>
+<form method="post" action="/debug/users/gift-credits">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<p><label>Amount (USD):<br><input type="number" name="amount" step="0.01" min="0.01" required placeholder="e.g. 10.00" style="width:100%;"></label></p>
+<p><label>Note (optional):<br><input type="text" name="note" placeholder="Reason for gift" style="width:100%;"></label></p>
+<button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Gift Credits</button>
+</form>
+</div>
+<div style="max-width:300px;">
+<h3>Refresh Credit Row</h3>
+<p style="font-size:12px;color:#666;">Runs <code>CheckAndRefreshCreditDB</code> for this user.</p>
+<form method="post" action="/debug/users/refresh-llm-credit">
+<input type="hidden" name="user_id" value="{{.UserID}}">
+<button type="submit" style="padding: 8px 16px; background: #17a2b8; color: white; border: none; cursor: pointer;">Refresh LLM Credit</button>
+</form>
+</div>
+</div>
+{{if .HasCredit}}
 <h3>Edit Credit</h3>
 <form method="post" action="/debug/users/update-credit" style="max-width: 300px;">
 <input type="hidden" name="user_id" value="{{.UserID}}">
@@ -522,9 +538,9 @@ Equivalent to <code>ssh exe.dev throttle-user {{.Email}} --cpu=... --memory=...<
 <p style="font-size:12px;color:#666;">Leave Max/Refresh empty to use plan defaults</p>
 <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; cursor: pointer;">Save</button>
 </form>
-</div>
-</div>
 {{end}}
+</div>
+</div>
 
 <div class="section">
 <h2>VMs ({{len .Boxes}})</h2>

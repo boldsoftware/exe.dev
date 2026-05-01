@@ -100,6 +100,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/toggle-vm-creation", s.handleDebugToggleVMCreation)
 	mux.HandleFunc("POST /debug/users/toggle-lockout", s.handleDebugToggleLockout)
 	mux.HandleFunc("POST /debug/users/update-credit", s.handleDebugUpdateUserCredit)
+	mux.HandleFunc("POST /debug/users/refresh-llm-credit", s.handleDebugRefreshUserLLMCredit)
 	mux.HandleFunc("POST /debug/users/gift-credits", s.handleDebugGiftCredits)
 	mux.HandleFunc("POST /debug/users/add-billing", s.handleDebugAddBilling)
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
@@ -2401,6 +2402,35 @@ func (s *Server) handleDebugUpdateUserCredit(w http.ResponseWriter, r *http.Requ
 		"available_usd", availableUSD,
 		"max_usd", maxUSD,
 		"refresh_per_hour_usd", refreshUSD)
+
+	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
+}
+
+func (s *Server) handleDebugRefreshUserLLMCredit(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := r.FormValue("user_id")
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	info, err := llmgateway.CheckAndRefreshCreditDB(ctx, s.db, userID, time.Now())
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to refresh credit: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if info != nil {
+		s.slog().InfoContext(ctx, "LLM credit refreshed via debug page",
+			"user_id", userID,
+			"available_usd", info.Available,
+			"max_usd", info.Max,
+			"refresh_per_hour_usd", info.RefreshPerHour,
+			"last_refresh_at", info.LastRefresh)
+	} else {
+		s.slog().InfoContext(ctx, "LLM credit refreshed via debug page", "user_id", userID)
+	}
 
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
