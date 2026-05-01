@@ -287,8 +287,15 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
     chown -R exedev:exedev /home/exedev/.local/pi && \
     ln -s /home/exedev/.local/bin/pi /usr/local/bin/pi
 
-# Install pi exe.dev extension (LLM gateway + environment context)
+# Install pi exe.dev extension (LLM gateway + environment context).
+# Pre-fetch catalog.json so the first request Just Works immediately.
+# Each subsequent pi run will update the catalog.
 COPY pi-extension/ /home/exedev/.pi/agent/extensions/exe-dev/
+RUN curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --max-time 30 \
+      https://exe.dev/llm-gateway-models.json \
+      -o /home/exedev/.pi/agent/extensions/exe-dev/catalog.json && \
+    jq -e '.schemaVersion | numbers' \
+      /home/exedev/.pi/agent/extensions/exe-dev/catalog.json > /dev/null
 RUN chown -R exedev:exedev /home/exedev/.pi/agent
 
 # Custom nginx config and index page (nginx is installed but disabled by default)
