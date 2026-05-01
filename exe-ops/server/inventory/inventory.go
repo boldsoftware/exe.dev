@@ -58,6 +58,12 @@ func New(log *slog.Logger, gitRepo *GitRepo) *Inventory {
 					// the system trust store; we trust the tailnet.
 					InsecureSkipVerify: true,
 				},
+				// Polling is serial per host on a 60s tick; keep one idle
+				// conn per host and let it expire just past the next tick.
+				// Without these caps the pool grew to ~2 goroutines and a
+				// TLS+socket-buffer footprint per (host, endpoint) pair.
+				MaxIdleConnsPerHost: 1,
+				IdleConnTimeout:     90 * time.Second,
 			},
 		},
 	}
@@ -378,7 +384,7 @@ func (inv *Inventory) fetchVersion(ctx context.Context, p *Process, url string) 
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 256))
 	if err != nil {
@@ -414,7 +420,7 @@ func (inv *Inventory) fetchUptime(ctx context.Context, p *Process, url string, n
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	// Scan for process_start_time_seconds line.
 	scanner := bufio.NewScanner(resp.Body)
@@ -443,6 +449,15 @@ func findSpec(role, process string) *processSpec {
 		}
 	}
 	return nil
+}
+
+// drainAndClose discards any unread body before closing so the underlying
+// connection can be returned to the idle pool. fetchVersion's LimitReader
+// and fetchUptime's early-exit scanner both leave bytes pending; without
+// draining, net/http closes the conn and we churn TLS handshakes.
+func drainAndClose(body io.ReadCloser) {
+	io.Copy(io.Discard, body)
+	body.Close()
 }
 
 func isHex(s string) bool {
