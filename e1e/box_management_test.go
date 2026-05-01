@@ -1594,35 +1594,47 @@ func TestNewBoxVariants(t *testing.T) {
 	cleanupBox(t, keyFile, boxName)
 }
 
-// TestRestart tests restarting a VM from both running and stopped states
-// using a single VM. It verifies disk persistence, network connectivity,
-// and proxy SSH pool connection handling across restarts.
-func TestRestart(t *testing.T) {
-	t.Parallel()
+// restartTestSetup boots a VM, configures a public proxy route, and returns
+// helpers shared by TestRestartRunningVM and TestRestartStoppedVM. The two
+// tests used to be subtests of a single TestRestart that shared one VM; they
+// were split so both halves run in parallel lanes, halving wall time.
+//
+// Caller is responsible for invoking cleanupBox explicitly at the end of
+// the test body — t.Cleanup runs after t.Context() is canceled, which
+// breaks the SSH used by cleanupBox.
+func restartTestSetup(t *testing.T) (boxName, keyFile string, makeProxyRequest func() (*http.Response, error)) {
+	t.Helper()
 	reserveVMs(t, 1)
 	e1eTestsOnlyRunOnce(t)
 	noGolden(t)
 
-	pty, _, keyFile, _ := registerForExeDev(t)
-	boxName := newBox(t, pty)
+	pty, _, kf, _ := registerForExeDev(t)
+	bn := newBox(t, pty)
 	pty.Disconnect()
-	waitForSSH(t, boxName, keyFile)
+	waitForSSH(t, bn, kf)
 
 	httpPort := Env.HTTPPort()
-	configureProxyRoute(t, keyFile, boxName, 8080, "public")
+	configureProxyRoute(t, kf, bn, 8080, "public")
 
-	makeProxyRequest := func() (*http.Response, error) {
+	makeProxyRequest = func() (*http.Response, error) {
 		proxyReq, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", httpPort), nil)
 		if err != nil {
 			return nil, err
 		}
-		proxyReq.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, httpPort)
+		proxyReq.Host = fmt.Sprintf("%s.exe.cloud:%d", bn, httpPort)
 		client := &http.Client{Timeout: 10 * time.Second}
 		return client.Do(proxyReq)
 	}
+	return bn, kf, makeProxyRequest
+}
 
-	// Test restarting a running VM via the REPL restart command.
-	t.Run("running_vm", func(t *testing.T) {
+// TestRestartRunningVM verifies restarting a running VM via the REPL
+// restart command preserves disk and re-establishes SSH-pool proxy routes.
+func TestRestartRunningVM(t *testing.T) {
+	t.Parallel()
+	boxName, keyFile, makeProxyRequest := restartTestSetup(t)
+	defer cleanupBox(t, keyFile, boxName)
+	{
 		if err := boxSSHCommand(t, boxName, keyFile, "echo restart-test > /home/exedev/restart-marker.txt && sync").Run(); err != nil {
 			t.Fatalf("failed to write marker file: %v", err)
 		}
@@ -1703,12 +1715,18 @@ func TestRestart(t *testing.T) {
 		if !strings.Contains(string(body), "proxy-restart-test-after") {
 			t.Fatalf("unexpected proxy response after restart: %s", body)
 		}
-	})
+	}
+}
 
-	// Test restarting a VM that was shut down from inside.
-	// This specifically tests the scenario where SSH pool connections become stale
-	// when the VM is stopped from inside (not via restart command) and then restarted.
-	t.Run("stopped_vm", func(t *testing.T) {
+// TestRestartStoppedVM verifies that a VM stopped from inside (not via the
+// restart command) can be restarted, persists disk, and re-establishes the
+// proxy/SSH-pool path. This specifically exercises stale SSH-pool
+// connection handling.
+func TestRestartStoppedVM(t *testing.T) {
+	t.Parallel()
+	boxName, keyFile, makeProxyRequest := restartTestSetup(t)
+	defer cleanupBox(t, keyFile, boxName)
+	{
 		noGolden(t)
 
 		if err := boxSSHCommand(t, boxName, keyFile, "echo stopped-restart-test > /home/exedev/stopped-marker.txt && sync").Run(); err != nil {
@@ -1794,9 +1812,7 @@ func TestRestart(t *testing.T) {
 		if !strings.Contains(string(body), "proxy-stopped-test-after") {
 			t.Fatalf("unexpected proxy response after restart from stopped: %s", body)
 		}
-	})
-
-	cleanupBox(t, keyFile, boxName)
+	}
 }
 
 func truncate(s string, maxLen int) string {

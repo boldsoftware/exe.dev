@@ -46,12 +46,14 @@ SEGMENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "s
 # Letters that have e1e tests with approximate execution time weights (seconds).
 # Used to balance shards by execution time rather than just test count.
 # Update these when test distribution changes significantly.
-# Last updated: 2026-03-29 from build #282 timing data.
+# Last updated: 2026-05-01 from build #2169 timing data after splitting
+# TestRestart into TestRestartRunningVM + TestRestartStoppedVM and after
+# adding the memwatch tests under M.
 TEST_LETTER_COUNTS = [
-    ("A", 0), ("B", 12), ("C", 43), ("D", 8), ("E", 57), ("F", 0),
-    ("G", 4), ("H", 24), ("I", 80), ("J", 0), ("K", 0), ("L", 41),
-    ("M", 13), ("N", 68), ("O", 0), ("P", 88), ("Q", 0), ("R", 187),
-    ("S", 147), ("T", 276), ("U", 29), ("V", 58), ("W", 2), ("X", 0),
+    ("A", 0), ("B", 72), ("C", 105), ("D", 97), ("E", 231), ("F", 0),
+    ("G", 15), ("H", 62), ("I", 281), ("J", 0), ("K", 0), ("L", 38),
+    ("M", 87), ("N", 117), ("O", 0), ("P", 138), ("Q", 0), ("R", 220),
+    ("S", 403), ("T", 251), ("U", 43), ("V", 176), ("W", 2), ("X", 0),
     ("Y", 0), ("Z", 0),
 ]
 
@@ -592,7 +594,14 @@ def main():
 
     # Read tuning knobs from commit trailers, then env vars, then defaults.
     trailers = read_commit_trailers()
-    n_shards = int(trailers.get("e1e-shards", os.environ.get("E1E_SHARDS", "5")))
+    # 8 letter shards yields 9 e1e steps once the single-letter T splits
+    # via LETTER_SUBSPLIT into T-1 and T-2: A-D, E-H, I-L, M-P, Q-R, S, T-1,
+    # T-2, U-Z. The bottleneck (#2169 timing data) is then the slowest single
+    # top-level test in S (~45s), not lane saturation. Going higher than 8
+    # produces no further improvement until the longest individual tests
+    # are themselves split. exe-ci-03 has plenty of agent headroom (#2169
+    # used 20 of 24 slots).
+    n_shards = int(trailers.get("e1e-shards", os.environ.get("E1E_SHARDS", "8")))
     vm_concurrency = trailers.get("e1e-vm-concurrency", os.environ.get("E1E_VM_CONCURRENCY", "12"))
     gomaxprocs = trailers.get("e1e-gomaxprocs", os.environ.get("E1E_GOMAXPROCS", ""))
     exelets_vm_concurrency = trailers.get("e1e-exelets-vm-concurrency", os.environ.get("E1E_EXELETS_VM_CONCURRENCY", "10"))
