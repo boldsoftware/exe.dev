@@ -280,6 +280,75 @@ func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
 	}
 }
 
+// TestGateway_ServesCatalog locks the wire contract for the /models.json
+// endpoint that exe-dev pi-extension (and any other in-VM client) consumes:
+// auth required, 200 + ETag on first request, 304 on If-None-Match revalidate,
+// and a body that round-trips through llmpricing.Catalog.
+func TestGateway_ServesCatalog(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+
+	// Without auth: 401, like every other gateway endpoint.
+	unauthed := httptest.NewRequest("GET", "/_/gateway/models.json", nil)
+	unauthedRR := httptest.NewRecorder()
+	gateway.ServeHTTP(unauthedRR, unauthed)
+	if unauthedRR.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated /models.json: got %d, want 401", unauthedRR.Code)
+	}
+
+	// With auth: 200, ETag set, body is the canonical catalog JSON.
+	req := httptest.NewRequest("GET", "/_/gateway/models.json", nil)
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /models.json: got %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	etag := rr.Header().Get("ETag")
+	if etag == "" {
+		t.Error("GET /models.json: missing ETag header")
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("GET /models.json: Content-Type = %q, want application/json...", ct)
+	}
+
+	wantBody, wantETag := llmpricing.CatalogJSON()
+	if etag != wantETag {
+		t.Errorf("GET /models.json: etag = %q, want %q", etag, wantETag)
+	}
+	if !bytes.Equal(rr.Body.Bytes(), wantBody) {
+		t.Errorf("GET /models.json: body does not match llmpricing.CatalogJSON()")
+	}
+
+	// Round-trip through the typed Catalog so a future field rename or
+	// schemaVersion bump trips this test rather than silently breaking
+	// downstream consumers.
+	var cat llmpricing.Catalog
+	if err := json.Unmarshal(rr.Body.Bytes(), &cat); err != nil {
+		t.Fatalf("unmarshal catalog: %v", err)
+	}
+	if cat.SchemaVersion != llmpricing.CatalogSchemaVersion {
+		t.Errorf("schemaVersion = %d, want %d", cat.SchemaVersion, llmpricing.CatalogSchemaVersion)
+	}
+	if len(cat.Providers) == 0 {
+		t.Error("catalog has no providers")
+	}
+
+	// Re-fetch with If-None-Match: 304 and an empty body.
+	revalidate := httptest.NewRequest("GET", "/_/gateway/models.json", nil)
+	revalidate.Header.Set("X-Exedev-Box", "test-box")
+	revalidate.Header.Set("If-None-Match", etag)
+	revalidate.RemoteAddr = "127.0.0.1:12345"
+	revalidateRR := httptest.NewRecorder()
+	gateway.ServeHTTP(revalidateRR, revalidate)
+	if revalidateRR.Code != http.StatusNotModified {
+		t.Errorf("If-None-Match revalidate: got %d, want 304", revalidateRR.Code)
+	}
+	if revalidateRR.Body.Len() != 0 {
+		t.Errorf("If-None-Match revalidate: body length = %d, want 0", revalidateRR.Body.Len())
+	}
+}
+
 func TestGateway_ServeHTTP_UnrecognizedAlias(t *testing.T) {
 	gateway, _ := setupTestGateway(t)
 

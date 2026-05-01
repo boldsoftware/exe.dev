@@ -547,6 +547,14 @@ var gatewayMeta = map[Provider]map[string]ModelMeta{
 
 // CatalogSchemaVersion is the schema version for the gateway catalog JSON.
 // Bump on incompatible changes.
+//
+// Consumers (e.g. exeuntu/pi-extension) hard-pin this version and fall back
+// to a built-in routing list on mismatch, so any breaking change must ship
+// alongside an updated extension. Additive changes (new optional fields)
+// should not bump the version; existing consumers will simply ignore the new
+// fields. providerCatalog IDs (anthropic, openai, fireworks, ...) are also
+// part of this contract: they must match pi-ai's KnownProvider names because
+// pi merges its built-in model catalog by provider ID.
 const CatalogSchemaVersion = 1
 
 // Catalog is the JSON shape served at /llm-gateway-models.json. It groups
@@ -606,7 +614,9 @@ type providerCatalogInfo struct {
 }
 
 // providerCatalog is the source of truth for how the gateway exposes each
-// provider over HTTP. Path is relative to the gateway base URL.
+// provider over HTTP. Path is relative to the gateway base URL and must not
+// start with a slash; consumers append it as "<gateway>/<path>". IDs are
+// part of the catalog wire contract — see CatalogSchemaVersion.
 var providerCatalog = []providerCatalogInfo{
 	{id: "anthropic", path: "anthropic"},
 	{id: "openai", path: "openai/v1"},
