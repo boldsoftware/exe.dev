@@ -121,6 +121,10 @@ type topModel struct {
 	prevRows map[string]vmUsageRow
 	prevTime time.Time
 
+	// scrollOffset is the index of the first visible row when there are
+	// more rows than fit in the terminal. Clamped on each render.
+	scrollOffset int
+
 	// Computed network rates (bytes/sec) keyed by VM name.
 	netRxRate map[string]float64
 	netTxRate map[string]float64
@@ -170,6 +174,19 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.sortBy = (m.sortBy + 1) % sortColumnCount
 			m.sortRows()
+			m.scrollOffset = 0
+		case "up", "k":
+			m.scrollOffset--
+		case "down", "j":
+			m.scrollOffset++
+		case "pgup", "b", "ctrl+u":
+			m.scrollOffset -= max(1, m.visibleRowCount())
+		case "pgdown", " ", "f", "ctrl+d":
+			m.scrollOffset += max(1, m.visibleRowCount())
+		case "home", "g":
+			m.scrollOffset = 0
+		case "end", "G":
+			m.scrollOffset = 1 << 30 // clamped on render
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -279,8 +296,8 @@ func (m *topModel) View() string {
 		remaining = 0
 	}
 	// Compose two header variants; pick the widest that fits.
-	hdrFull := fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  sort:%s  [s] cycle sort  [q] quit", elapsed, remaining, m.sortBy.header())
-	hdrShort := fmt.Sprintf("\033[1mexe top\033[0m  up %s  sort:%s  [s] [q]", elapsed, m.sortBy.header())
+	hdrFull := fmt.Sprintf("\033[1mexe top\033[0m  uptime %s  (auto-quit in %s)  sort:%s  [s] sort  [\u2191\u2193] scroll  [q] quit", elapsed, remaining, m.sortBy.header())
+	hdrShort := fmt.Sprintf("\033[1mexe top\033[0m  up %s  sort:%s  [s\u2191\u2193q]", elapsed, m.sortBy.header())
 	if m.width > 0 && ansi.StringWidth(hdrFull) > m.width {
 		b.WriteString(hdrShort)
 	} else {
@@ -340,15 +357,31 @@ func (m *topModel) View() string {
 	hdr("NET TX", 10, sortNetTx, false)
 	b.WriteString("\033[0m\n")
 
-	// Limit visible rows to fit the terminal. Reserve 2 lines for the
-	// header + column header, plus 1 for an optional truncation note.
-	visibleRows := m.rows
-	maxRows := m.height - 3
-	truncated := 0
-	if m.height > 0 && maxRows > 0 && len(visibleRows) > maxRows {
-		truncated = len(visibleRows) - maxRows
-		visibleRows = visibleRows[:maxRows]
+	// Limit visible rows to fit the terminal. visibleRowCount accounts
+	// for the header, column header, and a status line when scrolling.
+	total := len(m.rows)
+	maxRows := total
+	needScroll := false
+	if m.height > 0 {
+		maxRows = m.visibleRowCount()
+		needScroll = total > maxRows
 	}
+	// Clamp scroll offset to a valid range.
+	maxOffset := total - maxRows
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.scrollOffset > maxOffset {
+		m.scrollOffset = maxOffset
+	}
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+	end := m.scrollOffset + maxRows
+	if end > total {
+		end = total
+	}
+	visibleRows := m.rows[m.scrollOffset:end]
 
 	for _, row := range visibleRows {
 		name := row.Name
@@ -405,11 +438,30 @@ func (m *topModel) View() string {
 		b.WriteString("\n")
 	}
 
-	if truncated > 0 {
-		b.WriteString(fmt.Sprintf("\033[2m… %d more not shown (resize terminal to see all)\033[0m\n", truncated))
+	if needScroll {
+		above := m.scrollOffset
+		below := total - end
+		b.WriteString(fmt.Sprintf("\033[2m\u2191 %d above \u00b7 \u2193 %d below \u00b7 keys: \u2191\u2193 PgUp PgDn g G\033[0m\n", above, below))
 	}
 
 	return truncateViewLines(b.String(), m.width, m.height)
+}
+
+// visibleRowCount returns how many data rows currently fit in the viewport.
+// When scrolling is active a status line steals one row; otherwise we use
+// the full height minus the two header lines.
+func (m *topModel) visibleRowCount() int {
+	if m.height <= 0 {
+		return len(m.rows)
+	}
+	n := m.height - 2
+	if len(m.rows) > n {
+		n-- // status line
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
 }
 
 // truncateViewLines clips each line of s to width visible columns and the
@@ -436,6 +488,13 @@ func truncateViewLines(s string, width, height int) string {
 	if height > 0 && len(lines) > height {
 		lines = lines[:height]
 		trailingNL = false // avoid extra blank line that would push content up
+	}
+	// Suppress the trailing newline when our content already fills the
+	// viewport: a final '\n' on the bottom row scrolls the alt-screen up
+	// by one line, losing the header. Bubble Tea repaints every tick, so
+	// dropping it has no other visual effect.
+	if height > 0 && len(lines) >= height {
+		trailingNL = false
 	}
 	out := strings.Join(lines, "\n")
 	if trailingNL {

@@ -602,8 +602,8 @@ func TestTopViewTruncatesToTerminalHeight(t *testing.T) {
 	if len(lines) > 12 { // header + col header + 7 rows + note + trailing newline
 		t.Errorf("View() with height=10 produced %d lines, want <=12; got:\n%s", len(lines), out)
 	}
-	if !strings.Contains(out, "more not shown") {
-		t.Errorf("View() should mention truncation when rows exceed height, got %q", out)
+	if !strings.Contains(out, "below") || !strings.Contains(out, "scroll") {
+		t.Errorf("View() should mention scroll status when rows exceed height, got %q", out)
 	}
 	if !strings.Contains(out, "vm-00") {
 		t.Errorf("View() should show first row 'vm-00', got %q", out)
@@ -719,5 +719,215 @@ func TestTopModelViewNarrowHeader(t *testing.T) {
 	}
 	if !strings.Contains(first, "exe top") {
 		t.Errorf("header should still contain 'exe top', got %q", first)
+	}
+}
+
+// TestTopScrolling exercises j/k/g/G/PgDn behavior when there are more VMs
+// than fit on the screen.
+func TestTopScrolling(t *testing.T) {
+	mkRows := func(n int) []vmUsageRow {
+		rows := make([]vmUsageRow, n)
+		for i := range rows {
+			rows[i] = vmUsageRow{Name: fmt.Sprintf("vm-%02d", i), Status: "running"}
+		}
+		return rows
+	}
+
+	t.Run("down_reveals_later_rows", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10 // 7 visible rows
+		// Render once to clamp.
+		_ = m.View()
+		// Press 'j' a few times.
+		for i := 0; i < 3; i++ {
+			updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+			m = updated.(*topModel)
+		}
+		if m.scrollOffset != 3 {
+			t.Errorf("after 3x 'j', scrollOffset = %d, want 3", m.scrollOffset)
+		}
+		out := m.View()
+		if strings.Contains(out, "vm-00") {
+			t.Errorf("after scrolling down, vm-00 should be hidden, got %q", out)
+		}
+		if !strings.Contains(out, "vm-03") {
+			t.Errorf("after scrolling down by 3, vm-03 should be visible, got %q", out)
+		}
+	})
+
+	t.Run("end_jumps_to_bottom", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10 // 7 visible rows
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+		m = updated.(*topModel)
+		out := m.View()
+		if !strings.Contains(out, "vm-49") {
+			t.Errorf("after 'G', vm-49 should be visible, got %q", out)
+		}
+		if strings.Contains(out, "vm-00") {
+			t.Errorf("after 'G', vm-00 should be hidden, got %q", out)
+		}
+	})
+
+	t.Run("home_returns_to_top", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10
+		m.scrollOffset = 30
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+		m = updated.(*topModel)
+		if m.scrollOffset != 0 {
+			t.Errorf("after 'g', scrollOffset = %d, want 0", m.scrollOffset)
+		}
+		out := m.View()
+		if !strings.Contains(out, "vm-00") {
+			t.Errorf("after 'g', vm-00 should be visible, got %q", out)
+		}
+	})
+
+	t.Run("pgdown_pages", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10 // 7 visible rows
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+		m = updated.(*topModel)
+		if m.scrollOffset != 7 {
+			t.Errorf("after PgDown with 7 rows visible, scrollOffset = %d, want 7", m.scrollOffset)
+		}
+	})
+
+	t.Run("clamp_below_zero", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		m = updated.(*topModel)
+		_ = m.View()
+		if m.scrollOffset != 0 {
+			t.Errorf("scrollOffset clamped to 0, got %d", m.scrollOffset)
+		}
+	})
+
+	t.Run("clamp_above_max", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10 // 7 rows visible -> max offset 43
+		m.scrollOffset = 1000
+		_ = m.View()
+		if m.scrollOffset != 50-7 {
+			t.Errorf("scrollOffset clamped to %d, want %d", m.scrollOffset, 50-7)
+		}
+	})
+
+	t.Run("sort_resets_scroll", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10
+		m.scrollOffset = 20
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+		m = updated.(*topModel)
+		if m.scrollOffset != 0 {
+			t.Errorf("sort key should reset scrollOffset, got %d", m.scrollOffset)
+		}
+	})
+
+	t.Run("shows_above_below_counts", func(t *testing.T) {
+		m := newTestModel(mkRows(50), nil)
+		m.width = 120
+		m.height = 10 // 7 visible
+		m.scrollOffset = 10
+		out := m.View()
+		if !strings.Contains(out, "10 above") {
+			t.Errorf("status line should report 10 above, got %q", out)
+		}
+		if !strings.Contains(out, "33 below") {
+			t.Errorf("status line should report 33 below, got %q", out)
+		}
+	})
+}
+
+// TestTopScrollingKeyVariants checks the assorted alternative key bindings.
+func TestTopScrollingKeyVariants(t *testing.T) {
+	mkRows := func(n int) []vmUsageRow {
+		rows := make([]vmUsageRow, n)
+		for i := range rows {
+			rows[i] = vmUsageRow{Name: fmt.Sprintf("vm-%02d", i), Status: "running"}
+		}
+		return rows
+	}
+
+	cases := []struct {
+		name    string
+		key     tea.KeyMsg
+		initial int
+		want    int
+	}{
+		{"down_arrow", tea.KeyMsg{Type: tea.KeyDown}, 0, 1},
+		{"up_arrow", tea.KeyMsg{Type: tea.KeyUp}, 5, 4},
+		{"k_clamps_low", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}, 0, 0},
+		{"pgup", tea.KeyMsg{Type: tea.KeyPgUp}, 20, 13}, // 7 rows visible
+		{"home_key", tea.KeyMsg{Type: tea.KeyHome}, 30, 0},
+		{"end_key", tea.KeyMsg{Type: tea.KeyEnd}, 0, 50 - 7},
+		{"ctrl_d", tea.KeyMsg{Type: tea.KeyCtrlD}, 0, 7},
+		{"ctrl_u", tea.KeyMsg{Type: tea.KeyCtrlU}, 14, 7},
+		{"space", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}, 0, 7},
+		{"f", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}, 0, 7},
+		{"b", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}, 14, 7},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel(mkRows(50), nil)
+			m.width = 120
+			m.height = 10
+			m.scrollOffset = tc.initial
+			_ = m.View() // clamp
+			updated, _ := m.Update(tc.key)
+			m = updated.(*topModel)
+			_ = m.View() // re-clamp
+			if m.scrollOffset != tc.want {
+				t.Errorf("scrollOffset = %d, want %d", m.scrollOffset, tc.want)
+			}
+		})
+	}
+}
+
+// TestTruncateViewLinesNoTrailingNewlineAtFull is the focused regression
+// test for the "header scrolls off-screen under alt-screen" bug. When
+// the rendered view exactly fills the viewport AND ends in '\n', the
+// terminal scrolls up by one line, knocking the header off the top.
+// truncateViewLines must strip that trailing newline.
+func TestTruncateViewLinesNoTrailingNewlineAtFull(t *testing.T) {
+	// 5 lines of content + trailing newline, height=5.
+	input := "a\nb\nc\nd\ne\n"
+	got := truncateViewLines(input, 80, 5)
+	if strings.HasSuffix(got, "\n") {
+		t.Errorf("truncateViewLines should strip trailing newline when content fills viewport, got %q", got)
+	}
+	if strings.Count(got, "\n") != 4 {
+		t.Errorf("expected 4 inter-line newlines, got %q", got)
+	}
+}
+
+// TestTopViewVeryShortHeight verifies the model degrades gracefully when
+// the terminal is so short the data rows can't fit at all (height <= 2).
+func TestTopViewVeryShortHeight(t *testing.T) {
+	rows := []vmUsageRow{
+		{Name: "vm-0", Status: "running"},
+		{Name: "vm-1", Status: "running"},
+	}
+	for _, h := range []int{1, 2, 3} {
+		m := newTestModel(rows, nil)
+		m.width = 80
+		m.height = h
+		out := m.View()
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		if len(lines) > h {
+			t.Errorf("height=%d: rendered %d lines", h, len(lines))
+		}
+		if !strings.Contains(lines[0], "exe top") {
+			t.Errorf("height=%d: header missing from first line %q", h, lines[0])
+		}
 	}
 }
