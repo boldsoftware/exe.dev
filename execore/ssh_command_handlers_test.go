@@ -1,6 +1,13 @@
 package execore
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"exe.dev/exemenu"
+	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/stage"
+)
 
 func TestParseSize(t *testing.T) {
 	t.Parallel()
@@ -75,6 +82,91 @@ func TestParseSize(t *testing.T) {
 			}
 			if got != tc.expected {
 				t.Errorf("parseSize(%q) = %d, want %d", tc.input, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestWriteResizeRestartNotice(t *testing.T) {
+	t.Parallel()
+
+	const gib = 1024 * 1024 * 1024
+	tests := []struct {
+		name         string
+		resizeResult *api.ResizeVMResponse
+		wantContains []string
+		wantNot      []string
+	}{
+		{
+			name: "memory changed",
+			resizeResult: &api.ResizeVMResponse{
+				OldMemory: 2 * gib,
+				NewMemory: 4 * gib,
+				OldCPUs:   1,
+				NewCPUs:   1,
+			},
+			wantContains: []string{"CPU/memory changes require a full power off", "# inside the VM", "sudo poweroff", "# from the exe.dev shell", "restart testbox"},
+			wantNot:      []string{"shutdown -r now"},
+		},
+		{
+			name: "cpu changed",
+			resizeResult: &api.ResizeVMResponse{
+				OldMemory: 2 * gib,
+				NewMemory: 2 * gib,
+				OldCPUs:   1,
+				NewCPUs:   2,
+			},
+			wantContains: []string{"CPU/memory changes require a full power off", "sudo poweroff", "restart testbox"},
+			wantNot:      []string{"shutdown -r now"},
+		},
+		{
+			name: "cpu and memory changed",
+			resizeResult: &api.ResizeVMResponse{
+				OldMemory: 2 * gib,
+				NewMemory: 4 * gib,
+				OldCPUs:   1,
+				NewCPUs:   2,
+			},
+			wantContains: []string{"CPU/memory changes require a full power off", "sudo poweroff", "restart testbox"},
+			wantNot:      []string{"shutdown -r now"},
+		},
+		{
+			name:         "disk only",
+			resizeResult: nil,
+			wantContains: []string{"Restart the VM to apply changes", "ssh testbox@exe.cloud sudo shutdown -r now"},
+			wantNot:      []string{"sudo poweroff", "restart testbox"},
+		},
+		{
+			name: "no cpu or memory change",
+			resizeResult: &api.ResizeVMResponse{
+				OldMemory: 2 * gib,
+				NewMemory: 2 * gib,
+				OldCPUs:   1,
+				NewCPUs:   1,
+			},
+			wantContains: []string{"Restart the VM to apply changes", "ssh testbox@exe.cloud sudo shutdown -r now"},
+			wantNot:      []string{"sudo poweroff", "restart testbox"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			output := &MockOutput{}
+			cc := &exemenu.CommandContext{Output: output}
+			writeResizeRestartNotice(cc, stage.Test(), "testbox", tt.resizeResult)
+			got := output.String()
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(got, want) {
+					t.Fatalf("output missing %q:\n%s", want, got)
+				}
+			}
+			for _, unwanted := range tt.wantNot {
+				if strings.Contains(got, unwanted) {
+					t.Fatalf("output unexpectedly contained %q:\n%s", unwanted, got)
+				}
 			}
 		})
 	}

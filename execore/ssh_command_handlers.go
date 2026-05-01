@@ -2457,15 +2457,7 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	cc.Writeln("")
-	memoryChanged := resizeResult != nil && resizeResult.OldMemory != resizeResult.NewMemory
-	if memoryChanged {
-		cc.Writeln("Configuration updated. Memory changes require a full restart via exe.dev:")
-		cc.Writeln("  ssh %s sudo poweroff", ss.server.env.BoxDest(boxName))
-		cc.Writeln("  ssh %s restart %s", ss.server.env.WebHost, boxName)
-	} else {
-		cc.Writeln("Configuration updated. Restart the VM to apply changes:")
-		cc.Writeln("  ssh %s sudo shutdown -r now", ss.server.env.BoxDest(boxName))
-	}
+	writeResizeRestartNotice(cc, ss.server.env, boxName, resizeResult)
 	if diskGrowResult != nil {
 		// Newer exeuntu images automatically run resize2fs on boot.
 		// Only show the manual resize2fs hint for non-exeuntu images or
@@ -2481,6 +2473,21 @@ func (ss *SSHServer) handleResizeCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	return nil
+}
+
+func writeResizeRestartNotice(cc *exemenu.CommandContext, env stage.Env, boxName string, resizeResult *api.ResizeVMResponse) {
+	cpuOrMemoryChanged := resizeResult != nil && (resizeResult.OldMemory != resizeResult.NewMemory || resizeResult.OldCPUs != resizeResult.NewCPUs)
+	if cpuOrMemoryChanged {
+		cc.Writeln("Configuration updated. CPU/memory changes require a full power off, then restart from exe.dev:")
+		cc.Writeln("  # inside the VM")
+		cc.Writeln("  sudo poweroff")
+		cc.Writeln("  # from the exe.dev shell")
+		cc.Writeln("  restart %s", boxName)
+		return
+	}
+
+	cc.Writeln("Configuration updated. Restart the VM to apply changes:")
+	cc.Writeln("  ssh %s sudo shutdown -r now", env.BoxDest(boxName))
 }
 
 func (ss *SSHServer) handleBackfillAllocatedCPUs(ctx context.Context, cc *exemenu.CommandContext) error {
