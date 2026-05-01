@@ -70,6 +70,42 @@ type tailscaleWhoisResponse struct {
 	} `json:"Node"`
 }
 
+// TailscaleIPs returns this node's Tailscale IPs (typically one IPv4 and
+// one IPv6) by querying the Tailscale local API. Used to bind listeners
+// to the tailnet interface only, so the public network never sees the
+// port.
+func TailscaleIPs(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		"http://local-tailscaled.sock/localapi/v0/status?peers=false", nil)
+	if err != nil {
+		return nil, fmt.Errorf("tailscale status: %w", err)
+	}
+
+	resp, err := tailscaledClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tailscale status: %w", err)
+	}
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("tailscale status %s: %s", resp.Status, body)
+	}
+
+	var raw struct {
+		Self struct {
+			TailscaleIPs []string `json:"TailscaleIPs"`
+		} `json:"Self"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("tailscale status decode: %w", err)
+	}
+	return raw.Self.TailscaleIPs, nil
+}
+
 // TailscaleWhoIs queries the Tailscale local API to identify the peer at
 // the given remoteAddr (ip:port as returned by http.Request.RemoteAddr).
 func TailscaleWhoIs(ctx context.Context, remoteAddr string) (Whois, error) {

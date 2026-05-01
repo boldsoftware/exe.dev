@@ -5,14 +5,15 @@ if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "Usage: $0 <target-host> <environment> [addr]"
     echo "  <environment>  Environment label displayed in the UI (e.g. 'staging', 'prod')."
     echo "                 Written to a systemd drop-in as EXE_OPS_ENVIRONMENT=<environment>."
-    echo "  [addr]         Listen address. Default ':443' for Tailscale automatic HTTPS."
-    echo "                 Pass ':5555' (or similar) for a non-privileged port."
+    echo "  [addr]         Listen address. Default 'tailscale:443' binds the host's tailnet IPs only,"
+    echo "                 keeping the port off the public internet. Pass ':443' to bind all interfaces"
+    echo "                 or ':5555' (or similar) for a non-privileged port."
     exit 1
 fi
 
 TARGET="$1"
 ENVIRONMENT="$2"
-ADDR="${3:-:443}"
+ADDR="${3:-tailscale:443}"
 
 case "$ENVIRONMENT" in
 *[!a-zA-Z0-9_:-]* | "")

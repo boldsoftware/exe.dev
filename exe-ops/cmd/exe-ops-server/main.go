@@ -38,6 +38,62 @@ func portHolder(addr string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// openListeners resolves addr to a set of bind addresses and opens a
+// TCP listener for each, wrapping in TLS when tlsConfig is non-nil.
+//
+// The "tailscale:<port>" sentinel binds to this host's tailnet IPs
+// (typically one IPv4 and one IPv6) only, so the public network never
+// sees the port. Any other addr is bound directly.
+func openListeners(ctx context.Context, addr string, tlsConfig *tls.Config) ([]net.Listener, error) {
+	var addrs []string
+	if port, ok := strings.CutPrefix(addr, "tailscale:"); ok {
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		ips, err := server.TailscaleIPs(lookupCtx)
+		if err != nil {
+			return nil, fmt.Errorf("resolve tailscale IPs: %w", err)
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no tailscale IPs found on this host")
+		}
+		for _, ip := range ips {
+			addrs = append(addrs, net.JoinHostPort(ip, port))
+		}
+	} else {
+		addrs = []string{addr}
+	}
+
+	var listeners []net.Listener
+	for _, a := range addrs {
+		l, err := net.Listen("tcp", a)
+		if err != nil {
+			for _, prev := range listeners {
+				prev.Close()
+			}
+			return nil, listenError(a, err)
+		}
+		if tlsConfig != nil {
+			l = tls.NewListener(l, tlsConfig)
+		}
+		listeners = append(listeners, l)
+	}
+	return listeners, nil
+}
+
+// listenError wraps a net.Listen error with a "held by pid N" hint when
+// the address is in use and lsof can identify the holder.
+func listenError(addr string, err error) error {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if se := new(os.SyscallError); errors.As(opErr.Err, &se) && se.Err == syscall.EADDRINUSE {
+			if pid := portHolder(addr); pid != "" {
+				return fmt.Errorf("listen %s: %w (held by pid %s)", addr, err, pid)
+			}
+		}
+	}
+	return fmt.Errorf("listen %s: %w", addr, err)
+}
+
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
@@ -48,7 +104,7 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "addr",
-				Usage:   "listen address",
+				Usage:   "listen address; use 'tailscale:<port>' to bind only this host's tailnet IPs",
 				Value:   ":5555",
 				EnvVars: []string{"EXE_OPS_ADDR"},
 			},
@@ -149,7 +205,13 @@ func main() {
 				srv.TLSConfig = &tls.Config{
 					GetCertificate: tscert.GetCertificate,
 					MinVersion:     tls.VersionTLS12,
+					NextProtos:     []string{"h2", "http/1.1"},
 				}
+			}
+
+			listeners, err := openListeners(ctx, c.String("addr"), srv.TLSConfig)
+			if err != nil {
+				return err
 			}
 
 			// Start git repo, inventory, and CD scheduler services.
@@ -159,29 +221,19 @@ func main() {
 				go scheduler.Run(ctx)
 			}
 
-			// Start server in goroutine.
-			go func() {
-				log.Info("server starting", "addr", c.String("addr"), "tls", useTLS, "version", version.Full())
-				var err error
-				if useTLS {
-					err = srv.ListenAndServeTLS("", "")
-				} else {
-					err = srv.ListenAndServe()
-				}
-				if err != nil && err != http.ErrServerClosed {
-					attrs := []any{"error", err}
-					var opErr *net.OpError
-					if errors.As(err, &opErr) {
-						if se := new(os.SyscallError); errors.As(opErr.Err, &se) && se.Err == syscall.EADDRINUSE {
-							if pid := portHolder(c.String("addr")); pid != "" {
-								attrs = append(attrs, "held_by_pid", pid)
-							}
-						}
+			// Start server on each listener. http.Server.Serve is safe to
+			// call concurrently from multiple goroutines on a single Server,
+			// and Shutdown closes all of them.
+			log.Info("server starting", "addr", c.String("addr"), "tls", useTLS, "version", version.Full())
+			for _, l := range listeners {
+				go func() {
+					log.Info("listening", "addr", l.Addr())
+					if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {
+						log.Error("server error", "addr", l.Addr(), "error", err)
+						cancel()
 					}
-					log.Error("server error", attrs...)
-					cancel()
-				}
-			}()
+				}()
+			}
 
 			<-ctx.Done()
 			log.Info("shutting down")
