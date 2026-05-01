@@ -62,19 +62,24 @@ func (m *ResourceManager) handleGuestMetricsJSON(w http.ResponseWriter, r *http.
 // debug page template. Strings are rendered through html/template, which
 // HTML-escapes them — so a VM whose name contains markup cannot inject.
 type guestMetricsRow struct {
-	ID, Name, Age string
-	Stale         bool
-	HaveLatest    bool
-	MemTotal      string
-	MemAvail      string
-	Cached        string
-	Reclaim       string
-	Dirty         string
-	Mlocked       string
-	PSISome60     float64
-	PSIFull60     float64
-	RefaultRate   float64
-	NumSamples    int
+	ID, Name, Age  string
+	VMTier         string
+	Stale          bool
+	HaveLatest     bool
+	MemTotal       string
+	MemAvail       string
+	Cached         string
+	Reclaim        string
+	Dirty          string
+	Mlocked        string
+	PSISome60      float64
+	PSIFull60      float64
+	RefaultRate    float64
+	LastCPUPct     float64
+	IdleFor        string
+	FrozenFor      string
+	LastWakeReason string
+	NumSamples     int
 }
 
 type guestMetricsPageData struct {
@@ -110,10 +115,19 @@ func (m *ResourceManager) handleGuestMetricsPage(w http.ResponseWriter, r *http.
 	data.Rows = make([]guestMetricsRow, 0, len(snap.Entries))
 	for _, e := range snap.Entries {
 		row := guestMetricsRow{
-			ID:         e.ID,
-			Name:       e.Name,
-			Age:        "\u2014",
-			HaveLatest: e.HaveLatest,
+			ID:             e.ID,
+			Name:           e.Name,
+			Age:            "\u2014",
+			VMTier:         e.VMTier.String(),
+			HaveLatest:     e.HaveLatest,
+			LastCPUPct:     e.LastCPUPct,
+			LastWakeReason: e.LastWakeReason,
+		}
+		if e.IdleFor > 0 {
+			row.IdleFor = e.IdleFor.Truncate(time.Second).String()
+		}
+		if e.FrozenFor > 0 {
+			row.FrozenFor = e.FrozenFor.Truncate(time.Second).String()
 		}
 		if e.HaveLatest {
 			d := now.Sub(e.Latest.FetchedAt)

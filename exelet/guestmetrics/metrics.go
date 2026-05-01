@@ -36,6 +36,17 @@ type Metrics struct {
 	// Whether memwatch is enabled (kill switch). 1=on, 0=off.
 	Enabled prometheus.Gauge
 
+	// Freeze/wake metrics.
+	FreezeTotal         prometheus.Counter
+	WakeTotal           *prometheus.CounterVec
+	IdleSecondsAtFreeze prometheus.Histogram
+	FrozenDwellSeconds  prometheus.Histogram
+	FrozenVMs           prometheus.Gauge
+	WitnessTotal        *prometheus.CounterVec
+
+	// Per-VM tier gauge: 0=active, 1=frozen.
+	VMTierGauge *prometheus.GaugeVec
+
 	// HostPressureReadErrors counts failed reads of host /proc/meminfo or
 	// /proc/pressure/memory. The reader retains the previous good sample
 	// on error, so a non-zero counter without a fresh sample means the
@@ -89,6 +100,51 @@ func NewMetrics(reg *prometheus.Registry) *Metrics {
 		Help: "Failed reads of host /proc/meminfo or /proc/pressure/memory; previous cached sample is retained.",
 	})
 	reg.MustRegister(hpReadErrs)
+
+	freezeTotal := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "freeze_total",
+		Help: "Total Active->Frozen transitions.",
+	})
+	reg.MustRegister(freezeTotal)
+
+	wakeTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "wake_total",
+		Help: "Total Frozen->Active transitions by reason.",
+	}, []string{"reason"})
+	reg.MustRegister(wakeTotal)
+
+	idleAtFreeze := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "idle_seconds_at_freeze",
+		Help:    "Seconds of idle time accumulated when a VM freezes.",
+		Buckets: prometheus.ExponentialBuckets(60, 2, 12),
+	})
+	reg.MustRegister(idleAtFreeze)
+
+	frozenDwell := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "frozen_dwell_seconds",
+		Help:    "Seconds a VM spent frozen, sampled on wake.",
+		Buckets: []float64{300, 900, 3600, 14400, 43200, 86400, 259200},
+	})
+	reg.MustRegister(frozenDwell)
+
+	frozenVMs := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "frozen_vms",
+		Help: "Number of VMs currently in Frozen tier.",
+	})
+	reg.MustRegister(frozenVMs)
+
+	witnessTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "witness_total",
+		Help: "NoteActivity calls observed, by VM tier.",
+	}, []string{"vm_tier"})
+	reg.MustRegister(witnessTotal)
+
+	vmTierGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "exelet", Subsystem: "guestmem", Name: "vm_tier",
+		Help: "Per-VM tier: 0=active, 1=frozen.",
+	}, labels)
+	reg.MustRegister(vmTierGauge)
+
 	return &Metrics{
 		CachedBytes:            mkGauge("cached_bytes", "Guest /proc/meminfo Cached."),
 		MemAvailableBytes:      mkGauge("mem_available_bytes", "Guest /proc/meminfo MemAvailable."),
@@ -106,6 +162,13 @@ func NewMetrics(reg *prometheus.Registry) *Metrics {
 		PoolScrapeDropped:      dropped,
 		HostTier:               hostTier,
 		Enabled:                enabled,
+		FreezeTotal:            freezeTotal,
+		WakeTotal:              wakeTotal,
+		IdleSecondsAtFreeze:    idleAtFreeze,
+		FrozenDwellSeconds:     frozenDwell,
+		FrozenVMs:              frozenVMs,
+		WitnessTotal:           witnessTotal,
+		VMTierGauge:            vmTierGauge,
 		HostPressureReadErrors: hpReadErrs,
 		registered:             make(map[string]struct{}),
 	}
@@ -135,6 +198,14 @@ func (m *Metrics) Update(id, name string, s Sample, refaultRate float64) {
 	m.mu.Unlock()
 }
 
+// SetVMTier updates the per-VM tier gauge.
+func (m *Metrics) SetVMTier(id, name string, t VMTier) {
+	if m == nil {
+		return
+	}
+	m.VMTierGauge.With(prometheus.Labels{"vm_id": id, "vm_name": name}).Set(float64(t))
+}
+
 // Delete removes per-VM labelsets to keep the cardinality bounded as VMs
 // come and go.
 func (m *Metrics) Delete(id, name string) {
@@ -154,6 +225,7 @@ func (m *Metrics) Delete(id, name string) {
 	m.LastFetchTSSecs.Delete(lbl)
 	m.ScrapesTotal.Delete(lbl)
 	m.ScrapeFailures.Delete(lbl)
+	m.VMTierGauge.Delete(lbl)
 	m.mu.Lock()
 	delete(m.registered, id+"\x00"+name)
 	m.mu.Unlock()

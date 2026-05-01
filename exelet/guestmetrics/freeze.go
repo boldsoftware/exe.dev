@@ -18,6 +18,9 @@ func (p *Pool) NoteActivity(id string, w ActivityWitness) {
 
 	e.sched.Lock()
 	e.lastCPUPct = w.CPUPercent
+	if m := p.cfg.Metrics; m != nil {
+		m.WitnessTotal.WithLabelValues(e.vmTier.String()).Inc()
+	}
 
 	var kick bool
 	switch e.vmTier {
@@ -113,10 +116,17 @@ func (p *Pool) transitionToActiveLocked(e *entry, now time.Time, reason WakeReas
 	if e.vmTier != VMTierFrozen {
 		return
 	}
+	dwell := now.Sub(e.frozenSince)
 	e.vmTier = VMTierActive
 	e.idleSince = time.Time{}
 	e.lastWakeReason = reason
 	e.next = now // dispatcher will fire on the next tick / kick
+	if m := p.cfg.Metrics; m != nil {
+		m.WakeTotal.WithLabelValues(reason.String()).Inc()
+		m.SetVMTier(e.info.ID, e.info.Name, VMTierActive)
+		m.FrozenDwellSeconds.Observe(dwell.Seconds())
+		m.FrozenVMs.Dec()
+	}
 }
 
 // transitionToFrozenLocked: caller holds e.sched.
@@ -124,6 +134,14 @@ func (p *Pool) transitionToFrozenLocked(e *entry, now time.Time) {
 	e.vmTier = VMTierFrozen
 	e.frozenSince = now
 	e.next = now.Add(p.cfg.FrozenCadence)
+	if m := p.cfg.Metrics; m != nil {
+		m.FreezeTotal.Inc()
+		m.SetVMTier(e.info.ID, e.info.Name, VMTierFrozen)
+		if !e.idleSince.IsZero() {
+			m.IdleSecondsAtFreeze.Observe(now.Sub(e.idleSince).Seconds())
+		}
+		m.FrozenVMs.Inc()
+	}
 }
 
 // shouldFreeze decides whether an Active VM should enter Frozen.

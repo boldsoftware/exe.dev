@@ -16,23 +16,29 @@ PSI some60={{printf "%.2f" .HostPSISome60}} full60={{printf "%.2f" .HostPSIFull6
 <table>
 <thead>
 <tr>
-<th>id</th><th>name</th><th>age</th><th>MemTotal</th><th>MemAvail</th>
+<th>id</th><th>name</th><th>tier</th><th>age</th><th>MemTotal</th><th>MemAvail</th>
 <th>Cached</th><th>Reclaim</th><th>Dirty</th><th>Mlocked</th>
-<th>PSI s60</th><th>PSI f60</th><th>refault/s</th><th>n</th>
+<th>PSI s60</th><th>PSI f60</th><th>refault/s</th><th>cpu%</th>
+<th>idle</th><th>frozen</th><th>wake</th><th>n</th>
 </tr>
 </thead>
 <tbody>
 {{range .Rows}}
-<tr{{if .Stale}} class="stale"{{end}}>
-<td>{{.ID}}</td><td>{{.Name}}</td><td>{{.Age}}</td>
+<tr{{if .Stale}} class="stale"{{end}}{{if eq .VMTier "frozen"}} class="frozen"{{end}}>
+<td>{{.ID}}</td><td>{{.Name}}</td>
+<td><span class="tag {{.VMTier}}">{{.VMTier}}</span></td>
+<td>{{.Age}}</td>
 {{if .HaveLatest}}
 <td>{{.MemTotal}}</td><td>{{.MemAvail}}</td><td>{{.Cached}}</td>
 <td>{{.Reclaim}}</td><td>{{.Dirty}}</td><td>{{.Mlocked}}</td>
 <td>{{printf "%.2f" .PSISome60}}</td><td>{{printf "%.2f" .PSIFull60}}</td>
-<td>{{printf "%.1f" .RefaultRate}}</td><td>{{.NumSamples}}</td>
+<td>{{printf "%.1f" .RefaultRate}}</td>
 {{else}}
 <td colspan="10">(no sample yet)</td>
 {{end}}
+<td>{{printf "%.1f" .LastCPUPct}}</td>
+<td>{{.IdleFor}}</td><td>{{.FrozenFor}}</td>
+<td>{{.LastWakeReason}}</td><td>{{.NumSamples}}</td>
 </tr>
 {{end}}
 </tbody>
