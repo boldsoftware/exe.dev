@@ -55,6 +55,10 @@
         @action="onDetailAction"
       />
 
+      <!-- Pool Charts (per-VM view) -->
+      <div class="section-divider"></div>
+      <PoolCharts :hours="24" :highlight-v-m="vmName" />
+
       <!-- Creation Log -->
       <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" @done="load" @fail="load" />
       <div v-else-if="box.hasCreationLog && showCreationLog" class="creation-log-wrap">
@@ -228,6 +232,7 @@ import CopyButton from '../components/CopyButton.vue'
 import CommandModal from '../components/CommandModal.vue'
 import ResizeDiskModal from '../components/ResizeDiskModal.vue'
 import VMDetailSections from '../components/VMDetailSections.vue'
+import PoolCharts from '../components/PoolCharts.vue'
 const CreationLog = defineAsyncComponent(() => import('../components/CreationLog.vue'))
 
 const route = useRoute()

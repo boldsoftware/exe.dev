@@ -32,6 +32,7 @@ import {
   fetchPoolHistory,
   fetchVMsPool,
   type PoolPoint,
+  type VMPoolPoint,
   type VMsPoolResponse,
 } from '../api/client'
 
@@ -39,10 +40,12 @@ Chart.register(...registerables)
 
 const props = defineProps<{
   hours: number
+  highlightVM?: string
 }>()
 
 const loading = ref(true)
 const points = ref<PoolPoint[]>([])
+const vmBreakdown = ref<Record<string, VMPoolPoint[]>>({})
 const pool = ref<VMsPoolResponse | null>(null)
 
 const cpuCanvas = ref<HTMLCanvasElement | null>(null)
@@ -53,24 +56,22 @@ let memChart: Chart | null = null
 const cpuLimit = computed(() => pool.value?.cpu_max ?? 0)
 const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
 
+function avgOver(vals: number[]): number {
+  if (vals.length === 0) return 0
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
+
 const cpuCurrent = computed(() => {
   if (points.value.length === 0) return ''
-  const last = points.value[points.value.length - 1]
-  const avg = avgOver(points.value.map(p => p.cpu_cores.sum))
+  const avg = avgOver(points.value.map((p) => p.cpu_cores.sum))
   return `avg ${avg.toFixed(1)} / ${cpuLimit.value} vCPUs`
 })
 
 const memCurrent = computed(() => {
   if (points.value.length === 0 || memLimit.value === 0) return ''
-  const last = points.value[points.value.length - 1]
-  const avg = avgOver(points.value.map(p => p.mem_bytes.sum))
+  const avg = avgOver(points.value.map((p) => p.mem_bytes.sum))
   return `avg ${fmtGiB(avg)} / ${fmtGiB(memLimit.value)}`
 })
-
-function avgOver(vals: number[]): number {
-  if (vals.length === 0) return 0
-  return vals.reduce((a, b) => a + b, 0) / vals.length
-}
 
 function fmtGiB(bytes: number): string {
   const gib = bytes / (1024 * 1024 * 1024)
@@ -81,8 +82,7 @@ function fmtGiB(bytes: number): string {
 
 function fmtTime(ts: string): string {
   const d = new Date(ts)
-  if (props.hours <= 24)
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (props.hours <= 24) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
@@ -99,49 +99,72 @@ function getChartColors() {
 function buildChart(
   canvas: HTMLCanvasElement,
   labels: string[],
-  avgData: number[],
+  totalData: number[],
   limit: number,
-  yLabel: string,
   formatY: (v: number) => string,
+  vmData: Record<string, number[]>,
+  highlightVM?: string,
 ): Chart {
   const colors = getChartColors()
-  const yMax = Math.max(limit * 1.15, ...avgData) || 1
+  const yMax = Math.max(limit * 1.15, ...totalData) || 1
+  const hasVMs = Object.keys(vmData).length > 0
+  const showPerVM = hasVMs && highlightVM
+
+  const datasets: any[] = []
+
+  if (showPerVM) {
+    // Per-VM lines: faded for all, bold for highlighted.
+    const vmNames = Object.keys(vmData).sort()
+    vmNames.forEach((vm) => {
+      const isHighlighted = vm === highlightVM
+      datasets.push({
+        label: vm,
+        data: vmData[vm],
+        borderColor: isHighlighted ? colors.primary : colors.muted,
+        backgroundColor: isHighlighted ? colors.primary + '30' : 'transparent',
+        borderWidth: isHighlighted ? 2 : 1,
+        fill: isHighlighted,
+        pointRadius: 0,
+        pointHitRadius: 8,
+        tension: 0.3,
+        borderDash: isHighlighted ? [] : [3, 3],
+        order: isHighlighted ? 0 : 1,
+      })
+    })
+  } else {
+    // Aggregate total line.
+    datasets.push({
+      label: 'Total',
+      data: totalData,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '30',
+      borderWidth: 1.5,
+      fill: true,
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3,
+    })
+  }
+
+  // Pool limit line.
+  datasets.push({
+    label: 'Pool limit',
+    data: new Array(labels.length).fill(limit),
+    borderColor: '#cf222e',
+    borderWidth: 1.5,
+    borderDash: [6, 4],
+    fill: false,
+    pointRadius: 0,
+    pointHitRadius: 0,
+  })
 
   return new Chart(canvas, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Average',
-          data: avgData,
-          borderColor: colors.primary,
-          backgroundColor: colors.primary + '30',
-          borderWidth: 1.5,
-          fill: true,
-          pointRadius: 0,
-          pointHitRadius: 8,
-          tension: 0.3,
-        },
-        {
-          label: 'Pool size',
-          data: new Array(labels.length).fill(limit),
-          borderColor: '#cf222e',
-          borderWidth: 1.5,
-          borderDash: [6, 4],
-          fill: false,
-          pointRadius: 0,
-          pointHitRadius: 0,
-        },
-      ],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: {
-        mode: 'index',
-        intersect: false,
-      },
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -168,12 +191,11 @@ function buildChart(
               return `${ctx.dataset.label}: ${formatY(ctx.parsed.y ?? 0)}`
             },
             labelColor: (ctx) => {
-              const isLimit = ctx.datasetIndex === 1
-              const c = isLimit ? '#cf222e' : colors.muted
+              const c = (ctx.dataset.borderColor as string) || colors.muted
               return { borderColor: c, backgroundColor: c }
             },
             labelTextColor: (ctx) => {
-              return ctx.datasetIndex === 1 ? '#cf222e' : colors.muted
+              return (ctx.dataset.borderColor as string) || colors.muted
             },
           },
         },
@@ -181,11 +203,7 @@ function buildChart(
       scales: {
         x: {
           grid: { color: colors.border },
-          ticks: {
-            color: colors.muted,
-            font: { size: 10 },
-            maxTicksLimit: 6,
-          },
+          ticks: { color: colors.muted, font: { size: 10 }, maxTicksLimit: 6 },
         },
         y: {
           min: 0,
@@ -196,9 +214,7 @@ function buildChart(
             font: { size: 10 },
             callback: (v) => formatY(v as number),
           },
-          title: {
-            display: false,
-          },
+          title: { display: false },
         },
       },
     },
@@ -214,6 +230,15 @@ function renderCharts() {
   if (points.value.length === 0) return
 
   const labels = points.value.map((p) => fmtTime(p.timestamp))
+  const vms = vmBreakdown.value
+
+  // Build per-VM data arrays keyed by metric.
+  const vmCPU: Record<string, number[]> = {}
+  const vmMem: Record<string, number[]> = {}
+  for (const [vm, pts] of Object.entries(vms)) {
+    vmCPU[vm] = pts.map((p) => p.cpu_cores)
+    vmMem[vm] = pts.map((p) => p.mem_bytes)
+  }
 
   if (cpuCanvas.value && cpuLimit.value > 0) {
     cpuChart = buildChart(
@@ -221,8 +246,9 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.cpu_cores.sum),
       cpuLimit.value,
-      'cores',
       (v) => v.toFixed(1),
+      vmCPU,
+      props.highlightVM,
     )
   }
 
@@ -232,8 +258,9 @@ function renderCharts() {
       labels,
       points.value.map((p) => p.mem_bytes.sum),
       memLimit.value,
-      'GiB',
       (v) => fmtGiB(v),
+      vmMem,
+      props.highlightVM,
     )
   }
 }
@@ -247,8 +274,10 @@ async function loadData() {
     ])
     pool.value = poolRes
     points.value = historyRes.points ?? []
+    vmBreakdown.value = historyRes.vms ?? {}
   } catch {
     points.value = []
+    vmBreakdown.value = {}
   } finally {
     loading.value = false
   }

@@ -86,7 +86,14 @@ type PoolPoint struct {
 	MemBytes  PoolMetric `json:"mem_bytes"`
 }
 
+// VMPoolPoint is a per-VM data point within pool history.
+type VMPoolPoint struct {
+	CPUCores float64 `json:"cpu_cores"`
+	MemBytes float64 `json:"mem_bytes"`
+}
+
 // QueryVMsPoolResponse is the response for POST /query/vms/pool.
 type QueryVMsPoolResponse struct {
-	Points []PoolPoint `json:"points"`
+	Points []PoolPoint              `json:"points"`
+	VMs    map[string][]VMPoolPoint `json:"vms,omitempty"`
 }

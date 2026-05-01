@@ -578,6 +578,21 @@ func TestQueryVMsPool(t *testing.T) {
 		if !anyCPU {
 			t.Errorf("expected at least one pool point with non-zero CPU, got all zeros: %+v", result.Points)
 		}
+
+		// Per-VM breakdown should be present.
+		if len(result.VMs) == 0 {
+			t.Fatal("expected per-VM breakdown, got empty")
+		}
+		for _, vm := range []string{"vm-a", "vm-b"} {
+			vmPts, ok := result.VMs[vm]
+			if !ok {
+				t.Errorf("missing VM %q in breakdown", vm)
+				continue
+			}
+			if len(vmPts) != len(result.Points) {
+				t.Errorf("VM %q: got %d points, want %d", vm, len(vmPts), len(result.Points))
+			}
+		}
 	})
 
 	t.Run("single VM", func(t *testing.T) {

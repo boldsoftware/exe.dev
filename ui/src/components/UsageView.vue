@@ -1,10 +1,5 @@
 <template>
   <div class="usage-view">
-    <div class="beta-banner">
-      <span class="beta-banner-tag">Beta</span>
-      Metrics update periodically and may have discrepancies. For real-time data, use <code>free</code>, <code>df -h</code>, or <code>top</code> on the VM.
-    </div>
-
     <!-- Pool Charts -->
     <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
 
@@ -37,16 +32,16 @@
       <Column field="cpuSort" header="vCPUs" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
         <template #body="{ data }">
           <div class="metric-cell">
-            <!-- <TufteSpark :values="data.cpuValues" :scale-max="data.cpuNominal" color="#ff7f0e" /> -->
             <span class="metric-value">{{ data.cpuLabel }}</span>
+            <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }}</span>
           </div>
         </template>
       </Column>
       <Column field="memSort" header="Memory" sortable headerStyle="text-align: center; width: 15%" bodyStyle="text-align: center">
         <template #body="{ data }">
           <div class="metric-cell">
-            <!-- <TufteSpark :values="data.memValues" color="#1f77b4" /> -->
             <span class="metric-value">{{ data.memLabel }}</span>
+            <span v-if="memMaxLabel" class="metric-denom">/ {{ memMaxLabel }}</span>
           </div>
         </template>
       </Column>
@@ -102,6 +97,16 @@ const ranges = [
 ]
 
 const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.label ?? '')
+
+const cpuMax = computed(() => pool.value?.cpu_max ?? 0)
+const memMaxLabel = computed(() => {
+  const bytes = pool.value?.mem_max_bytes ?? 0
+  if (bytes === 0) return ''
+  const gib = bytes / (1024 * 1024 * 1024)
+  if (gib >= 1) return gib.toFixed(1) + ' GiB'
+  const mib = bytes / (1024 * 1024)
+  return mib.toFixed(0) + ' MiB'
+})
 
 function onRowClick(e: { data: UsageRow }) {
   router.push(`/vm/${e.data.name}`)
@@ -233,29 +238,6 @@ const filteredRows = computed(() => {
   gap: 12px;
 }
 
-.beta-banner {
-  font-size: 12px;
-  color: var(--badge-public-text);
-  background: var(--badge-public-bg);
-  border-radius: 6px;
-  padding: 8px 12px;
-  line-height: 1.5;
-}
-.beta-banner code {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: rgba(0, 0, 0, 0.08);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-.beta-banner-tag {
-  font-weight: 800;
-  text-transform: uppercase;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  margin-right: 4px;
-}
-
 .table-heading {
   font-size: 11px;
   font-weight: 600;
@@ -309,6 +291,10 @@ const filteredRows = computed(() => {
 }
 .metric-value {
   text-align: center;
+}
+.metric-denom {
+  color: var(--text-color-muted);
+  font-size: 11px;
 }
 
 .usage-loading {

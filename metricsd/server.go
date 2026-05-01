@@ -738,13 +738,14 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 
 	// Query: bucket timestamps, compute CPU rate per VM using LAG across
 	// buckets (not FIRST/LAST within a bucket, which yields 0 when a bucket
-	// has only a single data point), then aggregate across VMs per bucket.
+	// has only a single data point). Return per-VM rows so we can build
+	// both aggregate and per-VM breakdown.
 	query := fmt.Sprintf(`
 		WITH raw AS (
 			SELECT
 				time_bucket(INTERVAL '%s', timestamp) AS bucket,
 				vm_name,
-				LAST(memory_rss_bytes ORDER BY timestamp) AS mem_bytes,
+				LAST(memory_rss_bytes ORDER BY timestamp) - COALESCE(LAST(memory_file_bytes ORDER BY timestamp), 0) AS mem_bytes,
 				LAST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum,
 				LAST(timestamp ORDER BY timestamp) AS last_ts
 			FROM vm_metrics_all
@@ -762,30 +763,20 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 				LAG(cpu_cum) OVER (PARTITION BY vm_name ORDER BY bucket) AS prev_cpu_cum,
 				LAG(last_ts) OVER (PARTITION BY vm_name ORDER BY bucket) AS prev_ts
 			FROM raw
-		),
-		deltas AS (
-			SELECT
-				bucket,
-				vm_name,
-				mem_bytes,
-				CASE
-					WHEN prev_cpu_cum IS NOT NULL
-						AND cpu_cum >= prev_cpu_cum
-						AND epoch(last_ts) - epoch(prev_ts) > 0
-					THEN (cpu_cum - prev_cpu_cum) / (epoch(last_ts) - epoch(prev_ts))
-					ELSE 0
-				END AS cpu_cores
-			FROM lagged
 		)
 		SELECT
 			bucket,
-			AVG(cpu_cores) AS cpu_avg,
-			SUM(cpu_cores) AS cpu_sum,
-			AVG(mem_bytes) AS mem_avg,
-			SUM(mem_bytes) AS mem_sum
-		FROM deltas
-		GROUP BY bucket
-		ORDER BY bucket ASC
+			vm_name,
+			mem_bytes,
+			CASE
+				WHEN prev_cpu_cum IS NOT NULL
+					AND cpu_cum >= prev_cpu_cum
+					AND epoch(last_ts) - epoch(prev_ts) > 0
+				THEN (cpu_cum - prev_cpu_cum) / (epoch(last_ts) - epoch(prev_ts))
+				ELSE 0
+			END AS cpu_cores
+		FROM lagged
+		ORDER BY bucket ASC, vm_name ASC
 	`, bucketInterval, placeholderStr, req.Hours)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -796,20 +787,22 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	points := make([]types.PoolPoint, 0)
+	// Collect per-VM rows, then aggregate into pool points.
+	type vmRow struct {
+		bucket   time.Time
+		vmName   string
+		memBytes float64
+		cpuCores float64
+	}
+	var allRows []vmRow
 	for rows.Next() {
-		var bucket time.Time
-		var cpuAvg, cpuSum, memAvg, memSum float64
-		if err := rows.Scan(&bucket, &cpuAvg, &cpuSum, &memAvg, &memSum); err != nil {
+		var r vmRow
+		if err := rows.Scan(&r.bucket, &r.vmName, &r.memBytes, &r.cpuCores); err != nil {
 			slog.ErrorContext(ctx, "failed to scan pool row", "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		points = append(points, types.PoolPoint{
-			Timestamp: bucket.UTC().Format(time.RFC3339),
-			CPUCores:  types.PoolMetric{Avg: cpuAvg, Sum: cpuSum},
-			MemBytes:  types.PoolMetric{Avg: memAvg, Sum: memSum},
-		})
+		allRows = append(allRows, r)
 	}
 	if err := rows.Err(); err != nil {
 		slog.ErrorContext(ctx, "rows iteration error", "error", err)
@@ -817,8 +810,61 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build ordered bucket list and per-bucket aggregates.
+	var buckets []time.Time
+	bucketIdx := make(map[time.Time]int) // bucket -> index in buckets slice
+	for _, r := range allRows {
+		if _, ok := bucketIdx[r.bucket]; !ok {
+			bucketIdx[r.bucket] = len(buckets)
+			buckets = append(buckets, r.bucket)
+		}
+	}
+
+	// Aggregate points.
+	type agg struct {
+		cpuSum, memSum float64
+		count          int
+	}
+	aggs := make([]agg, len(buckets))
+	// Per-VM breakdown: vm_name -> slice of VMPoolPoint (one per bucket).
+	vmSet := make(map[string]bool)
+	for _, r := range allRows {
+		vmSet[r.vmName] = true
+	}
+	vmPoints := make(map[string][]types.VMPoolPoint, len(vmSet))
+	for vm := range vmSet {
+		vmPoints[vm] = make([]types.VMPoolPoint, len(buckets))
+	}
+
+	for _, r := range allRows {
+		idx := bucketIdx[r.bucket]
+		aggs[idx].cpuSum += r.cpuCores
+		aggs[idx].memSum += r.memBytes
+		aggs[idx].count++
+		vmPoints[r.vmName][idx] = types.VMPoolPoint{
+			CPUCores: r.cpuCores,
+			MemBytes: r.memBytes,
+		}
+	}
+
+	points := make([]types.PoolPoint, len(buckets))
+	for i, b := range buckets {
+		a := aggs[i]
+		avgCPU := 0.0
+		avgMem := 0.0
+		if a.count > 0 {
+			avgCPU = a.cpuSum / float64(a.count)
+			avgMem = a.memSum / float64(a.count)
+		}
+		points[i] = types.PoolPoint{
+			Timestamp: b.UTC().Format(time.RFC3339),
+			CPUCores:  types.PoolMetric{Avg: avgCPU, Sum: a.cpuSum},
+			MemBytes:  types.PoolMetric{Avg: avgMem, Sum: a.memSum},
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(types.QueryVMsPoolResponse{Points: points})
+	json.NewEncoder(w).Encode(types.QueryVMsPoolResponse{Points: points, VMs: vmPoints})
 }
 
 func (s *Server) handleQueryUsage(w http.ResponseWriter, r *http.Request) {

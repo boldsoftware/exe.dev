@@ -12,7 +12,8 @@ import (
 
 // usagePoolResponse is the JSON response for GET /api/vms/usage/pool.
 type usagePoolResponse struct {
-	Points []types.PoolPoint `json:"points"`
+	Points []types.PoolPoint              `json:"points"`
+	VMs    map[string][]types.VMPoolPoint `json:"vms,omitempty"`
 }
 
 // HandleAPIUsagePool handles GET /api/vms/usage/pool.
@@ -51,7 +52,7 @@ func (s *Server) HandleAPIUsagePool(w http.ResponseWriter, r *http.Request, user
 	}
 
 	client := newMetricsClient(s.metricsdURL)
-	points, err := client.queryVMsPool(ctx, vmNames, hours)
+	result, err := client.queryVMsPool(ctx, vmNames, hours)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to query pool history", "error", err)
 		http.Error(w, "failed to query metrics", http.StatusBadGateway)
@@ -59,5 +60,5 @@ func (s *Server) HandleAPIUsagePool(w http.ResponseWriter, r *http.Request, user
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(usagePoolResponse{Points: points})
+	json.NewEncoder(w).Encode(usagePoolResponse{Points: result.Points, VMs: result.VMs})
 }

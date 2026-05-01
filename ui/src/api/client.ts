@@ -425,8 +425,14 @@ export interface PoolPoint {
   mem_bytes: PoolMetric
 }
 
+export interface VMPoolPoint {
+  cpu_cores: number
+  mem_bytes: number
+}
+
 export interface PoolHistoryResponse {
   points: PoolPoint[]
+  vms?: Record<string, VMPoolPoint[]>
 }
 
 export async function fetchPoolHistory(hours: number = 24): Promise<PoolHistoryResponse> {
