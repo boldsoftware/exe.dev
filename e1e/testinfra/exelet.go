@@ -441,6 +441,11 @@ func StartExelet(ctx context.Context, exeletBinary, ctrHost string, exedPort, me
 		"--guest-metrics-poll-interval-calm", "2s",
 		"--guest-metrics-poll-interval-normal", "2s",
 		"--guest-metrics-poll-interval-pressured", "2s",
+		// Freeze knobs shrunk so e1e can drive the state machine in seconds.
+		"--memwatch-freeze-idle-window", "4s",
+		"--memwatch-freeze-min-uptime", "1ns",
+		"--memwatch-frozen-cadence", "24h",
+		"--memwatch-frozen-stale-after", "25h",
 		"--exed-url", exedProxyURL,
 		"--metadata-url", metadataProxyURL,
 		"--enable-hugepages",
@@ -697,7 +702,7 @@ func startExeletLocal(ctx context.Context, exeletBinary string, exedPort, metada
 
 	encodedNetwork := url.QueryEscape(res.networkCIDR)
 
-	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --name localhost --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --guest-metrics-poll-interval-calm 2s --guest-metrics-poll-interval-normal 2s --guest-metrics-poll-interval-pressured 2s --exed-url %s --metadata-url %s --enable-hugepages --desired-state-sync --desired-state-sync-interval 1s --pktflow-enabled --pktflow-interval 2s --pktflow-sample-rate 1 --pktflow-mapping-refresh 500ms`,
+	localCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --stage test --name localhost --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s&disable_bandwidth=true" --proxy-port-min %d --proxy-port-max %d --resource-manager-interval 5s --guest-metrics-poll-interval-calm 2s --guest-metrics-poll-interval-normal 2s --guest-metrics-poll-interval-pressured 2s --memwatch-freeze-idle-window 4s --memwatch-freeze-min-uptime 1ns --memwatch-frozen-cadence 24h --memwatch-frozen-stale-after 25h --exed-url %s --metadata-url %s --enable-hugepages --desired-state-sync --desired-state-sync-interval 1s --pktflow-enabled --pktflow-interval 2s --pktflow-sample-rate 1 --pktflow-mapping-refresh 500ms`,
 		res.coverDir, exeletBinary, res.dataDir, res.dataDir, res.dataDir, res.zfsDataset, res.dataDir, res.bridgeName, encodedNetwork, res.proxyPortMin, res.proxyPortMax, exedProxyURL, metadataProxyURL)
 
 	// Add replication flags if configured

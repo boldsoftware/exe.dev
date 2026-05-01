@@ -23,6 +23,11 @@ func (t VMTier) String() string {
 	return "unknown"
 }
 
+// MarshalJSON encodes VMTier as a JSON string.
+func (t VMTier) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + t.String() + `"`), nil
+}
+
 // WakeReason identifies what triggered a Frozen→Active transition.
 type WakeReason uint8
 
