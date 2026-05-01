@@ -58,7 +58,15 @@
       <!-- Pool Charts (per-VM view) -->
       <template v-if="hasUsage">
       <div class="section-divider"></div>
-      <PoolCharts :hours="24" :highlight-v-m="vmName" />
+      <div class="pool-section">
+        <div class="pool-header">
+          <div class="section-heading">Resource Pool</div>
+          <div class="range-picker">
+            <button v-for="r in ranges" :key="r.hours" class="range-btn" :class="{ active: poolHours === r.hours }" @click="poolHours = r.hours">{{ r.label }}</button>
+          </div>
+        </div>
+        <PoolCharts :hours="poolHours" :highlight-v-m="vmName" hide-heading />
+      </div>
       </template>
 
       <!-- Creation Log -->
@@ -373,6 +381,14 @@ const attachedIntegrations = computed<AttachedIntegrationRow[]>(() => {
   return rows
 })
 
+
+// Pool chart range
+const poolHours = ref(24)
+const ranges = [
+  { hours: 24, label: '24h' },
+  { hours: 168, label: '7d' },
+  { hours: 720, label: '30d' },
+]
 
 // Creation log
 const showCreationLog = ref(false)
@@ -976,6 +992,41 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   word-break: break-all;
   min-width: 0;
+}
+
+/* Pool section */
+.pool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.range-picker {
+  display: flex;
+  gap: 0;
+}
+.range-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--input-bg);
+  color: var(--text-color-secondary);
+  border: 1px solid var(--input-border);
+  transition: all 0.15s;
+}
+.range-btn:first-child { border-radius: 4px 0 0 4px; }
+.range-btn:last-child { border-radius: 0 4px 4px 0; }
+.range-btn:not(:first-child) { border-left: none; }
+.range-btn.active {
+  background: var(--text-color);
+  color: var(--surface-ground);
+  border-color: var(--text-color);
 }
 
 /* Buttons */

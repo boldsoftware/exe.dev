@@ -1,6 +1,6 @@
 <template>
   <div class="pool-charts-section">
-    <div class="section-heading">Resource Pool</div>
+    <div v-if="!hideHeading" class="section-heading">Resource Pool</div>
 
     <div v-if="loading" class="pool-charts-loading">
       <i class="pi pi-spin pi-spinner"></i> Loading...
@@ -41,6 +41,7 @@ Chart.register(...registerables)
 const props = defineProps<{
   hours: number
   highlightVM?: string
+  hideHeading?: boolean
 }>()
 
 const loading = ref(true)
@@ -56,21 +57,16 @@ let memChart: Chart | null = null
 const cpuLimit = computed(() => pool.value?.cpu_max ?? 0)
 const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
 
-function avgOver(vals: number[]): number {
-  if (vals.length === 0) return 0
-  return vals.reduce((a, b) => a + b, 0) / vals.length
-}
-
 const cpuCurrent = computed(() => {
   if (points.value.length === 0) return ''
-  const avg = avgOver(points.value.map((p) => p.cpu_cores.sum))
-  return `avg ${avg.toFixed(1)} / ${cpuLimit.value} vCPUs`
+  const last = points.value[points.value.length - 1]
+  return `${last.cpu_cores.sum.toFixed(1)} / ${cpuLimit.value} vCPUs`
 })
 
 const memCurrent = computed(() => {
   if (points.value.length === 0 || memLimit.value === 0) return ''
-  const avg = avgOver(points.value.map((p) => p.mem_bytes.sum))
-  return `avg ${fmtGiB(avg)} / ${fmtGiB(memLimit.value)}`
+  const last = points.value[points.value.length - 1]
+  return `${fmtGiB(last.mem_bytes.sum)} / ${fmtGiB(memLimit.value)}`
 })
 
 function fmtGiB(bytes: number): string {

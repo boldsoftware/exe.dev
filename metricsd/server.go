@@ -745,7 +745,7 @@ func (s *Server) handleQueryVMsPool(w http.ResponseWriter, r *http.Request) {
 			SELECT
 				time_bucket(INTERVAL '%s', timestamp) AS bucket,
 				vm_name,
-				LAST(memory_rss_bytes ORDER BY timestamp) - COALESCE(LAST(memory_file_bytes ORDER BY timestamp), 0) AS mem_bytes,
+				LAST(memory_nominal_bytes ORDER BY timestamp) AS mem_bytes,
 				LAST(cpu_used_cumulative_seconds ORDER BY timestamp) AS cpu_cum,
 				LAST(timestamp ORDER BY timestamp) AS last_ts
 			FROM vm_metrics_all

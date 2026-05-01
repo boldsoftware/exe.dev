@@ -11,6 +11,12 @@
     <!-- Usage Table -->
     <template v-else-if="filteredRows.length > 0">
     <div class="table-heading">VMs <span class="table-heading-range">{{ rangeLabel }}</span></div>
+    <div class="totals-row">
+      <div class="totals-name">Total ({{ filteredRows.length }} VMs)</div>
+      <div class="totals-metric">{{ totalCpuLabel }} <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }}</span></div>
+      <div class="totals-metric">{{ totalMemLabel }} <span v-if="memMaxLabel" class="metric-denom">/ {{ memMaxLabel }}</span></div>
+      <div class="totals-metric">{{ totalDiskLabel }}</div>
+    </div>
     <DataTable
       :value="filteredRows"
       sortField="name"
@@ -229,6 +235,21 @@ const filteredRows = computed(() => {
   if (!q) return rows.value
   return rows.value.filter((r) => r.name.toLowerCase().includes(q))
 })
+
+const totalCpuLabel = computed(() => {
+  const sum = filteredRows.value.reduce((acc, r) => acc + r.cpuSort, 0)
+  return fmtCores(sum)
+})
+
+const totalMemLabel = computed(() => {
+  const sum = filteredRows.value.reduce((acc, r) => acc + r.memSort, 0)
+  return fmtMem(sum)
+})
+
+const totalDiskLabel = computed(() => {
+  const sum = filteredRows.value.reduce((acc, r) => acc + r.diskSort, 0)
+  return fmtDisk(sum)
+})
 </script>
 
 <style scoped>
@@ -253,6 +274,33 @@ const filteredRows = computed(() => {
   text-transform: none;
   letter-spacing: 0;
   font-size: 10px;
+}
+
+.totals-row {
+  display: grid;
+  grid-template-columns: 1fr 15% 15% 15%;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.totals-name {
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-color);
+}
+.totals-metric {
+  text-align: center;
+  color: var(--text-color);
 }
 
 .usage-table :deep(.p-datatable-tbody > tr) {
