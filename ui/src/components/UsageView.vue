@@ -32,7 +32,7 @@
       sortField="name"
       :sortOrder="1"
       stripedRows
-      size="small"
+
       class="usage-table"
       tableStyle="width: 100%"
       @row-click="onRowClick"
