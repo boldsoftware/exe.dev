@@ -410,6 +410,8 @@ export interface VMsPoolResponse {
   tier_name: string
   cpu_max: number
   mem_max_bytes: number
+  cpu_allocated: number
+  mem_allocated_bytes: number
   max_vms: number
   vms_total: number
   vms_running: number

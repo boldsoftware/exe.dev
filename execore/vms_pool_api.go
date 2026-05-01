@@ -10,13 +10,15 @@ import (
 
 // vmsPoolResponse is the JSON response for GET /api/vms/pool.
 type vmsPoolResponse struct {
-	PlanName    string `json:"plan_name"`
-	TierName    string `json:"tier_name"`
-	CPUMax      uint64 `json:"cpu_max"`
-	MemMaxBytes uint64 `json:"mem_max_bytes"`
-	MaxVMs      int    `json:"max_vms"`
-	VMsTotal    int    `json:"vms_total"`
-	VMsRunning  int    `json:"vms_running"`
+	PlanName          string `json:"plan_name"`
+	TierName          string `json:"tier_name"`
+	CPUMax            uint64 `json:"cpu_max"`
+	MemMaxBytes       uint64 `json:"mem_max_bytes"`
+	CPUAllocated      int64  `json:"cpu_allocated"`
+	MemAllocatedBytes int64  `json:"mem_allocated_bytes"`
+	MaxVMs            int    `json:"max_vms"`
+	VMsTotal          int    `json:"vms_total"`
+	VMsRunning        int    `json:"vms_running"`
 }
 
 // HandleAPIVMsPool handles GET /api/vms/pool.
@@ -39,14 +41,19 @@ func (s *Server) HandleAPIVMsPool(w http.ResponseWriter, r *http.Request, userID
 		}
 	}
 
-	// Count VMs.
+	// Count VMs and sum allocations.
 	boxes, err := withRxRes1(s, ctx, (*exedb.Queries).BoxesForUser, userID)
 	if err == nil {
 		resp.VMsTotal = len(boxes)
 		for _, b := range boxes {
-			if b.Status == "running" {
-				resp.VMsRunning++
+			if b.Status != "running" {
+				continue
 			}
+			resp.VMsRunning++
+			if b.AllocatedCpus != nil {
+				resp.CPUAllocated += *b.AllocatedCpus
+			}
+			resp.MemAllocatedBytes += b.MemoryCapacityBytes
 		}
 	}
 

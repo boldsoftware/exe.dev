@@ -3,6 +3,16 @@
     <!-- Pool Charts -->
     <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
 
+    <!-- Pool capacity warnings -->
+    <Message v-if="poolAlert === 'danger'" severity="error" :closable="false">
+      Your resource pool is at {{ poolPctLabel }}% capacity.
+      <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
+    </Message>
+    <Message v-else-if="poolAlert === 'warn'" severity="warn" :closable="false">
+      Your resource pool is at {{ poolPctLabel }}% capacity.
+      <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
+    </Message>
+
     <!-- Loading -->
     <div v-if="historyLoading" class="usage-loading">
       <i class="pi pi-spin pi-spinner"></i> Loading usage data...
@@ -74,6 +84,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Message from 'primevue/message'
 import {
   fetchUsageHistory,
   fetchVMsPool,
@@ -105,6 +116,27 @@ const ranges = [
 const rangeLabel = computed(() => ranges.find((r) => r.hours === props.hours)?.label ?? '')
 
 const cpuMax = computed(() => pool.value?.cpu_max ?? 0)
+
+// Pool capacity alert: check both CPU and memory allocation against limits.
+const poolPct = computed(() => {
+  const p = pool.value
+  if (!p) return 0
+  let maxPct = 0
+  if (p.cpu_max > 0) {
+    maxPct = Math.max(maxPct, (p.cpu_allocated / p.cpu_max) * 100)
+  }
+  if (p.mem_max_bytes > 0) {
+    maxPct = Math.max(maxPct, (p.mem_allocated_bytes / p.mem_max_bytes) * 100)
+  }
+  return maxPct
+})
+const poolPctLabel = computed(() => Math.round(poolPct.value))
+const poolAlert = computed<'danger' | 'warn' | null>(() => {
+  if (poolPct.value >= 95) return 'danger'
+  if (poolPct.value >= 75) return 'warn'
+  return null
+})
+
 const memMaxLabel = computed(() => {
   const bytes = pool.value?.mem_max_bytes ?? 0
   if (bytes === 0) return ''
@@ -355,6 +387,11 @@ const totalDiskLabel = computed(() => {
   text-align: center;
   padding: 48px;
   color: var(--text-color-muted);
+}
+
+.pool-alert-link {
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 @media (max-width: 768px) {
