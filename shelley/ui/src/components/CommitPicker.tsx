@@ -20,25 +20,39 @@ function shortHash(id: string): string {
   return id.slice(0, 8);
 }
 
+// commitLabel returns a quoted, truncated commit subject suitable for use
+// in the trigger and status line. Falls back to the short hash when no
+// matching diff is found.
+function commitLabel(diffs: GitDiffInfo[], id: string, maxLen = 40): string {
+  const d = diffs.find((x) => x.id === id);
+  if (!d) return shortHash(id);
+  return `\u201c${truncate(d.message, maxLen)}\u201d`;
+}
+
 // rangeSyntax produces a compact git-syntax-flavoured description of the
-// currently active selection. Used both on the closed trigger and in the
+// currently active selection, using commit subjects (not hashes) as the
+// human-friendly identifier. Used both on the closed trigger and in the
 // open picker's status header so users always see exactly what's shown.
 //
 // Examples:
 //   selectedDiff=null            -> "Choose\u2026"
 //   selectedDiff="working"       -> "Working Changes"
-//   to="self"                    -> "<hash> (only this commit)"
-//   to="working"|""              -> "<hash>^\u2026 (through working tree)"
-//   to=<hash2>                   -> "<hash>^\u2026<hash2>"
-function rangeSyntax(selectedDiff: string | null, selectedTo: string): string {
+//   to="self"                    -> "\u201c<subj>\u201d (only this commit)"
+//   to="working"|""              -> "\u201c<subj>\u201d^\u2026 (through working tree)"
+//   to=<hash2>                   -> "\u201c<subj1>\u201d^\u2026\u201c<subj2>\u201d"
+function rangeSyntax(
+  diffs: GitDiffInfo[],
+  selectedDiff: string | null,
+  selectedTo: string,
+): string {
   if (!selectedDiff) return "Choose\u2026";
   if (selectedDiff === "working") return "Working Changes";
-  const h = shortHash(selectedDiff);
-  if (selectedTo === "self") return `${h} (only this commit)`;
+  const from = commitLabel(diffs, selectedDiff);
+  if (selectedTo === "self") return `${from} (only this commit)`;
   if (selectedTo === "" || selectedTo === "working") {
-    return `${h}^\u2026 (through working tree)`;
+    return `${from}^\u2026 (through working tree)`;
   }
-  return `${h}^\u2026${shortHash(selectedTo)}`;
+  return `${from}^\u2026${commitLabel(diffs, selectedTo)}`;
 }
 
 // CommitPicker is a single-control replacement for the prior pair of
@@ -232,7 +246,7 @@ function CommitPicker({ diffs, selectedDiff, selectedTo, onChange, isMobile }: C
         // newest-first list: smaller index == newer.
         const fromId = a < b ? d.id : pendingFrom;
         const toId = a < b ? pendingFrom : d.id;
-        label = `${shortHash(fromId)}^\u2026${shortHash(toId)}`;
+        label = `${commitLabel(diffs, fromId, 16)}^\u2026${commitLabel(diffs, toId, 16)}`;
       } else {
         label = `\u2192 here`;
       }
@@ -430,26 +444,22 @@ function CommitPicker({ diffs, selectedDiff, selectedTo, onChange, isMobile }: C
     </div>
   );
 
-  // The trigger button shows the active range in git syntax (primary)
-  // plus the 'from' commit subject as a secondary hint.
-  const triggerPrimary = rangeSyntax(selectedDiff, selectedTo);
-  const fromCommit =
-    selectedDiff && selectedDiff !== "working" ? diffs.find((d) => d.id === selectedDiff) : null;
-  const triggerSecondary = fromCommit ? truncate(fromCommit.message, 60) : "";
+  // The trigger button shows the active range using commit subjects.
+  const triggerPrimary = rangeSyntax(diffs, selectedDiff, selectedTo);
 
   // Status line shown at the top of the open picker.
   const statusLine = pendingFrom ? (
     <div className="commit-picker-status commit-picker-status-pending">
       Pick the other end of{" "}
       <code>
-        {shortHash(pendingFrom)}
+        {commitLabel(diffs, pendingFrom)}
         {"^\u2026?"}
       </code>{" "}
       (Esc to cancel)
     </div>
   ) : (
     <div className="commit-picker-status">
-      Showing <code>{rangeSyntax(selectedDiff, selectedTo)}</code>
+      Showing <code>{rangeSyntax(diffs, selectedDiff, selectedTo)}</code>
     </div>
   );
 
@@ -468,9 +478,6 @@ function CommitPicker({ diffs, selectedDiff, selectedTo, onChange, isMobile }: C
           <div className="commit-picker-trigger-primary">
             <code>{triggerPrimary}</code>
           </div>
-          {triggerSecondary && (
-            <div className="commit-picker-trigger-secondary">{triggerSecondary}</div>
-          )}
         </div>
         <span className="commit-picker-trigger-chevron" aria-hidden="true">
           {"\u25be"}
