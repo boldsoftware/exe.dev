@@ -383,10 +383,12 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 {{if .Entitlements}}
 <h3 style="margin-top:15px;">Entitlements</h3>
 <table class="info">
-<thead><tr><th>Entitlement</th><th>ID</th><th>Granted</th></tr></thead>
+<thead>
+<tr><th>ID</th><th>Team</th><th>User</th><th>Effective</th></tr>
+</thead>
 <tbody>
 {{range .Entitlements}}
-<tr><td>{{.Name}}</td><td><code>{{.ID}}</code></td><td>{{if .Granted}}<span style="color:#28a745;">&#x2713; yes</span>{{else}}<span style="color:#dc3545;">&#x2717; no</span>{{end}}</td></tr>
+<tr><td><code>{{.ID}}</code></td><td>{{.Team}}</td><td>{{.User}}</td><td>{{.Effective}}</td></tr>
 {{end}}
 </tbody>
 </table>

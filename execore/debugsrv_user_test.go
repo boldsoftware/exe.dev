@@ -97,6 +97,23 @@ func TestDebugBillingEntitlementTablePresent(t *testing.T) {
 	}
 }
 
+// TestDebugUserEntitlementTablePresent verifies the entitlement table on the
+// debug user page matches the billing page format (ID / Team / User /
+// Effective columns).
+func TestDebugUserEntitlementTablePresent(t *testing.T) {
+	t.Parallel()
+	s := newTestServer(t)
+	userID := createTestUser(t, s, "debug-user-ent@example.com")
+
+	body := debugUserPageBody(t, s, userID)
+
+	if !strings.Contains(body, "<th>ID</th><th>Team</th><th>User</th><th>Effective</th>") {
+		t.Fatal("expected user page entitlement table to have ID/Team/User/Effective columns")
+	}
+	requireEntitlementRow(t, body, "Use LLM Gateway", true)
+	requireEntitlementRow(t, body, "Create VMs", false)
+}
+
 // TestDebugBillingEntitlementTableBasicUser verifies a Basic plan user has most
 // entitlements denied. Basic grants only llm:use.
 func TestDebugBillingEntitlementTableBasicUser(t *testing.T) {

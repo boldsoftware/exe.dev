@@ -5771,11 +5771,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		EndedAt   string
 		ChangedBy string
 	}
-	type entitlementRow struct {
-		ID      string
-		Name    string
-		Granted bool
-	}
 	type quotaRow struct {
 		Name       string
 		Stage      string
@@ -5879,7 +5874,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		BillingPeriodEnd    string
 		NextInvoiceDate     string
 		NextInvoiceAmount   string
-		Entitlements        []entitlementRow
+		Entitlements        []EntitlementRow
 		Quotas              []quotaRow
 	}{
 		Email:                    user.Email,
@@ -6014,6 +6009,15 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Populate entitlements: user / team / effective.
+	if len(userAccounts) > 0 {
+		var parentID string
+		if userAccounts[0].ParentID != nil {
+			parentID = *userAccounts[0].ParentID
+		}
+		data.Entitlements = s.buildEntitlementRows(ctx, userAccounts[0].ID, parentID)
+	}
+
 	// Populate quotas (simplified 5-column format with cgroup overrides)
 	if planRow, err := withRxRes1(s, ctx, (*exedb.Queries).GetActivePlanForUser, userID); err == nil {
 		limits := ParseUserLimits(&exedb.User{Limits: user.Limits})
@@ -6109,14 +6113,6 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			data.Quotas = append(data.Quotas, quotaRow{"Max CPUs", fmt.Sprintf("%d", s.env.DefaultCPUs), fmtUint64OrDash(userMaxCPUs), fmt.Sprintf("%d", planMaxCPUs), cgroupOrDash(cgroupCPU), fmt.Sprintf("%d", effMaxCPUs)})
 		}
 
-		// Populate entitlements from the user's active plan.
-		for _, ent := range plan.AllEntitlements() {
-			data.Entitlements = append(data.Entitlements, entitlementRow{
-				ID:      ent.ID,
-				Name:    ent.DisplayName,
-				Granted: plan.Grants(planRow.PlanID, ent),
-			})
-		}
 	}
 
 	// Compute deletion block reasons.
@@ -6541,14 +6537,9 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		CreditTotalUsedUSD            float64
 		CreditLastRefreshAt           string
 		IsOnTeam                      bool
-		Entitlements                  []struct {
-			ID        string
-			User      string
-			Team      string
-			Effective string
-		}
-		CreditLedger []creditRow
-		Quotas       []struct {
+		Entitlements                  []EntitlementRow
+		CreditLedger                  []creditRow
+		Quotas                        []struct {
 			Name      string
 			Plan      string
 			Stage     string
@@ -6625,44 +6616,8 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve entitlements: user's own plan, team (parent) plan, and effective.
-	{
-		var userPlanID, teamPlanID string
-		if len(accounts) > 0 {
-			if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, accounts[0].AccountID); err == nil {
-				userPlanID = ap.PlanID
-			}
-			if accounts[0].ParentID != "" {
-				if ap, err := withRxRes1(s, ctx, (*exedb.Queries).GetActiveAccountPlan, accounts[0].ParentID); err == nil {
-					teamPlanID = ap.PlanID
-				}
-			}
-		}
-		grantStr := func(planID string, ent plan.Entitlement) string {
-			if planID == "" {
-				return "\u2014"
-			}
-			if plan.Grants(planID, ent) {
-				return "Granted"
-			}
-			return "Denied"
-		}
-		effectivePlanID := teamPlanID
-		if effectivePlanID == "" {
-			effectivePlanID = userPlanID
-		}
-		for _, ent := range plan.AllEntitlements() {
-			data.Entitlements = append(data.Entitlements, struct {
-				ID        string
-				User      string
-				Team      string
-				Effective string
-			}{
-				ID:        ent.ID,
-				User:      grantStr(userPlanID, ent),
-				Team:      grantStr(teamPlanID, ent),
-				Effective: grantStr(effectivePlanID, ent),
-			})
-		}
+	if len(accounts) > 0 {
+		data.Entitlements = s.buildEntitlementRows(ctx, accounts[0].AccountID, accounts[0].ParentID)
 	}
 
 	// Populate quotas: plan value, user-limit override, cgroup override, effective.
