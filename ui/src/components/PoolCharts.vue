@@ -143,9 +143,9 @@ function buildChart(
     })
   }
 
-  // Pool limit line.
+  // Pool size line.
   datasets.push({
-    label: 'Pool limit',
+    label: 'Pool size',
     data: new Array(labels.length).fill(limit),
     borderColor: '#cf222e',
     borderWidth: 1.5,
