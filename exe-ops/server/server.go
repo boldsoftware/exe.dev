@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
@@ -55,6 +56,15 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 	authed.HandleFunc("/api/v1/version", h.HandleServerVersion)
 
 	authed.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
+
+	// pprof endpoints. Gated behind the same human-Tailscale auth as the
+	// rest of /debug. Importing net/http/pprof would also register on
+	// http.DefaultServeMux, which we don't serve — register explicitly.
+	authed.HandleFunc("/debug/pprof/", pprof.Index)
+	authed.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	authed.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	authed.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	authed.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	// SPA fallback: serve static files, fall back to index.html.
 	if uiFS != nil {
