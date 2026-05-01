@@ -84,7 +84,7 @@ func TestAllEntitlements(t *testing.T) {
 // Plans with MaxDisk > 0 should have it; basic and restricted should not.
 func TestVMResizeEntitlementByPlan(t *testing.T) {
 	wantVMResize := map[Category]bool{
-		CategoryEnterprise:    true,
+		CategoryBusiness:      true,
 		CategoryTeam:          true,
 		CategoryIndividual:    true,
 		CategoryFriend:        true,
@@ -111,7 +111,7 @@ func TestVMResizeEntitlementByPlan(t *testing.T) {
 // Individual, Trial, and Basic can access the billing/update flow; others cannot.
 func TestBillingSelfServeEntitlementByPlan(t *testing.T) {
 	wantSelfServe := map[Category]bool{
-		CategoryEnterprise:    false,
+		CategoryBusiness:      false,
 		CategoryTeam:          false,
 		CategoryIndividual:    true,
 		CategoryFriend:        false,
@@ -137,7 +137,7 @@ func TestBillingSelfServeEntitlementByPlan(t *testing.T) {
 // TestAccountDeleteEntitlementByPlan verifies only Basic and Restricted grant account:delete.
 func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 	wantDelete := map[Category]bool{
-		CategoryEnterprise:    false,
+		CategoryBusiness:      false,
 		CategoryTeam:          false,
 		CategoryIndividual:    false,
 		CategoryFriend:        false,
@@ -163,7 +163,7 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 // TestInviteClaimEntitlementByPlan verifies Basic and Grandfathered grant invite:claim.
 func TestInviteClaimEntitlementByPlan(t *testing.T) {
 	wantClaim := map[Category]bool{
-		CategoryEnterprise:    false,
+		CategoryBusiness:      false,
 		CategoryTeam:          false,
 		CategoryIndividual:    false,
 		CategoryFriend:        false,

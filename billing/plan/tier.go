@@ -284,9 +284,9 @@ var tiers = map[string]Tier{
 
 	// --- Single-tier plans: one "default" tier each ---
 
-	"enterprise:default:monthly:20260106": {
-		ID:           "enterprise:default:monthly:20260106",
-		Category:     CategoryEnterprise,
+	"business:default:monthly:20260106": {
+		ID:           "business:default:monthly:20260106",
+		Category:     CategoryBusiness,
 		Name:         "Standard",
 		StripePrices: map[string]stripePriceInfo{},
 		Quotas: tierQuotas{

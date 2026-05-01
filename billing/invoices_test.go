@@ -17,7 +17,7 @@ func TestParseInvoiceLinePlanName(t *testing.T) {
 	}{
 		{"1 × Individual Plan (at $20.00 / month)", "Individual"},
 		{"1 × Team Plan (at $50.00 / month)", "Team"},
-		{"1 x Enterprise Plan (at $100.00 / year)", "Enterprise"},
+		{"1 x Business Plan (at $100.00 / year)", "Business"},
 		{"Individual Plan", "Individual"},
 		{"Remaining time on Individual Plan (XLarge) after 22 Apr 2026", "Individual Plan (XLarge)"},
 		{"Unused time on Individual Plan (Small) after 22 Apr 2026", "Individual Plan (Small)"},

@@ -13,7 +13,7 @@ type Category string
 
 // Plan category constants.
 const (
-	CategoryEnterprise    Category = "enterprise"
+	CategoryBusiness      Category = "business"
 	CategoryTeam          Category = "team"
 	CategoryIndividual    Category = "individual"
 	CategoryFriend        Category = "friend"
@@ -217,8 +217,8 @@ func CategoryFromProductName(name string) (Category, bool) {
 		return CategoryIndividual, true
 	case "team":
 		return CategoryTeam, true
-	case "enterprise":
-		return CategoryEnterprise, true
+	case "business":
+		return CategoryBusiness, true
 	default:
 		return "", false
 	}
@@ -269,14 +269,14 @@ type userPlanInputs struct {
 }
 
 var plans = map[Category]Plan{
-	CategoryEnterprise: {
-		ID:                  "enterprise:monthly:20260106",
+	CategoryBusiness: {
+		ID:                  "business:monthly:20260106",
 		Available:           true,
-		Category:            CategoryEnterprise,
+		Category:            CategoryBusiness,
 		Paid:                true,
-		Name:                "Enterprise",
+		Name:                "Business",
 		MonthlyLLMCreditUSD: 500,
-		DefaultTier:         "enterprise:default:monthly:20260106",
+		DefaultTier:         "business:default:monthly:20260106",
 		Entitlements: map[Entitlement]bool{
 			LLMUse:         true,
 			CreditPurchase: true,

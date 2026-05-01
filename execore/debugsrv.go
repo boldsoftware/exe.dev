@@ -105,7 +105,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/users/grant-trial", s.handleDebugGrantTrial)
 	mux.HandleFunc("POST /debug/users/set-trial-expiry", s.handleDebugSetTrialExpiry)
 	mux.HandleFunc("POST /debug/users/revoke-trial", s.handleDebugRevokeTrial)
-	mux.HandleFunc("POST /debug/user/assign-enterprise", s.handleDebugAssignEnterprise)
+	mux.HandleFunc("POST /debug/user/assign-business", s.handleDebugAssignBusiness)
 	mux.HandleFunc("POST /debug/users/set-limits", s.handleDebugSetUserLimits)
 	mux.HandleFunc("POST /debug/users/set-cgroup-overrides", s.handleDebugSetUserCgroupOverrides)
 	mux.HandleFunc("POST /debug/users/delete", s.handleDebugDeleteUser)
@@ -2790,10 +2790,10 @@ func (s *Server) handleDebugRevokeTrial(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }
 
-// handleDebugAssignEnterprise assigns enterprise billing to a user's account.
-// POST /debug/user/assign-enterprise
+// handleDebugAssignBusiness assigns business billing to a user's account.
+// POST /debug/user/assign-business
 // Required: user_id (or email)
-func (s *Server) handleDebugAssignEnterprise(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDebugAssignBusiness(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := r.FormValue("user_id")
 	email := r.FormValue("email")
@@ -2850,20 +2850,20 @@ func (s *Server) handleDebugAssignEnterprise(w http.ResponseWriter, r *http.Requ
 		}
 		if err := q.ReplaceAccountPlan(ctx, exedb.ReplaceAccountPlanParams{
 			AccountID: accountID,
-			PlanID:    plan.ID(plan.CategoryEnterprise),
+			PlanID:    plan.ID(plan.CategoryBusiness),
 			At:        now,
-			ChangedBy: "debug:assign-enterprise",
+			ChangedBy: "debug:assign-business",
 		}); err != nil {
 			return fmt.Errorf("replace account plan: %w", err)
 		}
 		return nil
 	})
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to assign enterprise: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to assign business: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	s.slog().InfoContext(ctx, "enterprise plan assigned via debug endpoint",
+	s.slog().InfoContext(ctx, "business plan assigned via debug endpoint",
 		"user_id", userID, "email", user.Email, "account_id", accountID)
 	http.Redirect(w, r, "/debug/user?userId="+url.QueryEscape(userID), http.StatusSeeOther)
 }

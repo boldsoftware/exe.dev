@@ -105,7 +105,7 @@ func planForUser(ctx context.Context, q *exedb.Queries, userID string, credit *e
 	switch planCategory {
 	case plan.CategoryFriend:
 		p = planFriend
-	case plan.CategoryIndividual, plan.CategoryTeam, plan.CategoryEnterprise:
+	case plan.CategoryIndividual, plan.CategoryTeam, plan.CategoryBusiness:
 		p = planHasBilling
 	default:
 		p = planNoBilling

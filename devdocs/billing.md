@@ -10,7 +10,7 @@ Access control uses a plan-based system defined in `billing/plan/`. Each account
 
 | Plan | Grants | LLM Category |
 |------|--------|--------------|
-| `enterprise` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
+| `business` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
 | `team` | LLM, credits, invites, VM create/run, disk resize | `has_billing` |
 | `individual` | LLM, credits, invites, teams, VM create/run, disk resize | `has_billing` |
 | `friend` | LLM, VM create/run, disk resize | `friend` |

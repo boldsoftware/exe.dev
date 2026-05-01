@@ -8,7 +8,7 @@ All plans are defined in `billing/plan/plan.go`. Each plan has a `Category`, a v
 
 | Plan | ID | Paid | Entitlements |
 |------|-----|------|--------------|
-| Enterprise | `enterprise:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
+| Business | `business:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
 | Team | `team:monthly:20260106` | Yes | LLM, credits, invites, VM create/run, disk resize |
 | Individual | `individual:monthly:20260106` | Yes | LLM, credits, invites, **teams**, VM create/run, disk resize, self-serve billing |
 | Friend | `friend` | No | LLM, VM create/run, disk resize |
@@ -114,7 +114,7 @@ Usage rows are bucketed by hour (`hour_bucket`). Each hour gets one row per acco
 ### Gateway Credit Refresh
 
 Gateway credits refresh lazily on every LLM request via `CheckAndRefreshCredit` in `llmgateway/credit.go`:
-- **Paid users:** Monthly reset to plan's `MonthlyLLMCreditUSD` (e.g. $20 for Individual, $500 for Enterprise/Team/Friend)
+- **Paid users:** Monthly reset to plan's `MonthlyLLMCreditUSD` (e.g. $20 for Individual, $500 for Business/Team/Friend)
 - **Free users:** No refresh (flat lifetime grant)
 
 ## Subscription Sync

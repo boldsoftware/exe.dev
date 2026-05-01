@@ -307,7 +307,7 @@ func TestGetActivePlanForUserWithParent(t *testing.T) {
 	}
 }
 
-func TestEnterpriseParentInheritance(t *testing.T) {
+func TestBusinessParentInheritance(t *testing.T) {
 	t.Parallel()
 	db, q := setupAccountTestDB(t)
 	ctx := context.Background()
@@ -319,8 +319,8 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 	memberAcctID := "exe_entmember01"
 
 	for _, row := range []struct{ uid, email string }{
-		{ownerUserID, "enterprise-owner@example.com"},
-		{memberUserID, "enterprise-member@example.com"},
+		{ownerUserID, "business-owner@example.com"},
+		{memberUserID, "business-member@example.com"},
 	} {
 		if _, err := db.ExecContext(ctx, `INSERT INTO users (user_id, email) VALUES (?, ?)`, row.uid, row.email); err != nil {
 			t.Fatalf("insert user %s: %v", row.uid, err)
@@ -332,11 +332,11 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 	}
 	if err := q.InsertAccountPlan(ctx, exedb.InsertAccountPlanParams{
 		AccountID: ownerAcctID,
-		PlanID:    "enterprise:monthly:20260106",
+		PlanID:    "business:monthly:20260106",
 		StartedAt: now,
 		ChangedBy: new("test:setup"),
 	}); err != nil {
-		t.Fatalf("insert owner enterprise plan: %v", err)
+		t.Fatalf("insert owner business plan: %v", err)
 	}
 
 	if _, err := db.ExecContext(ctx, `INSERT INTO accounts (id, created_by, parent_id) VALUES (?, ?, ?)`, memberAcctID, memberUserID, ownerAcctID); err != nil {
@@ -355,29 +355,29 @@ func TestEnterpriseParentInheritance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActivePlanForUser(owner): %v", err)
 	}
-	if ownerPlan.PlanID != "enterprise:monthly:20260106" {
-		t.Errorf("owner plan = %q, want %q", ownerPlan.PlanID, "enterprise:monthly:20260106")
+	if ownerPlan.PlanID != "business:monthly:20260106" {
+		t.Errorf("owner plan = %q, want %q", ownerPlan.PlanID, "business:monthly:20260106")
 	}
 
 	memberPlan, err := q.GetActivePlanForUser(ctx, memberUserID)
 	if err != nil {
 		t.Fatalf("GetActivePlanForUser(member): %v", err)
 	}
-	if memberPlan.PlanID != "enterprise:monthly:20260106" {
-		t.Errorf("member inherited plan = %q, want %q (from parent)", memberPlan.PlanID, "enterprise:monthly:20260106")
+	if memberPlan.PlanID != "business:monthly:20260106" {
+		t.Errorf("member inherited plan = %q, want %q (from parent)", memberPlan.PlanID, "business:monthly:20260106")
 	}
 	if memberPlan.AccountID != ownerAcctID {
 		t.Errorf("member account_id = %q, want %q (parent's account)", memberPlan.AccountID, ownerAcctID)
 	}
 
 	if _, ok := plan.ByID(memberPlan.PlanID); !ok {
-		t.Fatal("ByID failed for enterprise plan")
+		t.Fatal("ByID failed for business plan")
 	}
 	if !plan.Grants(memberPlan.PlanID, plan.VMCreate) {
-		t.Error("Enterprise plan should grant VMCreate")
+		t.Error("Business plan should grant VMCreate")
 	}
 	if !plan.Grants(memberPlan.PlanID, plan.CreditPurchase) {
-		t.Error("Enterprise plan should grant CreditPurchase")
+		t.Error("Business plan should grant CreditPurchase")
 	}
 }
 

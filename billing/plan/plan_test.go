@@ -284,29 +284,29 @@ func TestID(t *testing.T) {
 	}
 }
 
-func TestEnterprisePlanExists(t *testing.T) {
-	p, ok := Get(CategoryEnterprise)
+func TestBusinessPlanExists(t *testing.T) {
+	p, ok := Get(CategoryBusiness)
 	if !ok {
-		t.Fatal("CategoryEnterprise not found in plans")
+		t.Fatal("CategoryBusiness not found in plans")
 	}
-	if p.ID != "enterprise:monthly:20260106" {
-		t.Errorf("Enterprise plan ID = %q, want %q", p.ID, "enterprise:monthly:20260106")
+	if p.ID != "business:monthly:20260106" {
+		t.Errorf("Business plan ID = %q, want %q", p.ID, "business:monthly:20260106")
 	}
-	if p.Name != "Enterprise" {
-		t.Errorf("Enterprise plan Name = %q, want %q", p.Name, "Enterprise")
+	if p.Name != "Business" {
+		t.Errorf("Business plan Name = %q, want %q", p.Name, "Business")
 	}
 	if !p.Paid {
-		t.Error("Enterprise plan should be Paid=true")
+		t.Error("Business plan should be Paid=true")
 	}
 	if p.MonthlyLLMCreditUSD != 500.0 {
-		t.Errorf("Enterprise plan MonthlyLLMCreditUSD = %f, want 500.0", p.MonthlyLLMCreditUSD)
+		t.Errorf("Business plan MonthlyLLMCreditUSD = %f, want 500.0", p.MonthlyLLMCreditUSD)
 	}
 }
 
 func TestAllPlansComplete(t *testing.T) {
 	all := AllPlans()
 	want := []Category{
-		CategoryBasic, CategoryEnterprise, CategoryFriend, CategoryGrandfathered,
+		CategoryBasic, CategoryBusiness, CategoryFriend, CategoryGrandfathered,
 		CategoryIndividual, CategoryRestricted, CategoryTeam, CategoryTrial,
 	}
 	if len(all) != len(want) {
@@ -449,8 +449,8 @@ func TestCategoryFromProductName(t *testing.T) {
 		{"INDIVIDUAL", CategoryIndividual, true},
 		{"Team", CategoryTeam, true},
 		{"team", CategoryTeam, true},
-		{"Enterprise", CategoryEnterprise, true},
-		{"enterprise", CategoryEnterprise, true},
+		{"Business", CategoryBusiness, true},
+		{"business", CategoryBusiness, true},
 		{"Unknown", Category(""), false},
 		{"", Category(""), false},
 	}
