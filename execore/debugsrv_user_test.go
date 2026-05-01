@@ -216,9 +216,9 @@ func TestDebugBillingEntitlementTableIndividualUser(t *testing.T) {
 // given display name and granted/denied status.
 func requireEntitlementRow(t *testing.T, body, displayName string, granted bool) {
 	t.Helper()
-	status := "Denied"
+	status := "&#x2717; no"
 	if granted {
-		status = "Granted"
+		status = "&#x2713; yes"
 	}
 	// Find the entitlement ID from the display name.
 	var entID string
@@ -231,9 +231,9 @@ func requireEntitlementRow(t *testing.T, body, displayName string, granted bool)
 	if entID == "" {
 		t.Fatalf("unknown entitlement display name %q", displayName)
 	}
-	// Match: <td><code>id</code></td><td>...</td><td>...</td><td>Effective</td>
+	// Match: <td><code>id</code></td><td>team</td><td>user</td><td>effective</td>
 	// The Effective column is the last <td> in the row.
-	pattern := `<td><code>` + regexp.QuoteMeta(entID) + `</code></td>\s*<td>[^<]*</td>\s*<td>[^<]*</td>\s*<td>` + regexp.QuoteMeta(status) + `</td>`
+	pattern := `(?s)<td><code>` + regexp.QuoteMeta(entID) + `</code></td>\s*<td>.*?</td>\s*<td>.*?</td>\s*<td>[^<]*<span[^>]*>` + regexp.QuoteMeta(status) + `</span>\s*</td>`
 	re := regexp.MustCompile(pattern)
 	if !re.MatchString(body) {
 		t.Errorf("entitlement row %q (%s): expected effective=%s, pattern not found", displayName, entID, status)

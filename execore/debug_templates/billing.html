@@ -51,7 +51,10 @@ table.info th { width: 200px; }
 </thead>
 <tbody>
 {{range $.Entitlements}}
-<tr><td><code>{{.ID}}</code></td><td>{{.Team}}</td><td>{{.User}}</td><td>{{.Effective}}</td></tr>
+<tr><td><code>{{.ID}}</code></td>
+<td>{{if .Team.HasPlan}}{{if .Team.Granted}}<span style="color:#28a745;">&#x2713; yes</span>{{else}}<span style="color:#dc3545;">&#x2717; no</span>{{end}}{{else}}&mdash;{{end}}</td>
+<td>{{if .User.HasPlan}}{{if .User.Granted}}<span style="color:#28a745;">&#x2713; yes</span>{{else}}<span style="color:#dc3545;">&#x2717; no</span>{{end}}{{else}}&mdash;{{end}}</td>
+<td>{{if .Effective.HasPlan}}{{if .Effective.Granted}}<span style="color:#28a745;">&#x2713; yes</span>{{else}}<span style="color:#dc3545;">&#x2717; no</span>{{end}}{{else}}&mdash;{{end}}</td></tr>
 {{end}}
 </tbody>
 </table>

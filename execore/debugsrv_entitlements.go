@@ -7,14 +7,22 @@ import (
 	"exe.dev/exedb"
 )
 
+// EntitlementCell is a single cell in the entitlement matrix. HasPlan is
+// false when no plan applies (rendered as "—"); otherwise Granted indicates
+// whether the plan grants the entitlement.
+type EntitlementCell struct {
+	HasPlan bool
+	Granted bool
+}
+
 // EntitlementRow is a single row in the debug entitlements table, comparing
 // the user's own plan grant, the team (parent account) plan grant, and the
 // effective grant (team if the user inherits, else user).
 type EntitlementRow struct {
 	ID        string
-	User      string
-	Team      string
-	Effective string
+	User      EntitlementCell
+	Team      EntitlementCell
+	Effective EntitlementCell
 }
 
 // buildEntitlementRows resolves entitlements for a user account, optionally
@@ -36,22 +44,19 @@ func (s *Server) buildEntitlementRows(ctx context.Context, userAccountID, parent
 	if effectivePlanID == "" {
 		effectivePlanID = userPlanID
 	}
-	grantStr := func(planID string, ent plan.Entitlement) string {
+	cell := func(planID string, ent plan.Entitlement) EntitlementCell {
 		if planID == "" {
-			return "\u2014"
+			return EntitlementCell{}
 		}
-		if plan.Grants(planID, ent) {
-			return "Granted"
-		}
-		return "Denied"
+		return EntitlementCell{HasPlan: true, Granted: plan.Grants(planID, ent)}
 	}
 	rows := make([]EntitlementRow, 0, len(plan.AllEntitlements()))
 	for _, ent := range plan.AllEntitlements() {
 		rows = append(rows, EntitlementRow{
 			ID:        ent.ID,
-			User:      grantStr(userPlanID, ent),
-			Team:      grantStr(teamPlanID, ent),
-			Effective: grantStr(effectivePlanID, ent),
+			User:      cell(userPlanID, ent),
+			Team:      cell(teamPlanID, ent),
+			Effective: cell(effectivePlanID, ent),
 		})
 	}
 	return rows
