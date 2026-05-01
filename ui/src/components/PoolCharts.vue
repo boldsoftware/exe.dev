@@ -56,14 +56,21 @@ const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
 const cpuCurrent = computed(() => {
   if (points.value.length === 0) return ''
   const last = points.value[points.value.length - 1]
-  return `avg ${last.cpu_cores.avg.toFixed(1)} / ${cpuLimit.value} vCPUs`
+  const avg = avgOver(points.value.map(p => p.cpu_cores.sum))
+  return `avg ${avg.toFixed(1)} / ${cpuLimit.value} vCPUs`
 })
 
 const memCurrent = computed(() => {
   if (points.value.length === 0 || memLimit.value === 0) return ''
   const last = points.value[points.value.length - 1]
-  return `avg ${fmtGiB(last.mem_bytes.avg)} / ${fmtGiB(memLimit.value)}`
+  const avg = avgOver(points.value.map(p => p.mem_bytes.sum))
+  return `avg ${fmtGiB(avg)} / ${fmtGiB(memLimit.value)}`
 })
+
+function avgOver(vals: number[]): number {
+  if (vals.length === 0) return 0
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
 
 function fmtGiB(bytes: number): string {
   const gib = bytes / (1024 * 1024 * 1024)
@@ -212,7 +219,7 @@ function renderCharts() {
     cpuChart = buildChart(
       cpuCanvas.value,
       labels,
-      points.value.map((p) => p.cpu_cores.avg),
+      points.value.map((p) => p.cpu_cores.sum),
       cpuLimit.value,
       'cores',
       (v) => v.toFixed(1),
@@ -223,7 +230,7 @@ function renderCharts() {
     memChart = buildChart(
       memCanvas.value,
       labels,
-      points.value.map((p) => p.mem_bytes.avg),
+      points.value.map((p) => p.mem_bytes.sum),
       memLimit.value,
       'GiB',
       (v) => fmtGiB(v),
