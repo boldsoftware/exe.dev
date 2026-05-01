@@ -288,6 +288,131 @@ select { padding: 8px; font-size: 14px; }
 })();
 </script>
 
+{{if .OtherExelets}}
+<div class="section">
+<h2>Evacuate All VMs</h2>
+<p style="color: #6c757d; font-size: 13px;">Migrate all VMs off this exelet to the selected target exelets. VMs are distributed by least loaded. Stops on first error.</p>
+
+<fieldset>
+<legend>1. Select target exelets</legend>
+<div class="box-list" id="evacuateTargetList">
+{{range .OtherExelets}}
+<div class="box-item"><label><input type="checkbox" class="evacuate-target-cb" value="{{.Address}}"> {{.Address}} ({{.Hostname}})</label></div>
+{{end}}
+</div>
+<p>
+<button type="button" class="btn-secondary" id="evacuateSelectAll">Select All</button>
+<button type="button" class="btn-secondary" id="evacuateDeselectAll">Deselect All</button>
+</p>
+<div class="summary" id="evacuateTargetSummary">0 target(s) selected</div>
+</fieldset>
+
+<fieldset>
+<legend>2. Confirm</legend>
+<p id="evacuateConfirmPrompt">Select target exelets to continue.</p>
+<input type="text" id="evacuateConfirm" autocomplete="off" placeholder="" style="display:none; padding: 8px; font-size: 14px; width: 100%; box-sizing: border-box; margin-top: 5px;">
+</fieldset>
+
+<p>
+<button class="btn btn-danger" id="evacuateBtn" disabled>Start Evacuation</button>
+</p>
+
+<div id="evacuateResults" style="display:none; margin-top:10px; max-height:500px; overflow-y:auto; border:1px solid #dee2e6; padding:10px; font-family:monospace; font-size:13px; line-height:1.5; white-space:pre-wrap; background:#1e1e1e; color:#d4d4d4;"></div>
+</div>
+{{end}}
+
+<script>
+(function() {
+    var cbs = document.querySelectorAll('.evacuate-target-cb');
+    if (!cbs.length) return;
+    var vmCount = {{len .Instances}};
+    var summary = document.getElementById('evacuateTargetSummary');
+    var confirmInput = document.getElementById('evacuateConfirm');
+    var confirmPrompt = document.getElementById('evacuateConfirmPrompt');
+    var submitBtn = document.getElementById('evacuateBtn');
+
+    function getSelected() {
+        var sel = [];
+        cbs.forEach(function(cb) { if (cb.checked) sel.push(cb.value); });
+        return sel;
+    }
+    function updateState() {
+        var sel = getSelected();
+        summary.textContent = sel.length + ' target(s) selected';
+        if (sel.length > 0 && vmCount > 0) {
+            confirmPrompt.textContent = 'Type "' + vmCount + '" to confirm evacuating ' + vmCount + ' VM(s):';
+            confirmInput.style.display = '';
+            confirmInput.placeholder = vmCount.toString();
+        } else {
+            confirmPrompt.textContent = vmCount > 0 ? 'Select target exelets to continue.' : 'No VMs to evacuate.';
+            confirmInput.style.display = 'none';
+        }
+        var valid = sel.length > 0 && vmCount > 0 && confirmInput.value === vmCount.toString();
+        submitBtn.disabled = !valid;
+    }
+
+    cbs.forEach(function(cb) { cb.addEventListener('change', updateState); });
+    confirmInput.addEventListener('input', updateState);
+
+    document.getElementById('evacuateSelectAll').addEventListener('click', function() {
+        cbs.forEach(function(cb) { cb.checked = true; });
+        updateState();
+    });
+    document.getElementById('evacuateDeselectAll').addEventListener('click', function() {
+        cbs.forEach(function(cb) { cb.checked = false; });
+        updateState();
+    });
+
+    submitBtn.addEventListener('click', function() {
+        var sel = getSelected();
+        if (!sel.length || !confirm('Are you sure you want to evacuate ALL ' + vmCount + ' VM(s) from this exelet?')) return;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Evacuating...';
+        var resultsDiv = document.getElementById('evacuateResults');
+        resultsDiv.style.display = '';
+        resultsDiv.textContent = 'Starting evacuation...\n';
+
+        var params = new URLSearchParams();
+        sel.forEach(function(addr) { params.append('target_addrs[]', addr); });
+
+        fetch('/debug/exelets/{{.Hostname}}/evacuate', {
+            method: 'POST',
+            body: params
+        }).then(function(response) {
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            function read() {
+                reader.read().then(function(result) {
+                    if (result.done) {
+                        submitBtn.textContent = 'Evacuation Complete';
+                        var text = resultsDiv.textContent;
+                        if (text.indexOf('ERROR:') !== -1) {
+                            resultsDiv.style.borderColor = '#dc3545';
+                            submitBtn.style.background = '#dc3545';
+                        } else {
+                            resultsDiv.style.borderColor = '#28a745';
+                            submitBtn.style.background = '#28a745';
+                        }
+                        return;
+                    }
+                    var text = decoder.decode(result.value, {stream: true});
+                    resultsDiv.textContent += text;
+                    resultsDiv.scrollTop = resultsDiv.scrollHeight;
+                    read();
+                });
+            }
+            read();
+        }).catch(function(err) {
+            resultsDiv.textContent += '\nFetch error: ' + err;
+            resultsDiv.style.borderColor = '#dc3545';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Start Evacuation';
+        });
+    });
+})();
+</script>
+
 <script>
 function startLocalMigrate() {
     if (!confirm('Local live-migrate all running VMs on this exelet?')) return;

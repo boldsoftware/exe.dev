@@ -124,6 +124,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux.HandleFunc("POST /debug/exelets/{hostname}/update-user-cgroup-parents", s.handleDebugExeletUpdateUserCgroupParents)
 	mux.HandleFunc("POST /debug/exelets/{hostname}/local-migrate-all", s.handleDebugExeletLocalMigrateAll)
 	mux.HandleFunc("GET /debug/exelets/{hostname}/local-migrate-status", s.handleDebugExeletLocalMigrateStatus)
+	mux.HandleFunc("POST /debug/exelets/{hostname}/evacuate", s.handleDebugExeletEvacuate)
 	mux.HandleFunc("POST /debug/exelets/set-preferred", s.handleDebugSetPreferredExelet)
 	mux.HandleFunc("POST /debug/exelets/set-private", s.handleDebugSetPrivateExelet)
 	mux.HandleFunc("POST /debug/exelets/set-team-exelet", s.handleDebugSetTeamExelet)
@@ -3859,6 +3860,25 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 
 	liveMigs := s.liveMigrationInfoForExelet(address)
 
+	type otherExeletInfo struct {
+		Address  string
+		Hostname string
+	}
+	var otherExelets []otherExeletInfo
+	for addr := range s.exeletClients {
+		if addr == address {
+			continue
+		}
+		hn := addr
+		if u, err := url.Parse(addr); err == nil {
+			hn = u.Hostname()
+		}
+		otherExelets = append(otherExelets, otherExeletInfo{Address: addr, Hostname: hn})
+	}
+	sort.Slice(otherExelets, func(i, j int) bool {
+		return otherExelets[i].Address < otherExelets[j].Address
+	})
+
 	data := struct {
 		Address        string
 		Hostname       string
@@ -3878,6 +3898,7 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 		Instances      []instanceInfo
 		Migrations     []migrationInfo
 		LiveMigrations []liveMigrationInfo
+		OtherExelets   []otherExeletInfo
 		Result         string
 	}{
 		Address:        address,
@@ -3898,6 +3919,7 @@ func (s *Server) handleDebugExeletDetail(w http.ResponseWriter, r *http.Request)
 		Instances:      instances,
 		Migrations:     migrations,
 		LiveMigrations: liveMigs,
+		OtherExelets:   otherExelets,
 		Result:         r.URL.Query().Get("result"),
 	}
 
@@ -4143,6 +4165,316 @@ func (s *Server) handleDebugExeletUpdateUserCgroupParents(w http.ResponseWriter,
 		"address", address, "updated", updated, "skipped", skipped, "errors", errors)
 
 	http.Redirect(w, r, "/debug/exelets/"+hostname+"?result="+url.QueryEscape(result), http.StatusSeeOther)
+}
+
+// handleDebugExeletEvacuate migrates all VMs off an exelet to selected target exelets.
+// VMs are distributed to the least-loaded target. Stops on first error.
+func (s *Server) handleDebugExeletEvacuate(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	hostname := r.PathValue("hostname")
+
+	address, _ := s.resolveExelet(hostname)
+	if address == "" {
+		http.Error(w, fmt.Sprintf("unknown exelet: %s", hostname), http.StatusNotFound)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form data", http.StatusBadRequest)
+		return
+	}
+	targetAddrs := r.Form["target_addrs[]"]
+	if len(targetAddrs) == 0 {
+		http.Error(w, "target_addrs[] is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate targets exist and are not self.
+	var targets []*exeletClient
+	var targetAddrList []string
+	for _, addr := range targetAddrs {
+		if addr == address {
+			http.Error(w, "cannot evacuate to self", http.StatusBadRequest)
+			return
+		}
+		ec := s.getExeletClient(addr)
+		if ec == nil {
+			http.Error(w, fmt.Sprintf("unknown target exelet: %s", addr), http.StatusBadRequest)
+			return
+		}
+		targets = append(targets, ec)
+		targetAddrList = append(targetAddrList, addr)
+	}
+
+	// Set up streaming response.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	writeProgress := func(format string, args ...any) {
+		fmt.Fprintf(w, format+"\n", args...)
+		flusher.Flush()
+	}
+	writeError := func(format string, args ...any) {
+		writeProgress("ERROR: "+format, args...)
+	}
+
+	// Use a context that survives browser disconnect.
+	ctx = context.WithoutCancel(ctx)
+
+	writeProgress("Evacuating exelet %s (%s)", hostname, address)
+	writeProgress("Targets: %v", targetAddrList)
+
+	// Get all boxes on this exelet.
+	boxes, err := s.getBoxesByHost(ctx, address)
+	if err != nil {
+		writeError("failed to list VMs on exelet: %v", err)
+		s.slog().ErrorContext(ctx, "evacuate: failed to list VMs", "address", address, "error", err)
+		return
+	}
+
+	if len(boxes) == 0 {
+		writeProgress("No VMs on this exelet. Nothing to evacuate.")
+		return
+	}
+
+	writeProgress("Found %d VM(s) to evacuate.", len(boxes))
+	writeProgress("")
+
+	var succeeded int
+	for i, box := range boxes {
+		boxName := box.Name
+		writeProgress("=== [%d/%d] %s ===", i+1, len(boxes), boxName)
+
+		// Pick the least-loaded target.
+		var targetAddr string
+		var targetClient *exeletClient
+		for idx, ec := range targets {
+			if targetClient == nil || ec.count.Load() < targetClient.count.Load() {
+				targetAddr = targetAddrList[idx]
+				targetClient = ec
+			}
+		}
+		writeProgress("Target: %s (instances: %d)", targetAddr, targetClient.count.Load())
+
+		if box.ContainerID == nil {
+			writeError("box %q has no container_id", boxName)
+			s.slog().ErrorContext(ctx, "evacuate: box has no container_id", "box", boxName)
+			return
+		}
+		containerID := *box.ContainerID
+
+		sourceClient := s.getExeletClient(box.Ctrhost)
+		if sourceClient == nil {
+			writeError("source exelet %q not available for box %q", box.Ctrhost, boxName)
+			s.slog().ErrorContext(ctx, "evacuate: source exelet not available", "box", boxName, "source", box.Ctrhost)
+			return
+		}
+
+		sourceInstance, err := sourceClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+		if err != nil {
+			writeError("failed to get instance state for %q: %v", boxName, err)
+			s.slog().ErrorContext(ctx, "evacuate: failed to get instance state", "box", boxName, "error", err)
+			return
+		}
+		wasRunning := sourceInstance.Instance.State == computeapi.VMState_RUNNING
+		live := wasRunning
+
+		// Use a context that survives cancellation for recovery operations.
+		recoverCtx := context.WithoutCancel(ctx)
+		restartSource := func(reason string) {
+			s.restartSourceVM(recoverCtx, sourceClient, containerID, boxName, box.Ctrhost, targetAddr, reason, wasRunning, live, box.ID, writeProgress)
+		}
+
+		var sshPort *int64
+		var coldBooted bool
+		var cpuMismatch bool
+		dbStatus := "running"
+
+		var guestSudo, guestShell string
+		if live {
+			// Verify SSH works and guest can do IP reconfig before starting
+			// the transfer. Fall back to cold migration on failure.
+			if box.SSHPort != nil {
+				if _, err := runCommandOnBox(ctx, s.sshPool, box, "echo ok"); err != nil {
+					s.slog().WarnContext(ctx, "SSH pre-check failed, falling back to cold migration",
+						"box", boxName, "error", err)
+					writeProgress("WARNING: VM %q SSH pre-check failed (%v) — falling back to cold migration.", boxName, err)
+					live = false
+				} else {
+					var err error
+					guestSudo, guestShell, err = s.checkGuestIPReconfig(ctx, box)
+					if err != nil {
+						s.slog().WarnContext(ctx, "guest IP reconfig pre-check failed, falling back to cold migration",
+							"box", boxName, "error", err)
+						writeProgress("WARNING: VM %q cannot run IP commands (%v) — falling back to cold migration.", boxName, err)
+						live = false
+					}
+				}
+			}
+		}
+
+		// Pre-check CPU feature compatibility before attempting live migration.
+		if live {
+			writeProgress("Checking CPU feature compatibility...")
+			if missing := s.checkCPUCompatibility(ctx, sourceClient, targetClient, writeProgress); len(missing) > 0 {
+				s.slog().WarnContext(ctx, "CPU feature mismatch, falling back to two-phase migration",
+					"box", boxName, "missing_flags", missing)
+				writeProgress("WARNING: target is missing CPU flags %v — falling back to two-phase migration.", missing)
+				live = false
+				cpuMismatch = true
+			} else {
+				writeProgress("CPU feature compatibility check passed.")
+			}
+		}
+
+		// Best-effort: drop guest page cache before migration to reduce
+		// the amount of active memory that needs to be transferred.
+		if wasRunning && box.SSHPort != nil {
+			writeProgress("Dropping guest page cache...")
+			if res, err := s.dropPageCacheOnBox(ctx, box); err != nil {
+				writeProgress("WARNING: failed to drop page cache: %v (proceeding with migration)", err)
+			} else {
+				writeProgress("Dropped page cache (MemFree delta: %+d bytes, cached before: %d, after: %d)",
+					res.MemFreeDeltaBytes, res.CachedBeforeBytes, res.CachedAfterBytes)
+			}
+		}
+
+		if live {
+			writeProgress("Live migrating from %s to %s...", box.Ctrhost, targetAddr)
+			s.slog().InfoContext(ctx, "starting live migration", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+			liveSshPort, cb, err := s.migrateVMLive(ctx, migrateVMLiveParams{
+				source:     sourceClient.client,
+				targetAddr: targetAddr,
+				instanceID: containerID,
+				box:        *box,
+				progress:   writeProgress,
+				sudoPrefix: guestSudo,
+				guestShell: guestShell,
+			})
+			if errors.Is(err, errLiveMigrationCanFallback) {
+				s.slog().WarnContext(ctx, "live migration failed before commit, falling back to cold migration",
+					"box", boxName, "container_id", containerID,
+					"source", box.Ctrhost, "target", targetAddr,
+					"error", err)
+				writeProgress("WARNING: VM %q live migration aborted (%v) — falling back to cold migration.", boxName, err)
+				live = false
+			} else if err != nil {
+				s.slog().ErrorContext(ctx, "live migration failed",
+					"box", boxName, "container_id", containerID,
+					"source", box.Ctrhost, "target", targetAddr,
+					"error", err)
+				writeError("live migration failed: %v", err)
+				restartSource(err.Error())
+				return
+			} else {
+				coldBooted = cb
+				sshPort = &liveSshPort
+				writeProgress("Live migration complete.")
+				if coldBooted {
+					writeProgress("WARNING: fell back to cold boot.")
+				}
+			}
+		}
+		if !live {
+			writeProgress("Transferring disk from %s to %s...", box.Ctrhost, targetAddr)
+			s.slog().InfoContext(ctx, "starting disk transfer", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+			if err := s.migrateVM(ctx, sourceClient.client, containerID, box.Ctrhost, targetAddr, boxName, true, box, writeProgress); err != nil {
+				s.slog().ErrorContext(ctx, "cold migration failed",
+					"box", boxName, "container_id", containerID,
+					"source", box.Ctrhost, "target", targetAddr,
+					"error", err)
+				writeError("disk transfer failed: %v", err)
+				restartSource(err.Error())
+				return
+			}
+			if wasRunning {
+				writeProgress("Starting VM on target...")
+				if _, err := targetClient.client.StartInstance(ctx, &computeapi.StartInstanceRequest{ID: containerID}); err != nil {
+					writeError("failed to start VM on target: %v", err)
+					restartSource(err.Error())
+					return
+				}
+				writeProgress("VM started on target.")
+				newInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID})
+				if err != nil {
+					writeError("failed to get instance info from target: %v", err)
+					restartSource(err.Error())
+					return
+				}
+				newSSHPort := int64(newInstance.Instance.SSHPort)
+				sshPort = &newSSHPort
+			} else {
+				dbStatus = "stopped"
+			}
+		}
+
+		writeProgress("Updating database...")
+		if err := withTx1(s, ctx, (*exedb.Queries).UpdateBoxMigration, exedb.UpdateBoxMigrationParams{
+			Ctrhost: targetAddr,
+			SSHPort: sshPort,
+			Status:  dbStatus,
+			Region:  targetClient.region.Code,
+			ID:      box.ID,
+		}); err != nil {
+			writeError("failed to update database: %v", err)
+			s.slog().ErrorContext(ctx, "failed to update database after migration", "box", boxName, "error", err)
+			restartSource(err.Error())
+			return
+		}
+
+		proxyChangeMovedBox(boxName)
+		writeProgress("Proxy caches flushed.")
+
+		// Best-effort: update /etc/hosts inside the guest after DB is committed.
+		if wasRunning && sourceInstance.Instance.VMConfig != nil && sourceInstance.Instance.VMConfig.NetworkInterface != nil {
+			var targetVMConfig *computeapi.VMConfig
+			if (live && coldBooted) || !live {
+				if targetInstance, err := targetClient.client.GetInstance(ctx, &computeapi.GetInstanceRequest{ID: containerID}); err == nil {
+					targetVMConfig = targetInstance.Instance.VMConfig
+				}
+			}
+			if targetVMConfig != nil && targetVMConfig.NetworkInterface != nil {
+				sourceNet := sourceInstance.Instance.VMConfig.NetworkInterface
+				targetNet := targetVMConfig.NetworkInterface
+				if sourceNet.IP != nil && targetNet.IP != nil {
+					targetBox := *box
+					targetBox.Ctrhost = targetAddr
+					targetBox.SSHPort = sshPort
+					s.updateVMHostsFile(ctx, &targetBox, sourceNet.IP.IPV4, targetNet.IP.IPV4, writeProgress)
+				}
+			}
+		}
+
+		if !live || coldBooted {
+			var emailReason string
+			if cpuMismatch {
+				emailReason = "The VM had to be cold rebooted due to a CPU feature set mismatch between the source and target hosts."
+			}
+			go s.sendBoxMaintenanceEmail(context.Background(), boxName, emailReason)
+		}
+
+		writeProgress("Deleting source instance on %s...", box.Ctrhost)
+		if err := retrySourceDeleteAfterMigration(ctx, sourceClient.client, containerID); err != nil {
+			writeProgress("WARNING: failed to delete source instance: %v", err)
+			s.slog().WarnContext(ctx, "failed to delete source instance after migration",
+				"box", boxName, "container_id", containerID, "source", box.Ctrhost, "error", err)
+		} else {
+			writeProgress("Source instance deleted.")
+		}
+
+		writeProgress("Box %s migrated successfully.", boxName)
+		s.slog().InfoContext(ctx, "evacuate: box migrated", "box", boxName, "source", box.Ctrhost, "target", targetAddr)
+		succeeded++
+		writeProgress("")
+	}
+
+	writeProgress("=== Evacuation complete: %d/%d VM(s) migrated successfully ===", succeeded, len(boxes))
+	s.slog().InfoContext(ctx, "evacuate complete", "address", address, "succeeded", succeeded, "total", len(boxes))
 }
 
 // handleDebugBoxMigrateTier migrates a VM's storage tier with streaming progress.
