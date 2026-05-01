@@ -40,7 +40,7 @@
       <Column field="name" header="VM" sortable>
         <template #body="{ data }">
           <div class="vm-cell">
-            <StatusDot :status="data.status" />
+            <StatusDot :status="data.status" :emoji="data.emoji" />
             <router-link :to="`/vm/${data.name}`" class="vm-name" @click.stop>{{ data.name }}</router-link>
           </div>
         </template>
@@ -181,6 +181,7 @@ const boxStatusMap = computed(() => {
 interface UsageRow {
   name: string
   status: string
+  emoji: string
   cpuValues: number[]
   cpuNominal: number
   cpuLabel: string
@@ -234,9 +235,11 @@ const rows = computed<UsageRow[]>(() => {
     const memLast = points.length > 0 ? lastVal(points, 'memory_used_gb') : 0
     const diskLast = points.length > 0 ? lastVal(points, 'disk_used_gb') : 0
 
+    const box = props.boxes.find((b) => b.name === name)
     result.push({
       name,
       status,
+      emoji: box?.emoji ?? '',
       cpuValues: points.map((p) => p.cpu_cores),
       cpuNominal: cpuNominal > 0 ? cpuNominal : 1,
       cpuLabel: points.length > 0 ? fmtCores(cpuLast) : '\u2014',
@@ -322,6 +325,10 @@ const totalDiskLabel = computed(() => {
 
 .usage-table :deep(.p-datatable-tbody > tr) {
   cursor: pointer;
+}
+.usage-table :deep(.p-datatable-tbody > tr > td) {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .vm-cell {
