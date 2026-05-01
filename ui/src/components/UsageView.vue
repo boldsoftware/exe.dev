@@ -4,12 +4,12 @@
     <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
 
     <!-- Pool capacity warnings -->
-    <Message v-if="poolAlert === 'danger'" severity="error" :closable="false">
-      Your resource pool is at {{ poolPctLabel }}% capacity.
+    <Message v-if="poolAlert === 'danger'" severity="error" :closable="false" class="pool-alert">
+      Your resource pool is at capacity.
       <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
     </Message>
-    <Message v-else-if="poolAlert === 'warn'" severity="warn" :closable="false">
-      Your resource pool is at {{ poolPctLabel }}% capacity.
+    <Message v-else-if="poolAlert === 'warn'" severity="warn" :closable="false" class="pool-alert">
+      Your resource pool is almost at capacity.
       <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
     </Message>
 
@@ -49,7 +49,6 @@
         <template #body="{ data }">
           <div class="metric-cell">
             <span class="metric-value">{{ data.cpuLabel }}</span>
-            <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }}</span>
           </div>
         </template>
       </Column>
@@ -57,7 +56,6 @@
         <template #body="{ data }">
           <div class="metric-cell">
             <span class="metric-value">{{ data.memLabel }}</span>
-            <span v-if="memMaxLabel" class="metric-denom">/ {{ memMaxLabel }}</span>
           </div>
         </template>
       </Column>
@@ -131,7 +129,6 @@ const poolPct = computed(() => {
   }
   return maxPct
 })
-const poolPctLabel = computed(() => Math.round(poolPct.value))
 const poolAlert = computed<'danger' | 'warn' | null>(() => {
   if (poolPct.value >= 95) return 'danger'
   if (poolPct.value >= 75) return 'warn'
@@ -388,6 +385,10 @@ const totalDiskLabel = computed(() => {
   text-align: center;
   padding: 48px;
   color: var(--text-color-muted);
+}
+
+.pool-alert :deep(.p-message-text) {
+  font-size: 13px;
 }
 
 .pool-alert-link {
