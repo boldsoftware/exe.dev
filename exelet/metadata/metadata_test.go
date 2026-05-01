@@ -448,6 +448,22 @@ func TestTeamIntProxiesToExed(t *testing.T) {
 }
 
 func TestMetadataServiceIntegrationProxy(t *testing.T) {
+	// Local upstream that mimics the small bit of httpbin /anything this test
+	// needs. Keeping this in-process avoids depending on external network/DNS.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/anything/some/path" {
+			t.Errorf("upstream path = %q, want /anything/some/path", got)
+		}
+		if got := r.Header.Get("X-Custom-Auth"); got != "secret123" {
+			t.Errorf("upstream X-Custom-Auth = %q, want secret123", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"headers": map[string]string{"X-Custom-Auth": r.Header.Get("X-Custom-Auth")},
+		})
+	}))
+	defer upstream.Close()
+
 	// Fake exed that serves /_/integration-config with the generic proxy format.
 	fakeExed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_/integration-config" {
@@ -460,7 +476,7 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"ok":      true,
-			"target":  "https://httpbin.org/anything",
+			"target":  upstream.URL + "/anything",
 			"headers": map[string]string{"X-Custom-Auth": "secret123"},
 		})
 	}))
@@ -480,7 +496,7 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 	defer svc.Stop(context.Background())
 
 	// This test verifies the handler logic (config lookup, routing, type dispatch)
-	// and the actual proxy to httpbin.org (public IP, passes dial guard).
+	// and the actual proxy to the configured upstream.
 	req := httptest.NewRequest("GET", "http://myproxy.int.exe.cloud/some/path", nil)
 	req.Host = "myproxy.int.exe.cloud"
 	req.RemoteAddr = "10.42.0.2:12345"
@@ -491,14 +507,17 @@ func TestMetadataServiceIntegrationProxy(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// Verify the response is from httpbin and includes our injected header.
+	// Verify the response is from our upstream and includes the injected header.
 	var result map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &result); err == nil {
-		if headers, ok := result["headers"].(map[string]any); ok {
-			if got := headers["X-Custom-Auth"]; got != "secret123" {
-				t.Errorf("expected X-Custom-Auth=secret123, got %v", got)
-			}
-		}
+	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to unmarshal upstream response: %v", err)
+	}
+	headers, ok := result["headers"].(map[string]any)
+	if !ok {
+		t.Fatalf("upstream response missing headers: %#v", result)
+	}
+	if got := headers["X-Custom-Auth"]; got != "secret123" {
+		t.Errorf("expected X-Custom-Auth=secret123, got %v", got)
 	}
 }
 
