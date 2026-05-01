@@ -580,7 +580,8 @@ func assertRunningBoxCount(t *testing.T, s *Server, ctx context.Context, userID 
 
 func waitForRunningBoxCount(t *testing.T, s *Server, ctx context.Context, userID string, want int) {
 	t.Helper()
-	for range 100 {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		boxes, err := withRxRes1(s, ctx, (*exedb.Queries).GetRunningBoxesForUser, userID)
 		if err != nil {
 			t.Fatalf("GetRunningBoxesForUser(%s): %v", userID, err)
@@ -609,7 +610,8 @@ func assertUserRemainsRunning(t *testing.T, s *Server, ctx context.Context, user
 
 func waitForExactlyRunningUsers(t *testing.T, s *Server, ctx context.Context, userIDs []string, want int) {
 	t.Helper()
-	for range 100 {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		got := 0
 		for _, userID := range userIDs {
 			boxes, err := withRxRes1(s, ctx, (*exedb.Queries).GetRunningBoxesForUser, userID)
@@ -641,7 +643,8 @@ func waitForExactlyRunningUsers(t *testing.T, s *Server, ctx context.Context, us
 
 func waitForTrialExpiryNextWake(t *testing.T, s *Server) *time.Time {
 	t.Helper()
-	for range 100 {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		if nextWake := s.trialExpiryNextWake.Load(); nextWake != nil {
 			return nextWake
 		}
@@ -653,7 +656,8 @@ func waitForTrialExpiryNextWake(t *testing.T, s *Server) *time.Time {
 
 func waitForTrialExpiryNextWakeChange(t *testing.T, s *Server, previous *time.Time) *time.Time {
 	t.Helper()
-	for range 100 {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		if nextWake := s.trialExpiryNextWake.Load(); nextWake != nil && nextWake != previous {
 			return nextWake
 		}
