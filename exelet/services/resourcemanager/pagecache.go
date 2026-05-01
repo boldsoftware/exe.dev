@@ -18,7 +18,10 @@ const idleCacheDropWindow = 30 * time.Minute
 // idleCacheDropCPUThreshold is the CPU percent below which the average
 // over the lookback window must stay for a VM to be considered idle.
 // CPU percent here is the same units we report elsewhere (100% = 1 core).
-const idleCacheDropCPUThreshold = 0.1
+// 1.0% over 30 min picks up roughly the bottom ~75% of prod VMs (per
+// vm_metrics in ClickHouse); the previous 0.1% threshold was at the
+// quantization floor of the input samples and qualified ~18% of VMs.
+const idleCacheDropCPUThreshold = 1.0
 
 // idleCacheDropProbability is the per-poll probability of probing an idle
 // VM's page cache. With a 30s poll interval and 30-min eligibility window,
