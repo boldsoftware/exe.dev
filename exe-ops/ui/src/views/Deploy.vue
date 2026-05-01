@@ -539,6 +539,34 @@
           </button>
         </div>
 
+        <!-- Self-deploy rug-pull banner. Visible whenever an exe-ops target
+             is in flight, evolving with selfDeployState. -->
+        <div
+          v-if="selfDeployState !== 'none'"
+          class="self-deploy-banner"
+          :class="'self-deploy-' + selfDeployState"
+        >
+          <i
+            v-if="selfDeployState === 'armed'"
+            class="pi pi-exclamation-triangle"
+          ></i>
+          <i
+            v-else-if="selfDeployState === 'reconnecting'"
+            class="pi pi-spin pi-spinner"
+          ></i>
+          <i
+            v-else-if="selfDeployState === 'recovered'"
+            class="pi pi-check-circle"
+            :style="{ color: 'var(--green-400)' }"
+          ></i>
+          <i
+            v-else-if="selfDeployState === 'mismatch'"
+            class="pi pi-times-circle"
+            :style="{ color: 'var(--red-400)' }"
+          ></i>
+          <span class="self-deploy-banner-text">{{ selfDeployBannerText }}</span>
+        </div>
+
         <!-- Rollout progress header (only when this is a rollout) -->
         <div v-if="activeRollout" class="rollout-progress" :class="'rollout-state-' + activeRollout.state">
           <div class="rollout-progress-bar-wrap">
@@ -662,6 +690,7 @@ import {
   cancelRollout,
   pauseRollout,
   resumeRollout,
+  fetchServerVersion,
 
   type DeployProcess,
   type DeployStatus,
@@ -1003,6 +1032,130 @@ const liveDeployAnyFailed = computed(() => {
   })
 })
 
+// Self-deploy ("rug-pull") tracking. When the live deploy set includes a
+// process=="exe-ops" target, the server we're talking to is about to
+// systemctl-restart itself. The deploy goroutine dies mid-flight, the new
+// server boots with empty in-memory deploy history, and the browser's
+// connection drops between the restart and verify steps. We watch for that
+// transition and reconcile against /api/v1/version so the user sees a clean
+// "recovered, running <new sha>" instead of a hung modal.
+type SelfDeployState =
+  | 'none'         // no self-deploy in flight
+  | 'armed'        // self-deploy detected, server still reachable
+  | 'reconnecting' // server stopped responding; polling /api/v1/version
+  | 'recovered'    // /api/v1/version returned a different commit
+  | 'mismatch'     // server returned but commit doesn't match deploy SHA
+
+const selfDeployState = ref<SelfDeployState>('none')
+const selfDeployBaselineCommit = ref<string>('')
+const selfDeployRecoveredCommit = ref<string>('')
+let selfDeployPollTimer: ReturnType<typeof setInterval> | null = null
+
+const liveSelfDeployIds = computed(() =>
+  liveDeployIds.value.filter(id => liveDeployStatuses.value.get(id)?.process === 'exe-ops')
+)
+
+const liveSelfDeployStatus = computed(() => {
+  const id = liveSelfDeployIds.value[0]
+  return id ? liveDeployStatuses.value.get(id) : undefined
+})
+
+const liveSelfDeployTargetSHA = computed(() => liveSelfDeployStatus.value?.sha ?? '')
+
+// Arm self-deploy tracking as soon as we see an exe-ops target in the live
+// set, so we have a baseline commit to detect the post-restart transition.
+watch(liveSelfDeployIds, async (ids) => {
+  if (ids.length === 0) {
+    if (selfDeployState.value === 'armed') {
+      // We armed but the deploy disappeared without ever rug-pulling us
+      // (e.g. validation rejected by Manager.Start). Reset.
+      selfDeployState.value = 'none'
+      selfDeployBaselineCommit.value = ''
+    }
+    return
+  }
+  if (selfDeployState.value !== 'none') return
+  selfDeployState.value = 'armed'
+  try {
+    const v = await fetchServerVersion()
+    selfDeployBaselineCommit.value = v.commit
+  } catch {
+    // If we can't capture a baseline, fall back to the SHA being replaced —
+    // /api/v1/version returning anything other than that means progress.
+    selfDeployBaselineCommit.value = ''
+  }
+}, { immediate: true })
+
+// Drive the rug-pull recovery poll. While "reconnecting" we hit
+// /api/v1/version on a tight cadence; once the commit changes (or the
+// fetchServerVersion call simply succeeds and the commit matches the
+// deploy's target SHA) we mark recovery.
+function startSelfDeployPoll() {
+  if (selfDeployPollTimer) return
+  selfDeployPollTimer = setInterval(async () => {
+    try {
+      const v = await fetchServerVersion()
+      const target = liveSelfDeployTargetSHA.value
+      const baseline = selfDeployBaselineCommit.value
+      // If we never captured a baseline, accept any successful response that
+      // matches the deploy target SHA.
+      if (target && v.commit === target) {
+        selfDeployRecoveredCommit.value = v.commit
+        selfDeployState.value = 'recovered'
+        stopSelfDeployPoll()
+        // Refresh inventory + deploys against the new server.
+        loadDeploys()
+        load()
+      } else if (baseline && v.commit && v.commit !== baseline) {
+        // Server came back but with an unexpected commit (older binary?
+        // rollback?). Surface a mismatch so the user notices.
+        selfDeployRecoveredCommit.value = v.commit
+        selfDeployState.value = 'mismatch'
+        stopSelfDeployPoll()
+        loadDeploys()
+        load()
+      }
+      // Same commit as baseline: server hasn't restarted yet. Keep polling.
+    } catch {
+      // Server still unreachable. Keep polling.
+    }
+  }, 1500)
+}
+
+function stopSelfDeployPoll() {
+  if (selfDeployPollTimer) {
+    clearInterval(selfDeployPollTimer)
+    selfDeployPollTimer = null
+  }
+}
+
+function resetSelfDeployState() {
+  stopSelfDeployPoll()
+  selfDeployState.value = 'none'
+  selfDeployBaselineCommit.value = ''
+  selfDeployRecoveredCommit.value = ''
+}
+
+const selfDeployBannerText = computed(() => {
+  switch (selfDeployState.value) {
+    case 'armed':
+      return 'exe-ops will restart itself during this deploy — the page will briefly lose its connection.'
+    case 'reconnecting':
+      return 'exe-ops is restarting. Waiting for the new server to come back online…'
+    case 'recovered': {
+      const sha = selfDeployRecoveredCommit.value.slice(0, 7) || '?'
+      return `exe-ops is back online running ${sha}. The deploy that just rug-pulled us isn't in the new server's history; refresh the page if anything looks stale.`
+    }
+    case 'mismatch': {
+      const got = selfDeployRecoveredCommit.value.slice(0, 7) || '?'
+      const want = liveSelfDeployTargetSHA.value.slice(0, 7) || '?'
+      return `exe-ops came back running ${got}, not the deployed ${want}. The deploy may have failed; check systemd on the host.`
+    }
+    default:
+      return ''
+  }
+})
+
 function stepDuration(step: { started_at?: string; done_at?: string }): string {
   if (!step.started_at || !step.done_at) return ''
   const ms = new Date(step.done_at).getTime() - new Date(step.started_at).getTime()
@@ -1031,9 +1184,30 @@ watch(liveDeployAnyFailed, (failed) => {
 watch([liveDeployAllDone, liveDeployVisible], ([done, visible]) => {
   if (done && !visible) {
     if (activeRolloutId.value && !rolloutTerminal.value) return
+    // Don't blow away ids while we're still trying to reconcile a self-deploy
+    // rug-pull — we want to keep showing the recovery state until the user
+    // dismisses or we land in a terminal recovery state.
+    if (selfDeployState.value === 'armed' || selfDeployState.value === 'reconnecting') return
     liveDeployIds.value = []
     liveDeploySelected.value = ''
     activeRolloutId.value = ''
+    if (selfDeployState.value === 'recovered' || selfDeployState.value === 'mismatch') {
+      resetSelfDeployState()
+    }
+  }
+})
+
+// When the user closes the modal after a rug-pull recovery, the live deploy
+// statuses are stale (undefined for the rug-pulled id) so liveDeployAllDone
+// stays false and the watch above never fires the cleanup. Catch that case
+// here so a future deploy starts from a clean slate.
+watch(liveDeployVisible, (visible) => {
+  if (visible) return
+  if (selfDeployState.value === 'recovered' || selfDeployState.value === 'mismatch') {
+    liveDeployIds.value = []
+    liveDeploySelected.value = ''
+    activeRolloutId.value = ''
+    resetSelfDeployState()
   }
 })
 
@@ -1457,7 +1631,14 @@ async function loadDeploys() {
   try {
     deploys.value = await fetchDeploys()
   } catch {
-    // ignore — deploys section just won't show
+    // A failure here while a self-deploy is armed is the rug-pull tell:
+    // the server has restarted out from under us. Switch to the recovery
+    // poll so the modal can show "reconnecting" instead of going silent.
+    if (selfDeployState.value === 'armed') {
+      selfDeployState.value = 'reconnecting'
+      startSelfDeployPoll()
+    }
+    // Otherwise ignore — deploys section just won't show.
   }
 }
 
@@ -1675,6 +1856,7 @@ onUnmounted(() => {
   if (daemonHealthAbort) daemonHealthAbort.abort()
   stopDeployPolling()
   stopActiveRolloutPolling()
+  stopSelfDeployPoll()
 })
 </script>
 
@@ -3031,6 +3213,45 @@ a.version-sha:hover {
 
 .live-deploy-dialog .modal-title .pi {
   font-size: 0.85rem;
+}
+
+.self-deploy-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--surface-border);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.self-deploy-armed {
+  background: var(--yellow-50, rgba(255, 193, 7, 0.08));
+  color: var(--yellow-700, #b58105);
+}
+
+.self-deploy-reconnecting {
+  background: var(--orange-50, rgba(255, 138, 0, 0.08));
+  color: var(--orange-700, #c25e00);
+}
+
+.self-deploy-recovered {
+  background: var(--green-50, rgba(40, 167, 69, 0.08));
+  color: var(--green-700, #1e7e34);
+}
+
+.self-deploy-mismatch {
+  background: var(--red-50, rgba(220, 53, 69, 0.08));
+  color: var(--red-700, #b21f2d);
+}
+
+.self-deploy-banner .pi {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.self-deploy-banner-text {
+  flex: 1;
 }
 
 .live-deploy-content {
