@@ -1,5 +1,5 @@
 <template>
-  <div class="box-row" role="link" tabindex="0" @click="onRowClick" @keydown.enter="onRowClick">
+  <div class="box-row" role="link" tabindex="0" @click="onRowClick" @auxclick="onRowAuxClick" @keydown.enter="onRowKey">
     <div class="box-main">
       <span ref="emojiAnchor" class="emoji-anchor">
         <StatusDot
@@ -99,8 +99,24 @@ const emit = defineEmits<{
   (e: 'action', action: { type: string; boxName: string; extra?: any }): void
 }>()
 
-function onRowClick(event: Event) {
+function onRowClick(event: MouseEvent) {
   if ((event.target as HTMLElement).closest('button, a')) return
+  const url = `/vm/${props.box.name}`
+  if (event.ctrlKey || event.metaKey || event.shiftKey) {
+    window.open(url, '_blank')
+    return
+  }
+  router.push(url)
+}
+
+function onRowAuxClick(event: MouseEvent) {
+  if (event.button !== 1) return
+  if ((event.target as HTMLElement).closest('button, a')) return
+  event.preventDefault()
+  window.open(`/vm/${props.box.name}`, '_blank')
+}
+
+function onRowKey() {
   router.push(`/vm/${props.box.name}`)
 }
 </script>
