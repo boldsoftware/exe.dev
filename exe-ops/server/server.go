@@ -55,8 +55,6 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 	// Server version.
 	authed.HandleFunc("/api/v1/version", h.HandleServerVersion)
 
-	authed.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
-
 	// pprof endpoints. Gated behind the same human-Tailscale auth as the
 	// rest of /debug. Importing net/http/pprof would also register on
 	// http.DefaultServeMux, which we don't serve — register explicitly.
@@ -93,6 +91,8 @@ func New(uiFS fs.FS, log *slog.Logger, environment string, inv *inventory.Invent
 	// the auth gate.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", h.HandleHealth)
+	// /debug/gitsha is open so exe-ops can self-poll its own running SHA via the inventory loop.
+	mux.HandleFunc("/debug/gitsha", h.HandleDebugGitSHA)
 
 	metricsRegistry := prometheus.NewRegistry()
 	metricsRegistry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
