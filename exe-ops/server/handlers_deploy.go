@@ -161,6 +161,8 @@ func (h *Handlers) HandleRollouts(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.As(err, &plErr):
 				http.Error(w, err.Error(), http.StatusLocked)
+			case errors.Is(err, deploy.ErrSelfDeployConflict):
+				http.Error(w, err.Error(), http.StatusConflict)
 			case strings.Contains(err.Error(), "deployment in progress"):
 				http.Error(w, err.Error(), http.StatusConflict)
 			default:

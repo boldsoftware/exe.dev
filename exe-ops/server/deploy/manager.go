@@ -171,6 +171,14 @@ func (m *Manager) start(req Request, rolloutID string, prodLockRelease func()) (
 		m.mu.Unlock()
 		return Status{}, fmt.Errorf("deploy already active for %s (id %s)", key, existing.id)
 	}
+	// Rollout-owned deploys were already vetted by StartRollout; re-checking
+	// here would also reject them against their own rollout entry.
+	if rolloutID == "" {
+		if err := m.checkSelfDeployExclusionLocked(req.Process); err != nil {
+			m.mu.Unlock()
+			return Status{}, err
+		}
+	}
 	m.active[key] = d
 	m.deploys = append([]*deploy{d}, m.deploys...)
 	if len(m.deploys) > maxHistory {
@@ -256,6 +264,56 @@ func (m *Manager) Get(id string) (Status, bool) {
 // be cancelled via CancelRollout so that the rollout orchestrator stops
 // scheduling further waves.
 var ErrDeployRolloutOwned = fmt.Errorf("deploy is part of a rollout; cancel the rollout instead")
+
+// ErrSelfDeployConflict is returned when an exe-ops self-deploy would
+// overlap another in-flight deploy or rollout (in either direction).
+// The exe-ops process tears down its own server on restart, so it must
+// run alone — otherwise concurrent deploys lose their orchestrator
+// mid-flight.
+var ErrSelfDeployConflict = fmt.Errorf("exe-ops self-deploys must run alone")
+
+// selfDeployProcess is the process name of the exe-ops server itself.
+// Deploys with this process restart the very server tracking the deploy
+// state, so they are subject to additional exclusion rules.
+const selfDeployProcess = "exe-ops"
+
+// checkSelfDeployExclusionLocked enforces that exe-ops self-deploys run alone.
+// Caller must hold m.mu.
+//
+// If process == selfDeployProcess, any other active deploy or rollout is a
+// conflict — the self-deploy will restart the server and orphan them.
+// Conversely, if any in-flight work is an exe-ops self-deploy, no new deploys
+// may start, since the server is about to disappear under them.
+func (m *Manager) checkSelfDeployExclusionLocked(process string) error {
+	if process == selfDeployProcess {
+		for _, d := range m.active {
+			if d.process != selfDeployProcess {
+				return fmt.Errorf("%w: deploy %s for %s/%s is active",
+					ErrSelfDeployConflict, d.id, d.process, d.host)
+			}
+		}
+		for _, r := range m.activeRollouts {
+			if r.process != selfDeployProcess {
+				return fmt.Errorf("%w: rollout %s for %s is active",
+					ErrSelfDeployConflict, r.id, r.process)
+			}
+		}
+		return nil
+	}
+	for _, d := range m.active {
+		if d.process == selfDeployProcess {
+			return fmt.Errorf("%w: exe-ops self-deploy %s is in flight",
+				ErrSelfDeployConflict, d.id)
+		}
+	}
+	for _, r := range m.activeRollouts {
+		if r.process == selfDeployProcess {
+			return fmt.Errorf("%w: exe-ops self-deploy rollout %s is in flight",
+				ErrSelfDeployConflict, r.id)
+		}
+	}
+	return nil
+}
 
 // Cancel aborts an in-flight deploy by id. Idempotent: cancelling a deploy
 // that has already reached a terminal state is a no-op and returns nil.
@@ -976,6 +1034,11 @@ func (m *Manager) StartRollout(req RolloutRequest) (RolloutStatus, error) {
 			existing.startedAt.Format(time.RFC3339),
 			existing.initiatedBy,
 		)
+	}
+	if err := m.checkSelfDeployExclusionLocked(req.Targets[0].Process); err != nil {
+		m.mu.Unlock()
+		releaseAll()
+		return RolloutStatus{}, err
 	}
 	m.activeRollouts[lockKey] = r
 	m.rollouts = append([]*rollout{r}, m.rollouts...)
