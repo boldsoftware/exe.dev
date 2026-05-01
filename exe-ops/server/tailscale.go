@@ -7,9 +7,26 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 )
 
 const tailscaledSocket = "/var/run/tailscale/tailscaled.sock"
+
+// tailscaledClient is shared across whois requests. Without a singleton
+// every call leaked the underlying Transport's idle persistConn (and its
+// readLoop+writeLoop goroutines) since the Transport's default
+// IdleConnTimeout is 0. Auth middleware runs whois on every request, so
+// the leak compounded with traffic.
+var tailscaledClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", tailscaledSocket)
+		},
+		MaxIdleConns:        4,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
 
 // Whois identifies a Tailscale peer.
 type Whois struct {
@@ -56,25 +73,20 @@ type tailscaleWhoisResponse struct {
 // TailscaleWhoIs queries the Tailscale local API to identify the peer at
 // the given remoteAddr (ip:port as returned by http.Request.RemoteAddr).
 func TailscaleWhoIs(ctx context.Context, remoteAddr string) (Whois, error) {
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", tailscaledSocket)
-			},
-		},
-	}
-
 	req, err := http.NewRequestWithContext(ctx, "GET",
 		"http://local-tailscaled.sock/localapi/v0/whois?addr="+remoteAddr, nil)
 	if err != nil {
 		return Whois{}, fmt.Errorf("tailscale whois: %w", err)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := tailscaledClient.Do(req)
 	if err != nil {
 		return Whois{}, fmt.Errorf("tailscale whois: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
