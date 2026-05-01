@@ -163,9 +163,8 @@ type GetVMUsageRequest struct {
 	VmID  string                 `protobuf:"bytes,1,opt,name=vm_id,json=vmId,proto3" json:"vm_id,omitempty"`
 	// collect_filesystem_usage requests that the exelet probe the
 	// guest's ext4 superblock and populate fs_*_bytes on the response.
-	// Defaults to false (no probe; fs_*_bytes left at zero). Honoured
-	// only when the exelet's gate (env-wide CollectExt4Usage or this
-	// VM's group ID being on the allow-list) permits it.
+	// Defaults to false (no probe; fs_*_bytes left at zero). The probe
+	// is read-only and unconditionally allowed when requested.
 	CollectFilesystemUsage bool `protobuf:"varint,2,opt,name=collect_filesystem_usage,json=collectFilesystemUsage,proto3" json:"collect_filesystem_usage,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache

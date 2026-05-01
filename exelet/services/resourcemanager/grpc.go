@@ -64,11 +64,10 @@ func (m *ResourceManager) GetVMUsage(ctx context.Context, req *api.GetVMUsageReq
 		m.usageMu.Unlock()
 		return nil, status.Errorf(codes.NotFound, "no usage data for VM %s", req.VmID)
 	}
-	groupID := state.groupID
 	u := vmUsageProto(req.VmID, state, m.guestMemoryProto(req.VmID))
 	m.usageMu.Unlock()
 
-	m.maybeFillExt4Usage(ctx, req.VmID, groupID, req.GetCollectFilesystemUsage(), u)
+	m.maybeFillExt4Usage(ctx, req.VmID, req.GetCollectFilesystemUsage(), u)
 	return &api.GetVMUsageResponse{Usage: u}, nil
 }
 
@@ -150,18 +149,10 @@ func sampleToGuestMemoryProto(s guestmetrics.Sample, refaultRate float64) *api.G
 }
 
 // maybeFillExt4Usage performs an on-demand ext4 superblock probe and
-// fills u.Fs*Bytes when:
-//
-//   - The caller asked for it (collectRequested), AND
-//   - The exelet's gate (env-wide flag or per-group allow-list) permits
-//     it for this VM's groupID.
-//
+// fills u.Fs*Bytes when the caller asked for it (collectRequested).
 // Otherwise the fs_*_bytes fields are left at zero.
-func (m *ResourceManager) maybeFillExt4Usage(ctx context.Context, id, groupID string, collectRequested bool, u *api.VMUsage) {
+func (m *ResourceManager) maybeFillExt4Usage(ctx context.Context, id string, collectRequested bool, u *api.VMUsage) {
 	if !collectRequested || u == nil {
-		return
-	}
-	if !m.ext4UsageAllowed(groupID) {
 		return
 	}
 	readFn := m.readFilesystemUsageFn
@@ -188,9 +179,8 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 	// Snapshot under the lock; do the I/O for ext4 outside of it so a
 	// stalled zvol can't block other usage state mutations.
 	type snapshot struct {
-		id      string
-		groupID string
-		usage   *api.VMUsage
+		id    string
+		usage *api.VMUsage
 	}
 	m.usageMu.Lock()
 	snapshots := make([]snapshot, 0, len(m.usageState))
@@ -199,16 +189,15 @@ func (m *ResourceManager) ListVMUsage(req *api.ListVMUsageRequest, stream api.Re
 		// is safe to call here, and we want the guest snapshot to line
 		// up with the usage snapshot we are emitting.
 		snapshots = append(snapshots, snapshot{
-			id:      id,
-			groupID: state.groupID,
-			usage:   vmUsageProto(id, state, m.guestMemoryProto(id)),
+			id:    id,
+			usage: vmUsageProto(id, state, m.guestMemoryProto(id)),
 		})
 	}
 	m.usageMu.Unlock()
 
 	collect := req.GetCollectFilesystemUsage()
 	for _, s := range snapshots {
-		m.maybeFillExt4Usage(stream.Context(), s.id, s.groupID, collect, s.usage)
+		m.maybeFillExt4Usage(stream.Context(), s.id, collect, s.usage)
 		if err := stream.Send(&api.ListVMUsageResponse{Usage: s.usage}); err != nil {
 			return err
 		}

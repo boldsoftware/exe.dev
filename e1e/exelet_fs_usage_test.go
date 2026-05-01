@@ -47,14 +47,10 @@ echo 3 > /proc/sys/vm/drop_caches`
 	}
 }
 
-// TestVMFilesystemUsage exercises the gated, opt-in ext4 superblock
-// probe that the exelet performs against the guest's zvol.
-//
-// In the e1e environment the stage is "test", which sets
-// stage.CollectExt4Usage=true; that propagates into the exelet config
-// (CollectExt4Usage=true) and the resource manager allows the probe
-// for every VM regardless of group ID. We verify three behaviours
-// end-to-end:
+// TestVMFilesystemUsage exercises the opt-in ext4 superblock probe
+// that the exelet performs against the guest's zvol. The probe is
+// always available to callers; only the per-RPC request flag controls
+// whether it runs. We verify three behaviours end-to-end:
 //
 //	(1) When the request flag is true, fs_*_bytes is populated with
 //	    sensible values (free < total, available <= free, total <=

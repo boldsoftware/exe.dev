@@ -102,20 +102,6 @@ type Env struct {
 	ListenOnTailscaleOnly bool // whether auxiliary daemons (metricsd) should bind only to the tailscale interface
 	RedirectHTTPToHTTPS   bool // whether the HTTP server should redirect all requests to HTTPS (port 80 → 443)
 
-	// CollectExt4Usage gates the host-side ext4 superblock probe that
-	// reports the guest's filesystem-level disk usage. Off in prod (the
-	// probe is read-only and safe, but the data crosses a tenant
-	// boundary; we want it on by default only in non-prod). Specific
-	// users can be allowed in any stage via
-	// ExtraExt4UsageGroupIDs.
-	CollectExt4Usage bool
-
-	// ExtraExt4UsageGroupIDs are user/group IDs that are allowed to see
-	// ext4 usage in addition to whatever CollectExt4Usage says. Used to
-	// dogfood the feature against specific user accounts on prod
-	// without flipping the env-wide bit.
-	ExtraExt4UsageGroupIDs []string
-
 	GitHubTokenRenewalStartupDelay time.Duration // base delay before first GitHub token renewal check; jitter of equal magnitude is added
 
 	ProdLockEnv string // prodlock environment to lock during mass VM migrations; empty means no locking
@@ -186,9 +172,6 @@ func Invalid() Env {
 
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
-
-		CollectExt4Usage:       false,
-		ExtraExt4UsageGroupIDs: []string{},
 
 		GitHubTokenRenewalStartupDelay: 5 * time.Minute,
 
@@ -264,9 +247,6 @@ func Local() Env {
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
 
-		CollectExt4Usage:       true,
-		ExtraExt4UsageGroupIDs: []string{"usrSM27RI7TOCZF3"},
-
 		DefaultMemory: 1 * 1024 * 1024 * 1024,  // 1 GiB
 		DefaultDisk:   10 * 1024 * 1024 * 1024, // 10 GiB
 		DefaultCPUs:   2,
@@ -340,9 +320,6 @@ func Test() Env {
 		ListenOnTailscaleOnly: false,
 		RedirectHTTPToHTTPS:   false,
 
-		CollectExt4Usage:       true,
-		ExtraExt4UsageGroupIDs: []string{"usrSM27RI7TOCZF3"},
-
 		DefaultMemory: 1 * 1024 * 1024 * 1024,  // 1 GiB
 		DefaultDisk:   11 * 1024 * 1024 * 1024, // 11 GiB
 		DefaultCPUs:   2,
@@ -410,9 +387,6 @@ func Staging() Env {
 
 		ListenOnTailscaleOnly: true,
 		RedirectHTTPToHTTPS:   true,
-
-		CollectExt4Usage:       true,
-		ExtraExt4UsageGroupIDs: []string{"usrSM27RI7TOCZF3"},
 
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),
@@ -500,9 +474,6 @@ func Prod() Env {
 
 		ListenOnTailscaleOnly: true,
 		RedirectHTTPToHTTPS:   true,
-
-		CollectExt4Usage:       false,
-		ExtraExt4UsageGroupIDs: []string{"usrSM27RI7TOCZF3"},
 
 		NumShards:  1016,
 		ProxyPorts: portRange(3000, 9999),

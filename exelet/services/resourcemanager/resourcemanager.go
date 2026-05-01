@@ -89,10 +89,6 @@ type ResourceManager struct {
 	hostPressure *hostPressure
 	guestMetrics *guestmetrics.Metrics
 
-	// ext4 usage gate, derived once at construction.
-	collectExt4Usage         bool
-	collectExt4UsageGroupIDs map[string]struct{}
-
 	// readFilesystemUsageFn is a test hook that overrides the actual
 	// zvol superblock read. Nil in production.
 	readFilesystemUsageFn func(ctx context.Context, id string) (ext4.Usage, bool)
@@ -204,39 +200,17 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		pollInterval = cfg.ResourceManagerInterval
 	}
 
-	ext4Allow := make(map[string]struct{}, len(cfg.CollectExt4UsageGroupIDs))
-	for _, g := range cfg.CollectExt4UsageGroupIDs {
-		if g == "" {
-			continue
-		}
-		ext4Allow[g] = struct{}{}
-	}
-
 	return &ResourceManager{
-		config:                   cfg,
-		log:                      log,
-		machineAvailable:         true,
-		zfsPool:                  zfsPool,
-		zfsPools:                 zfsPools,
-		usageState:               make(map[string]*vmUsageState),
-		priorityOverride:         make(map[string]api.VMPriority),
-		cgroupRoot:               "/sys/fs/cgroup",
-		pollInterval:             pollInterval,
-		collectExt4Usage:         cfg.CollectExt4Usage,
-		collectExt4UsageGroupIDs: ext4Allow,
+		config:           cfg,
+		log:              log,
+		machineAvailable: true,
+		zfsPool:          zfsPool,
+		zfsPools:         zfsPools,
+		usageState:       make(map[string]*vmUsageState),
+		priorityOverride: make(map[string]api.VMPriority),
+		cgroupRoot:       "/sys/fs/cgroup",
+		pollInterval:     pollInterval,
 	}, nil
-}
-
-// ext4UsageAllowed reports whether the resource manager's gate permits
-// reading the ext4 superblock for a VM owned by groupID. The gate is
-// the env-wide CollectExt4Usage flag plus a per-group allow-list set
-// at boot.
-func (m *ResourceManager) ext4UsageAllowed(groupID string) bool {
-	if m.collectExt4Usage {
-		return true
-	}
-	_, ok := m.collectExt4UsageGroupIDs[groupID]
-	return ok
 }
 
 // Type returns the service type.
@@ -519,17 +493,15 @@ func (m *ResourceManager) pollInstance(ctx context.Context, id, name, groupID st
 			usage.diskBytes = zfsInfo.Used
 			usage.diskLogicalBytes = zfsInfo.LogicalUsed
 		}
-		if m.ext4UsageAllowed(groupID) {
-			readFn := m.readFilesystemUsageFn
-			if readFn == nil {
-				readFn = m.readFilesystemUsage
-			}
-			if fsUsage, ok := readFn(ctx, id); ok {
-				usage.fsTotalBytes = fsUsage.TotalBytes()
-				usage.fsFreeBytes = fsUsage.FreeBytes()
-				usage.fsAvailableBytes = fsUsage.AvailableBytes()
-				usage.fsUsedBytes = fsUsage.UsedBytes()
-			}
+		readFn := m.readFilesystemUsageFn
+		if readFn == nil {
+			readFn = m.readFilesystemUsage
+		}
+		if fsUsage, ok := readFn(ctx, id); ok {
+			usage.fsTotalBytes = fsUsage.TotalBytes()
+			usage.fsFreeBytes = fsUsage.FreeBytes()
+			usage.fsAvailableBytes = fsUsage.AvailableBytes()
+			usage.fsUsedBytes = fsUsage.UsedBytes()
 		}
 	} else {
 		// Running, starting, paused, stopping: VM process still exists, collect full usage.

@@ -763,11 +763,9 @@ func (t *topSessionInput) Read(p []byte) (int, error) {
 func (ss *SSHServer) handleTopCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	userID := cc.User.ID
 
-	// Whether to ask the exelet for ext4 filesystem usage. The exelet
-	// will refuse if it doesn't trust this user/stage; we mirror that
-	// gate here so the request flag isn't a runtime no-op (and so we
-	// know whether to show the extra columns).
-	collectFs := ss.server.env.CollectExt4Usage || slices.Contains(ss.server.env.ExtraExt4UsageGroupIDs, userID)
+	// Always ask the exelet for ext4 filesystem usage; the probe is
+	// read-only and unconditionally allowed.
+	const collectFs = true
 
 	// Scripted (one-shot / fixed-iteration) mode. -n > 0 or --json runs
 	// the fetch loop once-or-N-times and prints rows, no Bubble Tea UI.

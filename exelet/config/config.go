@@ -214,20 +214,6 @@ type ExeletConfig struct {
 	// being cancelled. Zero means no per-volume timeout.
 	ReplicationVolumeTimeout time.Duration
 
-	// CollectExt4Usage controls whether the resource manager probes the
-	// guest's ext4 superblock to derive filesystem-level disk usage.
-	// When false, the probe is skipped for every VM unless the VM's
-	// group ID is in CollectExt4UsageGroupIDs. The probe is read-only
-	// and safe against a live VM (see exelet/storage/ext4) but the data
-	// crosses a tenant boundary, so it is gated.
-	CollectExt4Usage bool
-
-	// CollectExt4UsageGroupIDs is a list of group IDs (currently
-	// per-account user IDs) for which to probe ext4 usage even when
-	// CollectExt4Usage is false. Used to dogfood the feature on prod
-	// against specific accounts.
-	CollectExt4UsageGroupIDs []string
-
 	// MetricsDaemonURL is the URL of the metrics daemon (e.g., http://localhost:8090)
 	MetricsDaemonURL string
 	// MetricsDaemonInterval is the interval for sending metrics to the daemon

@@ -112,18 +112,15 @@ func (m *ResourceManager) collectUsage(ctx context.Context, id, name, groupID st
 
 	// Filesystem-level usage from the zvol's ext4 superblock. Read-only,
 	// non-blocking, safe against a live VM (see exelet/storage/ext4).
-	// Gated: only collected when configured (env-wide or per group ID).
-	if m.ext4UsageAllowed(groupID) {
-		readFn := m.readFilesystemUsageFn
-		if readFn == nil {
-			readFn = m.readFilesystemUsage
-		}
-		if fsUsage, ok := readFn(ctx, id); ok {
-			usage.fsTotalBytes = fsUsage.TotalBytes()
-			usage.fsFreeBytes = fsUsage.FreeBytes()
-			usage.fsAvailableBytes = fsUsage.AvailableBytes()
-			usage.fsUsedBytes = fsUsage.UsedBytes()
-		}
+	readFn := m.readFilesystemUsageFn
+	if readFn == nil {
+		readFn = m.readFilesystemUsage
+	}
+	if fsUsage, ok := readFn(ctx, id); ok {
+		usage.fsTotalBytes = fsUsage.TotalBytes()
+		usage.fsFreeBytes = fsUsage.FreeBytes()
+		usage.fsAvailableBytes = fsUsage.AvailableBytes()
+		usage.fsUsedBytes = fsUsage.UsedBytes()
 	}
 
 	// Network usage from tap device

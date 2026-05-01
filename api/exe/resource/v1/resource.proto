@@ -38,9 +38,8 @@ message GetVMUsageRequest {
   string vm_id = 1;
   // collect_filesystem_usage requests that the exelet probe the
   // guest's ext4 superblock and populate fs_*_bytes on the response.
-  // Defaults to false (no probe; fs_*_bytes left at zero). Honoured
-  // only when the exelet's gate (env-wide CollectExt4Usage or this
-  // VM's group ID being on the allow-list) permits it.
+  // Defaults to false (no probe; fs_*_bytes left at zero). The probe
+  // is read-only and unconditionally allowed when requested.
   bool collect_filesystem_usage = 2;
 }
 
