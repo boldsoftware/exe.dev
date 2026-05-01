@@ -58,6 +58,10 @@ type PoolConfig struct {
 	DialFunc    DialFunc // overrides default vsockdial-based dialer
 	HostSampler HostSampleFunc
 
+	Freeze           FreezeConfig
+	FrozenCadence    time.Duration // heartbeat interval for frozen VMs (default 24h)
+	FrozenStaleAfter time.Duration // staleness ceiling for frozen VMs (default FrozenCadence + 30m)
+
 	Metrics *Metrics
 	Log     *slog.Logger
 }
@@ -71,6 +75,7 @@ type Pool struct {
 	mu      sync.RWMutex
 	entries map[string]*entry
 
+	wakeCh  chan struct{} // cap 1; non-blocking signal to dispatcher
 	wg      sync.WaitGroup
 	cancel  context.CancelFunc
 	started bool
@@ -79,7 +84,14 @@ type Pool struct {
 type entry struct {
 	info VMInfo
 	ring *Ring
-	next time.Time // when the next scrape is due
+
+	sched          sync.Mutex // guards everything below
+	next           time.Time
+	vmTier         VMTier
+	idleSince      time.Time // zero ⇒ not currently idle-streaking
+	lastCPUPct     float64
+	lastWakeReason WakeReason
+	frozenSince    time.Time // for dwell-time histograms
 }
 
 // NewPool returns a configured but not-yet-started Pool.
@@ -99,6 +111,12 @@ func NewPool(cfg PoolConfig) *Pool {
 	if cfg.ScrapeTimeout == 0 {
 		cfg.ScrapeTimeout = DefaultScrapeTimeout
 	}
+	if cfg.FrozenCadence == 0 {
+		cfg.FrozenCadence = 24 * time.Hour
+	}
+	if cfg.FrozenStaleAfter == 0 {
+		cfg.FrozenStaleAfter = cfg.FrozenCadence + 30*time.Minute
+	}
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
@@ -106,6 +124,7 @@ func NewPool(cfg PoolConfig) *Pool {
 		cfg:        cfg,
 		classifier: NewClassifier(cfg.Thresh),
 		entries:    make(map[string]*entry),
+		wakeCh:     make(chan struct{}, 1),
 	}
 }
 
@@ -238,6 +257,18 @@ func (p *Pool) Snapshot() Snapshot {
 	return out
 }
 
+// effectiveCadence composes host Tier and per-VM VMTier into a scrape interval.
+// Pressured pre-empts Frozen as a defensive safety net.
+func (p *Pool) effectiveCadence(host Tier, vm VMTier) time.Duration {
+	if host == TierPressured {
+		return p.cfg.Cadences.Pressured
+	}
+	if vm == VMTierFrozen {
+		return p.cfg.FrozenCadence
+	}
+	return p.cfg.Cadences.For(host)
+}
+
 // run is the dispatcher loop. Every cycle it advances host pressure,
 // chooses cadence, and fires due scrapes through a bounded worker pool.
 func (p *Pool) run(ctx context.Context) {
@@ -250,6 +281,8 @@ func (p *Pool) run(ctx context.Context) {
 			return
 		case now := <-ticker.C:
 			p.tick(ctx, now, workers)
+		case <-p.wakeCh:
+			p.tick(ctx, time.Now(), workers)
 		}
 	}
 }
@@ -263,24 +296,28 @@ func (p *Pool) tick(ctx context.Context, now time.Time, workers chan struct{}) {
 	if p.cfg.Metrics != nil {
 		p.cfg.Metrics.SetTier(tier)
 	}
-	cadence := p.cfg.Cadences.For(tier)
 
 	p.mu.RLock()
-	due := make([]*entry, 0, len(p.entries))
+	entries := make([]*entry, 0, len(p.entries))
 	for _, e := range p.entries {
-		if !now.Before(e.next) {
-			due = append(due, e)
-		}
+		entries = append(entries, e)
 	}
 	p.mu.RUnlock()
 
-	for _, e := range due {
-		e.next = now.Add(cadence)
+	for _, e := range entries {
+		e.sched.Lock()
+		due := !now.Before(e.next)
+		if due {
+			e.next = now.Add(p.effectiveCadence(tier, e.vmTier))
+		}
+		e.sched.Unlock()
+		if !due {
+			continue
+		}
+
 		select {
 		case workers <- struct{}{}:
 		default:
-			// Worker pool full: skip this scrape; it'll retry next cadence.
-			// Surface the backpressure so undersized pools are visible.
 			if p.cfg.Metrics != nil {
 				p.cfg.Metrics.PoolScrapeDropped.Inc()
 			}
