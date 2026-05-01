@@ -1005,9 +1005,16 @@ const liveDeploySelectedStatus = computed(() => {
 
 const liveDeployAllDone = computed(() => {
   if (liveDeployIds.value.length === 0) return false
+  // After a self-deploy rug-pull, the exe-ops process restarts with empty
+  // in-memory deploy history, so refetched statuses for the rug-pulled id
+  // are undefined. Once recovery has resolved, treat those stale ids as
+  // terminal so the modal can show its done state instead of spinning.
+  const rugPullResolved =
+    selfDeployState.value === 'recovered' || selfDeployState.value === 'mismatch'
   return liveDeployIds.value.every(id => {
     const s = liveDeployStatuses.value.get(id)
-    return s && (s.state === 'done' || s.state === 'failed' || s.state === 'cancelled')
+    if (s) return s.state === 'done' || s.state === 'failed' || s.state === 'cancelled'
+    return rugPullResolved
   })
 })
 
@@ -1026,6 +1033,10 @@ const canCancel = computed(() => {
 })
 
 const liveDeployAnyFailed = computed(() => {
+  // 'mismatch' means exe-ops came back running an unexpected commit; surface
+  // that in the modal title icon even though the underlying deploy id is
+  // gone from the new server's history.
+  if (selfDeployState.value === 'mismatch') return true
   return liveDeployIds.value.some(id => {
     const s = liveDeployStatuses.value.get(id)
     return s?.state === 'failed'
