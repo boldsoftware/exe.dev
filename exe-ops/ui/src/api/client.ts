@@ -1,8 +1,15 @@
+export interface ServerUser {
+  loginName: string
+  displayName: string
+  slug: string
+}
+
 export interface ServerVersion {
   version: string
   commit: string
   date: string
   environment?: string
+  user?: ServerUser
 }
 
 export async function fetchServerVersion(): Promise<ServerVersion> {

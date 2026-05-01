@@ -74,6 +74,13 @@
       </div>
     </aside>
 
+    <a
+      class="shelley-ribbon"
+      :href="shelleyRibbonURL"
+      target="_blank"
+      rel="noopener noreferrer"
+    >edit with shelley</a>
+
     <div class="layout-content-wrapper">
       <header class="mobile-topbar">
         <button class="mobile-menu-btn" @click="sidebarOpen = true" aria-label="Open navigation">
@@ -139,6 +146,18 @@ onUnmounted(() => {
 const titleText = computed(() => {
   const env = serverVersion.value?.environment
   return env ? `exe-ops: ${env}` : 'exe-ops'
+})
+
+const shelleyRibbonURL = computed(() => {
+  const user = serverVersion.value?.user?.slug || 'user'
+  const date = new Date().toISOString().slice(0, 10).replaceAll('-', '')
+  const prompt = 'Update exe-ops with the following suggestion: '
+  const params = new URLSearchParams({
+    prompt,
+    name: `${user}-${date}-exe-ops`,
+    tags: 'github-exe',
+  })
+  return `https://exe.dev/new?${params.toString()}`
 })
 
 watch(titleText, (t) => { document.title = t }, { immediate: true })
@@ -378,6 +397,34 @@ a:hover {
 ::selection {
   background: rgba(var(--primary-rgb), 0.3);
   color: var(--text-color);
+}
+
+/* ── Shelley ribbon ── */
+.shelley-ribbon {
+  position: fixed;
+  top: 22px;
+  right: -46px;
+  z-index: 200;
+  width: 190px;
+  padding: 0.45rem 0;
+  transform: rotate(45deg);
+  transform-origin: center;
+  background: var(--primary-color);
+  color: var(--primary-color-text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.shelley-ribbon:hover {
+  color: var(--primary-color-text);
+  background: var(--primary-hover);
 }
 
 /* ── Layout ── */
@@ -729,6 +776,13 @@ a:hover {
     width: 22px;
     height: 22px;
     object-fit: contain;
+  }
+
+  .shelley-ribbon {
+    top: 16px;
+    right: -52px;
+    width: 180px;
+    font-size: 0.6rem;
   }
 
   .layout-sidebar {

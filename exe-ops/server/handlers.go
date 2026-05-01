@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 
 	"exe.dev/exe-ops/server/deploy"
 	"exe.dev/exe-ops/server/inventory"
@@ -37,7 +38,39 @@ func (h *Handlers) HandleServerVersion(w http.ResponseWriter, r *http.Request) {
 	if h.environment != "" {
 		resp["environment"] = h.environment
 	}
+	if user, ok := UserFromContext(r.Context()); ok {
+		resp["user"] = map[string]string{
+			"loginName":   user.LoginName,
+			"displayName": user.DisplayName,
+			"slug":        userSlug(user),
+		}
+	}
 	writeJSON(w, resp)
+}
+
+func userSlug(user User) string {
+	candidate := strings.TrimSpace(user.LoginName)
+	if before, _, ok := strings.Cut(candidate, "@"); ok {
+		candidate = before
+	}
+	if candidate == "" {
+		candidate = strings.TrimSpace(user.DisplayName)
+	}
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(candidate) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 // HandleHealth handles GET /health.

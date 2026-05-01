@@ -71,3 +71,24 @@ func TestUserFromContext(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+func TestUserSlug(t *testing.T) {
+	tests := []struct {
+		name string
+		user User
+		want string
+	}{
+		{name: "login local part", user: User{LoginName: "Philip.Zeyliger@example.com"}, want: "philip-zeyliger"},
+		{name: "display name fallback", user: User{DisplayName: "Ada Lovelace"}, want: "ada-lovelace"},
+		{name: "trim repeated separators", user: User{LoginName: " alice+ops@example.com "}, want: "alice-ops"},
+		{name: "non-ascii letters omitted", user: User{LoginName: "Élodie@example.com"}, want: "lodie"},
+		{name: "empty", user: User{}, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := userSlug(tt.user); got != tt.want {
+				t.Fatalf("userSlug(%+v) = %q, want %q", tt.user, got, tt.want)
+			}
+		})
+	}
+}
