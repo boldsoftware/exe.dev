@@ -56,8 +56,10 @@
       />
 
       <!-- Pool Charts (per-VM view) -->
+      <template v-if="hasUsage">
       <div class="section-divider"></div>
       <PoolCharts :hours="24" :highlight-v-m="vmName" />
+      </template>
 
       <!-- Creation Log -->
       <CreationLog v-if="box.status === 'creating'" :hostname="box.name" :streaming="true" @done="load" @fail="load" />
@@ -244,6 +246,7 @@ const loading = ref(true)
 const loadError = ref('')
 const box = ref<BoxInfo | null>(null)
 const hasTeam = ref(false)
+const hasUsage = ref(false)
 const allBoxes = ref<BoxInfo[]>([])
 
 // Emoji picker
@@ -426,6 +429,7 @@ async function load() {
     box.value = found
     allBoxes.value = data.boxes
     hasTeam.value = data.hasTeam || false
+    hasUsage.value = data.hasUsage || false
 
     if (found) {
       // Load LLM usage and profile in parallel, non-blocking

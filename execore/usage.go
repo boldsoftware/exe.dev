@@ -101,6 +101,12 @@ func (s *Server) handleUsage2Page(w http.ResponseWriter, r *http.Request, userID
 func (s *Server) handleUsageAPI(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
 
+	if !s.env.EnforcePlanCPUMax && !s.UserHasExeSudo(ctx, userID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{}"))
+		return
+	}
+
 	if s.metricsdURL == "" {
 		http.Error(w, "metrics not configured", http.StatusServiceUnavailable)
 		return

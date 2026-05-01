@@ -21,6 +21,12 @@ type usagePoolResponse struct {
 func (s *Server) HandleAPIUsagePool(w http.ResponseWriter, r *http.Request, userID string) {
 	ctx := r.Context()
 
+	if !s.env.EnforcePlanCPUMax && !s.UserHasExeSudo(ctx, userID) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(usagePoolResponse{Points: []types.PoolPoint{}})
+		return
+	}
+
 	if s.metricsdURL == "" {
 		http.Error(w, "metrics not configured", http.StatusServiceUnavailable)
 		return

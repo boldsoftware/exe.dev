@@ -498,4 +498,18 @@ describe('VMDetail', () => {
     expect(wrapper.find('.section-placeholder').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Usage History')
   })
+
+  // --- Pool Charts gating ---
+
+  it('hides PoolCharts when hasUsage is false', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({ hasUsage: false }))
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.pool-charts-section').exists()).toBe(false)
+  })
+
+  it('shows PoolCharts when hasUsage is true', async () => {
+    mockFetchDashboard.mockResolvedValue(makeDashboard({ hasUsage: true }))
+    const wrapper = await mountVMDetail()
+    expect(wrapper.find('.pool-charts-section').exists()).toBe(true)
+  })
 })
