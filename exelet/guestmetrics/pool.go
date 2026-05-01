@@ -196,13 +196,32 @@ func (p *Pool) Latest(id string) (Sample, bool) {
 	return e.ring.Latest()
 }
 
-// LatestFresh returns Latest only if the sample is within StaleAfter.
+// LatestFresh returns Latest only if the sample is within the staleness
+// window. For Active VMs this is StaleAfter (90s); for Frozen VMs it is
+// FrozenStaleAfter (default 24h30m) so the most recent heartbeat sample
+// remains available to consumers.
 func (p *Pool) LatestFresh(id string, now time.Time) (Sample, bool) {
-	s, ok := p.Latest(id)
+	p.mu.RLock()
+	e, ok := p.entries[id]
+	p.mu.RUnlock()
 	if !ok {
 		return Sample{}, false
 	}
-	if now.Sub(s.FetchedAt) > p.cfg.StaleAfter {
+
+	s, ok := e.ring.Latest()
+	if !ok {
+		return Sample{}, false
+	}
+
+	e.sched.Lock()
+	tier := e.vmTier
+	e.sched.Unlock()
+
+	stale := p.cfg.StaleAfter
+	if tier == VMTierFrozen {
+		stale = p.cfg.FrozenStaleAfter
+	}
+	if now.Sub(s.FetchedAt) > stale {
 		return Sample{}, false
 	}
 	return s, true
@@ -230,29 +249,56 @@ type Snapshot struct {
 
 // SnapshotEntry is one VM's view in a Pool snapshot.
 type SnapshotEntry struct {
-	ID          string
-	Name        string
-	Latest      Sample
-	HaveLatest  bool
-	RefaultRate float64
-	NumSamples  int
+	ID             string
+	Name           string
+	Latest         Sample
+	HaveLatest     bool
+	RefaultRate    float64
+	NumSamples     int
+	VMTier         VMTier
+	LastCPUPct     float64
+	IdleFor        time.Duration
+	FrozenFor      time.Duration
+	LastWakeReason string
 }
 
 // Snapshot returns a copy of current per-VM state.
 func (p *Pool) Snapshot() Snapshot {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
-	out := Snapshot{Tier: p.classifier.Tier()}
+	entries := make([]*entry, 0, len(p.entries))
+	ids := make([]string, 0, len(p.entries))
 	for id, e := range p.entries {
+		ids = append(ids, id)
+		entries = append(entries, e)
+	}
+	p.mu.RUnlock()
+
+	now := time.Now()
+	out := Snapshot{Tier: p.classifier.Tier()}
+	for i, e := range entries {
 		latest, ok := e.ring.Latest()
-		out.Entries = append(out.Entries, SnapshotEntry{
-			ID:          id,
-			Name:        e.info.Name,
-			Latest:      latest,
-			HaveLatest:  ok,
-			RefaultRate: e.ring.RefaultRate(60 * time.Second),
-			NumSamples:  len(e.ring.Snapshot()),
-		})
+
+		e.sched.Lock()
+		se := SnapshotEntry{
+			ID:             ids[i],
+			Name:           e.info.Name,
+			Latest:         latest,
+			HaveLatest:     ok,
+			RefaultRate:    e.ring.RefaultRate(60 * time.Second),
+			NumSamples:     len(e.ring.Snapshot()),
+			VMTier:         e.vmTier,
+			LastCPUPct:     e.lastCPUPct,
+			LastWakeReason: e.lastWakeReason.String(),
+		}
+		if !e.idleSince.IsZero() {
+			se.IdleFor = now.Sub(e.idleSince)
+		}
+		if e.vmTier == VMTierFrozen && !e.frozenSince.IsZero() {
+			se.FrozenFor = now.Sub(e.frozenSince)
+		}
+		e.sched.Unlock()
+
+		out.Entries = append(out.Entries, se)
 	}
 	return out
 }

@@ -631,6 +631,142 @@ func TestFreezeHeartbeatWakesOnGuestPSI(t *testing.T) {
 	})
 }
 
+// Test 10: LatestFresh window extended for Frozen VMs.
+func TestLatestFreshTierAware(t *testing.T) {
+	cfg := DefaultFreezeConfig
+	cfg.Enabled = true
+	cfg.IdleWindow = 0
+	cfg.MinUptime = 0
+
+	p := NewPool(PoolConfig{
+		Freeze:           cfg,
+		FrozenCadence:    24 * time.Hour,
+		FrozenStaleAfter: 24*time.Hour + 30*time.Minute,
+		StaleAfter:       90 * time.Second,
+	})
+	p.Add(VMInfo{ID: "vm1", Name: "test"})
+
+	p.mu.RLock()
+	e := p.entries["vm1"]
+	p.mu.RUnlock()
+
+	// Push a sample "1 hour ago".
+	now := time.Now()
+	e.ring.Push(Sample{
+		FetchedAt:  now.Add(-1 * time.Hour),
+		CapturedAt: now.Add(-1 * time.Hour),
+	})
+
+	// Active VM: 1h old sample is stale (StaleAfter=90s).
+	if _, ok := p.LatestFresh("vm1", now); ok {
+		t.Error("Active VM: 1h-old sample should be stale")
+	}
+
+	// Freeze the VM. Push a fresh quiet sample first for shouldFreeze.
+	freshQuietSample(e)
+	p.NoteActivity("vm1", ActivityWitness{
+		Now: now, CPUPercent: 0.1, HostTier: TierCalm, VMUptime: 10 * time.Minute,
+	})
+	e.sched.Lock()
+	if e.vmTier != VMTierFrozen {
+		t.Fatalf("expected Frozen")
+	}
+	e.sched.Unlock()
+
+	// Replace with 1h-old sample again.
+	e.ring.Push(Sample{
+		FetchedAt:  now.Add(-1 * time.Hour),
+		CapturedAt: now.Add(-1 * time.Hour),
+	})
+
+	// Frozen VM: 1h-old sample is fresh (FrozenStaleAfter=24h30m).
+	if _, ok := p.LatestFresh("vm1", now); !ok {
+		t.Error("Frozen VM: 1h-old sample should be fresh")
+	}
+
+	// 25h-old sample: stale even for Frozen.
+	e.ring.Push(Sample{
+		FetchedAt:  now.Add(-25 * time.Hour),
+		CapturedAt: now.Add(-25 * time.Hour),
+	})
+	if _, ok := p.LatestFresh("vm1", now); ok {
+		t.Error("Frozen VM: 25h-old sample should be stale")
+	}
+}
+
+// Test 12: Backwards-compat: with Freeze.Enabled=false, no freeze occurs.
+func TestFreezeBackwardsCompat(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var scrapes atomic.Int64
+		dial := func(ctx context.Context, vmID string) (net.Conn, error) {
+			a, b := net.Pipe()
+			go func() {
+				defer b.Close()
+				buf := make([]byte, 64)
+				n, _ := b.Read(buf)
+				if string(buf[:n]) != memdRequest {
+					return
+				}
+				scrapes.Add(1)
+				raw := RawSample{
+					Version:    ProtocolVersion,
+					CapturedAt: time.Now(),
+					Meminfo:    map[string]uint64{"MemTotal": 1024},
+					Vmstat:     map[string]uint64{},
+				}
+				data, _ := json.Marshal(&raw)
+				data = append(data, '\n')
+				_, _ = b.Write(data)
+			}()
+			return a, nil
+		}
+
+		// Freeze disabled by default.
+		p := NewPool(PoolConfig{
+			Cadences:      Cadences{Calm: time.Second, Normal: time.Second, Pressured: time.Second},
+			DialFunc:      dial,
+			HostSampler:   func() HostSample { return HostSample{MemTotalBytes: 1 << 30, MemAvailableBytes: 1 << 29} },
+			StaleAfter:    90 * time.Second,
+			Workers:       4,
+			ScrapeTimeout: 5 * time.Second,
+			// Freeze: default (Enabled=false)
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		p.Start(ctx)
+		defer p.Stop()
+
+		p.Add(VMInfo{ID: "vm1", Name: "test"})
+
+		// NoteActivity is a no-op when disabled.
+		p.NoteActivity("vm1", ActivityWitness{
+			Now: time.Now(), CPUPercent: 0.1, HostTier: TierCalm, VMUptime: 10 * time.Minute,
+		})
+
+		// Wait 5 seconds; normal cadence scrapes should fire.
+		time.Sleep(5 * time.Second)
+
+		if scrapes.Load() == 0 {
+			t.Error("expected scrapes with freeze disabled")
+		}
+
+		// VM should still be Active.
+		tier, ok := p.VMTier("vm1")
+		if !ok {
+			t.Fatal("VM not found")
+		}
+		if tier != VMTierActive {
+			t.Errorf("vmTier=%v, want Active", tier)
+		}
+
+		// WakeForRPC returns false when disabled.
+		if p.WakeForRPC("vm1") {
+			t.Error("WakeForRPC should return false when freeze disabled")
+		}
+	})
+}
+
 // Test 11: Concurrency / race. Dispatcher + 8 goroutines hammering
 // NoteActivity for 5 simulated minutes. -race clean.
 func TestFreezeConcurrencyRace(t *testing.T) {
