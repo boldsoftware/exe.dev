@@ -1,12 +1,13 @@
 ---
 title: "Dev, Test, Prod: Choose One, Two, or Three"
 description: You can build, test, and deploy on exe.dev.
-subheading: "7. Use Cases"
-suborder: 2
+author: Philip Zeyliger
+date: 2026-05-04
 published: true
+embargo: "2026-05-04T09:00:00-07:00"
 ---
 
-<img src="devprodtest-venn.svg" alt="Venn diagram showing Dev, Test, and Prod overlapping with exe.dev in the center" width="100%"/>
+<img src="/assets/devprodtest-venn.svg" alt="Venn diagram showing Dev, Test, and Prod overlapping with exe.dev in the center" width="100%"/>
 
 Industry-wide, we often develop our software in three distinct environments.
 Perhaps your laptop is a Mac; your CI system is hosted GitHub Actions, and your
@@ -31,7 +32,7 @@ for a backup if it calls for it. Voila!
 # Just Dev
 
 Use an exe.dev vm (or many) to work on your software. Set up the GitHub
-integration ([docs](integrations-github)) to make cloning easy. Some people work
+integration ([docs](https://exe.dev/docs/integrations-github)) to make cloning easy. Some people work
 serially. Some people work using multiple worktrees on one vm. Some people have
 one vm per task or project. Clone your VMs using ‘cp’ or configure them using
 setup scripts.
@@ -39,7 +40,7 @@ setup scripts.
 Using remote VMs opens up the convenience of mobile, opportunities for sharing,
 not to mention isolation from your other projects. 
 
-<img src="devprodtest-seesaw.svg" alt="Seesaw balancing customization against convenience" width="100%"/>
+<img src="/assets/devprodtest-seesaw.svg" alt="Seesaw balancing customization against convenience" width="100%"/>
 
 Why now? Many, many companies have tried remote development before. There is
 an entire graveyard of failed startups in this space. The big difference is
@@ -59,13 +60,13 @@ your app with its built-in browser? Or send off a security review. Or even
 just run a GitHub Actions runner.
 
 Because you pick what access you want to give your VMs, and because they’re
-[persistent](serverful), exe.dev VMs are great
+[persistent](https://exe.dev/docs/serverful), exe.dev VMs are great
 places to test stuff out. 
 
 # Just Prod
 
 You can host real, production software in exe. We support custom domains with a bit of DNS
-configuration ([docs](cnames)).
+configuration ([docs](https://exe.dev/docs/cnames)).
 
 If you’re incredulous that this is a good idea, the entirety of Stack Overflow
 ran on [just a few
