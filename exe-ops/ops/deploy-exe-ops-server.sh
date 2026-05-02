@@ -92,6 +92,11 @@ ssh "$SSH_TARGET" "test -f /etc/default/exe-ops-server" || {
     ssh "$SSH_TARGET" "sudo mv /tmp/exe-ops-server.env /etc/default/exe-ops-server"
 }
 
+# EnvironmentFile values override Environment= values at exec time, so remove
+# the keys this script owns from /etc/default before writing the drop-in below.
+echo "Removing deployment-managed settings from /etc/default/exe-ops-server..."
+ssh "$SSH_TARGET" "sudo sh -c 'tmp=\$(mktemp) && awk '\''{ line=\$0; sub(/^[[:space:]]*/, \"\", line); if (line ~ /^(EXE_OPS_ENVIRONMENT|EXE_OPS_ADDR|EXE_OPS_TLS)=/) next; print }'\'' /etc/default/exe-ops-server > \"\$tmp\" && cat \"\$tmp\" > /etc/default/exe-ops-server; rc=\$?; rm -f \"\$tmp\"; exit \$rc'"
+
 # Install/refresh the environment drop-in that pins the environment label,
 # listen address, and TLS mode (Tailscale automatic HTTPS via tscert).
 echo "Writing systemd drop-in: EXE_OPS_ENVIRONMENT=$ENVIRONMENT EXE_OPS_ADDR=$ADDR EXE_OPS_TLS=true"
