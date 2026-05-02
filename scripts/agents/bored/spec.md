@@ -18,19 +18,19 @@ The user is identified via the exe VM gateway auth headers (`X-ExeDev-UserID`, `
 
 ### Approve Button
 
-Works basically the same as the `bin/q` script: pushing to a special named branch (`queue-main-bored-<commit_id>-<slug>`). The HTTP handler returns immediately; approval runs in a background thread with status updates via polling.
+Works basically the same as the `bin/q` script: pushing to a special named branch (`kite-queue-bored-<commit_id>-<slug>`). The HTTP handler returns immediately; approval runs in a background thread with status updates via polling.
 
 **But first, a qualification step.** Before showing a commit to users, we need to verify it passes CI. The flow:
 
 1. Amend "CI ONLY" into the commit message subject.
 2. Push to a queue branch and wait for CI to complete (same as `bin/q`).
-3. The "CI ONLY" marker causes CI to run tests but skip pushing to main, pushing to ralph, and Slack notifications (see `queue-main.yml` lines 233–249).
+3. The "CI ONLY" marker causes CI to run tests but skip pushing to main, pushing to ralph, and Slack notifications (see `.buildkite/steps/`).
 4. If CI passes, remove "CI ONLY" from the commit message. The commit is now qualified and ready to show to the user.
 5. If CI fails, the commit is not shown. Discard it, post the failure to the issue, and try again on the next cycle.
 
 This way, when a user clicks approve, CI failures should be rare (only flakes). On approval:
 
-- Push to a `queue-main-bored-<slug>` branch and poll for CI completion (same mechanism as `bin/q`).
+- Push to a `kite-queue-bored-<slug>` branch and poll for CI completion (same mechanism as `bin/q`).
 - **On success:** remove the commit from the queue.
 - **On failure:** show an error message with a link to the CI run. Re-amend the `Approved-By` and `Approved-At` trailers with a fresh timestamp so the new SHA registers as a distinct push. The commit stays displayed with an approve/retry button so the user can easily retry. (This handles CI flakes.) If the user judges it a legit failure, they can comment and reject instead.
 
@@ -138,7 +138,7 @@ Run the "CI ONLY" qualification step (described above under Approve Button). If 
 |----------|------|------------|
 | Existing agents | `scripts/agents/watch-ci-flake/`, `scripts/agents/continuous-codereview/` | Reference implementations for agent structure, systemd units, state management |
 | `bin/q` | `bin/q` | CI queue push-and-wait script; the bored approval flow reimplements its core logic |
-| CI workflow | `.github/workflows/queue-main.yml` | Defines queue branch triggers, "CI ONLY" marker detection (lines 233–249), push-to-main, gate files |
+| CI pipeline | `.buildkite/` | Defines queue branch triggers, "CI ONLY" marker detection, push-to-main, gate files |
 | Queue gate files | `.github/queue-gate-ancestor`, `.github/queue-gate-bad-subjects` | Live-updated commit validation gates |
 | Shelley diff engine | `shelley/ui/src/components/PatchTool.tsx` | `@pierre/diffs` integration: split/unified views, syntax highlighting, mobile-responsive |
 | Diff worker | `shelley/ui/src/diffs-worker.ts` | Web Worker for background syntax tokenization |
@@ -151,10 +151,10 @@ Run the "CI ONLY" qualification step (described above under Approve Button). If 
 
 | Term | Meaning |
 |------|---------|
-| **queue branch** | `queue-main-{user}-{slug}` — pushing here triggers CI via `queue-main.yml`; on success, CI auto-pushes to `origin/main` and deletes the branch |
+| **queue branch** | `kite-queue-{user}-{slug}` — pushing here triggers CI on Buildkite; on success, CI auto-pushes to `origin/main` and deletes the branch |
 | **CI ONLY** | Case-insensitive marker in commit subject; causes CI to run tests but skip push-to-main, ralph, and Slack notifications |
 | **hidden ref** | `refs/bored/<id>` — a git ref not visible as a branch; viewable on GitHub at `github.com/{repo}/commit/{sha}` after pushing |
-| **ralph** | AI auto-fix agent (`queue-ralph.yml`) triggered on CI failure; creates a fix commit and pushes it back to the queue branch |
+| **ralph** | AI auto-fix agent triggered on CI failure; creates a fix commit and pushes it back to the queue branch |
 | **gardening pass** | Triage sweep of the issues repo: close fixed/dup/moot issues, identify the single highest-priority issue to work on |
 | **reservation** | Temporary lock (15 min, refreshed by polling) that assigns a queue item to a specific user; prevents duplicate review effort |
 | **cooldown** | 48-hour per-user per-item suppression created by "leave for someone else"; prevents the same item from being re-shown |

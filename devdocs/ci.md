@@ -64,7 +64,3 @@ ssh exe-ci-01 sudo journalctl -u buildkite-agent --since "1 hour ago" --no-pager
 ```
 
 Build logs and artifacts are in the Buildkite UI.
-
-## Edric (Legacy)
-
-Edric was the previous CI machine running 16 GitHub Actions runners. It is at end-of-life. Configuration files in `ops/ci/` and GitHub Actions workflows in `.github/workflows/` are from this era. See `ops/ci/readme_edric.md` for historical reference.

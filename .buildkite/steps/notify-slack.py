@@ -89,7 +89,6 @@ def main():
     commit_url = f"https://github.com/boldsoftware/exe/commit/{commit_sha}"
 
     env = os.environ.copy()
-    env["CI_SOURCE"] = "buildkite"
     # Help resolve the human when the branch-derived actor is a shared CI login.
     if os.environ.get("BUILDKITE_BUILD_AUTHOR"):
         env.setdefault("COMMIT_AUTHOR", os.environ["BUILDKITE_BUILD_AUTHOR"])

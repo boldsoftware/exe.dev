@@ -17,7 +17,7 @@ The risk: after a force push, anyone who already fetched the bad commit can acci
 
 ## Gate Files
 
-Both are fetched live from `origin/main` by CI (`.github/workflows/queue-main.yml`), so updates take effect immediately for all queue pushes.
+Both are fetched live from `origin/main` by CI (`.buildkite/steps/commit-validation.sh`), so updates take effect immediately for all queue pushes.
 
 | File | Purpose |
 |------|---------|

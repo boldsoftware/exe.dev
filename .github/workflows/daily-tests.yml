@@ -7,17 +7,11 @@ name: Daily Tests
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # 9am UTC daily
+    - cron: "0 9 * * *" # 9am UTC daily
   workflow_dispatch:
 
 jobs:
-  test:
-    uses: ./.github/workflows/_tests.yml
-    with:
-      ref: main
-
   shelley:
     uses: ./.github/workflows/shelley-tests.yml
     with:
       ref: main
-      run_playwright: false

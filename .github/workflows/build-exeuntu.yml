@@ -202,27 +202,3 @@ jobs:
       - name: Inspect image
         run: |
           $GITHUB_WORKSPACE/bin/retry.sh docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:latest
-
-  warm-edric-snapshot:
-    if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, exe-ci, edric]
-    needs: merge
-    continue-on-error: true
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Warm VM snapshot for new exeuntu image
-        run: |
-          # ci-vm.py creates snapshots on first boot; trigger a create+destroy cycle
-          # to warm the cache for the new exeuntu image.
-          python3 ./ops/ci-vm.py create | tee ci-vm-start.log
-          ENVFILE=$(tail -n1 ci-vm-start.log)
-          python3 ./ops/ci-vm.py destroy "$ENVFILE"

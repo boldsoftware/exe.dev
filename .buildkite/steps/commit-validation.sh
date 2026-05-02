@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # commit-validation.sh — Validate commits in origin/main..HEAD for the Buildkite commit queue.
-# Mirrors the "Validate commits" logic from .github/workflows/queue-main.yml.
 set -euo pipefail
 
 has_errors=0

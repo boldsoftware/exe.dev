@@ -9,11 +9,10 @@ Environment variables:
   COMMIT_AUTHOR_EMAIL: git commit author email; its local part is used as another
                        candidate, which matters when ACTOR is a shared CI login
                        (e.g. USER=exedev) that doesn't identify the human
-  CI_SOURCE:           "buildkite" or "gha" (default); adds 🪁 for buildkite runs
 
 STATUS is "success" or "failure".
 ACTOR is the GitHub username of the person who pushed the commit.
-BRANCH_NAME is the queue branch name (e.g. queue-main-philip), used to
+BRANCH_NAME is the queue branch name (e.g. kite-queue-philip), used to
 resolve the real human when the actor is a bot.
 """
 
@@ -27,7 +26,6 @@ def extract_user_from_branch(branch_name):
     """Extract the username from a queue branch name.
 
     Branch names follow the pattern:
-      queue-main-<user>-<slug>  or  queue-main-<user>
       kite-queue-<user>-<slug>  or  kite-queue-<user>
       kite-test-<user>-<slug>   or  kite-test-<user>
 
@@ -44,7 +42,7 @@ def resolve_mention(actor, branch_name, people):
 
     Tries these sources in order:
     1. actor (GitHub username)
-    2. user extracted from branch name (queue-main-<user> or kite-queue-<user>)
+    2. user extracted from branch name (kite-queue-<user>)
     3. COMMIT_AUTHOR env var (git author name)
     """
     candidates = [actor]
@@ -85,7 +83,6 @@ def main():
     commit_subject = commit_msg.split("\n")[0]
 
     commit_log = os.environ.get("COMMIT_LOG", "").strip()
-    ci_source = os.environ.get("CI_SOURCE", "gha").strip().lower()
 
     # Load team metadata for Slack member ID lookup.
     team_file = os.path.join(os.path.dirname(__file__), "..", ".github", "team.json")
@@ -97,13 +94,10 @@ def main():
     if status != "success" and "CI ONLY" in commit_subject.upper():
         return
 
-    # Add kite emoji for Buildkite runs.
-    source_tag = " \ud83e\ude81" if ci_source == "buildkite" else ""
-
     if status == "success":
         commits = [line for line in commit_log.splitlines() if line.strip()] if commit_log else []
         if len(commits) <= 1:
-            text = f"\u2705 {mention} landed: <{commit_url}|{commit_subject}> (<{run_url}|job>){source_tag}"
+            text = f"\u2705 {mention} landed: <{commit_url}|{commit_subject}> (<{run_url}|job>)"
         else:
             # Derive repo base URL from commit_url to build per-commit links.
             repo_url = commit_url.rsplit("/commit/", 1)[0]
@@ -115,9 +109,9 @@ def main():
                 subject = parts[1] if len(parts) > 1 else line
                 items.append(f"  \u2022 <{repo_url}/commit/{sha}|{subject}>")
             bullet_list = "\n".join(items)
-            text = f"\u2705 {mention} landed {len(commits)} commits: (<{run_url}|job>){source_tag}\n{bullet_list}"
+            text = f"\u2705 {mention} landed {len(commits)} commits: (<{run_url}|job>)\n{bullet_list}"
     else:
-        text = f"\u274c {mention} failed to land: {commit_subject}\n<{run_url}|View logs>{source_tag}"
+        text = f"\u274c {mention} failed to land: {commit_subject}\n<{run_url}|View logs>"
 
     payload = json.dumps({"text": text})
     req = urllib.request.Request(

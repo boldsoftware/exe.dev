@@ -197,7 +197,6 @@ def notify_slack(origin_main_before: str):
     env["COMMIT_LOG"] = commit_log
     env["COMMIT_AUTHOR"] = commit_author
     env["COMMIT_AUTHOR_EMAIL"] = commit_author_email
-    env["CI_SOURCE"] = "buildkite"
 
     # Extract actor from branch name (kite-queue-<user>-...).
     parts = branch.split("-")
