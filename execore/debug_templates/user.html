@@ -346,6 +346,18 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 </table>
 {{end}}
 
+<h3 style="margin-top:15px;">Coupons</h3>
+{{if .Discount}}
+<table class="info">
+<tr><th>Name</th><td>{{if .Discount.Name}}{{.Discount.Name}}{{else}}{{.Discount.CouponID}}{{end}}</td></tr>
+<tr><th>Coupon ID</th><td><a href="https://dashboard.stripe.com/coupons/{{.Discount.CouponID}}" target="_blank"><code>{{.Discount.CouponID}}</code> &#x2197;</a></td></tr>
+<tr><th>Discount</th><td>{{if .Discount.PercentOff}}{{printf "%.0f" .Discount.PercentOff}}% off{{else if .Discount.AmountOffCents}}${{printf "%.2f" (divf64 .Discount.AmountOffCents 100.0)}} off{{end}}</td></tr>
+<tr><th>Duration</th><td>{{.Discount.Duration}}{{if .Discount.DurationInMonths}} ({{.Discount.DurationInMonths}} months){{end}}</td></tr>
+</table>
+{{else}}
+<p>No discounts applied.</p>
+{{end}}
+
 {{if .BillingAccounts}}
 <h3 style="margin-top:15px;">Plan Details</h3>
 <table class="info">
@@ -353,6 +365,14 @@ data-locked="{{.IsLockedOut}}">{{if .IsLockedOut}}Unlock{{else}}Lock{{end}}</but
 <tr><th>Trial Expires At</th><td>{{if .TrialExpiresAt}}{{.TrialExpiresAt}}{{else}}—{{end}}</td></tr>
 <tr><th>Current Period</th><td>{{if .BillingPeriodStart}}{{.BillingPeriodStart}} → {{.BillingPeriodEnd}}{{else}}—{{end}}</td></tr>
 <tr><th>Next Invoice</th><td>{{if .NextInvoiceDate}}{{.NextInvoiceAmount}} on {{.NextInvoiceDate}}{{else}}—{{end}}</td></tr>
+</table>
+{{end}}
+
+{{if .HasShelleyFreeCreditPct}}
+<h3 style="margin-top:15px;">Credit Balance</h3>
+<table class="info">
+<tr><th>Monthly Allowance</th><td>{{printf "%.0f" .MonthlyAvailableUSD}} remaining of {{printf "%.0f" .ShelleyCreditsMax}} · resets {{.MonthlyCreditsResetAt}}</td></tr>
+<tr><th>Extra Credits</th><td>{{printf "%.0f" .LedgerBalanceUSD}} remaining</td></tr>
 </table>
 {{end}}
 

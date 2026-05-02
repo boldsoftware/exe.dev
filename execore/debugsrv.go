@@ -5883,29 +5883,35 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			Name   string
 			Region string
 		}
-		IsLockedOut         bool
-		LockoutNote         string
-		Limits              string
-		CanGrantTrial       bool
-		CanRevokeTrial      bool
-		TrialExpiresAt      string // RFC3339, empty if no trial
-		TrialExpiresAtInput string // datetime-local format for HTML input
-		AllowDeleteUser     bool
-		DeleteBlockReasons  []string
-		CgroupOverrides     string
-		CreatedAtShort      string
-		TeamID              string
-		TeamName            string
-		TeamRole            string
-		DripSends           []dripSendInfo
-		PaymentMethod       *billing.PaymentMethodInfo
-		PlanHistory         []planHistoryRow
-		BillingPeriodStart  string
-		BillingPeriodEnd    string
-		NextInvoiceDate     string
-		NextInvoiceAmount   string
-		Entitlements        []EntitlementRow
-		Quotas              []quotaRow
+		IsLockedOut             bool
+		LockoutNote             string
+		Limits                  string
+		CanGrantTrial           bool
+		CanRevokeTrial          bool
+		TrialExpiresAt          string // RFC3339, empty if no trial
+		TrialExpiresAtInput     string // datetime-local format for HTML input
+		AllowDeleteUser         bool
+		DeleteBlockReasons      []string
+		CgroupOverrides         string
+		CreatedAtShort          string
+		TeamID                  string
+		TeamName                string
+		TeamRole                string
+		DripSends               []dripSendInfo
+		PaymentMethod           *billing.PaymentMethodInfo
+		PlanHistory             []planHistoryRow
+		BillingPeriodStart      string
+		BillingPeriodEnd        string
+		NextInvoiceDate         string
+		NextInvoiceAmount       string
+		Entitlements            []EntitlementRow
+		Quotas                  []quotaRow
+		Discount                *billing.DiscountInfo
+		HasShelleyFreeCreditPct bool
+		MonthlyAvailableUSD     float64
+		ShelleyCreditsMax       float64
+		MonthlyCreditsResetAt   string
+		LedgerBalanceUSD        float64
 	}{
 		Email:                    user.Email,
 		UserID:                   user.UserID,
@@ -5996,6 +6002,83 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 		data.CreditLastRefreshAt = credit.LastRefreshAt.Format(time.RFC3339)
 	}
 
+	// Shelley free credits (profile display) — same logic as billing debug page.
+	{
+		var creditPtr *exedb.UserLlmCredit
+		if hasCredit {
+			creditPtr = &credit
+		}
+		if lp, planErr := llmgateway.PlanForUser(ctx, s.db, userID, creditPtr); planErr == nil && lp.MaxCredit > 0 {
+			effAvail := credit.AvailableCredit
+			if creditPtr == nil {
+				effAvail = lp.MaxCredit
+			} else if lp.Refresh != nil {
+				effAvail, _ = lp.Refresh(credit.AvailableCredit, credit.LastRefreshAt, time.Now())
+			}
+			monthlyAvail := effAvail
+			if monthlyAvail > lp.MaxCredit {
+				monthlyAvail = lp.MaxCredit
+			}
+			if monthlyAvail < 0 {
+				monthlyAvail = 0
+			}
+			data.HasShelleyFreeCreditPct = true
+			data.ShelleyCreditsMax = lp.MaxCredit
+			data.MonthlyCreditsResetAt = nextUTCMonthStart().Format("15:04 on 02 Jan")
+
+			// Compute bar to get monthlyAvailable consistently with billing page.
+			var bonusRemaining, bonusGrantAmount float64
+			if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
+				bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
+				if effAvail > lp.MaxCredit {
+					bonusRemaining = effAvail - lp.MaxCredit
+					if bonusRemaining > bonusGrantAmount {
+						bonusRemaining = bonusGrantAmount
+					}
+				}
+			}
+			var giftCreditsUSD float64
+			var giftEntries []billing.GiftEntry
+			if len(userAccounts) > 0 {
+				if ge, err := s.billing.ListGifts(ctx, userAccounts[0].ID); err == nil {
+					giftEntries = ge
+					giftCreditsUSD = giftCreditsUSDFromLedger(ge)
+				}
+			}
+			if hasSignupGiftInLedger(giftEntries) {
+				monthlyAvail = max(monthlyAvail-bonusRemaining, 0)
+				bonusGrantAmount = 0
+				bonusRemaining = 0
+			}
+			var extraCreditsUSD float64
+			if len(userAccounts) > 0 {
+				if bal, err := s.billing.CreditBalance(ctx, userAccounts[0].ID); err == nil {
+					extraCreditsUSD = float64(bal.Microcents())/1_000_000 - giftCreditsUSD
+					if extraCreditsUSD < 0 {
+						extraCreditsUSD = 0
+					}
+				}
+			}
+			bar := computeCreditBar(creditBarInput{
+				shelleyCreditsAvailable: monthlyAvail,
+				planMaxCredit:           lp.MaxCredit,
+				bonusRemaining:          bonusRemaining,
+				bonusGrantAmount:        bonusGrantAmount,
+				extraCreditsUSD:         extraCreditsUSD,
+				giftCreditsUSD:          giftCreditsUSD,
+			})
+			data.MonthlyAvailableUSD = bar.monthlyAvailable
+
+			var ledgerBalance float64
+			if len(userAccounts) > 0 {
+				if bal, err := s.billing.CreditBalance(ctx, userAccounts[0].ID); err == nil {
+					ledgerBalance = max(float64(bal.Microcents())/1_000_000, 0)
+				}
+			}
+			data.LedgerBalanceUSD = ledgerBalance
+		}
+	}
+
 	// Fetch additional billing details for the first account
 	if len(userAccounts) > 0 {
 		firstAccount := userAccounts[0]
@@ -6005,6 +6088,13 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			s.slog().WarnContext(ctx, "failed to get payment method", "error", err, "account_id", firstAccount.ID)
 		} else {
 			data.PaymentMethod = pm
+		}
+
+		// Customer discount (coupon)
+		if disc, err := s.billing.CustomerDiscount(ctx, firstAccount.ID); err != nil {
+			s.slog().WarnContext(ctx, "failed to get customer discount", "error", err, "account_id", firstAccount.ID)
+		} else {
+			data.Discount = disc
 		}
 
 		// Plan history
