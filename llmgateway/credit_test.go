@@ -1417,19 +1417,21 @@ func TestCalculateRefreshedCredit_Basic(t *testing.T) {
 // credits:refresh entitlement-driven refresh tests
 // ---------------------------------------------------------------------------
 
-// TestCreditRefresh_PaidPlanTypes verifies that Individual, Team, and Business
-// plans (which have the credits:refresh entitlement) all get monthly credit
-// refresh after month rollover.
+// TestCreditRefresh_PaidPlanTypes verifies that Individual, Team, Business,
+// and Grandfathered plans (which have the credits:refresh entitlement) all get
+// monthly credit refresh after month rollover.
 func TestCreditRefresh_PaidPlanTypes(t *testing.T) {
 	t.Parallel()
 
 	plans := []struct {
-		planID   string
-		planName string
+		planID       string
+		planName     string
+		needsBilling bool
 	}{
-		{"individual:small:monthly:20260106", "has_billing"},
-		{"team:monthly:20260106", "has_billing"},
-		{"business:monthly:20260106", "has_billing"},
+		{"individual:small:monthly:20260106", "has_billing", true},
+		{"team:monthly:20260106", "has_billing", true},
+		{"business:monthly:20260106", "has_billing", true},
+		{"grandfathered", "no_billing", false},
 	}
 
 	for _, p := range plans {
@@ -1442,15 +1444,17 @@ func TestCreditRefresh_PaidPlanTypes(t *testing.T) {
 			createTestUser(t, db, userID, p.planID+"@example.com")
 			setUserPlan(t, db, userID, p.planID, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 
-			// Activate billing for the user's account.
-			err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
-				return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
-					CreatedBy: userID,
-					EventAt:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			if p.needsBilling {
+				// Activate billing for the user's account.
+				err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+					return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+						CreatedBy: userID,
+						EventAt:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+					})
 				})
-			})
-			if err != nil {
-				t.Fatalf("activate account: %v", err)
+				if err != nil {
+					t.Fatalf("activate account: %v", err)
+				}
 			}
 
 			jan := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
@@ -1498,7 +1502,7 @@ func TestCreditRefresh_PaidPlanTypes(t *testing.T) {
 }
 
 // TestCreditRefresh_NonRefreshPlansNoMonthRollover verifies that plans
-// WITHOUT the credits:refresh entitlement (Friend, Grandfathered, Trial, Basic)
+// WITHOUT the credits:refresh entitlement (Friend, Trial, Basic)
 // do NOT get monthly credit refresh.
 func TestCreditRefresh_NonRefreshPlansNoMonthRollover(t *testing.T) {
 	t.Parallel()
@@ -1508,7 +1512,6 @@ func TestCreditRefresh_NonRefreshPlansNoMonthRollover(t *testing.T) {
 		planName string
 	}{
 		{"friend", "friend"},
-		{"grandfathered", "no_billing"},
 		{"trial:monthly:20260106", "no_billing"},
 		{"basic:monthly:20260106", "no_billing"},
 	}

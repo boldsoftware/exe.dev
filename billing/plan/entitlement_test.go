@@ -162,15 +162,15 @@ func TestAccountDeleteEntitlementByPlan(t *testing.T) {
 }
 
 // TestCreditRefreshEntitlementByPlan verifies which plans grant credits:refresh.
-// Paid subscriber tiers (Individual, Team, Business) refresh monthly; everyone
-// else does not.
+// Paid subscriber tiers (Individual, Team, Business) and Grandfathered refresh
+// monthly; everyone else does not.
 func TestCreditRefreshEntitlementByPlan(t *testing.T) {
 	wantRefresh := map[Category]bool{
 		CategoryBusiness:      true,
 		CategoryTeam:          true,
 		CategoryIndividual:    true,
 		CategoryFriend:        false,
-		CategoryGrandfathered: false,
+		CategoryGrandfathered: true,
 		CategoryTrial:         false,
 		CategoryBasic:         false,
 		CategoryRestricted:    false,
