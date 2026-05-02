@@ -1300,3 +1300,558 @@ func TestCreditManager_DebitCredit_TransferKeepsUsageOnOriginalOwnerRow(t *testi
 		t.Fatalf("owner2 rows = %d, want 0", len(owner2Rows))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// CalculateRefreshedCredit unit tests
+// ---------------------------------------------------------------------------
+
+func TestCalculateRefreshedCredit_Basic(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name           string
+		available      float64
+		max            float64
+		refreshPerHour float64
+		elapsed        time.Duration
+		wantAvailable  float64
+	}{
+		{
+			name:           "partial refresh over 2 hours",
+			available:      10,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        2 * time.Hour,
+			wantAvailable:  20,
+		},
+		{
+			name:           "refresh capped at max",
+			available:      95,
+			max:            100,
+			refreshPerHour: 10,
+			elapsed:        2 * time.Hour,
+			wantAvailable:  100,
+		},
+		{
+			name:           "already at max stays at max",
+			available:      100,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        1 * time.Hour,
+			wantAvailable:  100,
+		},
+		{
+			name:           "above max gets capped",
+			available:      150,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        1 * time.Hour,
+			wantAvailable:  100,
+		},
+		{
+			name:           "zero elapsed no change",
+			available:      50,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        0,
+			wantAvailable:  50,
+		},
+		{
+			name:           "negative elapsed no change",
+			available:      50,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        -1 * time.Hour,
+			wantAvailable:  50,
+		},
+		{
+			name:           "zero refresh rate no change",
+			available:      50,
+			max:            100,
+			refreshPerHour: 0,
+			elapsed:        10 * time.Hour,
+			wantAvailable:  50,
+		},
+		{
+			name:           "fractional hour",
+			available:      0,
+			max:            100,
+			refreshPerHour: 10,
+			elapsed:        30 * time.Minute,
+			wantAvailable:  5,
+		},
+		{
+			name:           "from zero to max over long period",
+			available:      0,
+			max:            100,
+			refreshPerHour: 5,
+			elapsed:        24 * time.Hour,
+			wantAvailable:  100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := base.Add(tt.elapsed)
+			got, gotTime := CalculateRefreshedCredit(tt.available, tt.max, tt.refreshPerHour, base, now)
+			if !floatClose(got, tt.wantAvailable, 0.000001) {
+				t.Errorf("available = %f, want %f", got, tt.wantAvailable)
+			}
+			// When time elapses, last refresh is set to now.
+			// When no time passes or it goes backwards, last refresh is unchanged.
+			if tt.elapsed <= 0 {
+				if !gotTime.Equal(base) {
+					t.Errorf("lastRefresh = %v, want %v (unchanged)", gotTime, base)
+				}
+			} else {
+				if !gotTime.Equal(now) {
+					t.Errorf("lastRefresh = %v, want %v (now)", gotTime, now)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// credits:refresh entitlement-driven refresh tests
+// ---------------------------------------------------------------------------
+
+// TestCreditRefresh_PaidPlanTypes verifies that Individual, Team, and Business
+// plans (which have the credits:refresh entitlement) all get monthly credit
+// refresh after month rollover.
+func TestCreditRefresh_PaidPlanTypes(t *testing.T) {
+	t.Parallel()
+
+	plans := []struct {
+		planID   string
+		planName string
+	}{
+		{"individual:small:monthly:20260106", "has_billing"},
+		{"team:monthly:20260106", "has_billing"},
+		{"business:monthly:20260106", "has_billing"},
+	}
+
+	for _, p := range plans {
+		t.Run(p.planID, func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
+
+			ctx := context.Background()
+			userID := "test-user-" + p.planID
+			createTestUser(t, db, userID, p.planID+"@example.com")
+			setUserPlan(t, db, userID, p.planID, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+			// Activate billing for the user's account.
+			err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+				return q.ActivateAccount(ctx, exedb.ActivateAccountParams{
+					CreatedBy: userID,
+					EventAt:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				})
+			})
+			if err != nil {
+				t.Fatalf("activate account: %v", err)
+			}
+
+			jan := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+			mgr := &CreditManager{
+				data: &DBGatewayData{db},
+				now:  func() time.Time { return jan },
+			}
+
+			// First check initializes credit.
+			info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != nil {
+				t.Fatalf("initial check failed: %v", err)
+			}
+			if info.Plan.Name != p.planName {
+				t.Fatalf("plan = %q, want %q", info.Plan.Name, p.planName)
+			}
+
+			// Debit all available credit.
+			_, err = mgr.DebitCredit(ctx, userID, info.Available, nil)
+			if err != nil {
+				t.Fatalf("debit failed: %v", err)
+			}
+
+			// Same month: no refresh.
+			info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != ErrInsufficientCredit {
+				t.Fatalf("expected ErrInsufficientCredit, got %v", err)
+			}
+			if !floatClose(info.Available, 0, 0.000001) {
+				t.Fatalf("same-month available = %f, want 0", info.Available)
+			}
+
+			// Cross month boundary.
+			feb := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+			mgr.now = func() time.Time { return feb }
+			info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != nil {
+				t.Fatalf("month rollover check failed: %v", err)
+			}
+			if !floatClose(info.Available, monthlyTopUpSubscribedUSD, 0.000001) {
+				t.Fatalf("available after rollover = %f, want %f", info.Available, monthlyTopUpSubscribedUSD)
+			}
+		})
+	}
+}
+
+// TestCreditRefresh_NonRefreshPlansNoMonthRollover verifies that plans
+// WITHOUT the credits:refresh entitlement (Friend, Grandfathered, Trial, Basic)
+// do NOT get monthly credit refresh.
+func TestCreditRefresh_NonRefreshPlansNoMonthRollover(t *testing.T) {
+	t.Parallel()
+
+	plans := []struct {
+		planID   string
+		planName string
+	}{
+		{"friend", "friend"},
+		{"grandfathered", "no_billing"},
+		{"trial:monthly:20260106", "no_billing"},
+		{"basic:monthly:20260106", "no_billing"},
+	}
+
+	for _, p := range plans {
+		t.Run(p.planID, func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
+
+			ctx := context.Background()
+			userID := "test-user-norefresh-" + p.planID
+			createTestUser(t, db, userID, "norefresh-"+p.planID+"@example.com")
+			setUserPlan(t, db, userID, p.planID, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+			jan := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+			mgr := &CreditManager{
+				data: &DBGatewayData{db},
+				now:  func() time.Time { return jan },
+			}
+
+			// First check initializes credit.
+			info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != nil {
+				t.Fatalf("initial check failed: %v", err)
+			}
+			if info.Plan.Name != p.planName {
+				t.Fatalf("plan = %q, want %q", info.Plan.Name, p.planName)
+			}
+			initialAvailable := info.Available
+
+			// Debit most credit.
+			debitAmount := initialAvailable - 1
+			if debitAmount > 0 {
+				_, err = mgr.DebitCredit(ctx, userID, debitAmount, nil)
+				if err != nil {
+					t.Fatalf("debit failed: %v", err)
+				}
+			}
+
+			// Debit remaining to exhaust credit.
+			_, err = mgr.DebitCredit(ctx, userID, 1, nil)
+			if err != nil {
+				t.Fatalf("final debit failed: %v", err)
+			}
+
+			// Cross month boundary.
+			feb := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+			mgr.now = func() time.Time { return feb }
+
+			info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != ErrInsufficientCredit {
+				t.Fatalf("expected ErrInsufficientCredit after month rollover, got %v (available=%f)", err, info.Available)
+			}
+			if !floatClose(info.Available, 0, 0.000001) {
+				t.Fatalf("available after month rollover = %f, want 0 (no refresh)", info.Available)
+			}
+		})
+	}
+}
+
+// TestCreditRefresh_DebitTriggersRefreshOnMonthBoundary verifies that
+// DebitCredit also applies the monthly refresh when called across a month
+// boundary (not just CheckAndRefreshCredit).
+func TestCreditRefresh_DebitTriggersRefreshOnMonthBoundary(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-debit-refresh"
+	createTestUser(t, db, userID, "debit-refresh@example.com")
+	createBillingAccount(t, db, userID, "acct-debit-refresh", time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	jan := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return jan },
+	}
+
+	// Initialize and exhaust credit.
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	_, err = mgr.DebitCredit(ctx, userID, info.Available, nil)
+	if err != nil {
+		t.Fatalf("exhaust debit failed: %v", err)
+	}
+
+	// Cross month boundary and debit directly (without CheckAndRefresh first).
+	feb := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	mgr.now = func() time.Time { return feb }
+
+	debitCost := 5.0
+	info, err = mgr.DebitCredit(ctx, userID, debitCost, nil)
+	if err != nil {
+		t.Fatalf("debit across month boundary failed: %v", err)
+	}
+	// Should have refreshed to $20 then debited $5 = $15.
+	wantAvailable := monthlyTopUpSubscribedUSD - debitCost
+	if !floatClose(info.Available, wantAvailable, 0.000001) {
+		t.Fatalf("available after debit across month = %f, want %f", info.Available, wantAvailable)
+	}
+}
+
+// TestCreditRefresh_OverrideMonthlyReset verifies that users with explicit
+// MaxCredit/RefreshPerHour overrides get monthly reset to their MaxCredit value.
+func TestCreditRefresh_OverrideMonthlyReset(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-override-monthly"
+	createTestUser(t, db, userID, "override-monthly@example.com")
+
+	maxCredit := 500.0
+	refreshPerHour := 50.0
+	jan := time.Date(2025, 1, 10, 8, 0, 0, 0, time.UTC)
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpsertUserLLMCredit(ctx, exedb.UpsertUserLLMCreditParams{
+			UserID:          userID,
+			AvailableCredit: 500.0,
+			MaxCredit:       &maxCredit,
+			RefreshPerHour:  &refreshPerHour,
+			LastRefreshAt:   jan,
+		})
+	})
+	if err != nil {
+		t.Fatalf("set override: %v", err)
+	}
+
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return jan },
+	}
+
+	// Debit to exhaust credit.
+	_, err = mgr.DebitCredit(ctx, userID, 510, nil)
+	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Same month: no refresh (override uses calculateMonthlyCredit).
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != ErrInsufficientCredit {
+		t.Fatalf("expected ErrInsufficientCredit same month, got %v", err)
+	}
+	if !floatClose(info.Available, 0, 0.000001) {
+		t.Fatalf("same-month available = %f, want 0", info.Available)
+	}
+
+	// Cross month boundary: should reset to maxCredit.
+	feb := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	mgr.now = func() time.Time { return feb }
+
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, maxCredit, 0.000001) {
+		t.Fatalf("available after rollover = %f, want %f (maxCredit)", info.Available, maxCredit)
+	}
+	if !floatClose(info.Max, maxCredit, 0.000001) {
+		t.Fatalf("max after rollover = %f, want %f", info.Max, maxCredit)
+	}
+	if !floatClose(info.RefreshPerHour, refreshPerHour, 0.000001) {
+		t.Fatalf("refreshPerHour = %f, want %f", info.RefreshPerHour, refreshPerHour)
+	}
+}
+
+// TestCreditRefresh_OverrideMaxCreditOnly verifies that setting only MaxCredit
+// (without RefreshPerHour) still triggers the override monthly reset.
+func TestCreditRefresh_OverrideMaxCreditOnly(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-override-maxonly"
+	createTestUser(t, db, userID, "override-maxonly@example.com")
+
+	maxCredit := 200.0
+	jan := time.Date(2025, 1, 10, 8, 0, 0, 0, time.UTC)
+	err := exedb.WithTx(db, ctx, func(ctx context.Context, q *exedb.Queries) error {
+		return q.UpsertUserLLMCredit(ctx, exedb.UpsertUserLLMCreditParams{
+			UserID:          userID,
+			AvailableCredit: 200.0,
+			MaxCredit:       &maxCredit,
+			LastRefreshAt:   jan,
+		})
+	})
+	if err != nil {
+		t.Fatalf("set override: %v", err)
+	}
+
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return jan },
+	}
+
+	_, err = mgr.DebitCredit(ctx, userID, 210, nil)
+	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Cross month: should reset to maxCredit.
+	feb := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	mgr.now = func() time.Time { return feb }
+
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, maxCredit, 0.000001) {
+		t.Fatalf("available after rollover = %f, want %f", info.Available, maxCredit)
+	}
+}
+
+// TestCreditRefresh_MultipleMonthSkip verifies that credits refresh even when
+// multiple months are skipped (user inactive for several months).
+func TestCreditRefresh_MultipleMonthSkip(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-multi-month"
+	createTestUser(t, db, userID, "multi-month@example.com")
+	createBillingAccount(t, db, userID, "acct-multi-month", time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	jan := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return jan },
+	}
+
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	_, err = mgr.DebitCredit(ctx, userID, info.Available, nil)
+	if err != nil {
+		t.Fatalf("exhaust debit failed: %v", err)
+	}
+
+	// Skip 6 months.
+	jul := time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC)
+	mgr.now = func() time.Time { return jul }
+
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("6-month rollover check failed: %v", err)
+	}
+	if !floatClose(info.Available, monthlyTopUpSubscribedUSD, 0.000001) {
+		t.Fatalf("available after 6 months = %f, want %f", info.Available, monthlyTopUpSubscribedUSD)
+	}
+}
+
+// TestCreditRefresh_SameMonthNoRefresh verifies that within the same month,
+// no refresh occurs for plans with credits:refresh (refresh only on month boundary).
+func TestCreditRefresh_SameMonthNoRefresh(t *testing.T) {
+	t.Parallel()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	ctx := context.Background()
+	userID := "test-user-same-month-norefresh"
+	createTestUser(t, db, userID, "same-month@example.com")
+	createBillingAccount(t, db, userID, "acct-same-month", time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	jan15 := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	mgr := &CreditManager{
+		data: &DBGatewayData{db},
+		now:  func() time.Time { return jan15 },
+	}
+
+	info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("initial check failed: %v", err)
+	}
+	initialAvailable := info.Available
+
+	// Debit $15.
+	debitAmount := 15.0
+	_, err = mgr.DebitCredit(ctx, userID, debitAmount, nil)
+	if err != nil {
+		t.Fatalf("debit failed: %v", err)
+	}
+
+	// Advance 15 days within same month.
+	jan30 := time.Date(2025, 1, 30, 12, 0, 0, 0, time.UTC)
+	mgr.now = func() time.Time { return jan30 }
+
+	info, err = mgr.CheckAndRefreshCredit(ctx, userID)
+	if err != nil {
+		t.Fatalf("same-month check failed: %v", err)
+	}
+
+	// Credit should still be initialAvailable - debitAmount. No intra-month refresh.
+	wantAvailable := initialAvailable - debitAmount
+	if !floatClose(info.Available, wantAvailable, 0.000001) {
+		t.Fatalf("same-month available = %f, want %f (no intra-month refresh)", info.Available, wantAvailable)
+	}
+}
+
+// TestCreditRefresh_RefreshPerHourReportedAsZeroForStandardPlans verifies that
+// non-override plans report RefreshPerHour=0 even though the base plan struct
+// has a non-zero value (the base values are only used for overrides).
+func TestCreditRefresh_RefreshPerHourReportedAsZeroForStandardPlans(t *testing.T) {
+	t.Parallel()
+
+	planIDs := []string{
+		"individual:small:monthly:20260106",
+		"team:monthly:20260106",
+		"business:monthly:20260106",
+		"friend",
+		"basic:monthly:20260106",
+	}
+
+	for _, planID := range planIDs {
+		t.Run(planID, func(t *testing.T) {
+			db := setupTestDB(t)
+			defer db.Close()
+
+			ctx := context.Background()
+			userID := "test-rph-" + planID
+			createTestUser(t, db, userID, "rph-"+planID+"@example.com")
+			setUserPlan(t, db, userID, planID, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+
+			now := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+			mgr := &CreditManager{
+				data: &DBGatewayData{db},
+				now:  func() time.Time { return now },
+			}
+
+			info, err := mgr.CheckAndRefreshCredit(ctx, userID)
+			if err != nil {
+				t.Fatalf("check failed: %v", err)
+			}
+			if !floatClose(info.RefreshPerHour, 0, 0.000001) {
+				t.Errorf("RefreshPerHour = %f, want 0 for standard plan", info.RefreshPerHour)
+			}
+		})
+	}
+}
