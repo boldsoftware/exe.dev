@@ -23,6 +23,8 @@ import (
 // testSSHPubKey is a valid SSH public key for use in tests.
 const testSSHPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmvM4PVNt905k8sp9UYnPzlFgR8J6k64U3qIFkJvvy8 test@example.com"
 
+const testListenAddr = "127.0.0.1:0"
+
 // testDashboardUI returns a minimal fs.FS containing stub HTML for all Vue pages.
 // Each stub has a </head> marker so renderPage can inject window.__PAGE__ data.
 func testDashboardUI() fstest.MapFS {
@@ -64,6 +66,26 @@ func newTestServer(t *testing.T) *Server {
 	return s
 }
 
+func TestNewTestServerBindsLoopbackListeners(t *testing.T) {
+	s := newTestServer(t)
+	for _, tc := range []struct {
+		name string
+		ln   *listener
+	}{
+		{name: "http", ln: s.httpLn},
+		{name: "https", ln: s.httpsLn},
+		{name: "ssh", ln: s.sshLn},
+		{name: "plugin", ln: s.pluginLn},
+	} {
+		if tc.ln == nil || tc.ln.tcp == nil {
+			t.Fatalf("%s listener not configured", tc.name)
+		}
+		if !tc.ln.tcp.IP.IsLoopback() {
+			t.Fatalf("%s listener bound to %s, want loopback", tc.name, tc.ln.tcp)
+		}
+	}
+}
+
 func newBillingTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := newUnstartedBillingServer(t)
@@ -90,10 +112,10 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 	cassette := filepath.Join("testdata", "stripe", strings.ReplaceAll(t.Name(), "/", "_")+".httprr")
 	s, err := NewServer(ServerConfig{
 		Logger:             tslog.Slogger(t),
-		HTTPAddr:           ":0",
-		HTTPSAddr:          ":0",
-		SSHAddr:            ":0",
-		PluginAddr:         ":0",
+		HTTPAddr:           testListenAddr,
+		HTTPSAddr:          testListenAddr,
+		SSHAddr:            testListenAddr,
+		PluginAddr:         testListenAddr,
 		ExeproxServicePort: 0,
 		DBPath:             dbPath,
 		FakeEmailServer:    "",
@@ -115,7 +137,10 @@ func newUnstartedBillingServer(t testing.TB) *Server {
 	if err != nil {
 		t.Fatalf("failed to create billing test server: %v", err)
 	}
-	t.Cleanup(func() { s.Stop() })
+	t.Cleanup(func() {
+		s.Stop()
+		http.DefaultClient.CloseIdleConnections()
+	})
 	return s
 }
 
@@ -268,10 +293,10 @@ func newUnstartedServer(t testing.TB) *Server {
 	registry := prometheus.NewRegistry()
 	s, err := NewServer(ServerConfig{
 		Logger:             tslog.Slogger(t),
-		HTTPAddr:           ":0",
-		HTTPSAddr:          ":0",
-		SSHAddr:            ":0",
-		PluginAddr:         ":0",
+		HTTPAddr:           testListenAddr,
+		HTTPSAddr:          testListenAddr,
+		SSHAddr:            testListenAddr,
+		PluginAddr:         testListenAddr,
 		ExeproxServicePort: 0,
 		DBPath:             dbPath,
 		FakeEmailServer:    "",
@@ -293,7 +318,11 @@ func newUnstartedServer(t testing.TB) *Server {
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
-	t.Cleanup(func() { s.Stop() }) // Ensure server is stopped when test ends (even if not started)
+	// Ensure server is stopped when test ends (even if not started).
+	t.Cleanup(func() {
+		s.Stop()
+		http.DefaultClient.CloseIdleConnections()
+	})
 	return s
 }
 
