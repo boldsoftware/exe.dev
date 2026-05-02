@@ -29,7 +29,17 @@ func (m *mockInstanceLookup) GetInstanceByIP(ctx context.Context, ip string) (id
 func TestMetadataService404(t *testing.T) {
 	log := slog.Default()
 
-	svc, err := NewService(log, &mockInstanceLookup{}, "http://localhost:8080", "127.0.0.1:18080", []string{".int.exe.cloud"}, "", "", false, nil)
+	// Grab a port and close the listener so the gateway proxy has a guaranteed
+	// dead upstream (avoids flakes if something else happens to be listening on
+	// a hardcoded port).
+	deadLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	deadAddr := deadLn.Addr().String()
+	deadLn.Close()
+
+	svc, err := NewService(log, &mockInstanceLookup{}, "http://"+deadAddr, "127.0.0.1:18080", []string{".int.exe.cloud"}, "", "", false, nil)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
