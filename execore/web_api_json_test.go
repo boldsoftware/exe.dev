@@ -34,3 +34,25 @@ func TestMonthlyResetAtText(t *testing.T) {
 		t.Errorf("monthlyResetAtText(false) = %q, want empty string", got)
 	}
 }
+
+func TestAllKnownTagsForIncludesIntegrationOnlyTags(t *testing.T) {
+	tagVMs := map[string][]string{
+		"web":     {"vm-a"},
+		"vm-only": {"vm-b"},
+	}
+	integrations := []jsonIntegrationInfo{
+		{Name: "openai", Attachments: []string{"tag:web", "tag:llm", "box:vm-a"}},
+		{Name: "anthropic", Attachments: []string{"tag:llm"}}, // dup with openai
+		{Name: "github", Attachments: []string{"tag:", ""}},
+	}
+	got := allKnownTagsFor(tagVMs, integrations)
+	want := []string{"llm", "vm-only", "web"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	}
+}

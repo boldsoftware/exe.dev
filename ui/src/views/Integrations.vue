@@ -1271,19 +1271,9 @@ function tagChipHint(tag: string): string {
   return `attached to ${vms.length} VMs`
 }
 
-// Tags known to the user — union of box tags (data.allTags, populated only
-// from VMs the user owns) and any tag referenced by an existing integration
-// attachment. Integration attachments can reference tags that aren't applied
-// to any VM yet, so we surface those here too.
-const allKnownTags = computed(() => {
-  const set = new Set<string>(data.value?.allTags ?? [])
-  for (const ig of data.value?.integrations ?? []) {
-    for (const a of ig.attachments ?? []) {
-      if (a.startsWith('tag:')) set.add(a.slice(4))
-    }
-  }
-  return [...set].sort()
-})
+// Tags known to the user. The server's allTags already unions VM-applied
+// tags with tag:NAME attachments on the user's integrations.
+const allKnownTags = computed(() => data.value?.allTags ?? [])
 
 // All possible attachment options (for existing integration attach modal)
 const allAttachOptions = computed(() => {

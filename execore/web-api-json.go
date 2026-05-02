@@ -1280,11 +1280,7 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 			}
 		}
 	}
-	var allTags []string
-	for t := range tagVMs {
-		allTags = append(allTags, t)
-	}
-	slices.Sort(allTags)
+	allTags := allKnownTagsFor(tagVMs, integrations)
 	tagIntegrationSummaries := summarizeIntegrationsByTag(allTags, integrations)
 
 	writeJSONOK(w, jsonIntegrationsData{
@@ -1304,6 +1300,31 @@ func (s *Server) handleAPIIntegrations(w http.ResponseWriter, r *http.Request, u
 		BoxHost:                 s.env.BoxHost,
 		HasTeam:                 hasTeam,
 	})
+}
+
+// allKnownTagsFor returns the sorted union of tags currently used by the
+// user's VMs (keys of tagVMs) and tags referenced as `tag:NAME` attachments
+// on any of the user's integrations. This ensures the Add Tag picker shows
+// tags that exist only because an integration is attached to them, even when
+// no VM yet uses them.
+func allKnownTagsFor(tagVMs map[string][]string, integrations []jsonIntegrationInfo) []string {
+	tagSet := map[string]bool{}
+	for t := range tagVMs {
+		tagSet[t] = true
+	}
+	for _, ig := range integrations {
+		for _, a := range ig.Attachments {
+			if tag, ok := strings.CutPrefix(a, "tag:"); ok && tag != "" {
+				tagSet[tag] = true
+			}
+		}
+	}
+	tags := make([]string, 0, len(tagSet))
+	for t := range tagSet {
+		tags = append(tags, t)
+	}
+	slices.Sort(tags)
+	return tags
 }
 
 func summarizeIntegrationsByTag(allTags []string, integrations []jsonIntegrationInfo) []jsonTagIntegrationSummary {

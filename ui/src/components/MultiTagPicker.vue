@@ -209,10 +209,18 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   border: 1px solid var(--input-border);
   border-radius: 4px;
   font-family: inherit;
-  font-size: 13px;
+  /* 16px on mobile prevents iOS Safari from zooming when the input gains focus
+     (which happens when tapping a tag option). */
+  font-size: 16px;
   background: var(--input-bg);
   color: var(--input-text);
   outline: none;
+}
+
+@media (min-width: 600px) {
+  .tag-input {
+    font-size: 13px;
+  }
 }
 
 .tag-input:focus {
