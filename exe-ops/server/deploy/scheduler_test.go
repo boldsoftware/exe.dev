@@ -41,7 +41,7 @@ func TestNextDeployTime(t *testing.T) {
 			want: "2024-03-04 17:30",
 		},
 		{
-			name: "Friday 9:30 PM ET (after 6pm PT) → Monday 9:00 AM ET",
+			name: "Friday 9:30 PM ET (after 5pm PT) → Monday 9:00 AM ET",
 			now:  etTime(2024, 3, 8, 21, 30), // Fri
 			want: "2024-03-11 09:00",         // Mon
 		},
@@ -64,6 +64,16 @@ func TestNextDeployTime(t *testing.T) {
 			name: "July 3 2020 (Friday, observed for July 4 Sat) → Monday 9:00 AM ET",
 			now:  etTime(2020, 7, 3, 10, 0),
 			want: "2020-07-06 09:00",
+		},
+		{
+			name: "Saturday 11 PM UTC (Sat 7 PM ET) → Monday 9:00 AM ET",
+			now:  time.Date(2024, 7, 13, 23, 0, 0, 0, time.UTC),
+			want: "2024-07-15 09:00",
+		},
+		{
+			name: "Monday 00:00 UTC (Sunday 8 PM ET) → Monday 9:00 AM ET",
+			now:  time.Date(2024, 7, 15, 0, 0, 0, 0, time.UTC),
+			want: "2024-07-15 09:00",
 		},
 	}
 
@@ -88,6 +98,9 @@ func TestIsDeployableTime(t *testing.T) {
 	etTime := func(y, mon, d, h, min int) time.Time {
 		return time.Date(y, time.Month(mon), d, h, min, 0, 0, et)
 	}
+	utcTime := func(y, mon, d, h, min int) time.Time {
+		return time.Date(y, time.Month(mon), d, h, min, 0, 0, time.UTC)
+	}
 
 	s := &Scheduler{}
 
@@ -100,11 +113,21 @@ func TestIsDeployableTime(t *testing.T) {
 		{"Monday 9:30 AM ET", etTime(2024, 3, 4, 9, 30), true},
 		{"Monday 5:00 PM ET", etTime(2024, 3, 4, 17, 0), true},
 		{"Monday 8:59 AM ET (before window)", etTime(2024, 3, 4, 8, 59), false},
-		{"Monday 9:30 PM ET (after 6pm PT)", etTime(2024, 3, 4, 21, 30), false},
+		{"Monday 9:30 PM ET (after 5pm PT)", etTime(2024, 3, 4, 21, 30), false},
 		{"Saturday 10:00 AM ET", etTime(2024, 3, 9, 10, 0), false},
 		{"Sunday 10:00 AM ET", etTime(2024, 3, 10, 10, 0), false},
 		{"New Year 2024 (holiday)", etTime(2024, 1, 1, 10, 0), false},
 		{"Thanksgiving 2024", etTime(2024, 11, 28, 10, 0), false},
+
+		// UTC timezone regression tests: Monday 00:00 UTC is Sunday evening
+		// in ET/PT. The server runs in UTC so times from Truncate are in UTC.
+		{"Monday 00:00 UTC (Sunday 7/8pm ET)", utcTime(2024, 7, 15, 0, 0), false},
+		{"Monday 00:30 UTC (Sunday 8:30pm ET)", utcTime(2024, 7, 15, 0, 30), false},
+		{"Monday 04:00 UTC (Sunday midnight ET)", utcTime(2024, 7, 15, 4, 0), false},
+		{"Saturday 00:00 UTC (Friday 8pm ET / 5pm PT)", utcTime(2024, 7, 13, 0, 0), true}, // Friday 5pm PT is the last deploy slot
+		{"Sunday 00:00 UTC (Saturday 8pm ET)", utcTime(2024, 7, 14, 0, 0), false},
+		{"Monday 13:00 UTC (Monday 9am ET/EDT)", utcTime(2024, 7, 15, 13, 0), true},
+		{"Monday 14:00 UTC (Monday 10am ET/EDT)", utcTime(2024, 7, 15, 14, 0), true},
 	}
 
 	for _, tt := range tests {
@@ -163,9 +186,9 @@ func TestAnnounceFirstLast_LastDeploy(t *testing.T) {
 	et, _ := time.LoadLocation("America/New_York")
 	pt, _ := time.LoadLocation("America/Los_Angeles")
 
-	// Find the last deploy slot: 6:00 PM PT on Monday.
-	// In ET (EST, March 4 2024), that's 9:00 PM.
-	lastSlot := time.Date(2024, 3, 4, 18, 0, 0, 0, pt)
+	// Find the last deploy slot: 5:00 PM PT on Monday.
+	// In ET (EST, March 4 2024), that's 8:00 PM.
+	lastSlot := time.Date(2024, 3, 4, 17, 0, 0, 0, pt)
 
 	s := &Scheduler{
 		notifier:           notifier,
@@ -317,6 +340,89 @@ func (f *fakeNotifier) CDSetTopic(channel, topic string) {
 
 func (f *fakeNotifier) CDPostMessage(channel, text string) {
 	f.messages = append(f.messages, channel+": "+text)
+}
+
+func TestStatePersistence_AnnouncementsAndTopic(t *testing.T) {
+	tmpFile := t.TempDir() + "/cd-state.json"
+	notifier := &fakeNotifier{}
+	et, _ := time.LoadLocation("America/New_York")
+	now := time.Date(2024, 3, 4, 9, 0, 0, 0, et) // Mon 9am ET
+
+	// Create scheduler, enable it, trigger announcements.
+	s := &Scheduler{
+		notifier:  notifier,
+		channel:   "ship",
+		services:  []string{"exed"},
+		nowFunc:   func() time.Time { return now },
+		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		wakeC:     make(chan struct{}, 1),
+		stateFile: tmpFile,
+		enabled:   false,
+	}
+	s.Enable()
+	s.announceFirstLast()
+	// updateTopic sets lastTopic (called from Run loop in production).
+	s.updateTopic()
+
+	// Verify state was set.
+	s.mu.Lock()
+	firstDate := s.announcedFirstDate
+	topic := s.lastTopic
+	s.mu.Unlock()
+	if firstDate == "" {
+		t.Fatal("expected announcedFirstDate to be set")
+	}
+	if topic == "" {
+		t.Fatal("expected lastTopic to be set")
+	}
+
+	// Simulate restart: create new scheduler from same state file.
+	notifier2 := &fakeNotifier{}
+	s2 := &Scheduler{
+		notifier:  notifier2,
+		channel:   "ship",
+		services:  []string{"exed"},
+		nowFunc:   func() time.Time { return now },
+		log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		wakeC:     make(chan struct{}, 1),
+		stateFile: tmpFile,
+	}
+	s2.loadState()
+
+	// Verify restored state.
+	s2.mu.Lock()
+	restoredFirst := s2.announcedFirstDate
+	restoredTopic := s2.lastTopic
+	s2.mu.Unlock()
+	if restoredFirst != firstDate {
+		t.Errorf("announcedFirstDate not restored: got %q, want %q", restoredFirst, firstDate)
+	}
+	if restoredTopic != topic {
+		t.Errorf("lastTopic not restored: got %q, want %q", restoredTopic, topic)
+	}
+
+	// announceFirstLast should NOT re-announce.
+	s2.announceFirstLast()
+	for _, msg := range notifier2.messages {
+		if strings.Contains(msg, "First CD deploy") {
+			t.Errorf("should not re-announce first deploy after restart, got %q", msg)
+		}
+	}
+
+	// updateTopic with same state should not re-set topic.
+	s2.mu.Lock()
+	s2.enabled = true
+	s2.mu.Unlock()
+	s2.updateTopic()
+	if len(notifier2.topics) > 0 {
+		// The topic might be set if the computed topic differs from lastTopic
+		// (e.g., because nextAt changed). But lastTopic should prevent
+		// redundant sends of the same string.
+		lastSet := notifier2.topics[len(notifier2.topics)-1]
+		if lastSet == "ship: "+topic {
+			t.Errorf("should not re-set identical topic after restart")
+		}
+	}
 }
 
 func TestNotifyDeploy_OutOfBand(t *testing.T) {

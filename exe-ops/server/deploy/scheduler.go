@@ -12,7 +12,7 @@ import (
 )
 
 // Scheduler orchestrates continuous deployment of exed on a fixed schedule.
-// Deploys happen every 30 minutes during business hours (Mon-Fri 9am ET to 6pm PT),
+// Deploys happen every 30 minutes during business hours (Mon-Fri 9am ET to 5pm PT),
 // skipping US federal holidays. CD can be enabled/disabled via API; failures
 // auto-disable CD and require manual re-enable.
 type Scheduler struct {
@@ -89,11 +89,11 @@ type InventoryProvider interface {
 const (
 	deployInterval = 30 * time.Minute
 
-	// Time window: first deploy at 9:00 AM ET, last at 6:00 PM PT.
+	// Time window: first deploy at 9:00 AM ET, last at 5:00 PM PT.
 	// We use America/New_York and America/Los_Angeles to handle DST properly.
 	windowStartHour   = 9 // 9 AM in America/New_York
 	windowStartMinute = 0
-	windowEndHour     = 18 // 6 PM in America/Los_Angeles
+	windowEndHour     = 17 // 5 PM in America/Los_Angeles
 	windowEndMinute   = 0
 
 	// maxCommitsPerDeploy is the threshold above which CD auto-disables.
@@ -104,8 +104,11 @@ const (
 
 // cdState is the JSON structure persisted to disk.
 type cdState struct {
-	Enabled        bool   `json:"enabled"`
-	DisabledReason string `json:"disabled_reason,omitempty"`
+	Enabled            bool   `json:"enabled"`
+	DisabledReason     string `json:"disabled_reason,omitempty"`
+	AnnouncedFirstDate string `json:"announced_first_date,omitempty"`
+	AnnouncedLastDate  string `json:"announced_last_date,omitempty"`
+	LastTopic          string `json:"last_topic,omitempty"`
 }
 
 // NewScheduler creates a new CD scheduler. stateFile is the path to
@@ -504,6 +507,7 @@ func (s *Scheduler) announceFirstLast() {
 	if !alreadyFirst {
 		s.mu.Lock()
 		s.announcedFirstDate = today
+		s.saveStateLocked()
 		s.mu.Unlock()
 		s.notifier.CDPostMessage(s.channel, "☀️ First CD deploy of the day coming up. Active services:"+s.serviceList())
 	}
@@ -518,6 +522,7 @@ func (s *Scheduler) announceFirstLast() {
 	if !alreadyLast && nextAfterDate != today {
 		s.mu.Lock()
 		s.announcedLastDate = today
+		s.saveStateLocked()
 		s.mu.Unlock()
 		s.notifier.CDPostMessage(s.channel, fmt.Sprintf(
 			"🌙 Last CD deploy of the day — back at it %s. Active services:", formatTimeWithDay(nextAfter))+s.serviceList())
@@ -586,6 +591,7 @@ func (s *Scheduler) setTopicLocked(topic string) {
 		return
 	}
 	s.lastTopic = topic
+	s.saveStateLocked()
 	s.notifier.CDSetTopic(s.channel, topic)
 }
 
@@ -605,6 +611,9 @@ func (s *Scheduler) loadState() {
 	}
 	s.enabled = st.Enabled
 	s.disabledReason = st.DisabledReason
+	s.announcedFirstDate = st.AnnouncedFirstDate
+	s.announcedLastDate = st.AnnouncedLastDate
+	s.lastTopic = st.LastTopic
 	if s.enabled {
 		s.log.Info("CD scheduler restored to enabled from state file")
 	} else if st.DisabledReason != "" {
@@ -618,8 +627,11 @@ func (s *Scheduler) saveStateLocked() {
 		return
 	}
 	st := cdState{
-		Enabled:        s.enabled,
-		DisabledReason: s.disabledReason,
+		Enabled:            s.enabled,
+		DisabledReason:     s.disabledReason,
+		AnnouncedFirstDate: s.announcedFirstDate,
+		AnnouncedLastDate:  s.announcedLastDate,
+		LastTopic:          s.lastTopic,
 	}
 	data, err := json.Marshal(st)
 	if err != nil {
@@ -712,10 +724,17 @@ func (s *Scheduler) nextDeployTime(now time.Time) time.Time {
 }
 
 // isDeployableTime returns true if t is within the CD deploy window:
-// Mon-Fri, not a holiday, between 9am ET and 6pm PT.
+// Mon-Fri, not a holiday, between 9am ET and 5pm PT.
 func (s *Scheduler) isDeployableTime(t time.Time, et, pt *time.Location) bool {
-	// Check day of week: Mon-Fri only.
-	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
+	// Convert to both timezones first — all checks use local wall-clock
+	// values so the server's own timezone doesn't matter.
+	etTime := t.In(et)
+	ptTime := t.In(pt)
+
+	// Check day of week in ET: Mon-Fri only.
+	// Using ET (not UTC) prevents Sunday evening from being treated as
+	// Monday when the server runs in UTC.
+	if etTime.Weekday() == time.Saturday || etTime.Weekday() == time.Sunday {
 		return false
 	}
 
@@ -723,11 +742,6 @@ func (s *Scheduler) isDeployableTime(t time.Time, et, pt *time.Location) bool {
 	if IsUSFederalHoliday(t) {
 		return false
 	}
-
-	// Check time window: >= 9:00 AM ET and <= 6:00 PM PT.
-	// Convert to both timezones and check.
-	etTime := t.In(et)
-	ptTime := t.In(pt)
 
 	// Must be >= 9:00 AM in ET.
 	if etTime.Hour() < windowStartHour {
@@ -737,7 +751,7 @@ func (s *Scheduler) isDeployableTime(t time.Time, et, pt *time.Location) bool {
 		return false
 	}
 
-	// Must be <= 6:00 PM in PT (last deploy AT 6pm).
+	// Must be <= 5:00 PM in PT (last deploy AT 5pm).
 	if ptTime.Hour() > windowEndHour {
 		return false
 	}

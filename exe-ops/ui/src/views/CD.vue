@@ -1,7 +1,7 @@
 <template>
   <div class="cd-view">
     <h2 class="page-title">Continuous Deployment</h2>
-    <p class="page-subtitle">Automated deploys run every 30 minutes during business hours (9 AM ET – 6 PM PT, weekdays, excluding holidays).</p>
+    <p class="page-subtitle">Automated deploys run every 30 minutes during business hours (9 AM ET – 5 PM PT, weekdays, excluding holidays).</p>
 
     <div class="cd-services">
       <div class="cd-service-card">
