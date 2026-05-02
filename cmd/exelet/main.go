@@ -165,12 +165,6 @@ func main() {
 			EnvVars: []string{"EXEPIPE_ADDRESS"},
 		},
 		&cli.BoolFlag{
-			// Temporary flag during socat -> exepipe transition.
-			Name:  "stop-socat-listeners",
-			Usage: "kill socat listening processes at startup",
-			Value: false,
-		},
-		&cli.BoolFlag{
 			Name:    "desired-state-sync",
 			Usage:   "enable periodic desired-state sync from exed (requires --exed-url)",
 			Value:   true,
@@ -436,7 +430,6 @@ func serveAction(clix *cli.Context) error {
 		metadataURL = exedURL
 	}
 	exepipeAddress := clix.String("exepipe-address")
-	stopSocatListeners := clix.Bool("stop-socat-listeners")
 	instanceDomain := clix.String("instance-domain")
 	resourceManagerInterval := clix.Duration("resource-manager-interval")
 	enableHugepages := clix.Bool("enable-hugepages")
@@ -489,10 +482,6 @@ func serveAction(clix *cli.Context) error {
 		}
 	}
 
-	if stopSocatListeners && exepipeAddress == "" {
-		return fmt.Errorf("must set -exepipe-address if using -stop-socat-listeners")
-	}
-
 	cfg := &config.ExeletConfig{
 		Name:                              name,
 		ListenAddress:                     listenAddress,
@@ -510,7 +499,6 @@ func serveAction(clix *cli.Context) error {
 		ExedURL:                           exedURL,
 		MetadataURL:                       metadataURL,
 		ExepipeAddress:                    exepipeAddress,
-		StopSocatListeners:                stopSocatListeners,
 		InstanceDomain:                    instanceDomain,
 		ResourceManagerInterval:           resourceManagerInterval,
 		MemwatchDisable:                   memwatchDisable,

@@ -1,16 +1,11 @@
 package sshproxy
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
-	"os/exec"
-	"regexp"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -34,19 +29,15 @@ type exepipeManager struct {
 
 	portsMu sync.Mutex
 	ports   map[string]int // instanceID -> port
-
-	// Temporary flag during socat -> exepipe transition.
-	stopSocatListeners bool
 }
 
 // NewExepipeManager creates a new SSH proxy manager using exepipe.
-func NewExepipeManager(ctx context.Context, exepipeAddress, bindIP string, lg *slog.Logger, stopSocatListeners bool, netnsFunc ...NetnsFunc) Manager {
+func NewExepipeManager(ctx context.Context, exepipeAddress, bindIP string, lg *slog.Logger, netnsFunc ...NetnsFunc) Manager {
 	epm := &exepipeManager{
-		exepipeAddress:     exepipeAddress,
-		bindIP:             bindIP,
-		lg:                 lg,
-		ports:              make(map[string]int),
-		stopSocatListeners: stopSocatListeners,
+		exepipeAddress: exepipeAddress,
+		bindIP:         bindIP,
+		lg:             lg,
+		ports:          make(map[string]int),
 	}
 	if len(netnsFunc) > 0 {
 		epm.netnsFunc = netnsFunc[0]
@@ -203,10 +194,6 @@ func (epm *exepipeManager) RecoverProxies(ctx context.Context, instances []*api.
 		return errors.New("unable to reach exepipe to recover SSH proxies")
 	}
 
-	if epm.stopSocatListeners {
-		StopSocatListeners(ctx, epm.lg)
-	}
-
 	m := make(map[string]client.Listener)
 	for ln, err := range cli.Listeners(ctx) {
 		if err != nil {
@@ -269,53 +256,4 @@ func (epm *exepipeManager) RecoverProxies(ctx context.Context, instances []*api.
 	}
 
 	return nil
-}
-
-// socatRE finds the PID of a socat in ss output.
-var socatRE = regexp.MustCompile(`"socat",pid=([0-9]+),`)
-
-// StopSocatListeners stops all socat listening processes on the system.
-// This is a temporary method used during the socat -> exepipe transition.
-func StopSocatListeners(ctx context.Context, lg *slog.Logger) {
-	out, err := exec.CommandContext(ctx, "sudo", "ss", "-tnpl").CombinedOutput()
-	if err != nil {
-		lg.ErrorContext(ctx, "stopSocatListeners: running ss failed", "error", err, "output", out)
-		return
-	}
-
-	first := false
-	for line := range bytes.Lines(out) {
-		if first {
-			// Skip the headers
-			first = false
-			continue
-		}
-		if !bytes.Contains(line, []byte("socat")) {
-			continue
-		}
-		fields := strings.Fields(string(line))
-		if len(fields) != 6 {
-			lg.ErrorContext(ctx, "stopSocatListeners: could not parse ss line", "line", line)
-			continue
-		}
-		if fields[0] != "LISTEN" {
-			continue
-		}
-		matches := socatRE.FindStringSubmatch(fields[5])
-		if len(matches) == 0 {
-			lg.ErrorContext(ctx, "stopSocatListeners: no PID match", "line", line, "field", fields[5])
-			continue
-		}
-		pidStr := matches[1]
-		pid, err := strconv.Atoi(pidStr)
-		if err != nil {
-			lg.ErrorContext(ctx, "stopSocatListeners: could not parse pid", "line", line, "field", fields[5], "pidStr", pidStr, "error", err)
-			continue
-		}
-
-		out, err := exec.CommandContext(ctx, "sudo", "kill", strconv.Itoa(pid)).CombinedOutput()
-		if err != nil {
-			lg.ErrorContext(ctx, "stopSocatListeners: kill failed", "pid", pid, "error", err, "output", out)
-		}
-	}
 }

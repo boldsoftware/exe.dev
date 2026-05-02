@@ -43,9 +43,6 @@ type BindDevFunc func(instanceID string) string
 type ProxyOpts struct {
 	BindDev   BindDevFunc // optional: SO_BINDTODEVICE for socat connect side
 	NetnsFunc NetnsFunc   // optional: netns name for exepipe dial
-
-	// Temporary flag during socat -> exepipe transition.
-	StopSocatListeners bool
 }
 
 // socatManager manages SSH proxies for instances,
@@ -72,7 +69,7 @@ func NewManager(ctx context.Context, dataDir, bindIP, exepipeAddress string, log
 		if o.NetnsFunc != nil {
 			nf = append(nf, o.NetnsFunc)
 		}
-		return NewExepipeManager(ctx, exepipeAddress, bindIP, log, o.StopSocatListeners, nf...)
+		return NewExepipeManager(ctx, exepipeAddress, bindIP, log, nf...)
 	} else {
 		return &socatManager{
 			proxies: make(map[string]*socatSSHProxy),
