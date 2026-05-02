@@ -22,7 +22,7 @@ concurrency:
 jobs:
   test-go:
     name: Go Tests
-    runs-on: [self-hosted, exe-ci, edric]
+    runs-on: [self-hosted, exe-ci]
     defaults:
       run:
         working-directory: shelley
@@ -32,8 +32,6 @@ jobs:
         working-directory: .
         run: |
           if hostname -f | grep -qE '\.(exe\.dev|exe\.xyz)$'; then
-            echo "self_hosted=true" >> "$GITHUB_OUTPUT"
-          elif test `hostname` = edric; then
             echo "self_hosted=true" >> "$GITHUB_OUTPUT"
           else
             echo "self_hosted=false" >> "$GITHUB_OUTPUT"
@@ -124,7 +122,7 @@ jobs:
 
   test-ui:
     name: Playwright E2E Tests
-    runs-on: [self-hosted, exe-ci, edric]
+    runs-on: [self-hosted, exe-ci]
     defaults:
       run:
         working-directory: shelley
@@ -176,23 +174,6 @@ jobs:
           cd ui
           npx playwright test
 
-      - name: Publish report to ~/public_html
-        if: always()
-        run: |
-          if ! test "$(hostname)" = edric; then
-            exit 0
-          fi
-          REPORT_DIR="$HOME/public_html/playwright/${{ github.run_number }}"
-          mkdir -p "$REPORT_DIR"
-          cp -r ui/playwright-report/* "$REPORT_DIR/" 2>/dev/null || true
-          if [ -d ui/test-results ] && [ "$(ls ui/test-results 2>/dev/null)" ]; then
-            cp -r ui/test-results "$REPORT_DIR/test-results"
-          fi
-          ln -sfn "$REPORT_DIR" "$HOME/public_html/playwright/latest"
-          # Keep last 5 reports
-          cd "$HOME/public_html/playwright"
-          ls -1d [0-9]* 2>/dev/null | sort -n | head -n -5 | xargs rm -rf 2>/dev/null || true
-
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -216,7 +197,3 @@ jobs:
         run: |
           echo '### Playwright E2E Results' >> "$GITHUB_STEP_SUMMARY"
           echo '' >> "$GITHUB_STEP_SUMMARY"
-          if test "$(hostname)" = edric; then
-            echo "[**View Report**](http://edric/~$(whoami)/playwright/${{ github.run_number }}/)" >> "$GITHUB_STEP_SUMMARY"
-            echo '' >> "$GITHUB_STEP_SUMMARY"
-          fi
