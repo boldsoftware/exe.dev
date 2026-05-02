@@ -80,7 +80,7 @@ func buildTestTemplateSnapshot() (snapshot []byte, err error) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := database.Migrate(ctx); err != nil {
