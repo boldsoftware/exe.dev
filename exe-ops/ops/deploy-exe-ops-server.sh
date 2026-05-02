@@ -93,9 +93,22 @@ ssh "$SSH_TARGET" "test -f /etc/default/exe-ops-server" || {
 }
 
 # EnvironmentFile values override Environment= values at exec time, so remove
-# the keys this script owns from /etc/default before writing the drop-in below.
-echo "Removing deployment-managed settings from /etc/default/exe-ops-server..."
-ssh "$SSH_TARGET" "sudo sh -c 'tmp=\$(mktemp) && awk '\''{ line=\$0; sub(/^[[:space:]]*/, \"\", line); if (line ~ /^(EXE_OPS_ENVIRONMENT|EXE_OPS_ADDR|EXE_OPS_TLS)=/) next; print }'\'' /etc/default/exe-ops-server > \"\$tmp\" && cat \"\$tmp\" > /etc/default/exe-ops-server; rc=\$?; rm -f \"\$tmp\"; exit \$rc'"
+# the keys this script owns plus obsolete settings current exe-ops no longer reads.
+echo "Cleaning /etc/default/exe-ops-server..."
+ssh "$SSH_TARGET" "sudo sh -s" <<'EOF'
+set -e
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+awk '
+{
+    line = $0
+    sub(/^[[:space:]]*/, "", line)
+    if (line ~ /^(EXE_OPS_ENVIRONMENT|EXE_OPS_ADDR|EXE_OPS_TLS|EXE_OPS_TOKEN|EXE_OPS_DB|EXE_OPS_RETENTION|EXE_OPS_AI_PROVIDER|EXE_OPS_AI_API_KEY|EXE_OPS_AI_MODEL|EXE_OPS_AI_BASE_URL|EXE_OPS_EXED)=/) next
+    print
+}
+' /etc/default/exe-ops-server > "$tmp"
+cat "$tmp" > /etc/default/exe-ops-server
+EOF
 
 # Install/refresh the environment drop-in that pins the environment label,
 # listen address, and TLS mode (Tailscale automatic HTTPS via tscert).
