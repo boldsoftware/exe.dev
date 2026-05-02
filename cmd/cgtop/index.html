@@ -705,15 +705,17 @@ function renderTopbar() {
   const cpuSpark = makeSysSpark(ss.cpu_pct, '#2da44e', 100);
   h += `<span><span class="label">CPU</span> <span class="cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span> <span class="value">${(100 - s.cpu.idle_pct).toFixed(0)}%</span>${cpuSpark}</span>`;
   const psiItems = [
-    ['PSI CPU', s.psi_cpu, 'psi_cpu_some10'],
-    ['PSI Mem', s.psi_memory, 'psi_memory_some10'],
-    ['PSI IO', s.psi_io, 'psi_io_some10'],
+    ['PSI CPU', s.psi_cpu, 'psi_cpu_some10', 'psi_cpu_full10'],
+    ['PSI Mem', s.psi_memory, 'psi_memory_some10', 'psi_memory_full10'],
+    ['PSI IO', s.psi_io, 'psi_io_some10', 'psi_io_full10'],
   ];
-  for (const [label, psi, sparkKey] of psiItems) {
+  for (const [label, psi, someSparkKey, fullSparkKey] of psiItems) {
     if (!psi) continue;
-    const v = psi.some.avg10;
-    const psiSpark = makeSysSpark(ss[sparkKey], psiClass(v) === 'psi-green' ? '#1a7f37' : psiClass(v) === 'psi-yellow' ? '#9a6700' : '#cf222e', 100);
-    h += `<span><span class="label">${label}</span> <span class="psi-badge ${psiClass(v)}">${v.toFixed(1)}%</span>${psiSpark}</span>`;
+    const sv = psi.some.avg10;
+    const fv = psi.full.avg10;
+    const someSpark = makeSysSpark(ss[someSparkKey], psiClass(sv) === 'psi-green' ? '#1a7f37' : psiClass(sv) === 'psi-yellow' ? '#9a6700' : '#cf222e', 100);
+    const fullSpark = makeSysSpark(ss[fullSparkKey], psiClass(fv) === 'psi-green' ? '#1a7f37' : psiClass(fv) === 'psi-yellow' ? '#9a6700' : '#cf222e', 100);
+    h += `<span><span class="label">${label}</span> <span class="psi-badge ${psiClass(sv)}">${sv.toFixed(1)}%</span>${someSpark} <span class="psi-badge ${psiClass(fv)}">${fv.toFixed(1)}%</span>${fullSpark}</span>`;
   }
   center.innerHTML = h;
 
@@ -1180,16 +1182,19 @@ function renderHostGrid() {
       const ioW = s && s.cpu ? s.cpu.iowait_pct.toFixed(1) : 0;
       const load = s && s.loadavg ? s.loadavg.load1.toFixed(1) : '?';
       const mem = host.tree && host.tree.stats ? fmtBytes(host.tree.stats['memory.current'] || 0) : '?';
-      const psiCpu = s && s.psi_cpu ? s.psi_cpu.some.avg10 : 0;
-      const psiMem = s && s.psi_memory ? s.psi_memory.some.avg10 : 0;
-      const psiIO = s && s.psi_io ? s.psi_io.some.avg10 : 0;
+      const psiCpuS = s && s.psi_cpu ? s.psi_cpu.some.avg10 : 0;
+      const psiCpuF = s && s.psi_cpu ? s.psi_cpu.full.avg10 : 0;
+      const psiMemS = s && s.psi_memory ? s.psi_memory.some.avg10 : 0;
+      const psiMemF = s && s.psi_memory ? s.psi_memory.full.avg10 : 0;
+      const psiIOS = s && s.psi_io ? s.psi_io.some.avg10 : 0;
+      const psiIOF = s && s.psi_io ? s.psi_io.full.avg10 : 0;
       h += `<span class="hc-cpu-bar"><span class="user" style="width:${userW}%"></span><span class="sys" style="width:${sysW}%"></span><span class="iowait" style="width:${ioW}%"></span></span>`;
       h += `<span class="hc-val"><b>${cpu.toFixed(0)}%</b></span>`;
       h += `<span class="hc-val">Ld <b>${load}</b></span>`;
       h += `<span class="hc-val"><b>${mem}</b></span>`;
-      h += `<span class="hc-psi ${psiClass(psiCpu)}">${psiCpu.toFixed(1)}</span>`;
-      h += `<span class="hc-psi ${psiClass(psiMem)}">${psiMem.toFixed(1)}</span>`;
-      h += `<span class="hc-psi ${psiClass(psiIO)}">${psiIO.toFixed(1)}</span>`;
+      h += `<span class="hc-psi ${psiClass(psiCpuS)}">${psiCpuS.toFixed(1)}</span>/<span class="hc-psi ${psiClass(psiCpuF)}">${psiCpuF.toFixed(1)}</span>`;
+      h += `<span class="hc-psi ${psiClass(psiMemS)}">${psiMemS.toFixed(1)}</span>/<span class="hc-psi ${psiClass(psiMemF)}">${psiMemF.toFixed(1)}</span>`;
+      h += `<span class="hc-psi ${psiClass(psiIOS)}">${psiIOS.toFixed(1)}</span>/<span class="hc-psi ${psiClass(psiIOF)}">${psiIOF.toFixed(1)}</span>`;
     }
     h += `</div>`;
   }

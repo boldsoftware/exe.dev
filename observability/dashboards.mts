@@ -1497,6 +1497,15 @@ function makeDevExeDashboard() {
       panelCustomization: (x) => x.unit("percent").min(0).max(100),
       gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
+      alertQueryOverride: `100 - (avg by (instance) (irate(node_cpu_seconds_total{role="exelet",stage="production",mode="idle"}[5m])) * 100)`,
+      alert: {
+        threshold: 75,
+        condition: "gt",
+        forDuration: "2m",
+        summary: "Exelet CPU usage is high",
+        description: "CPU usage has exceeded 75% for 2+ minutes.",
+        labels: { channel: "buzz" },
+      },
     }
   );
 
@@ -1510,6 +1519,8 @@ function makeDevExeDashboard() {
     }
   );
 
+  // No alert on CPU PSI: node_exporter only exposes "some" (not "full"),
+  // and a single busy cgroup can push "some" high without system-wide impact.
   addTimeseriesChart(
     "Exelet CPU Pressure",
     `rate(node_pressure_cpu_waiting_seconds_total{role="exelet",${STAGE_FILTER}}[5m]) * 100`,
@@ -1517,15 +1528,6 @@ function makeDevExeDashboard() {
       panelCustomization: (x) => x.unit("percent").min(0),
       gridPos: { w: 6, h: 6 },
       queryCustomization: (q) => q.legendFormat("{{instance}}"),
-      alertQueryOverride: `rate(node_pressure_cpu_waiting_seconds_total{role="exelet",stage="production"}[5m]) * 100`,
-      alert: {
-        threshold: 10,
-        condition: "gt",
-        forDuration: "2m",
-        summary: "Exelet CPU pressure is high",
-        description: "CPU pressure (PSI some) has exceeded 10% for 2+ minutes, indicating tasks are waiting for CPU time.",
-        labels: { channel: "buzz" },
-      },
     }
   );
 
