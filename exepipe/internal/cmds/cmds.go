@@ -87,8 +87,11 @@ func CopyCmd(c1, c2 net.Conn, typ string) (data, oob []byte, err error) {
 
 // ListenCmd returns a marshalled command to listen on a
 // network connection and connect it to a given host:port
-// in the given network namespace (the default namespace for "").
+// in the given network namespace (the default namespace is "").
 // Then it will copy between the two.
+//
+// If the host is a pure numeric string, with no dots or other
+// non-digits, the destination is a vsock address.
 //
 // This is called by an exepipe client when sending a listen command.
 //

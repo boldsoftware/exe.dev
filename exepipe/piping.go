@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -265,6 +266,33 @@ func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, netn
 	defer p.rmListener(ctx, key)
 	defer ln.Close()
 
+	// If the host is a pure number, the destination is a vsock.
+	allDigits := true
+	for _, c := range host {
+		if c < '0' || c > '9' {
+			allDigits = false
+			break
+		}
+	}
+	vsock := len(host) > 0 && allDigits
+	hostNum := 0
+	if vsock {
+		if runtime.GOOS != "linux" {
+			p.pipeInstance.lg.ErrorContext(ctx, "exepipe listen connecting on vsock on non-Linux system", "GOOS", runtime.GOOS, "key", key, "netns", netns, "host", host, "port", port)
+			return
+		}
+		if netns != "" {
+			p.pipeInstance.lg.ErrorContext(ctx, "exepipe listen connecting on vsock with network namespace", "key", key, "netns", netns, "host", host, "port", port)
+			return
+		}
+		var err error
+		hostNum, err = strconv.Atoi(host)
+		if err != nil {
+			p.pipeInstance.lg.ErrorContext(ctx, "could not parse vsock host", "key", key, "host", host, "port", port)
+			return
+		}
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -274,7 +302,11 @@ func (p *piping) doListen(ctx context.Context, key string, ln net.Listener, netn
 			return
 		}
 
-		go p.connect(ctx, conn, key, netns, host, port, typ)
+		if vsock {
+			go p.connectVSock(ctx, conn, key, hostNum, port, typ)
+		} else {
+			go p.connect(ctx, conn, key, netns, host, port, typ)
+		}
 	}
 }
 

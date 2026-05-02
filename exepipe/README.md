@@ -54,6 +54,9 @@ The file descriptor is a `net.Listener`.
 Exepipe will listen for incoming connections on the descriptor.
 For each new connection, exepipe will open a connection to the
 specified host and port in the specified network namespace.
+If the host is all digits, it is considered to be a vsock CID,
+and exepipe will open a vsock connection to the port in that CID;
+in this case specifying the network namespace is an error.
 Exepipe will then copy data between the two connections,
 as for the copy operation.
 

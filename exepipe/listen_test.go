@@ -16,7 +16,17 @@ import (
 	"exe.dev/tslog"
 )
 
+// Test listen connecting to a TCP port.
 func TestListen(t *testing.T) {
+	vmListener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tcpAddr := vmListener.Addr().(*net.TCPAddr)
+	testListen(t, vmListener, tcpAddr.IP.String(), tcpAddr.Port)
+}
+
+func testListen(t *testing.T, vmListener net.Listener, vmListenerHost string, vmListenerPort int) {
 	pi, addr := testPipeInstance(t)
 
 	var wg sync.WaitGroup
@@ -57,10 +67,6 @@ func TestListen(t *testing.T) {
 	}
 	defer externalListener.Close()
 
-	vmListener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer vmListener.Close()
 
 	cli, err := client.NewClient(t.Context(), addr.String(), tslog.Slogger(t))
@@ -69,8 +75,7 @@ func TestListen(t *testing.T) {
 	}
 	defer cli.Close()
 
-	tcpAddr := vmListener.Addr().(*net.TCPAddr)
-	if err := cli.Listen(t.Context(), "key", externalListener, "", tcpAddr.IP.String(), tcpAddr.Port, "test"); err != nil {
+	if err := cli.Listen(t.Context(), "key", externalListener, "", vmListenerHost, vmListenerPort, "test"); err != nil {
 		t.Fatal(err)
 	}
 

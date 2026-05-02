@@ -88,6 +88,8 @@ func (c *Client) Copy(ctx context.Context, f1, f2 net.Conn, typ string) error {
 // The key may be used to stop the listener, and is returned by Listeners.
 // If netns is not the empty string, it is the network namespace to use.
 // The network destination is host:port.
+// If the host is a pure numeric string, with no dots or other
+// non-digits, the destination is a vsock address.
 // The typ argument is purely descriptive, something like "http" or "ssh".
 // On success, this command will take ownership of the listener.
 // This will return an error if there is some problem contacting exepipe.
