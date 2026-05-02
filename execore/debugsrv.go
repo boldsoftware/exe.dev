@@ -6015,23 +6015,18 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 			} else if lp.Refresh != nil {
 				effAvail, _ = lp.Refresh(credit.AvailableCredit, credit.LastRefreshAt, time.Now())
 			}
-			monthlyAvail := effAvail
-			if monthlyAvail > lp.MaxCredit {
-				monthlyAvail = lp.MaxCredit
-			}
-			if monthlyAvail < 0 {
-				monthlyAvail = 0
-			}
 			data.HasShelleyFreeCreditPct = true
 			data.ShelleyCreditsMax = lp.MaxCredit
 			data.MonthlyCreditsResetAt = nextUTCMonthStart().Format("15:04 on 02 Jan")
 
-			// Compute bar to get monthlyAvailable consistently with billing page.
+			// Match the billing page / profile API: pass uncapped effAvail
+			// through the bonus/gift deduction, then let computeCreditBar cap it.
+			shelleyCreditsAvailable := effAvail
 			var bonusRemaining, bonusGrantAmount float64
 			if creditPtr != nil && creditPtr.BillingUpgradeBonusGranted == 1 {
 				bonusGrantAmount = llmgateway.UpgradeBonusCreditUSD
-				if effAvail > lp.MaxCredit {
-					bonusRemaining = effAvail - lp.MaxCredit
+				if shelleyCreditsAvailable > lp.MaxCredit {
+					bonusRemaining = shelleyCreditsAvailable - lp.MaxCredit
 					if bonusRemaining > bonusGrantAmount {
 						bonusRemaining = bonusGrantAmount
 					}
@@ -6046,7 +6041,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if hasSignupGiftInLedger(giftEntries) {
-				monthlyAvail = max(monthlyAvail-bonusRemaining, 0)
+				shelleyCreditsAvailable = max(shelleyCreditsAvailable-bonusRemaining, 0)
 				bonusGrantAmount = 0
 				bonusRemaining = 0
 			}
@@ -6060,7 +6055,7 @@ func (s *Server) handleDebugUser(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			bar := computeCreditBar(creditBarInput{
-				shelleyCreditsAvailable: monthlyAvail,
+				shelleyCreditsAvailable: shelleyCreditsAvailable,
 				planMaxCredit:           lp.MaxCredit,
 				bonusRemaining:          bonusRemaining,
 				bonusGrantAmount:        bonusGrantAmount,
