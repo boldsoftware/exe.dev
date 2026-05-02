@@ -9,6 +9,7 @@ import router from './router'
 import 'primeicons/primeicons.css'
 import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/600.css'
+import './styles/tokens.css'
 
 const ExePreset = definePreset(Aura, {
   semantic: {
