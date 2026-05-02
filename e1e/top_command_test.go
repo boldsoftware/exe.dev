@@ -30,8 +30,11 @@ func TestTopCommand(t *testing.T) {
 		ctx := Env.context(t)
 
 		// The resource manager polls on an interval, so we may need to
-		// retry until both the VM appears AND it has non-zero memory
-		// (the first poll may register the VM before cgroup stats arrive).
+		// retry until the VM appears with all expected fields populated.
+		// Cgroup stats (MemoryBytes, DiskLogicalBytes) and config-derived
+		// fields (CPUs, MemCapacityBytes) can arrive on different polls:
+		// the first poll may register the VM with cgroup stats before
+		// VMConfig is available, leaving CPUs/MemCapacityBytes at 0.
 		deadline := time.Now().Add(90 * time.Second)
 		var found bool
 		for time.Now().Before(deadline) {
@@ -48,28 +51,23 @@ func TestTopCommand(t *testing.T) {
 				if u == nil {
 					continue
 				}
-				// Match by name; require non-zero memory to confirm
-				// the cgroup stats have actually been collected.
-				if u.Name == boxName && u.MemoryBytes > 0 {
-					found = true
-					t.Logf("VM %s: cpu=%.1f%% mem=%d swap=%d disk=%d disk_logical=%d cap=%d mem_cap=%d cpus=%d",
-						boxName, u.CpuPercent, u.MemoryBytes, u.SwapBytes,
-						u.DiskBytes, u.DiskLogicalBytes, u.DiskCapacityBytes,
-						u.MemCapacityBytes, u.CPUs)
-					if u.DiskLogicalBytes == 0 {
-						t.Errorf("DiskLogicalBytes should be non-zero for a running VM")
-					}
-					if u.DiskLogicalBytes < u.DiskBytes {
-						t.Errorf("DiskLogicalBytes (%d) should be >= DiskBytes (%d)", u.DiskLogicalBytes, u.DiskBytes)
-					}
-					if u.MemCapacityBytes == 0 {
-						t.Errorf("MemCapacityBytes should be non-zero for a running VM")
-					}
-					if u.CPUs == 0 {
-						t.Errorf("CPUs should be non-zero for a running VM")
-					}
-					break
+				if u.Name != boxName {
+					continue
 				}
+				// Wait until both cgroup stats and config-derived fields
+				// have been collected.
+				if u.MemoryBytes == 0 || u.DiskLogicalBytes == 0 || u.CPUs == 0 || u.MemCapacityBytes == 0 {
+					continue
+				}
+				found = true
+				t.Logf("VM %s: cpu=%.1f%% mem=%d swap=%d disk=%d disk_logical=%d cap=%d mem_cap=%d cpus=%d",
+					boxName, u.CpuPercent, u.MemoryBytes, u.SwapBytes,
+					u.DiskBytes, u.DiskLogicalBytes, u.DiskCapacityBytes,
+					u.MemCapacityBytes, u.CPUs)
+				if u.DiskLogicalBytes < u.DiskBytes {
+					t.Errorf("DiskLogicalBytes (%d) should be >= DiskBytes (%d)", u.DiskLogicalBytes, u.DiskBytes)
+				}
+				break
 			}
 			if found {
 				break
