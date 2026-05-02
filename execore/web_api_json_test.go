@@ -20,3 +20,17 @@ func TestFormatPoolSize(t *testing.T) {
 		}
 	}
 }
+
+func TestMonthlyResetAtText(t *testing.T) {
+	// When plan has monthly refresh, should return a non-empty formatted timestamp.
+	got := monthlyResetAtText(true)
+	if got == "" {
+		t.Error("monthlyResetAtText(true) returned empty string, want non-empty timestamp")
+	}
+
+	// When plan does NOT have monthly refresh, should return empty string.
+	got = monthlyResetAtText(false)
+	if got != "" {
+		t.Errorf("monthlyResetAtText(false) = %q, want empty string", got)
+	}
+}

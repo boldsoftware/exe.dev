@@ -403,3 +403,65 @@ func TestPlanCapacityInProfile(t *testing.T) {
 		t.Errorf("nextTier.monthlyPriceCents = %d, want 4000", cp.NextTier.MonthlyPriceCents)
 	}
 }
+
+// TestMonthlyRefreshEntitlementInProfile verifies that hasMonthlyRefresh is
+// true for paid plans (Individual) and false for users without billing (Basic/Trial).
+func TestMonthlyRefreshEntitlementInProfile(t *testing.T) {
+	t.Parallel()
+	reserveVMs(t, 0)
+	noGolden(t)
+
+	// User with billing (Individual plan) → should have monthly refresh.
+	_, cookiesBilling, _, _ := registerForExeDevWithEmail(t, "refresh-yes@test-credits.example")
+	clientBilling := newClientWithCookies(t, cookiesBilling)
+	resp, err := clientBilling.Get(fmt.Sprintf("http://localhost:%d/api/profile", Env.HTTPPort()))
+	if err != nil {
+		t.Fatalf("failed to GET /api/profile: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status from /api/profile: %d", resp.StatusCode)
+	}
+	var profileBilling struct {
+		Credits struct {
+			HasMonthlyRefresh     bool   `json:"hasMonthlyRefresh"`
+			MonthlyCreditsResetAt string `json:"monthlyCreditsResetAt"`
+		} `json:"credits"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&profileBilling); err != nil {
+		t.Fatalf("failed to decode /api/profile: %v", err)
+	}
+	if !profileBilling.Credits.HasMonthlyRefresh {
+		t.Error("hasMonthlyRefresh should be true for Individual plan")
+	}
+	if profileBilling.Credits.MonthlyCreditsResetAt == "" {
+		t.Error("monthlyCreditsResetAt should be set when hasMonthlyRefresh is true")
+	}
+
+	// User without billing (Basic/Trial plan) → should NOT have monthly refresh.
+	_, cookiesNoBilling, _, _ := registerForExeDevWithoutBilling(t)
+	clientNoBilling := newClientWithCookies(t, cookiesNoBilling)
+	resp2, err := clientNoBilling.Get(fmt.Sprintf("http://localhost:%d/api/profile", Env.HTTPPort()))
+	if err != nil {
+		t.Fatalf("failed to GET /api/profile: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status from /api/profile: %d", resp2.StatusCode)
+	}
+	var profileNoBilling struct {
+		Credits struct {
+			HasMonthlyRefresh     bool   `json:"hasMonthlyRefresh"`
+			MonthlyCreditsResetAt string `json:"monthlyCreditsResetAt"`
+		} `json:"credits"`
+	}
+	if err := json.NewDecoder(resp2.Body).Decode(&profileNoBilling); err != nil {
+		t.Fatalf("failed to decode /api/profile: %v", err)
+	}
+	if profileNoBilling.Credits.HasMonthlyRefresh {
+		t.Error("hasMonthlyRefresh should be false for Basic/Trial plan")
+	}
+	if profileNoBilling.Credits.MonthlyCreditsResetAt != "" {
+		t.Errorf("monthlyCreditsResetAt should be empty when hasMonthlyRefresh is false, got %q", profileNoBilling.Credits.MonthlyCreditsResetAt)
+	}
+}

@@ -265,6 +265,7 @@ type jsonCreditInfo struct {
 	TotalCapacityUSD           float64            `json:"totalCapacityUSD"`
 	UsedBarPct                 float64            `json:"usedBarPct"`
 	HasShelleyFreeCreditPct    bool               `json:"hasShelleyFreeCreditPct"`
+	HasMonthlyRefresh          bool               `json:"hasMonthlyRefresh"`
 	MonthlyCreditsResetAt      string             `json:"monthlyCreditsResetAt"`
 	LedgerBalanceUSD           float64            `json:"ledgerBalanceUSD"`
 	Purchases                  []jsonPurchaseRow  `json:"purchases"`
@@ -716,6 +717,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 	var planName string
 	var selfServeBilling bool
 	var paidPlan bool
+	var hasMonthlyRefresh bool
 	var billingStatus string
 	skipBilling := s.env.SkipBilling
 	var planCapacity *jsonPlanCapacity
@@ -723,6 +725,7 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 		version := plan.Base(planRow.PlanID)
 		planName = plan.Name(version)
 		selfServeBilling = plan.Grants(planRow.PlanID, plan.BillingSelfServe)
+		hasMonthlyRefresh = plan.Grants(planRow.PlanID, plan.CreditRefresh)
 		paidPlan = plan.IsPaid(version)
 		if tier, err := plan.GetTierByID(planRow.PlanID); err == nil {
 			poolSize := formatPoolSize(tier.Quotas.MaxCPUs, tier.Quotas.MaxMemory/(1024*1024*1024))
@@ -952,7 +955,8 @@ func (s *Server) handleAPIProfile(w http.ResponseWriter, r *http.Request, userID
 			TotalCapacityUSD:           bar.totalCapacity,
 			UsedBarPct:                 bar.usedBarPct,
 			HasShelleyFreeCreditPct:    hasShelleyFreeCreditPct,
-			MonthlyCreditsResetAt:      nextUTCMonthStart().Format("15:04 on Jan 2"),
+			HasMonthlyRefresh:          hasMonthlyRefresh,
+			MonthlyCreditsResetAt:      monthlyResetAtText(hasMonthlyRefresh),
 			LedgerBalanceUSD:           max(float64(creditBalance.Microcents())/1_000_000, 0),
 			Purchases:                  nonNil(purchases),
 			Gifts:                      nonNil(jsonGifts),
@@ -1509,4 +1513,13 @@ func (s *Server) handleAPIProfileSupport(w http.ResponseWriter, r *http.Request,
 	}
 
 	writeJSONOK(w, map[string]string{"status": "sent"})
+}
+
+// monthlyResetAtText returns a human-readable reset timestamp when the plan
+// grants the credits:refresh entitlement, or an empty string otherwise.
+func monthlyResetAtText(hasRefresh bool) string {
+	if !hasRefresh {
+		return ""
+	}
+	return nextUTCMonthStart().Format("15:04 on Jan 2")
 }

@@ -223,7 +223,7 @@
                 :severity="usageBarSeverity"
                 :show-value="false"
               />
-              <div class="usage-footer">
+              <div v-if="data.credits.hasMonthlyRefresh" class="usage-footer">
                 <span>Resets {{ data.credits.monthlyCreditsResetAt }}</span>
               </div>
             </div>

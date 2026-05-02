@@ -185,6 +185,7 @@ export interface CreditInfo {
   totalCapacityUSD: number
   usedBarPct: number
   hasShelleyFreeCreditPct: boolean
+  hasMonthlyRefresh: boolean
   monthlyCreditsResetAt: string
   ledgerBalanceUSD: number
   purchases: { amount: string; date: string; receiptURL: string }[]
