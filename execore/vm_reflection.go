@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"exe.dev/exedb"
+	"exe.dev/stage"
 )
 
 // handleVMReflection serves requests routed through /_/gateway/reflection.
@@ -180,7 +181,7 @@ func (s *Server) buildReflectionIntegrationList(ctx context.Context, box *exedb.
 		entry := map[string]any{
 			"name":    ig.Name,
 			"type":    ig.Type,
-			"help":    reflectionHelpFor(ig),
+			"help":    reflectionHelpFor(s.env, ig),
 			"comment": ig.Comment,
 		}
 		if isTeam {
@@ -198,15 +199,17 @@ func (s *Server) buildReflectionIntegrationList(ctx context.Context, box *exedb.
 }
 
 // reflectionHelpFor returns a short human-readable usage hint for an
-// integration (e.g. "curl http://foo.int.exe.cloud/" or "git clone ...").
+// integration (e.g. "curl http://foo.int.exe.xyz/" or "git clone ...").
 //
-// Note: this is an advisory string only. The exact host depends on the VM's
-// stage; we use ".int.exe.cloud" as a stable display host (matching what
-// the exelet resolves internally) rather than reaching into BoxHost.
-func reflectionHelpFor(ig exedb.Integration) string {
-	host := ig.Name + ".int.exe.cloud"
+// The host is stage-aware: it uses the env's integration host suffix
+// (e.g. ".int.exe.xyz" in prod, ".int.exe.cloud" in local/test). The
+// exelet accepts both the canonical stage suffix and the legacy
+// ".int.exe.cloud" suffix, but we report the canonical one here so the
+// hint is copy-pasteable in every stage.
+func reflectionHelpFor(env stage.Env, ig exedb.Integration) string {
+	host := ig.Name + env.IntegrationHostSuffix()
 	if ig.IsTeam() {
-		host = ig.Name + ".team.exe.cloud"
+		host = ig.Name + env.TeamIntHostSuffix()
 	}
 	switch ig.Type {
 	case "http-proxy":
