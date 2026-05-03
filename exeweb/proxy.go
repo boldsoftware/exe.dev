@@ -197,6 +197,13 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 	// Set box name label for metrics
 	metricsbag.SetLabel(r.Context(), LabelBox, boxName)
 
+	// Reject ambiguous bearer auth (both Authorization and X-Exedev-Authorization
+	// set to the identical value).
+	if _, _, dup := proxyBearer(r); dup {
+		http.Error(w, fmt.Sprintf("Authorization and X-Exedev-Authorization must not be identical (trace %s)", tracing.TraceIDFromContext(r.Context())), http.StatusBadRequest)
+		return
+	}
+
 	// Fetch box info and resolve auth concurrently.
 	var (
 		box        BoxData
@@ -297,9 +304,9 @@ func (ps *ProxyServer) HandleProxyRequest(w http.ResponseWriter, r *http.Request
 			// If the request has an Authorization header,
 			// it's an API client;
 			// return 401 instead of redirecting to the login page.
-			if r.Header.Get("Authorization") != "" {
+			if r.Header.Get("Authorization") != "" || r.Header.Get(ExeDevAuthHeader) != "" {
 				w.Header().Set("WWW-Authenticate", "Bearer, Basic")
-				http.Error(w, "invalid or missing authentication", http.StatusUnauthorized)
+				http.Error(w, fmt.Sprintf("invalid or missing authentication (trace %s)", tracing.TraceIDFromContext(r.Context())), http.StatusUnauthorized)
 				return
 			}
 			// Browser client - redirect to auth flow.
@@ -521,6 +528,15 @@ type ProxyAuthResult struct {
 	// Set only for cookie-based auth so the caller can defer
 	// the last-used-time update to after the box is confirmed to exist.
 	cookieValue string
+
+	// consumedAuthHeader is the canonical name of the header whose
+	// bearer token we used to authenticate this request
+	// ("Authorization" or "X-Exedev-Authorization"). Empty if auth came
+	// from basic-auth, a cookie, or anywhere else. The reverse-proxy
+	// director strips this header before forwarding so the token never
+	// reaches the VM. (Authorization stripping for basic-auth is
+	// handled separately by stripExeDevBasicAuth.)
+	consumedAuthHeader string
 }
 
 // HandleMagicAuth handles the magic authentication URL /__exe.dev/auth.
@@ -670,10 +686,78 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
 }
 
+// ExeDevAuthHeader is an alternate name for the Authorization header.
+// Clients that cannot set Authorization (because something else upstream
+// also sets it) may set this instead. When both headers are present,
+// X-Exedev-Authorization wins, but if both carry the exact same value
+// we reject the request as ambiguous.
+const ExeDevAuthHeader = "X-Exedev-Authorization"
+
+// bearerPrefix is the case-insensitive prefix for an HTTP Bearer
+// authorization scheme value (RFC 7235).
+const bearerPrefix = "Bearer "
+
+// parseBearer returns the token portion of an Authorization /
+// X-Exedev-Authorization value if it uses the Bearer scheme.
+func parseBearer(v string) (string, bool) {
+	if len(v) < len(bearerPrefix) {
+		return "", false
+	}
+	if !strings.EqualFold(v[:len(bearerPrefix)], bearerPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(v[len(bearerPrefix):]), true
+}
+
+// proxyAuthHeaders returns the request's bearer-auth-bearing headers
+// in priority order: X-Exedev-Authorization first, then Authorization.
+func proxyAuthHeaders(r *http.Request) [2]struct {
+	name string
+	vals []string
+} {
+	return [2]struct {
+		name string
+		vals []string
+	}{
+		{ExeDevAuthHeader, r.Header.Values(ExeDevAuthHeader)},
+		{"Authorization", r.Header.Values("Authorization")},
+	}
+}
+
+// proxyBearer extracts the Bearer token used to authenticate a proxy
+// request. It checks X-Exedev-Authorization first, then Authorization,
+// and also returns the canonical name of the header the token came
+// from so the caller can strip just that header before forwarding.
+// If any non-empty X-Exedev-Authorization value matches any
+// Authorization value, it returns dup=true so the caller can reject
+// the request as ambiguous.
+func proxyBearer(r *http.Request) (token, header string, dup bool) {
+	headers := proxyAuthHeaders(r)
+	exe, auth := headers[0].vals, headers[1].vals
+	for _, e := range exe {
+		if e == "" {
+			continue
+		}
+		for _, a := range auth {
+			if e == a {
+				return "", "", true
+			}
+		}
+	}
+	for _, h := range headers {
+		for _, v := range h.vals {
+			if tok, ok := parseBearer(v); ok {
+				return tok, h.name, false
+			}
+		}
+	}
+	return "", "", false
+}
+
 // GetProxyAuth checks if the user is authenticated for the proxy
 // and returns the auth result.
 // Supports four authentication methods, tried in this order:
-//  1. Bearer token auth (Authorization: Bearer <token>)
+//  1. Bearer token auth (X-Exedev-Authorization or Authorization: Bearer <token>)
 //  2. Basic auth with token as password (for git HTTPS, etc.)
 //  3. Cookie-based auth (login-with-exe-* cookies)
 //  4. App token in cookie (for iOS web views that can't set headers)
@@ -682,15 +766,16 @@ func (ps *ProxyServer) HandleProxyLogout(w http.ResponseWriter, r *http.Request)
 // Returns nil if not authenticated.
 func (ps *ProxyServer) GetProxyAuth(r *http.Request, boxName string) *ProxyAuthResult {
 	// 1. Try Bearer token auth.
-	// RFC 7235: auth scheme is case-insensitive.
-	if auth := r.Header.Get("Authorization"); len(auth) >= len("Bearer ") && strings.EqualFold(auth[:len("Bearer ")], "Bearer ") {
-		token := strings.TrimSpace(auth[len("Bearer "):])
+	token, hdr, _ := proxyBearer(r)
+	if token != "" {
 		// Try app token first (exeapp_ prefix), then SSH-signed token.
 		if strings.HasPrefix(token, AppTokenPrefix) {
 			if result := ps.ValidateAppTokenForProxy(r.Context(), token); result != nil {
+				result.consumedAuthHeader = hdr
 				return result
 			}
 		} else if result := ps.ValidateVMToken(r.Context(), token, boxName); result != nil {
+			result.consumedAuthHeader = hdr
 			return result
 		}
 	}
@@ -973,6 +1058,11 @@ func (ps *ProxyServer) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Req
 	defaultDirector := rp.Director
 	rp.Director = func(req *http.Request) {
 		defaultDirector(req)
+		// Strip the Authorization/X-Exedev-Authorization header that we
+		// consumed for auth, so the token never reaches the VM.
+		if authResult != nil && authResult.consumedAuthHeader != "" {
+			req.Header.Del(authResult.consumedAuthHeader)
+		}
 		clearExeDevHeaders(req)
 		stripExeDevAuth(req)
 		setForwardedHeaders(req, r)
@@ -1423,23 +1513,34 @@ func clearExeDevHeaders(req *http.Request) {
 	}
 }
 
+// isExeDevToken reports whether s is shaped like one of our bearer
+// tokens (signed exe0/exe1 token or an app token).
+func isExeDevToken(s string) bool {
+	return strings.HasPrefix(s, sshkey.TokenPrefix) ||
+		strings.HasPrefix(s, sshkey.Exe1TokenPrefix) ||
+		strings.HasPrefix(s, AppTokenPrefix)
+}
+
+// stripExeDevAuth is a defense-in-depth pass that removes any
+// Authorization or X-Exedev-Authorization header (or basic-auth
+// password) carrying an exe.dev-shaped token, so we never leak our
+// tokens to the backend. The header we actually used for auth is
+// stripped by the reverse-proxy director from
+// ProxyAuthResult.consumedAuthHeader regardless of token shape; this
+// pass catches the leftovers (e.g. an unused Authorization header
+// when auth came from a cookie, or X-Exedev-Authorization which is
+// also wiped by clearExeDevHeaders).
 func stripExeDevAuth(req *http.Request) {
-	auth := req.Header.Get("Authorization")
-	if auth == "" {
-		return
-	}
-	const bearer = "Bearer "
-	if len(auth) >= len(bearer) && strings.EqualFold(auth[:len(bearer)], bearer) {
-		token := strings.TrimSpace(auth[len(bearer):])
-		if strings.HasPrefix(token, sshkey.TokenPrefix) || strings.HasPrefix(token, sshkey.Exe1TokenPrefix) || strings.HasPrefix(token, AppTokenPrefix) {
-			req.Header.Del("Authorization")
+	for _, h := range proxyAuthHeaders(req) {
+		for _, v := range h.vals {
+			if tok, ok := parseBearer(v); ok && isExeDevToken(tok) {
+				req.Header.Del(h.name)
+				break
+			}
 		}
-		return
 	}
-	if _, password, ok := req.BasicAuth(); ok {
-		if strings.HasPrefix(password, sshkey.TokenPrefix) || strings.HasPrefix(password, sshkey.Exe1TokenPrefix) || strings.HasPrefix(password, AppTokenPrefix) {
-			req.Header.Del("Authorization")
-		}
+	if _, password, ok := req.BasicAuth(); ok && isExeDevToken(password) {
+		req.Header.Del("Authorization")
 	}
 }
 

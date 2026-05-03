@@ -106,9 +106,14 @@ VM tokens work just like API tokens, with two differences:
 
 ### Authentication methods
 
-Tokens can be provided in two ways:
+Tokens can be provided in three ways:
 
-- **Bearer token**: Add an `Authorization: Bearer <token>` HTTP header
+- **Bearer token in `X-Exedev-Authorization`** *(preferred)*: Add an
+  `X-Exedev-Authorization: Bearer <token>` HTTP header. The proxy
+  consumes and strips this header before forwarding to your VM.
+- **Bearer token in `Authorization`** *(deprecated)*: Add an
+  `Authorization: Bearer <token>` HTTP header. Prefer
+  `X-Exedev-Authorization` for new integrations.
 - **Basic auth**: Username is ignored; password is the token. This works with tools like `git` that use basic auth for HTTPS. (VM proxy only, not `/exec`.)
 
 ### What your server receives

@@ -1953,6 +1953,9 @@ chmod +x /home/exedev/cgi-bin/headers
 		if parsed["role"] != "admin" {
 			t.Errorf("expected role=admin, got %v", parsed["role"])
 		}
+		if got := envMap["HTTP_AUTHORIZATION"]; got != "" {
+			t.Errorf("Authorization should be stripped after auth, got %q", got)
+		}
 	})
 
 	t.Run("basic_auth_token_200_with_headers", func(t *testing.T) {
@@ -2016,6 +2019,93 @@ chmod +x /home/exedev/cgi-bin/headers
 		if resp.StatusCode != http.StatusUnauthorized {
 			body, _ := io.ReadAll(resp.Body)
 			t.Errorf("expected 401 for invalid token, got %d: %s", resp.StatusCode, body)
+		}
+	})
+
+	t.Run("x_exedev_authorization_200_strips_header", func(t *testing.T) {
+		token := generateToken(t, ts, `{"ctx":{"role":"x-exedev"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		req.Header.Set("X-Exedev-Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+		if envMap["HTTP_X_EXEDEV_USERID"] == "" {
+			t.Errorf("expected X-ExeDev-UserID header, not found in: %s", body)
+		}
+		if got := envMap["HTTP_X_EXEDEV_AUTHORIZATION"]; got != "" {
+			t.Errorf("X-Exedev-Authorization should be stripped, got %q", got)
+		}
+		if got := envMap["HTTP_AUTHORIZATION"]; got != "" {
+			t.Errorf("Authorization should not be set when not sent, got %q", got)
+		}
+	})
+
+	t.Run("x_exedev_preferred_over_authorization", func(t *testing.T) {
+		good := generateToken(t, ts, `{"ctx":{"role":"prefer-x"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		// Authorization carries an invalid token; X-Exedev-Authorization wins.
+		req.Header.Set("Authorization", "Bearer exe0.bogus.dG9rZW4.invalid")
+		req.Header.Set("X-Exedev-Authorization", "Bearer "+good)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		envMap := parseCGIEnv(body)
+		payload := envMap["HTTP_X_EXEDEV_TOKEN_CTX"]
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
+			t.Fatalf("failed to parse token payload %q: %v", payload, err)
+		}
+		if parsed["role"] != "prefer-x" {
+			t.Errorf("expected role=prefer-x (X-Exedev-Authorization wins), got %v", parsed["role"])
+		}
+	})
+
+	t.Run("identical_headers_rejected", func(t *testing.T) {
+		token := generateToken(t, ts, `{"ctx":{"role":"dup"}}`, "v0@"+box+"."+stage.Test().BoxHost)
+		client := noRedirectClient(nil)
+		req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+		val := "Bearer " + token
+		req.Header.Set("Authorization", val)
+		req.Header.Set("X-Exedev-Authorization", val)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			body, _ := io.ReadAll(resp.Body)
+			t.Errorf("expected 400 for identical headers, got %d: %s", resp.StatusCode, body)
 		}
 	})
 

@@ -1351,3 +1351,87 @@ func TestRenderAccessRequiredRedirect(t *testing.T) {
 		}
 	})
 }
+
+func TestProxyBearer(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		auth    []string
+		exe     []string
+		wantTok string
+		wantDup bool
+	}{
+		{name: "none"},
+		{name: "auth_only", auth: []string{"Bearer abc"}, wantTok: "abc"},
+		{name: "exe_only", exe: []string{"Bearer abc"}, wantTok: "abc"},
+		{name: "exe_preferred", auth: []string{"Bearer old"}, exe: []string{"Bearer new"}, wantTok: "new"},
+		{name: "identical_dup", auth: []string{"Bearer same"}, exe: []string{"Bearer same"}, wantDup: true},
+		{name: "identical_dup_nonbearer", auth: []string{"Basic xx"}, exe: []string{"Basic xx"}, wantDup: true},
+		{name: "exe_invalid_falls_back_to_auth", auth: []string{"Bearer fallback"}, exe: []string{"NotBearer"}, wantTok: "fallback"},
+		{name: "multi_exe_first_bearer_wins", exe: []string{"NotBearer", "Bearer multi"}, wantTok: "multi"},
+		{name: "multi_value_dup_match", auth: []string{"Bearer x"}, exe: []string{"Bearer y", "Bearer x"}, wantDup: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "http://x/", nil)
+			for _, v := range tt.auth {
+				r.Header.Add("Authorization", v)
+			}
+			for _, v := range tt.exe {
+				r.Header.Add(ExeDevAuthHeader, v)
+			}
+			tok, _, dup := proxyBearer(r)
+			if dup != tt.wantDup {
+				t.Fatalf("dup = %v, want %v", dup, tt.wantDup)
+			}
+			if tok != tt.wantTok {
+				t.Fatalf("got %q, want %q", tok, tt.wantTok)
+			}
+		})
+	}
+}
+
+func TestGetProxyAuth_XExedevAuthorization(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testUserID = "user-xea"
+		testToken  = AppTokenPrefix + "xea_token"
+		boxName    = "mybox"
+	)
+
+	mock := &mockProxyData{
+		appTokens: map[string]string{testToken: testUserID},
+		cookies:   map[string]CookieData{},
+	}
+	ps := &ProxyServer{
+		Data:            mock,
+		Lg:              slog.Default(),
+		Env:             stage.Test(),
+		ProxyHTTPSPort:  443,
+		CookieUsesCache: new(CookieUsesCache),
+	}
+
+	t.Run("x_exedev_authorization_authenticates", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.Header.Set(ExeDevAuthHeader, "Bearer "+testToken)
+		result := ps.GetProxyAuth(req, boxName)
+		if result == nil || result.UserID != testUserID {
+			t.Fatalf("expected userID %q, got %+v", testUserID, result)
+		}
+	})
+
+	t.Run("x_exedev_preferred_over_authorization", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "https://mybox.exe.xyz/", nil)
+		req.Host = "mybox.exe.xyz"
+		req.TLS = &tls.ConnectionState{}
+		req.Header.Set("Authorization", "Bearer "+AppTokenPrefix+"bad_token")
+		req.Header.Set(ExeDevAuthHeader, "Bearer "+testToken)
+		result := ps.GetProxyAuth(req, boxName)
+		if result == nil || result.UserID != testUserID {
+			t.Fatalf("expected x-exedev-authorization to win: %+v", result)
+		}
+	})
+}
