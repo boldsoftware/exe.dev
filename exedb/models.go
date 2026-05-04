@@ -680,3 +680,11 @@ type Waitlist struct {
 	Json      *string    `db:"json" json:"json"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
+
+type WorkerJob struct {
+	ID        int64      `db:"id" json:"id"`
+	Event     string     `db:"event" json:"event"`
+	Payload   []byte     `db:"payload" json:"payload"`
+	Status    string     `db:"status" json:"status"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}

@@ -1002,6 +1002,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertUserRegionMigrationStmt, err = db.PrepareContext(ctx, insertUserRegionMigration); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUserRegionMigration: %w", err)
 	}
+	if q.insertWorkerJobStmt, err = db.PrepareContext(ctx, insertWorkerJob); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertWorkerJob: %w", err)
+	}
 	if q.isBoxSharedWithUserTeamStmt, err = db.PrepareContext(ctx, isBoxSharedWithUserTeam); err != nil {
 		return nil, fmt.Errorf("error preparing query IsBoxSharedWithUserTeam: %w", err)
 	}
@@ -1121,6 +1124,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listPDXUsersStmt, err = db.PrepareContext(ctx, listPDXUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPDXUsers: %w", err)
+	}
+	if q.listPendingWorkerJobsStmt, err = db.PrepareContext(ctx, listPendingWorkerJobs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPendingWorkerJobs: %w", err)
 	}
 	if q.listPlanVersionCountsStmt, err = db.PrepareContext(ctx, listPlanVersionCounts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPlanVersionCounts: %w", err)
@@ -1382,6 +1388,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateUserRegionMigrationResultStmt, err = db.PrepareContext(ctx, updateUserRegionMigrationResult); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserRegionMigrationResult: %w", err)
+	}
+	if q.updateWorkerJobStatusStmt, err = db.PrepareContext(ctx, updateWorkerJobStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateWorkerJobStatus: %w", err)
 	}
 	if q.upsertAccountPlanStmt, err = db.PrepareContext(ctx, upsertAccountPlan); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertAccountPlan: %w", err)
@@ -3069,6 +3078,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertUserRegionMigrationStmt: %w", cerr)
 		}
 	}
+	if q.insertWorkerJobStmt != nil {
+		if cerr := q.insertWorkerJobStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertWorkerJobStmt: %w", cerr)
+		}
+	}
 	if q.isBoxSharedWithUserTeamStmt != nil {
 		if cerr := q.isBoxSharedWithUserTeamStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing isBoxSharedWithUserTeamStmt: %w", cerr)
@@ -3267,6 +3281,11 @@ func (q *Queries) Close() error {
 	if q.listPDXUsersStmt != nil {
 		if cerr := q.listPDXUsersStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listPDXUsersStmt: %w", cerr)
+		}
+	}
+	if q.listPendingWorkerJobsStmt != nil {
+		if cerr := q.listPendingWorkerJobsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPendingWorkerJobsStmt: %w", cerr)
 		}
 	}
 	if q.listPlanVersionCountsStmt != nil {
@@ -3702,6 +3721,11 @@ func (q *Queries) Close() error {
 	if q.updateUserRegionMigrationResultStmt != nil {
 		if cerr := q.updateUserRegionMigrationResultStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateUserRegionMigrationResultStmt: %w", cerr)
+		}
+	}
+	if q.updateWorkerJobStatusStmt != nil {
+		if cerr := q.updateWorkerJobStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateWorkerJobStatusStmt: %w", cerr)
 		}
 	}
 	if q.upsertAccountPlanStmt != nil {
@@ -4154,6 +4178,7 @@ type Queries struct {
 	insertTemplateStmt                         *sql.Stmt
 	insertUserStmt                             *sql.Stmt
 	insertUserRegionMigrationStmt              *sql.Stmt
+	insertWorkerJobStmt                        *sql.Stmt
 	isBoxSharedWithUserTeamStmt                *sql.Stmt
 	isBoxShelleySharedWithTeamMemberStmt       *sql.Stmt
 	isEmailBouncedStmt                         *sql.Stmt
@@ -4194,6 +4219,7 @@ type Queries struct {
 	listIntegrationsByUserStmt                 *sql.Stmt
 	listNetActuateIPShardsStmt                 *sql.Stmt
 	listPDXUsersStmt                           *sql.Stmt
+	listPendingWorkerJobsStmt                  *sql.Stmt
 	listPlanVersionCountsStmt                  *sql.Stmt
 	listPrivateExeletsStmt                     *sql.Stmt
 	listStripeWebhookEventsByTypeStmt          *sql.Stmt
@@ -4281,6 +4307,7 @@ type Queries struct {
 	updateUserEmailStmt                        *sql.Stmt
 	updateUserLLMAvailableCreditStmt           *sql.Stmt
 	updateUserRegionMigrationResultStmt        *sql.Stmt
+	updateWorkerJobStatusStmt                  *sql.Stmt
 	upsertAccountPlanStmt                      *sql.Stmt
 	upsertGitHubInstallationStmt               *sql.Stmt
 	upsertGitHubUserTokenStmt                  *sql.Stmt
@@ -4630,6 +4657,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTemplateStmt:                         q.insertTemplateStmt,
 		insertUserStmt:                             q.insertUserStmt,
 		insertUserRegionMigrationStmt:              q.insertUserRegionMigrationStmt,
+		insertWorkerJobStmt:                        q.insertWorkerJobStmt,
 		isBoxSharedWithUserTeamStmt:                q.isBoxSharedWithUserTeamStmt,
 		isBoxShelleySharedWithTeamMemberStmt:       q.isBoxShelleySharedWithTeamMemberStmt,
 		isEmailBouncedStmt:                         q.isEmailBouncedStmt,
@@ -4670,6 +4698,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listIntegrationsByUserStmt:                 q.listIntegrationsByUserStmt,
 		listNetActuateIPShardsStmt:                 q.listNetActuateIPShardsStmt,
 		listPDXUsersStmt:                           q.listPDXUsersStmt,
+		listPendingWorkerJobsStmt:                  q.listPendingWorkerJobsStmt,
 		listPlanVersionCountsStmt:                  q.listPlanVersionCountsStmt,
 		listPrivateExeletsStmt:                     q.listPrivateExeletsStmt,
 		listStripeWebhookEventsByTypeStmt:          q.listStripeWebhookEventsByTypeStmt,
@@ -4757,6 +4786,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateUserEmailStmt:                        q.updateUserEmailStmt,
 		updateUserLLMAvailableCreditStmt:           q.updateUserLLMAvailableCreditStmt,
 		updateUserRegionMigrationResultStmt:        q.updateUserRegionMigrationResultStmt,
+		updateWorkerJobStatusStmt:                  q.updateWorkerJobStatusStmt,
 		upsertAccountPlanStmt:                      q.upsertAccountPlanStmt,
 		upsertGitHubInstallationStmt:               q.upsertGitHubInstallationStmt,
 		upsertGitHubUserTokenStmt:                  q.upsertGitHubUserTokenStmt,
