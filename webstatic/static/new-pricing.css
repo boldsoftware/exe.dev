@@ -1,0 +1,277 @@
+body {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 0 0 40px;
+}
+
+h1 {
+    font-size: clamp(40px, 8vw, 80px);
+    line-height: 0.95;
+    margin-bottom: 40px;
+    font-weight: normal;
+    letter-spacing: -0.02em;
+    text-align: center;
+}
+
+main {
+    max-width: 1000px;
+    width: 100%;
+    padding: 0 20px;
+}
+
+/* Top-level grid: two separate boxes side by side */
+.pricing-grid {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+/* Each box */
+.pricing-box {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Box titles */
+.box-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+    padding: 20px 24px 0;
+}
+
+/* Slider row inside box header */
+.box-slider {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 24px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.box-slider input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Keep People slider the same total width as Platform slider */
+
+
+.pricing-box-people .box-slider input[type="range"] {
+    max-width: 40%;
+}
+
+.slider-label {
+    font-size: var(--text-xs);
+    color: var(--color-text);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    width: 195px;
+    flex-shrink: 0;
+    text-align: left;
+}
+
+/* Range slider styling */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--color-border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-text);
+    cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-text);
+    border: none;
+    cursor: pointer;
+}
+
+/* Two plan columns inside Compute for People */
+.plan-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+}
+
+.plan-columns .plan-card:first-child {
+    border-right: 1px solid var(--color-border);
+}
+
+/* Plan cards */
+.plan-card {
+    padding: 24px;
+}
+
+.plan-card h3 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 8px;
+}
+
+.plan-card .price {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--color-text);
+}
+
+.plan-card .price a {
+    color: var(--color-link);
+    text-decoration: none;
+}
+
+.plan-card .price a:hover {
+    text-decoration: underline;
+}
+
+.price-period {
+    font-size: var(--text-sm);
+    font-weight: 400;
+    color: var(--color-text-secondary);
+}
+
+.plan-card ul {
+    list-style: none;
+    padding: 0;
+}
+
+.plan-card ul li {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    padding: 4px 0;
+    line-height: 1.5;
+}
+
+.plan-card ul li::before {
+    content: '\2022';
+    margin-right: 8px;
+    color: var(--color-text-muted);
+}
+
+.plan-card ul li sup {
+    line-height: 0;
+}
+
+.plan-card ul li strong {
+    color: var(--color-text);
+}
+
+/* Platform card: push contact to bottom */
+.plan-card-platform {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.plan-card-platform ul {
+    flex: 1;
+}
+
+.plan-contact {
+    margin-top: 16px;
+    font-size: var(--text-sm);
+}
+
+.plan-contact a {
+    color: var(--color-link);
+    text-decoration: none;
+}
+
+.plan-contact a:hover {
+    text-decoration: underline;
+}
+
+/* Footnote */
+.footnote {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-bottom: 32px;
+}
+
+/* Details section */
+.details {
+    margin-bottom: 32px;
+    line-height: 1.7;
+}
+
+.details p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+}
+
+.details a {
+    color: var(--color-link);
+}
+
+/* Shelley section */
+.shelley-section {
+    margin-bottom: 32px;
+}
+
+.shelley-section h2 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+}
+
+.shelley-section p {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+    margin-bottom: 8px;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    /* nothing extra needed; vars handle it */
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .pricing-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .plan-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .plan-columns .plan-card:first-child {
+        border-right: none;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .slider-label {
+        min-width: 0;
+    }
+}

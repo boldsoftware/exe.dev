@@ -797,6 +797,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/pricing":
 		s.serveStaticFile(w, r, "pricing.html")
+	case "/new-pricing":
+		s.serveStaticFile(w, r, "new-pricing.html")
 	case "/usage-pricing":
 		s.serveStaticFile(w, r, "usage-pricing.html")
 		return
