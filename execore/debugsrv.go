@@ -7023,6 +7023,11 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		MonthlyMetrics           []metricstypes.MonthlyMetric
 		IncludedDiskGB           float64
 		IncludedBandwidthGB      float64
+		LLMUsageModels           []LLMUsageModelRow
+		LLMUsageTotalCost        string
+		LLMUsageTotalRequests    int64
+		LLMUsagePeriodStart      string
+		LLMUsagePeriodEnd        string
 	}{
 		Email:                         user.Email,
 		UserID:                        user.UserID,
@@ -7245,6 +7250,36 @@ func (s *Server) handleDebugBilling(w http.ResponseWriter, r *http.Request) {
 		monthlyStart := time.Date(nowUTC.Year(), nowUTC.Month()-5, 1, 0, 0, 0, 0, time.UTC)
 		if monthly, err := usageClient.queryMonthly(usageCtx, []string{userID}, monthlyStart, nowUTC, true); err == nil {
 			data.MonthlyMetrics = monthly
+		}
+	}
+
+	// LLM usage by model for the current calendar month.
+	{
+		llmStart, llmEnd := calendarMonthPeriod(time.Now().UTC())
+		data.LLMUsagePeriodStart = llmStart.Format("2006-01-02")
+		data.LLMUsagePeriodEnd = llmEnd.Format("2006-01-02")
+		llmRows, err := withRxRes1(s, ctx, (*exedb.Queries).GetUserLLMUsageSummary, exedb.GetUserLLMUsageSummaryParams{
+			UserID:       userID,
+			HourBucket:   llmStart,
+			HourBucket_2: llmEnd,
+		})
+		if err != nil {
+			s.slog().WarnContext(ctx, "failed to query LLM usage summary", "error", err, "user_id", userID)
+		} else {
+			var totalMC int64
+			var totalReqs int64
+			for _, row := range llmRows {
+				totalMC += row.TotalCostMicrocents
+				totalReqs += row.TotalRequestCount
+				data.LLMUsageModels = append(data.LLMUsageModels, LLMUsageModelRow{
+					Model:        row.Model,
+					Provider:     row.Provider,
+					Cost:         formatMicrocents(row.TotalCostMicrocents),
+					RequestCount: row.TotalRequestCount,
+				})
+			}
+			data.LLMUsageTotalCost = formatMicrocents(totalMC)
+			data.LLMUsageTotalRequests = totalReqs
 		}
 	}
 

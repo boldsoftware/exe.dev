@@ -122,6 +122,14 @@ type GiftRow struct {
 	Date   string
 }
 
+// LLMUsageModelRow represents a per-model LLM usage summary row.
+type LLMUsageModelRow struct {
+	Model        string
+	Provider     string
+	Cost         string
+	RequestCount int64
+}
+
 // GitHubAccountDisplayInfo represents a connected GitHub account for the profile page.
 type GitHubAccountDisplayInfo struct {
 	GitHubLogin string // the GitHub username that authorized

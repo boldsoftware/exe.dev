@@ -223,6 +223,26 @@ table.info th { width: 200px; }
 </table>
 {{end}}
 
+{{if .LLMUsageModels}}
+<h4>LLM Usage by Model ({{.LLMUsagePeriodStart}} → {{.LLMUsagePeriodEnd}})</h4>
+<table>
+<thead><tr><th>Model</th><th>Provider</th><th>Requests</th><th>Cost</th></tr></thead>
+<tbody>
+{{range .LLMUsageModels}}
+<tr>
+<td>{{.Model}}</td>
+<td>{{.Provider}}</td>
+<td>{{.RequestCount}}</td>
+<td>{{.Cost}}</td>
+</tr>
+{{end}}
+</tbody>
+<tfoot><tr><th>Total</th><th></th><th>{{$.LLMUsageTotalRequests}}</th><th>{{$.LLMUsageTotalCost}}</th></tr></tfoot>
+</table>
+{{else}}
+<p>No LLM usage this period ({{.LLMUsagePeriodStart}} → {{.LLMUsagePeriodEnd}}).</p>
+{{end}}
+
 <h4>Credit Ledger ({{len .CreditLedger}})</h4>
 {{if .CreditLedger}}
 <table>
