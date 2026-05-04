@@ -1,9 +1,6 @@
 <template>
   <div class="usage-view">
-    <!-- Pool Charts -->
-    <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
-
-    <!-- Pool capacity warnings -->
+    <!-- Pool capacity warnings (above charts so they're immediately visible) -->
     <Message v-if="poolAlert === 'danger'" severity="error" :closable="false" class="pool-alert">
       Your resource pool is at capacity.
       <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
@@ -12,6 +9,9 @@
       Your resource pool is almost at capacity.
       <router-link to="/user" class="pool-alert-link">Upgrade your plan</router-link> to add more resources.
     </Message>
+
+    <!-- Pool Charts -->
+    <PoolCharts v-if="pool && pool.cpu_max > 0" :hours="props.hours" />
 
     <!-- Loading -->
     <div v-if="historyLoading" class="usage-loading">
@@ -385,6 +385,21 @@ const totalDiskLabel = computed(() => {
 }
 
 @media (max-width: 768px) {
+  .totals-row {
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .totals-row .totals-metric:last-child {
+    display: none;
+  }
+  .totals-name {
+    font-size: 12px;
+  }
+  .totals-metric {
+    font-size: 11px;
+    white-space: nowrap;
+  }
   .usage-table :deep(th:nth-child(4)),
   .usage-table :deep(td:nth-child(4)) {
     display: none;

@@ -12,27 +12,25 @@
 
     <!-- Header -->
     <div class="section-header">
-      <div class="section-left">
-        <h2 class="section-title">My VMs</h2>
+      <div class="section-actions">
         <router-link to="/new" class="new-btn">+ New</router-link>
         <button class="new-btn" @click="promptModalOpen = true">✨ Prompt</button>
-      </div>
-      <div class="section-right">
+        <div class="actions-spacer"></div>
         <div v-if="hasUsage" class="view-toggle">
           <button :class="{ active: viewMode === 'list' }" @click="$router.push({ name: 'vms' })">List</button>
           <button :class="{ active: viewMode === 'usage' }" @click="$router.push({ name: 'vms-usage' })">Usage</button>
         </div>
         <ViewPopover v-model="viewOptions" :mode="viewMode" :hours="usageHours" @update:hours="usageHours = $event" />
-        <div class="search-box">
-          <i class="pi pi-search search-icon"></i>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Filter VMs..."
-            class="search-input"
-          />
-          <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">&times;</button>
-        </div>
+      </div>
+      <div class="search-box">
+        <i class="pi pi-search search-icon"></i>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Filter VMs..."
+          class="search-input"
+        />
+        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">&times;</button>
       </div>
     </div>
 
@@ -947,16 +945,18 @@ async function submitPrompt() {
 
 .section-header {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-actions {
+  display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.section-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.actions-spacer {
+  flex: 1;
 }
 
 .section-title {
@@ -994,11 +994,6 @@ async function submitPrompt() {
   text-decoration: none;
 }
 
-.section-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 .view-toggle {
   display: flex;
@@ -1026,9 +1021,7 @@ async function submitPrompt() {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 0;
-  max-width: 200px;
+  width: 100%;
 }
 
 .search-icon {
@@ -1165,21 +1158,12 @@ async function submitPrompt() {
 }
 
 @media (max-width: 768px) {
-  .section-header {
-    gap: 6px;
-  }
-  .section-left {
+  .section-actions {
     gap: 6px;
   }
   .new-btn {
     padding: 4px 8px;
     font-size: 12px;
-  }
-  .section-right {
-    gap: 6px;
-  }
-  .search-box {
-    max-width: none;
   }
   .boxes-list {
     border-radius: 0;
