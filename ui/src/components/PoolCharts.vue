@@ -10,15 +10,15 @@
 
     <div v-else class="chart-grid">
       <div class="chart-card">
-        <div class="chart-label">CPU Usage <span class="chart-current">{{ cpuCurrent }}</span></div>
+        <div class="chart-label">CPU Usage</div>
         <div class="chart-wrap">
           <canvas ref="cpuCanvas"></canvas>
         </div>
-      </div>
-      <div v-if="memLimit > 0" class="chart-card">
-        <div class="chart-label">Memory Allocated <span class="chart-current">{{ memCurrent }}</span></div>
-        <div class="chart-wrap">
-          <canvas ref="memCanvas"></canvas>
+        <div v-if="legendItems.length > 0" class="chart-legend">
+          <span v-for="item in legendItems" :key="item.label" class="legend-item">
+            <span class="legend-swatch" :style="{ background: item.color }"></span>
+            {{ item.label }}
+          </span>
         </div>
       </div>
     </div>
@@ -50,31 +50,39 @@ const vmBreakdown = ref<Record<string, VMPoolPoint[]>>({})
 const pool = ref<VMsPoolResponse | null>(null)
 
 const cpuCanvas = ref<HTMLCanvasElement | null>(null)
-const memCanvas = ref<HTMLCanvasElement | null>(null)
 let cpuChart: Chart | null = null
-let memChart: Chart | null = null
 
 const cpuLimit = computed(() => pool.value?.cpu_max ?? 0)
-const memLimit = computed(() => pool.value?.mem_max_bytes ?? 0)
 
-const cpuCurrent = computed(() => {
-  if (points.value.length === 0) return ''
-  const last = points.value[points.value.length - 1]
-  return `${last.cpu_cores.sum.toFixed(1)} / ${cpuLimit.value} vCPUs`
-})
-
-const memCurrent = computed(() => {
-  if (points.value.length === 0 || memLimit.value === 0) return ''
-  const last = points.value[points.value.length - 1]
-  return `${fmtGiB(last.mem_bytes.sum)} / ${fmtGiB(memLimit.value)}`
-})
-
-function fmtGiB(bytes: number): string {
-  const gib = bytes / (1024 * 1024 * 1024)
-  if (gib >= 1) return gib.toFixed(1) + ' GiB'
-  const mib = bytes / (1024 * 1024)
-  return mib.toFixed(0) + ' MiB'
+interface LegendItem {
+  label: string
+  color: string
 }
+const legendItems = ref<LegendItem[]>([])
+
+// Match CoolS.vue hash so chart colors are consistent with VM list logos.
+function hashString(s: string): number {
+  let hash = 0
+  for (const c of s) {
+    hash = ((hash << 5) - hash) + c.charCodeAt(0)
+    hash = hash >>> 0
+  }
+  return hash
+}
+
+function vmColor(name: string): string {
+  const key = `${name}.exe.xyz:9999`
+  const h = hashString(key) % 360
+  return `hsl(${h}, 70%, 55%)`
+}
+
+function vmColorAlpha(name: string, alpha: number): string {
+  const key = `${name}.exe.xyz:9999`
+  const h = hashString(key) % 360
+  return `hsla(${h}, 70%, 55%, ${alpha})`
+}
+
+const OTHER_COLOR = '#999'
 
 function fmtTime(ts: string): string {
   const d = new Date(ts)
@@ -85,77 +93,112 @@ function fmtTime(ts: string): string {
 function getChartColors() {
   const style = getComputedStyle(document.documentElement)
   return {
-    text: style.getPropertyValue('--text-color').trim() || '#1a1a1a',
     muted: style.getPropertyValue('--text-color-muted').trim() || '#717171',
     border: style.getPropertyValue('--surface-border').trim() || '#e0e0e0',
-    primary: '#0969da',
   }
 }
 
-function buildChart(
-  canvas: HTMLCanvasElement,
-  labels: string[],
-  totalData: number[],
-  limit: number,
-  formatY: (v: number) => string,
-  tooltipSuffix: string,
-  vmData: Record<string, number[]>,
-  highlightVM?: string,
-): Chart {
+function renderCharts() {
+  cpuChart?.destroy()
+  cpuChart = null
+  legendItems.value = []
+
+  if (points.value.length === 0) return
+  if (!cpuCanvas.value || cpuLimit.value <= 0) return
+
   const colors = getChartColors()
-  const yMax = Math.max(limit * 1.15, ...totalData) || 1
-  const hasVMs = Object.keys(vmData).length > 0
-  const showPerVM = hasVMs && highlightVM
+  const labels = points.value.map((p) => fmtTime(p.timestamp))
+  const vms = vmBreakdown.value
 
+  // Build per-VM CPU arrays.
+  const vmCPU: Record<string, number[]> = {}
+  for (const [vm, pts] of Object.entries(vms)) {
+    vmCPU[vm] = pts.map((p) => p.cpu_cores)
+  }
+
+  // Rank VMs by total CPU usage, pick top 10.
+  const vmTotals = Object.entries(vmCPU).map(([name, vals]) => ({
+    name,
+    total: vals.reduce((a, b) => a + b, 0),
+  }))
+  vmTotals.sort((a, b) => b.total - a.total)
+
+  const MAX_VMS = 10
+  const topVMs = vmTotals.slice(0, MAX_VMS).map((v) => v.name)
+  const otherVMs = vmTotals.slice(MAX_VMS).map((v) => v.name)
+
+  // Compute "Other" series by summing remaining VMs.
+  let otherData: number[] | null = null
+  if (otherVMs.length > 0) {
+    const len = labels.length
+    otherData = new Array(len).fill(0)
+    for (const vm of otherVMs) {
+      const vals = vmCPU[vm] ?? []
+      for (let i = 0; i < len; i++) {
+        otherData[i] += vals[i] ?? 0
+      }
+    }
+  }
+
+  // Build stacked datasets (bottom to top: Other first, then top VMs in reverse rank).
   const datasets: any[] = []
+  const legend: LegendItem[] = []
 
-  if (showPerVM) {
-    // Per-VM lines: faded for all, bold for highlighted.
-    const vmNames = Object.keys(vmData).sort()
-    vmNames.forEach((vm) => {
-      const isHighlighted = vm === highlightVM
-      datasets.push({
-        label: vm,
-        data: vmData[vm],
-        borderColor: isHighlighted ? colors.primary : colors.muted,
-        backgroundColor: isHighlighted ? colors.primary + '30' : 'transparent',
-        borderWidth: isHighlighted ? 2 : 1,
-        fill: isHighlighted,
-        pointRadius: 0,
-        pointHitRadius: 8,
-        tension: 0.3,
-        borderDash: isHighlighted ? [] : [3, 3],
-        order: isHighlighted ? 0 : 1,
-      })
-    })
-  } else {
-    // Aggregate total line.
+  if (otherData) {
     datasets.push({
-      label: 'Total',
-      data: totalData,
-      borderColor: colors.primary,
-      backgroundColor: colors.primary + '30',
-      borderWidth: 1.5,
+      label: `Other (${otherVMs.length})`,
+      data: otherData,
+      borderColor: OTHER_COLOR,
+      backgroundColor: OTHER_COLOR + '40',
+      borderWidth: 1,
       fill: true,
       pointRadius: 0,
       pointHitRadius: 8,
       tension: 0.3,
+      order: topVMs.length + 1,
     })
+    legend.push({ label: `Other (${otherVMs.length})`, color: OTHER_COLOR })
   }
 
-  // Pool size line.
+  // Add top VMs in reverse order so highest-usage VM is on top of the stack.
+  for (let i = topVMs.length - 1; i >= 0; i--) {
+    const vm = topVMs[i]
+    const color = vmColor(vm)
+    const bgColor = vmColorAlpha(vm, 0.5)
+    datasets.push({
+      label: vm,
+      data: vmCPU[vm] ?? [],
+      borderColor: color,
+      backgroundColor: bgColor,
+      borderWidth: 1,
+      fill: true,
+      pointRadius: 0,
+      pointHitRadius: 8,
+      tension: 0.3,
+      order: i,
+    })
+  }
+  // Legend in rank order (top usage first).
+  for (const vm of topVMs) {
+    legend.push({ label: vm, color: vmColor(vm) })
+  }
+
+  // Pool limit line (always on top).
   datasets.push({
     label: 'Pool size',
-    data: new Array(labels.length).fill(limit),
+    data: new Array(labels.length).fill(cpuLimit.value),
     borderColor: '#cf222e',
     borderWidth: 1.5,
     borderDash: [6, 4],
     fill: false,
     pointRadius: 0,
     pointHitRadius: 0,
+    order: -1,
   })
 
-  return new Chart(canvas, {
+  const yMax = Math.max(cpuLimit.value * 1.15, ...points.value.map((p) => p.cpu_cores.sum)) || 1
+
+  cpuChart = new Chart(cpuCanvas.value, {
     type: 'line',
     data: { labels, datasets },
     options: {
@@ -170,23 +213,25 @@ function buildChart(
           borderWidth: 1,
           titleColor: colors.muted,
           titleFont: {
-            family:
-              "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+            family: "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
             size: 11,
           },
           bodyFont: {
-            family:
-              "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+            family: "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
             size: 11,
           },
           padding: 8,
           boxWidth: 8,
           boxHeight: 8,
           usePointStyle: true,
+          filter: (item) => {
+            // Hide zero-value items in tooltip.
+            return (item.parsed?.y ?? 0) > 0.01
+          },
           callbacks: {
             label: (ctx) => {
-              const base = formatY(ctx.parsed.y ?? 0)
-              return `${ctx.dataset.label}: ${base}${tooltipSuffix}`
+              const v = ctx.parsed.y ?? 0
+              return `${ctx.dataset.label}: ${v.toFixed(1)} vCPUs`
             },
             labelColor: (ctx) => {
               const c = (ctx.dataset.borderColor as string) || colors.muted
@@ -204,65 +249,22 @@ function buildChart(
           ticks: { color: colors.muted, font: { size: 10 }, maxTicksLimit: 6 },
         },
         y: {
+          stacked: true,
           min: 0,
           max: yMax,
           grid: { color: colors.border },
           ticks: {
             color: colors.muted,
             font: { size: 10 },
-            callback: (v) => formatY(v as number),
+            callback: (v) => (v as number).toFixed(1),
           },
           title: { display: false },
         },
       },
     },
   })
-}
 
-function renderCharts() {
-  cpuChart?.destroy()
-  memChart?.destroy()
-  cpuChart = null
-  memChart = null
-
-  if (points.value.length === 0) return
-
-  const labels = points.value.map((p) => fmtTime(p.timestamp))
-  const vms = vmBreakdown.value
-
-  // Build per-VM data arrays keyed by metric.
-  const vmCPU: Record<string, number[]> = {}
-  const vmMem: Record<string, number[]> = {}
-  for (const [vm, pts] of Object.entries(vms)) {
-    vmCPU[vm] = pts.map((p) => p.cpu_cores)
-    vmMem[vm] = pts.map((p) => p.mem_bytes)
-  }
-
-  if (cpuCanvas.value && cpuLimit.value > 0) {
-    cpuChart = buildChart(
-      cpuCanvas.value,
-      labels,
-      points.value.map((p) => p.cpu_cores.sum),
-      cpuLimit.value,
-      (v) => v.toFixed(1),
-      ' vCPUs',
-      vmCPU,
-      props.highlightVM,
-    )
-  }
-
-  if (memCanvas.value && memLimit.value > 0) {
-    memChart = buildChart(
-      memCanvas.value,
-      labels,
-      points.value.map((p) => p.mem_bytes.sum),
-      memLimit.value,
-      (v) => fmtGiB(v),
-      ' allocated',
-      vmMem,
-      props.highlightVM,
-    )
-  }
+  legendItems.value = legend
 }
 
 async function loadData() {
@@ -291,7 +293,6 @@ onMounted(loadData)
 
 onBeforeUnmount(() => {
   cpuChart?.destroy()
-  memChart?.destroy()
 })
 </script>
 
@@ -315,7 +316,7 @@ onBeforeUnmount(() => {
 
 .chart-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -335,23 +336,34 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-color-muted);
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.chart-current {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-color);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .chart-wrap {
   position: relative;
-  height: 120px;
+  height: 160px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .pool-charts-loading {
@@ -366,11 +378,5 @@ onBeforeUnmount(() => {
   padding: 24px;
   color: var(--text-color-muted);
   font-size: 13px;
-}
-
-@media (max-width: 640px) {
-  .chart-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

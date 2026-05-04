@@ -24,7 +24,7 @@
     <div class="totals-row">
       <div class="totals-name">Total ({{ filteredRows.length }} VMs)</div>
       <div class="totals-metric">{{ totalCpuLabel }} <span v-if="cpuMax > 0" class="metric-denom">/ {{ cpuMax }} vCPUs</span></div>
-      <div class="totals-metric">{{ totalMemLabel }} <span v-if="memMaxLabel" class="metric-denom">/ {{ memMaxLabel }}</span></div>
+      <div class="totals-metric">{{ totalMemLabel }}</div>
       <div class="totals-metric">{{ totalDiskLabel }}</div>
     </div>
     <DataTable
@@ -108,19 +108,12 @@ const historyLoading = ref(false)
 
 const cpuMax = computed(() => pool.value?.cpu_max ?? 0)
 
-// Pool capacity alert: CPU uses actual usage, memory uses allocation.
+// Pool capacity alert based on CPU usage.
 const poolPct = computed(() => {
   const p = pool.value
-  if (!p) return 0
-  let maxPct = 0
-  if (p.cpu_max > 0) {
-    const cpuUsed = filteredRows.value.reduce((acc, r) => acc + r.cpuSort, 0)
-    maxPct = Math.max(maxPct, (cpuUsed / p.cpu_max) * 100)
-  }
-  if (p.mem_max_bytes > 0) {
-    maxPct = Math.max(maxPct, (p.mem_allocated_bytes / p.mem_max_bytes) * 100)
-  }
-  return maxPct
+  if (!p || p.cpu_max <= 0) return 0
+  const cpuUsed = filteredRows.value.reduce((acc, r) => acc + r.cpuSort, 0)
+  return (cpuUsed / p.cpu_max) * 100
 })
 const poolAlert = computed<'danger' | 'warn' | null>(() => {
   if (poolPct.value >= 95) return 'danger'
@@ -128,14 +121,6 @@ const poolAlert = computed<'danger' | 'warn' | null>(() => {
   return null
 })
 
-const memMaxLabel = computed(() => {
-  const bytes = pool.value?.mem_max_bytes ?? 0
-  if (bytes === 0) return ''
-  const gib = bytes / (1024 * 1024 * 1024)
-  if (gib >= 1) return gib.toFixed(1) + ' GiB'
-  const mib = bytes / (1024 * 1024)
-  return mib.toFixed(0) + ' MiB'
-})
 
 function onRowClick(e: { data: UsageRow }) {
   router.push(`/vm/${e.data.name}`)
