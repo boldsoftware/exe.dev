@@ -47,6 +47,7 @@
     "tag:replica": ["autogroup:admin"], // exelet replicas (ZFS replication dest)
     "tag:ops": ["autogroup:admin"],     // exe-ops / exe-ops-staging (fleet deploys)
     "tag:exeprox": ["autogroup:admin"], // exeprox edge proxies (no policy grants; tag is informational)
+    "tag:philip-peninsula": ["autogroup:admin"], // philip's personal machines
   },
 
   "grants": [
@@ -59,6 +60,13 @@
     {
       "src": ["autogroup:member"],
       "dst": ["tag:prod", "tag:staging", "tag:island"],
+      "ip": ["*"],
+    },
+
+    // Philip's personal machines — only philip can reach them.
+    {
+      "src": ["philip@bold.dev"],
+      "dst": ["tag:philip-peninsula"],
       "ip": ["*"],
     },
   ],
@@ -94,6 +102,13 @@
       "action": "accept",
       "src": ["tag:exelet"],
       "dst": ["tag:replica"],
+      "users": ["autogroup:nonroot", "root"],
+    },
+    // Philip's personal machines.
+    {
+      "action": "accept",
+      "src": ["philip@bold.dev"],
+      "dst": ["tag:philip-peninsula"],
       "users": ["autogroup:nonroot", "root"],
     },
     // Ops fleet deploys: exe-ops / exe-ops-staging upload binaries via
@@ -143,6 +158,15 @@
     {
       "src": "100.83.1.18",
       "accept": ["tag:prod:22", "tag:staging:22", "tag:island:22"],
+    },
+    // philip-peninsula is only reachable by philip.
+    {
+      "src": "tag:prod",
+      "deny": ["tag:philip-peninsula:22"],
+    },
+    {
+      "src": "tag:staging",
+      "deny": ["tag:philip-peninsula:22"],
     },
   ],
 }
