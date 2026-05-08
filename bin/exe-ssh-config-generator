@@ -159,12 +159,31 @@ def ensure_include():
     with open(SSH_CONFIG, "r") as f:
         content = f.read()
 
-    if INCLUDE_LINE in content:
+    lines = content.splitlines(True)
+    # Find where the Include line is (if present) and where Host/Match blocks start.
+    include_idx = None
+    first_host_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == INCLUDE_LINE:
+            include_idx = i
+        if first_host_idx is None and (stripped.startswith("Host ") or stripped.startswith("Match ")):
+            first_host_idx = i
+
+    if include_idx is not None and (first_host_idx is None or include_idx < first_host_idx):
+        # Include exists and is before any Host/Match block — nothing to do.
         return
+
+    if include_idx is not None:
+        # Include exists but is inside a Host/Match block — remove it and re-prepend.
+        del lines[include_idx]
+        # Also remove a trailing blank line if one was left behind.
+        if include_idx < len(lines) and lines[include_idx].strip() == "":
+            del lines[include_idx]
 
     # Prepend the include so it takes priority
     with open(SSH_CONFIG, "w") as f:
-        f.write(INCLUDE_LINE + "\n" + content)
+        f.write(INCLUDE_LINE + "\n\n" + "".join(lines))
     print(f"  added include to {SSH_CONFIG}")
 
 
