@@ -1,0 +1,35 @@
+{
+  "name": "exedev-flue",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "format": "prettier --log-level warn --write 'exedev.ts' 'tests/**/*.ts' '*.{json,md}'",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx tests/unit.test.ts && tsx tests/smoke.test.ts"
+  },
+  "dependencies": {
+    "@flue/sdk": "^0.3.10",
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ssh2": "^1.15.0",
+    "prettier": "^3.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "cpu-features",
+      "esbuild",
+      "ssh2"
+    ],
+    "ignoredBuiltDependencies": [
+      "@google/genai",
+      "@mongodb-js/zstd",
+      "node-liblzma",
+      "protobufjs"
+    ]
+  }
+}

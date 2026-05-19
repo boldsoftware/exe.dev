@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+#
+# Bootstrap a new Flue project. Stand-in for the missing `flue init`.
+#
+# Usage:
+#   flue-init <target-dir>
+#   flue-init                  # uses current directory (must be empty)
+#
+# After bootstrap, install the exe.dev connector by piping the install
+# doc to your coding agent of choice (claude, codex, opencode,
+# cursor-agent, ...):
+#
+#   curl -fsSL http://localhost:8080/flue/exedev.md | claude
+#
+set -euo pipefail
+
+TARGET="${1:-.}"
+
+if [ "$TARGET" != "." ]; then
+    if [ -e "$TARGET" ] && [ -n "$(ls -A "$TARGET" 2>/dev/null || true)" ]; then
+        echo "error: target directory '$TARGET' is not empty" >&2
+        exit 1
+    fi
+    mkdir -p "$TARGET"
+    cd "$TARGET"
+elif [ -n "$(ls -A . 2>/dev/null || true)" ]; then
+    echo "error: current directory is not empty (pass an empty target dir)" >&2
+    exit 1
+fi
+
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "error: pnpm not found in PATH" >&2
+    exit 1
+fi
+
+echo "==> Bootstrapping Flue project in $(pwd)"
+
+cat > package.json <<'JSON'
+{
+    "name": "flue-project",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "flue dev --target node --env .env",
+        "typecheck": "tsc --noEmit"
+    }
+}
+JSON
+
+cat > tsconfig.json <<'JSON'
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "resolveJsonModule": true,
+        "types": ["node"]
+    },
+    "include": [".flue/**/*.ts"]
+}
+JSON
+
+cat > .gitignore <<'TXT'
+node_modules/
+dist/
+.env
+TXT
+
+mkdir -p .flue/agents
+cat > .flue/agents/hello.ts <<'TS'
+import type { FlueContext } from '@flue/sdk/client';
+
+export const triggers = { webhook: true };
+
+interface Payload {
+    name?: string;
+}
+
+export default async function ({ init, payload }: FlueContext<Payload>) {
+    const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+    const session = await agent.session();
+    return await session.prompt(`Say hi to ${payload?.name ?? 'world'}`);
+}
+TS
+
+echo "==> Installing dependencies"
+pnpm add @flue/sdk
+pnpm add -D @flue/cli typescript @types/node tsx
+
+cat <<'NEXT'
+
+==> Done. Next steps:
+
+  cd into this directory, then:
+
+  # install the exe.dev connector — pipe the install doc to your agent
+  # of choice (claude, codex, opencode, cursor-agent, ...). Pick one:
+  #
+  #   curl -fsSL http://localhost:8080/flue/exedev.md | claude
+  #   curl -fsSL http://localhost:8080/flue/exedev.md | codex
+  #
+  # or against prod:
+  #
+  #   curl -fsSL https://exe.dev/flue/exedev.md | claude
+
+  # then set EXE_VM_HOST in .env and edit hello.ts to use the sandbox:
+  echo 'EXE_VM_HOST=terminus.exe.xyz' > .env
+
+  # run the dev server:
+  pnpm dev
+
+  # and hit the agent:
+  curl http://localhost:3583/agents/hello/test-1 -d '{"name":"Bryan"}'
+
+NEXT
