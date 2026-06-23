@@ -106,6 +106,11 @@ class WebSocket:
     OP_PING = 0x9
     OP_PONG = 0xA
 
+    # Application-private close code (RFC 6455 4000-4999) the exe.dev terminal
+    # server sends when the remote shell itself exits (Ctrl-D / logout), as
+    # opposed to a generic close (server shutdown, error) we should retry.
+    CLOSE_SHELL_EXITED = 4001
+
     GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     def __init__(self, sock):
@@ -344,7 +349,13 @@ def term_size(fd):
 def run_session(ws, stdin_fd):
     """Pump bytes between the local tty (stdin_fd) and the websocket.
 
-    Returns when the websocket closes (caller decides whether to reconnect).
+    Returns a reason string describing why the session ended:
+      "ended"        -- the remote shell exited (server closed with
+                        CLOSE_SHELL_EXITED, e.g. you hit Ctrl-D / typed exit),
+                        or local stdin reached EOF. The caller should NOT
+                        reconnect.
+      "disconnected" -- the connection dropped (TCP EOF or an abnormal close).
+                        The caller should reconnect.
     """
     rows, cols = term_size(stdin_fd)
     ws.send_text(json.dumps({"type": "resize", "rows": rows, "cols": cols,
@@ -372,10 +383,17 @@ def run_session(ws, stdin_fd):
 
             if ws in readable:
                 if not ws.recv_into_buffer():
-                    return  # remote closed
+                    return "disconnected"  # TCP EOF: treat as a dropped link
                 for opcode, payload in ws.frames():
                     if opcode == WebSocket.OP_CLOSE:
-                        return
+                        # The remote shell exited (Ctrl-D / logout) only when
+                        # the server says so with its dedicated close code. Any
+                        # other code (generic close, server shutdown, error) or
+                        # none means we should recover by reconnecting.
+                        code = (payload[0] << 8) | payload[1] if len(payload) >= 2 else None
+                        if code == WebSocket.CLOSE_SHELL_EXITED:
+                            return "ended"
+                        return "disconnected"
                     if opcode == WebSocket.OP_PING:
                         ws.pong(payload)
                         continue
@@ -388,7 +406,7 @@ def run_session(ws, stdin_fd):
                 except OSError:
                     data = b""
                 if not data:
-                    return  # local EOF (e.g. Ctrl-D at a closed stdin)
+                    return "ended"  # local EOF (e.g. Ctrl-D at a closed stdin)
                 ws.send_text(json.dumps({"type": "input",
                                          "data": data.decode("utf-8", "surrogateescape")}))
     finally:
@@ -494,8 +512,9 @@ def main():
             if not first:
                 log("exe-ssh: reconnected.")
             first = False
+            reason = "disconnected"
             try:
-                run_session(ws, stdin_fd)
+                reason = run_session(ws, stdin_fd)
             except (OSError, WSError, ssl.SSLError) as e:
                 # Mid-session network failure: fall through to reconnect
                 # rather than dumping a traceback. This is the common case
@@ -503,6 +522,13 @@ def main():
                 log(f"exe-ssh: connection lost ({e})")
             finally:
                 ws.close()
+
+            if reason == "ended":
+                # The remote shell exited (Ctrl-D / logout). Reconnecting would
+                # just spawn a fresh shell, so quit instead -- this matches
+                # what ssh(1) does when the remote shell exits.
+                log("exe-ssh: session ended.")
+                break
 
             log("exe-ssh: reconnecting (Ctrl-C to quit)...")
             time.sleep(0.3)
