@@ -1,0 +1,15 @@
+.{
+    .name = .exe_scroll,
+    .version = "0.1.0",
+    .fingerprint = 0x8e7c6e2e100742c9,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .ghostty = .{ .path = "ghostty-src" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "exe-scroll.zig",
+        "test_e2e.zig",
+    },
+}

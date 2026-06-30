@@ -1,0 +1,10 @@
+# Toolchain pin for exe-scroll. `mise install` fetches exactly this Zig (the
+# tarball is verified against the Zig Software Foundation's signing key, and
+# mise.lock additionally pins per-platform checksums). build-static.sh uses
+# this so the build toolchain is downloaded consistently instead of with a
+# hand-rolled curl + sha256 dance.
+[tools]
+zig = "0.15.2"
+
+[settings]
+lockfile = true
