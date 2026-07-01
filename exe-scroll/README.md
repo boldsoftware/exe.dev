@@ -101,22 +101,30 @@ make test                                   # build + run the test suite
 make GHOSTTY_SRC=/path/to/ghostty
 
 # Reproducible static musl build for Linux (fetches the pinned toolchain via
-# mise, and a pinned ghostty revision):
+# mise, and a pinned ghostty revision). Zig cross-compiles, so this runs on any
+# host (Linux x86_64/arm64, macOS, ...) regardless of the target arch:
 ./build-static.sh amd64                     # or arm64
+
+# Install straight into another tree (used by the top-level `make exe-scroll`,
+# which bakes exe-scroll into the exelet rovol bin dir next to dtach):
+OUT_DIR=/path/to/rovol ./build-static.sh amd64   # -> $OUT_DIR/bin/exe-scroll
 ```
 
 The Zig toolchain version is pinned in `mise.toml` (with per-platform checksums
 in `mise.lock`); `build-static.sh` uses [mise](https://mise.jdx.dev) to fetch it
-consistently.
+consistently. Because Zig is a cross-compiler, `build-static.sh` emits a fully
+static musl Linux binary for either arch from any build host — no Docker, buildx,
+or qemu — which is what lets the exelet build produce it in place.
 
 ## Platforms
 
 The source is POSIX and uses Zig's standard library for all the platform ABI
 (termios, signals, ioctls, errno, ...), so it builds and runs natively on
-Linux, macOS, and the BSDs. `build-static.sh` is Linux-specific: it produces a
-fully static musl binary. (Cross-compiling the macOS binary *from* Linux is not
-set up here because Ghostty's bundled C++ SIMD sources need the macOS SDK; build
-on the target OS, or wire up an SDK, for a native macOS binary.)
+Linux, macOS, and the BSDs. `build-static.sh` targets Linux: it produces a fully
+static musl binary (for either arch, cross-compiled from any host). (Cross-
+compiling the macOS binary *from* Linux is not set up here because Ghostty's
+bundled C++ SIMD sources need the macOS SDK; build on the target OS, or wire up
+an SDK, for a native macOS binary.)
 
 ## Testing
 

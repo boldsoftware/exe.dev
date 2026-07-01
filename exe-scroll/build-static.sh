@@ -23,11 +23,9 @@ SRC_DIR="${SRC_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
 case "$ARCH" in
 amd64 | x86_64)
     ZIG_TARGET="x86_64-linux-musl"
-    EXPECT_UNAME="x86_64"
     ;;
 arm64 | aarch64)
     ZIG_TARGET="aarch64-linux-musl"
-    EXPECT_UNAME="aarch64"
     ;;
 *)
     echo "build-static.sh: unsupported target arch '$ARCH'" >&2
@@ -35,12 +33,11 @@ arm64 | aarch64)
     ;;
 esac
 
-if [ "$(uname -m)" != "$EXPECT_UNAME" ]; then
-    echo "build-static.sh: target $ARCH expects uname -m=$EXPECT_UNAME but got" \
-        "$(uname -m); run under the target platform (buildx/qemu)." >&2
-    exit 1
-fi
-
+# Zig is a cross-compiler: it emits a fully static musl binary for either
+# target from any host (Linux x86_64/arm64, macOS, ...), so there's no uname
+# gate and no need for buildx/qemu. This is what lets the exelet rovol bake
+# build exe-scroll in place alongside exe-init/exe-ssh, on whatever machine
+# `make exelet-fs`/`make exe-scroll` runs on.
 echo "Building exe-scroll for $ARCH (zig target $ZIG_TARGET)..."
 
 # --- Toolchain (zig) via mise -------------------------------------------
@@ -60,7 +57,10 @@ mise trust "$SRC_DIR/mise.toml"
 mise install --cd "$SRC_DIR"
 
 # --- Fetch ghostty at the pinned commit ---------------------------------
-GHOSTTY_SRC="${GHOSTTY_SRC:-/src/ghostty}"
+# Default the Ghostty checkout into ./.ghostty (gitignored), matching the dev
+# Makefile's cache so the two share one clone. Callers (CI) can override
+# GHOSTTY_SRC to point at a host-local cache.
+GHOSTTY_SRC="${GHOSTTY_SRC:-$SRC_DIR/.ghostty}"
 if [ ! -d "$GHOSTTY_SRC/.git" ]; then
     echo "Cloning ghostty..."
     git clone --filter=tree:0 "$GHOSTTY_REPO_URL" "$GHOSTTY_SRC"
@@ -73,17 +73,21 @@ git -C "$GHOSTTY_SRC" checkout --detach "$GHOSTTY_REV"
 ln -sfn "$GHOSTTY_SRC" "$SRC_DIR/ghostty-src"
 
 # --- Build --------------------------------------------------------------
+# OUT_DIR lets callers (e.g. the exelet Makefile) install straight into the
+# rovol bin tree; defaults to the usual zig-out. -Dstrip strips at link time so
+# cross-arch builds don't depend on a matching host `strip`.
+OUT_DIR="${OUT_DIR:-$SRC_DIR/zig-out}"
 (
     cd "$SRC_DIR"
-    rm -rf .zig-cache zig-out
-    mise exec -- zig build -Dtarget="$ZIG_TARGET" -Doptimize=ReleaseFast
+    mise exec -- zig build \
+        -Dtarget="$ZIG_TARGET" -Doptimize=ReleaseFast -Dstrip=true \
+        -p "$OUT_DIR"
 )
 
-OUT="$SRC_DIR/zig-out/bin/exe-scroll"
+OUT="$OUT_DIR/bin/exe-scroll"
 if [ ! -f "$OUT" ]; then
     echo "build-static.sh: exe-scroll binary not produced" >&2
     exit 1
 fi
-strip --strip-all --remove-section=.comment --remove-section=.note "$OUT" 2>/dev/null || true
 
 echo "exe-scroll (static musl) built successfully for $ARCH: $OUT"

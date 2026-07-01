@@ -4,6 +4,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // `-Dstrip` produces a stripped binary at link time. We strip in-toolchain
+    // (rather than shelling out to the host `strip`) so cross-compiled builds
+    // work: a Linux host's `strip` can't process a foreign-arch ELF, but Zig's
+    // linker can strip any target it can emit. build-static.sh passes this.
+    const strip = b.option(bool, "strip", "strip debug info from the binary") orelse false;
+
     const ghostty = b.dependency("ghostty", .{
         .target = target,
         .optimize = optimize,
@@ -16,6 +22,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            .strip = strip,
         }),
     });
     exe.root_module.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
