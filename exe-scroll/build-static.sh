@@ -77,10 +77,19 @@ ln -sfn "$GHOSTTY_SRC" "$SRC_DIR/ghostty-src"
 # rovol bin tree; defaults to the usual zig-out. -Dstrip strips at link time so
 # cross-arch builds don't depend on a matching host `strip`.
 OUT_DIR="${OUT_DIR:-$SRC_DIR/zig-out}"
+
+# Key the local build cache by target triple. Zig's local `.zig-cache` isn't
+# fully partitioned by `-Dtarget`, so building both arches through one cache
+# yields a non-reproducible second binary (its .text differs from a clean
+# build). A per-target cache dir keeps each arch's build deterministic even
+# when both run back-to-back in the same checkout. Defaults under .zig-cache
+# (gitignored); override with CACHE_DIR.
+CACHE_DIR="${CACHE_DIR:-$SRC_DIR/.zig-cache/$ZIG_TARGET}"
 (
     cd "$SRC_DIR"
     mise exec -- zig build \
         -Dtarget="$ZIG_TARGET" -Doptimize=ReleaseFast -Dstrip=true \
+        --cache-dir "$CACHE_DIR" \
         -p "$OUT_DIR"
 )
 
