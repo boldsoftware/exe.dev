@@ -2,3 +2,4 @@
 /.zig-cache
 /ghostty-src
 /.ghostty
+/dist

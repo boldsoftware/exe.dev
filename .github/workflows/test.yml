@@ -57,3 +57,22 @@ jobs:
             git tag -a "$TAG" -m "Auto-tag $module at ${SHORT_SHA}"
             git push origin "$TAG"
           done
+
+  release-exe-scroll:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    concurrency:
+      group: release-exe-scroll
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build and release exe-scroll
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: exe-scroll/release.sh
