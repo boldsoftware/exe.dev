@@ -37,6 +37,8 @@ jobs:
 
       - name: Auto-tag changed modules
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           for dir in */; do
             [ -f "$dir/go.mod" ] || continue
             module="${dir%/}"
