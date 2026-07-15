@@ -15,7 +15,22 @@ jobs:
         with:
           go-version: stable
 
-      - name: Test all modules
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Test Python packages
+        run: |
+          for dir in */; do
+            if [ -f "$dir/pyproject.toml" ]; then
+              echo "=== testing $dir ==="
+              uv run --project "$dir" python -m unittest discover -s "$dir/tests" -v
+              uv build --project "$dir"
+              uvx --from "./$dir" "${dir%/}" --help
+            fi
+          done
+          python3 bin/experimental-exe-ssh.py --help
+
+      - name: Test all Go modules
         run: |
           for dir in */; do
             if [ -f "$dir/go.mod" ]; then

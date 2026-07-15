@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "exe-ssh"
+version = "0.1.0"
+description = "An SSH-like terminal for exe.dev VMs over HTTPS"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "exe.dev" }]
+dependencies = []
+
+[project.scripts]
+exe-ssh = "exe_ssh.cli:main"
