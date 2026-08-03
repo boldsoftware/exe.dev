@@ -203,16 +203,24 @@ async function exeApi(token: string, command: string): Promise<string> {
 interface ApiVmInfo {
   /** VM name (used later for `rm` cleanup). */
   name: string;
-  /** SSH destination hostname — taken from `ssh_dest` when available. */
+  /** SSH network host — from `ssh_host` / `ssh_dest` when available. */
   host: string;
+  /**
+   * SSH username the server's routing requires (e.g. `vm+<name>` when the
+   * VM's hostname can't route SSH). Undefined when any username works.
+   */
+  username?: string;
 }
 
 /**
  * Parse the JSON body from a `new` / `cp` HTTPS API call.
  *
- * The exe.dev API returns `{vm_name, ssh_dest, ssh_port, ...}`. We prefer
- * `ssh_dest` over re-deriving `${name}.exe.xyz` so the API stays
- * authoritative for hostname mapping.
+ * The exe.dev API returns `{vm_name, ssh_host, ssh_user?, ssh_dest, ...}`.
+ * We prefer the structured `ssh_host`/`ssh_user` fields; older servers send
+ * only `ssh_dest`, which may carry a `user@host` routing prefix that must be
+ * split before handing the host to ssh2. We prefer the API's values over
+ * re-deriving `${name}.exe.xyz` so the API stays authoritative for hostname
+ * mapping.
  *
  * @internal exported for tests
  */
@@ -222,6 +230,8 @@ export function parseVmResponse(output: string): ApiVmInfo {
     name?: unknown;
     vm?: unknown;
     ssh_dest?: unknown;
+    ssh_host?: unknown;
+    ssh_user?: unknown;
   };
   try {
     data = JSON.parse(output);
@@ -245,11 +255,24 @@ export function parseVmResponse(output: string): ApiVmInfo {
         `  ${JSON.stringify(data).slice(0, 200)}`,
     );
   }
-  const host =
+  if (typeof data.ssh_host === "string" && data.ssh_host) {
+    return {
+      name,
+      host: data.ssh_host,
+      ...(typeof data.ssh_user === "string" && data.ssh_user
+        ? { username: data.ssh_user }
+        : {}),
+    };
+  }
+  const dest =
     typeof data.ssh_dest === "string" && data.ssh_dest
       ? data.ssh_dest
       : `${name}.exe.xyz`;
-  return { name, host };
+  const at = dest.lastIndexOf("@");
+  if (at !== -1) {
+    return { name, host: dest.slice(at + 1), username: dest.slice(0, at) };
+  }
+  return { name, host: dest };
 }
 
 /**
@@ -748,6 +771,18 @@ export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
       let vmHost = options.host;
       let vmName: string | undefined;
       let wasAutoCreated = false;
+      let connectOptions = options;
+      // The API may require a routing username (e.g. `vm+<name>` when the
+      // VM's hostname can't route SSH). It addresses the VM, so it wins
+      // over `options.username`, which picks the in-VM account.
+      const applyInfo = (info: ApiVmInfo) => {
+        vmName = info.name;
+        vmHost = info.host;
+        wasAutoCreated = true;
+        if (info.username) {
+          connectOptions = { ...options, username: info.username };
+        }
+      };
 
       if (options.cloneFrom) {
         if (!options.apiToken) {
@@ -757,10 +792,7 @@ export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
               "  Then pass it as `apiToken` to exedev().",
           );
         }
-        const info = await apiCloneVm(options.apiToken, options.cloneFrom);
-        vmName = info.name;
-        vmHost = info.host;
-        wasAutoCreated = true;
+        applyInfo(await apiCloneVm(options.apiToken, options.cloneFrom));
       } else if (options.createVm) {
         if (!options.apiToken) {
           throw new ExeDevError(
@@ -769,10 +801,7 @@ export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
               "  Then pass it as `apiToken` to exedev().",
           );
         }
-        const info = await apiCreateVm(options.apiToken, options.vmName);
-        vmName = info.name;
-        vmHost = info.host;
-        wasAutoCreated = true;
+        applyInfo(await apiCreateVm(options.apiToken, options.vmName));
       }
 
       if (!vmHost) {
@@ -796,10 +825,10 @@ export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
       const { ssh, disconnect } = wasAutoCreated
         ? await sshConnectWithRetry(
             vmHost,
-            options,
+            connectOptions,
             DEFAULT_VM_READY_TIMEOUT_MS,
           )
-        : await sshConnect(vmHost, options);
+        : await sshConnect(vmHost, connectOptions);
       const api = new ExeDevSandboxApi(ssh);
 
       // ---------------------------------------------------------------

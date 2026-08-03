@@ -95,6 +95,36 @@ await t("parseVmResponse: accepts legacy `name` field", () => {
   });
 });
 
+await t("parseVmResponse: prefers structured ssh_host/ssh_user", () => {
+  const json = JSON.stringify({
+    vm_name: "jetpack-gray",
+    ssh_command: "ssh vm+jetpack-gray@exe.dev",
+    ssh_dest: "vm+jetpack-gray@exe.dev",
+    ssh_host: "exe.dev",
+    ssh_user: "vm+jetpack-gray",
+  });
+  assert.deepEqual(parseVmResponse(json), {
+    name: "jetpack-gray",
+    host: "exe.dev",
+    username: "vm+jetpack-gray",
+  });
+});
+
+await t(
+  "parseVmResponse: splits a user@host ssh_dest when ssh_host absent",
+  () => {
+    const json = JSON.stringify({
+      vm_name: "jetpack-gray",
+      ssh_dest: "vm+jetpack-gray@exe.dev",
+    });
+    assert.deepEqual(parseVmResponse(json), {
+      name: "jetpack-gray",
+      host: "exe.dev",
+      username: "vm+jetpack-gray",
+    });
+  },
+);
+
 await t("parseVmResponse: throws ExeDevError on non-JSON", () => {
   assert.throws(() => parseVmResponse("not json"), ExeDevError);
 });
