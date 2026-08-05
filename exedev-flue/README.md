@@ -1,17 +1,16 @@
 # exedev-flue
 
-The official exe.dev sandbox connector for [Flue](https://flue.dev).
+The official exe.dev sandbox connector for [Flue](https://flueframework.com/).
 
 This package contains the TypeScript connector that lets Flue agents use an
 exe.dev VM as their sandbox, plus the small Go HTTP handler that serves the
 install prompt and connector source from exe.dev. It is maintained here for the
-[Flue connectors](https://github.com/withastro/flue/tree/main/connectors)
-ecosystem.
+[Flue connector](https://flueframework.com/) ecosystem.
 
 ## Install
 
-Use the official Flue connector docs at
-[github.com/withastro/flue/tree/main/connectors](https://github.com/withastro/flue/tree/main/connectors)
+Use the official Flue exe.dev sandbox blueprint at
+[github.com/withastro/flue/blob/main/blueprints/sandbox--exedev.md](https://github.com/withastro/flue/blob/main/blueprints/sandbox--exedev.md)
 when adding exe.dev to a Flue project.
 
 For agent-assisted setup, pipe the exe.dev install prompt into a coding agent
