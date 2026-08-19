@@ -35,6 +35,21 @@ def expand_key(path):
     return os.path.expanduser(path)
 
 
+def parse_dest(ssh_dest):
+    """Split an ssh_dest into (hostname, user).
+
+    Modern VMs report a bare hostname like 'foo.exe.xyz' (user is None).
+    Legacy VMs (never migrated to name-based routing) report a full SSH
+    destination like 'vm+foo@vm.exe.xyz', which routes by username through
+    the old proxy and must be split into User + HostName for a valid
+    ssh_config entry — a 'user@host' string is not a resolvable HostName.
+    """
+    if "@" in ssh_dest:
+        user, host = ssh_dest.rsplit("@", 1)
+        return host, user
+    return ssh_dest, None
+
+
 def discover_vms(key_path):
     """Run ssh -i <key> exe.dev ls --json and return list of VM dicts."""
     try:
@@ -109,16 +124,24 @@ def write_known_hosts(vm_key_map, host_key):
         "# All exe.dev VMs share the same host key (SSH proxy).",
         "",
     ]
+    # Key the entries by the actual host we connect to (the HostName), not the
+    # raw ssh_dest — legacy 'user@host' dests share one host (vm.exe.xyz), and
+    # ssh verifies the host key against the HostName, not the user@host string.
+    seen = set()
     # Also include exe.dev itself
     lines.append(f"exe.dev {key_type} {key_data}")
+    seen.add("exe.dev")
     for vm_name in sorted(vm_key_map):
         ssh_dest, _ = vm_key_map[vm_name]
-        lines.append(f"{ssh_dest} {key_type} {key_data}")
+        host, _user = parse_dest(ssh_dest)
+        if host in seen:
+            continue
+        seen.add(host)
+        lines.append(f"{host} {key_type} {key_data}")
 
     with open(KNOWN_HOSTS_FILE, "w") as f:
         f.write("\n".join(lines) + "\n")
-    # +1 for exe.dev itself
-    print(f"wrote {len(vm_key_map) + 1} entries to {KNOWN_HOSTS_FILE}")
+    print(f"wrote {len(seen)} entries to {KNOWN_HOSTS_FILE}")
 
 
 def generate_config(vm_key_map, have_known_hosts):
@@ -131,8 +154,11 @@ def generate_config(vm_key_map, have_known_hosts):
 
     for vm_name in sorted(vm_key_map):
         ssh_dest, key_path = vm_key_map[vm_name]
+        host, user = parse_dest(ssh_dest)
         lines.append(f"Host {vm_name} {ssh_dest}")
-        lines.append(f"    HostName {ssh_dest}")
+        lines.append(f"    HostName {host}")
+        if user:
+            lines.append(f"    User {user}")
         lines.append(f"    IdentityFile {key_path}")
         lines.append(f"    IdentitiesOnly yes")
         lines.append(f"    IdentityAgent none")
