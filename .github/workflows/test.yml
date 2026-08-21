@@ -75,6 +75,29 @@ jobs:
             git push origin "$TAG"
           done
 
+  build-exe-scroll-darwin:
+    runs-on: macos-14
+    if: github.event_name == 'push'
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build exe-scroll for macOS
+        run: |
+          mkdir -p exe-scroll/dist-darwin
+          for arch in amd64 arm64; do
+            OUT_DIR="$PWD/exe-scroll/dist-$arch" bin/build-exe-scroll-darwin.sh "$arch"
+            cp "exe-scroll/dist-$arch/bin/exe-scroll" "exe-scroll/dist-darwin/exe-scroll-darwin-$arch"
+          done
+          file exe-scroll/dist-darwin/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe-scroll-darwin
+          path: exe-scroll/dist-darwin/*
+
   release-exe-scroll:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
@@ -83,13 +106,29 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-    needs: test
+    needs: [test, build-exe-scroll-darwin]
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: exe-scroll-darwin
+          path: exe-scroll/dist-darwin
+
       - name: Build and release exe-scroll
         env:
           GH_TOKEN: ${{ github.token }}
-        run: exe-scroll/release.sh
+        run: |
+          exe-scroll/release.sh
+          tag=$(git tag -l 'exe-scroll/v*' --sort=-v:refname | head -1)
+          existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          for asset in exe-scroll/dist-darwin/*; do
+            name=$(basename "$asset")
+            if printf '%s\n' "$existing" | grep -Fqx "$name"; then
+              echo "$tag already has $name"
+            else
+              gh release upload "$tag" "$asset"
+            fi
+          done
