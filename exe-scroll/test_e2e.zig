@@ -37,6 +37,11 @@ const c = struct {
     const EAGAIN = 11;
     const POLLIN: c_short = 0x001;
     const WNOHANG = 1;
+
+    // Set the size of a pty via its master fd (what a terminal emulator does
+    // on window resize). The kernel then delivers SIGWINCH to the pty's
+    // foreground process group. Same encoding dance as exe-scroll.zig.
+    const TIOCSWINSZ: c_int = @bitCast(@as(u32, @intCast(std.c.T.IOCSWINSZ)));
 };
 
 const alloc = std.heap.c_allocator;
@@ -63,6 +68,14 @@ const Proc = struct {
     /// Send a Unix signal to the process.
     fn signal(self: *Proc, sig: c_int) void {
         _ = c.kill(self.pid, sig);
+    }
+
+    /// Resize the pty this attach client runs on, as a terminal emulator would
+    /// when its window changes. The kernel delivers SIGWINCH to the attach
+    /// client, which forwards the new size to the session as MSG_WINCH.
+    fn resize(self: *Proc, rows: u16, cols: u16) void {
+        const ws = c.Winsize{ .ws_row = rows, .ws_col = cols };
+        _ = std.c.ioctl(self.fd, c.TIOCSWINSZ, &ws);
     }
 
     /// Write bytes to the pty (as if typed at the keyboard).
@@ -232,6 +245,123 @@ fn findServer(socket: []const u8, exclude: c_int) !c_int {
 fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
+
+// A bare protocol client: a Unix-socket connection speaking exe-scroll's wire
+// framing directly, with no attach client (and no pty) in between. Lets tests
+// construct protocol states the real client can't be scripted into -- e.g. a
+// connection that sends MSG_WINCH but never MSG_ATTACH (the window the
+// built-in client is in between its first WINCH and its ATTACH frame), or an
+// attached client that has never advertised a window size.
+const RawClient = struct {
+    const MSG_DATA = 1;
+    const MSG_WINCH = 2;
+    const MSG_ATTACH = 3;
+
+    fd: c_int,
+    rbuf: std.ArrayListUnmanaged(u8) = .empty, // raw inbound bytes
+    data: std.ArrayListUnmanaged(u8) = .empty, // reassembled MSG_DATA payloads
+
+    fn connect(path: []const u8) !RawClient {
+        var sa: std.c.sockaddr.un = undefined;
+        if (path.len > sa.path.len - 1) return error.NameTooLong;
+        const fd = std.c.socket(std.c.AF.UNIX, std.c.SOCK.STREAM, 0);
+        if (fd < 0) return error.SocketFailed;
+        sa.family = std.c.AF.UNIX;
+        @memcpy(sa.path[0..path.len], path);
+        sa.path[path.len] = 0;
+        if (std.c.connect(fd, @ptrCast(&sa), @sizeOf(@TypeOf(sa))) < 0) {
+            _ = std.c.close(fd);
+            return error.ConnectFailed;
+        }
+        return .{ .fd = fd };
+    }
+
+    fn sendFrame(self: *RawClient, typ: u8, payload: []const u8) void {
+        var hdr: [5]u8 = undefined;
+        hdr[0] = typ;
+        std.mem.writeInt(u32, hdr[1..5], @intCast(payload.len), .little);
+        var buf: std.ArrayListUnmanaged(u8) = .empty;
+        defer buf.deinit(alloc);
+        buf.appendSlice(alloc, &hdr) catch return;
+        buf.appendSlice(alloc, payload) catch return;
+        var off: usize = 0;
+        while (off < buf.items.len) {
+            const n = std.c.write(self.fd, buf.items.ptr + off, buf.items.len - off);
+            if (n > 0) {
+                off += @intCast(n);
+            } else if (n < 0 and c.errno() == c.EINTR) {
+                continue;
+            } else break;
+        }
+    }
+
+    fn sendWinch(self: *RawClient, rows: u16, cols: u16) void {
+        const ws = c.Winsize{ .ws_row = rows, .ws_col = cols };
+        self.sendFrame(MSG_WINCH, std.mem.asBytes(&ws));
+    }
+
+    /// MSG_ATTACH with replay disabled (tests want live output, not history).
+    fn attach(self: *RawClient) void {
+        self.sendFrame(MSG_ATTACH, &.{0}); // REPLAY_NONE
+    }
+
+    /// Send terminal input (as if typed).
+    fn sendData(self: *RawClient, bytes: []const u8) void {
+        self.sendFrame(MSG_DATA, bytes);
+    }
+
+    /// Read server frames until `needle` appears in the concatenated MSG_DATA
+    /// payloads or `ms` elapses. Returns true if found. Payloads accumulate
+    /// across calls, so a needle already received is found immediately.
+    fn drainUntil(self: *RawClient, needle: []const u8, ms: i32) bool {
+        const deadline = std.time.milliTimestamp() + ms;
+        while (true) {
+            if (std.mem.indexOf(u8, self.data.items, needle) != null) return true;
+            const left = deadline - std.time.milliTimestamp();
+            if (left <= 0) return false;
+            var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = c.POLLIN, .revents = 0 }};
+            const n = std.c.poll(&pfd, 1, @intCast(@min(left, 50)));
+            if (n <= 0) continue;
+            var tmp: [4096]u8 = undefined;
+            const r = std.c.read(self.fd, &tmp, tmp.len);
+            if (r > 0) {
+                self.rbuf.appendSlice(alloc, tmp[0..@intCast(r)]) catch return false;
+                // Extract complete MSG_DATA payloads (same framing as the
+                // real client's drainFrames).
+                var pos: usize = 0;
+                while (self.rbuf.items.len - pos >= 5) {
+                    const len = std.mem.readInt(u32, self.rbuf.items[pos + 1 ..][0..4], .little);
+                    if (self.rbuf.items.len - pos < 5 + len) break;
+                    if (self.rbuf.items[pos] == MSG_DATA)
+                        self.data.appendSlice(alloc, self.rbuf.items[pos + 5 .. pos + 5 + len]) catch return false;
+                    pos += 5 + len;
+                }
+                if (pos > 0) {
+                    const leftover = self.rbuf.items.len - pos;
+                    std.mem.copyForwards(u8, self.rbuf.items[0..leftover], self.rbuf.items[pos..]);
+                    self.rbuf.items.len = leftover;
+                }
+            } else if (r < 0 and (c.errno() == c.EINTR or c.errno() == c.EAGAIN)) {
+                continue;
+            } else return false; // EOF
+        }
+    }
+
+    /// Forget accumulated MSG_DATA (so later drainUntil calls only match new
+    /// output).
+    fn clearData(self: *RawClient) void {
+        self.data.clearRetainingCapacity();
+    }
+
+    fn close(self: *RawClient) void {
+        if (self.fd >= 0) {
+            _ = std.c.close(self.fd);
+            self.fd = -1;
+        }
+        self.rbuf.deinit(alloc);
+        self.data.deinit(alloc);
+    }
+};
 
 /// Kill the detached session server for `socket` (if any) and wait for it to
 /// go away. The server is daemonized (setsid), so it's not our child and can't
@@ -436,4 +566,399 @@ test "socket recreation on SIGUSR1 (abduco-style)" {
     const alive = try p2.drainUntil("AFTERRECREATE", 2000);
     defer alloc.free(alive);
     try testing.expect(contains(alive, "AFTERRECREATE"));
+}
+
+// ----------------------------------------------------------------------------
+// Size-ownership tests. Multiple clients attached to one session used to
+// fight over the PTY size (every MSG_WINCH applied; last write wins). The
+// rule now is "typing claims the size": a resize from a non-owner is recorded
+// but not applied; actually typing takes ownership (and applies your size).
+//
+// To observe the PTY size WITHOUT typing (typing would itself claim
+// ownership!), the session command is a loop that prints `stty size` a few
+// times a second; every attached client sees the stream, so a size change --
+// or its absence -- is visible in the drained output.
+// ----------------------------------------------------------------------------
+const SIZE_PRINTER = "while :; do stty size; sleep 0.2; done";
+
+test "size ownership: typing claims the size" {
+    const s = try sockPath("own-type");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A creates the session at 24x80 and therefore owns the size.
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    // B attaches at 30x100. Its attach-time WINCH must NOT resize the PTY:
+    // A owns the size and B hasn't typed anything yet.
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    const b0 = try b.drain(1000);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80")); // still A's size
+    try testing.expect(!contains(b0, "30 100")); // B's WINCH was not applied
+
+    // B types: that claims ownership and applies B's recorded 30x100.
+    b.write("x");
+    const b1 = try b.drainUntil("30 100", 3000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "30 100"));
+
+    // A resizes to 40x120. B owns the size now, so A's WINCH is recorded but
+    // not applied.
+    a.resize(40, 120);
+    const a1 = try a.drain(1000);
+    defer alloc.free(a1);
+    try testing.expect(contains(a1, "30 100")); // still B's size
+    try testing.expect(!contains(a1, "40 120")); // A's WINCH was not applied
+
+    // A types: ownership moves back to A and its recorded 40x120 applies.
+    a.write("x");
+    const a2 = try a.drainUntil("40 120", 3000);
+    defer alloc.free(a2);
+    try testing.expect(contains(a2, "40 120"));
+}
+
+test "size ownership: owner detach releases the size" {
+    const s = try sockPath("own-detach");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A creates (and owns) the session; B and C attach at other sizes, which
+    // must not disturb the PTY.
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    var cc = try spawn(&.{s}, 35, 110);
+    defer cc.kill();
+    const b0 = try b.drain(1000);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80"));
+    try testing.expect(!contains(b0, "30 100"));
+    try testing.expect(!contains(b0, "35 110"));
+
+    // The owner detaches: the size becomes unowned. Nobody inherits it
+    // automatically -- the next WINCH (or input) claims it.
+    a.signal(c.SIGUSR2);
+    const bye = try a.drainUntil("detached", 2000);
+    defer alloc.free(bye);
+    try testing.expect(a.waitExit(2000));
+    a.kill();
+    std.Thread.sleep(200 * std.time.ns_per_ms); // let the server process it
+
+    // B's resize is the first WINCH after the release: it applies, and B
+    // becomes the owner.
+    b.resize(50, 150);
+    const b1 = try b.drainUntil("50 150", 3000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "50 150"));
+
+    // C's resize must now be ignored: B owns the size (and C never typed).
+    cc.resize(60, 160);
+    const c0 = try cc.drain(1000);
+    defer alloc.free(c0);
+    try testing.expect(contains(c0, "50 150"));
+    try testing.expect(!contains(c0, "60 160"));
+}
+
+test "size ownership: sole client resize always applies" {
+    const s = try sockPath("own-sole");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // With a single attached client the behavior is exactly as before this
+    // feature existed: every resize applies immediately, no typing needed.
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    a.resize(26, 90);
+    const a1 = try a.drainUntil("26 90", 3000);
+    defer alloc.free(a1);
+    try testing.expect(contains(a1, "26 90"));
+
+    a.resize(27, 91);
+    const a2 = try a.drainUntil("27 91", 3000);
+    defer alloc.free(a2);
+    try testing.expect(contains(a2, "27 91"));
+}
+
+test "size ownership: terminal auto-replies do not claim" {
+    const s = try sockPath("own-autoreply");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A creates (and owns) the session at 24x80.
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    // B attaches at 30x100 (recorded, not applied).
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    const settle = try b.drain(600);
+    alloc.free(settle);
+
+    // Emulator auto-replies riding the input path: focus-in report, a DA1
+    // response, and a cursor position report. None of these are typing, so
+    // none may claim size ownership.
+    b.write("\x1b[I");
+    b.write("\x1b[?62c");
+    b.write("\x1b[12;40R");
+    // A CPR split across two input frames: the classifier state must carry
+    // across MSG_DATA payloads for the second half to stay an auto-reply.
+    b.write("\x1b[12;");
+    std.Thread.sleep(150 * std.time.ns_per_ms);
+    b.write("40R");
+
+    const b0 = try b.drain(1000);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80")); // still A's size
+    try testing.expect(!contains(b0, "30 100")); // nothing claimed
+
+    // A genuine keystroke from the same client does claim (and applies its
+    // recorded size).
+    b.write("x");
+    const b1 = try b.drainUntil("30 100", 3000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "30 100"));
+}
+
+test "size ownership: abrupt owner disconnect snaps to the sole survivor" {
+    const s = try sockPath("own-drop");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    const b0 = try b.drain(800);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80"));
+    try testing.expect(!contains(b0, "30 100")); // A owns; B's WINCH ignored
+
+    // Kill the owner outright: no MSG_DETACH is ever sent -- the server only
+    // sees the connection close (EOF) and must release ownership in the
+    // dropClient path. That leaves exactly one attached client (B) with a
+    // valid advertised size, so the pty must snap to B's size WITHOUT B
+    // sending anything (the browser-reload scenario: the new tab's resize
+    // was swallowed while the old connection lingered, and the web client
+    // won't re-send a size it believes is current).
+    a.kill();
+    const b1 = try b.drainUntil("30 100", 3000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "30 100"));
+
+    // And the survivor (now owner) resizes freely.
+    b.resize(50, 150);
+    const b2 = try b.drainUntil("50 150", 3000);
+    defer alloc.free(b2);
+    try testing.expect(contains(b2, "50 150"));
+}
+
+test "size ownership: never-attached owner is displaced by a real client" {
+    // A connected-but-never-attached client can claim the unowned size with
+    // its first WINCH (the attach protocol sends WINCH before MSG_ATTACH,
+    // so that's a legitimate transient). But only an attached client may
+    // HOLD the size: the next WINCH from a real client treats the stale
+    // owner as no owner, applies, and takes ownership -- otherwise a client
+    // that dies mid-handshake would own forever and lock everyone out.
+    const s = try sockPath("own-stale");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    // A detaches: the size becomes unowned (no other attached client, so no
+    // sole-survivor snap either).
+    a.signal(c.SIGUSR2);
+    const bye = try a.drainUntil("detached", 2000);
+    defer alloc.free(bye);
+    try testing.expect(a.waitExit(2000));
+    a.kill();
+    std.Thread.sleep(200 * std.time.ns_per_ms);
+
+    // A raw protocol client claims the unowned size with a WINCH and never
+    // attaches (frozen in the built-in client's WINCH-before-ATTACH window).
+    var r = try RawClient.connect(s);
+    defer r.close();
+    r.sendWinch(50, 150);
+    std.Thread.sleep(500 * std.time.ns_per_ms); // let a "50 150" line print
+
+    // B attaches at 30x100. Its attach-time WINCH displaces the stale
+    // (never-attached) owner immediately.
+    var b = try spawn(&.{ s, "-R", "scrollback" }, 30, 100);
+    defer b.kill();
+    const b0 = try b.drainUntil("30 100", 3000);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "50 150")); // R's claim did apply (replayed)
+    try testing.expect(contains(b0, "30 100")); // ...and B displaced it
+}
+
+test "size ownership: degenerate 0x0 winch neither claims nor applies" {
+    const s = try sockPath("own-zero");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    // A detaches: unowned, no attached clients left.
+    a.signal(c.SIGUSR2);
+    const bye = try a.drainUntil("detached", 2000);
+    defer alloc.free(bye);
+    try testing.expect(a.waitExit(2000));
+    a.kill();
+    std.Thread.sleep(200 * std.time.ns_per_ms);
+
+    // R1 attaches and advertises 0x0 (e.g. a hidden window). Before the
+    // validity guard this claimed ownership AND set the pty to 0x0 via
+    // TIOCSWINSZ -- and with ownership, nothing would overwrite it (wedged).
+    var r1 = try RawClient.connect(s);
+    defer r1.close();
+    r1.attach();
+    r1.sendWinch(0, 0);
+    try testing.expect(!r1.drainUntil("0 0", 800)); // pty never became 0x0
+    try testing.expect(contains(r1.data.items, "24 80")); // still the old size
+
+    // A valid winch from a second attached client applies: R1's 0x0 claimed
+    // nothing (if it had, R1 -- attached -- would block R2 here).
+    var r2 = try RawClient.connect(s);
+    defer r2.close();
+    r2.attach();
+    r2.sendWinch(40, 120);
+    try testing.expect(r2.drainUntil("40 120", 3000));
+}
+
+test "size ownership: typing without a size never claims (no deadlock)" {
+    const s = try sockPath("own-sizeless");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    // R attaches and TYPES without ever having sent a MSG_WINCH (reachable in
+    // production: the web frontend forwards input regardless of resize
+    // ordering, and iOS drops pre-open resizes). A size-less client must not
+    // become owner: it can't contribute a size, and as owner it would block
+    // everyone else's resizes.
+    var r = try RawClient.connect(s);
+    defer r.close();
+    r.attach();
+    r.sendData("x");
+    std.Thread.sleep(300 * std.time.ns_per_ms); // let the server process it
+
+    // A (the owner) can still resize; had R claimed, this would be swallowed
+    // (R is attached, so neither the stale-owner nor sole-client rule helps).
+    a.resize(26, 90);
+    const a1 = try a.drainUntil("26 90", 3000);
+    defer alloc.free(a1);
+    try testing.expect(contains(a1, "26 90"));
+}
+
+test "size ownership: mouse wheel does not claim, click does" {
+    const s = try sockPath("own-wheel");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    const settle = try b.drain(600);
+    alloc.free(settle);
+
+    // SGR mouse wheel reports (what web/iOS turn scroll gestures into):
+    // wheel-up press, wheel-down with the release final, shift+wheel-up
+    // (modifier bit OR'd in). Idly scrolling must not steal the size.
+    b.write("\x1b[<64;12;40M");
+    b.write("\x1b[<65;12;40m");
+    b.write("\x1b[<68;12;40M");
+    const b0 = try b.drain(800);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80")); // still A's size
+    try testing.expect(!contains(b0, "30 100")); // wheel claimed nothing
+
+    // A left-button CLICK is deliberate interaction: it claims.
+    b.write("\x1b[<0;12;40M");
+    const b1 = try b.drainUntil("30 100", 3000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "30 100"));
+}
+
+test "size ownership: unterminated OSC cannot lock a client out" {
+    const s = try sockPath("own-osc");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
+    defer a.kill();
+    const a0 = try a.drainUntil("24 80", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "24 80"));
+
+    var b = try spawn(&.{s}, 30, 100);
+    defer b.kill();
+    const settle = try b.drain(600);
+    alloc.free(settle);
+
+    // An OSC that never terminates: everything after it, keystrokes
+    // included, is string body to the scanner -- so this must NOT claim...
+    b.write("\x1b]0;stray-title");
+    b.write("x");
+    const b0 = try b.drain(800);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "24 80"));
+    try testing.expect(!contains(b0, "30 100"));
+
+    // ...but not forever: past the 8 KiB string cap the scanner assumes the
+    // terminator was lost and returns to ground, so the client can claim
+    // again. Pump >8 KiB of body through, then type.
+    const junk = try alloc.alloc(u8, 9 * 1024);
+    defer alloc.free(junk);
+    @memset(junk, 'a');
+    b.write(junk);
+    b.write("x");
+    const b1 = try b.drainUntil("30 100", 5000);
+    defer alloc.free(b1);
+    try testing.expect(contains(b1, "30 100"));
 }

@@ -13,6 +13,19 @@
 //! over the socket. An attach client detaches (leaving the session running) on
 //! SIGUSR2.
 //!
+//! When several clients are attached at once (say a phone and a desktop
+//! browser), they would otherwise fight over the pty size: every resize from
+//! any client used to win. Instead, *typing claims the size*: the session
+//! keeps a size owner (initially the creator), only the owner's resizes are
+//! applied, and sending input makes you the owner (applying your latest
+//! advertised size). Only an attached client with a real (nonzero) advertised
+//! size can own. Terminal auto-replies that travel the input path (focus
+//! reports, cursor-position/device-attribute query responses, ...) and mouse
+//! wheel scrolling are recognized and never claim -- see InputScanner; mouse
+//! clicks do. A lone attached client always controls the size: its resizes
+//! always apply, and when the owner goes away leaving exactly one attached
+//! client, the pty snaps to that client's size immediately.
+//!
 //! Licensed under the MIT license (see LICENSE).
 
 const std = @import("std");
@@ -342,6 +355,236 @@ const Pty = struct {
 };
 var the_pty: Pty = .{};
 
+// ----------------------------------------------------------------------------
+// Input classification. "Typing claims the size" (see size_owner below) needs
+// to know whether a MSG_DATA payload contains genuine user interaction --
+// because not everything a client sends is typing. Terminal emulators funnel
+// their AUTO-REPLIES through the same input path as keystrokes: cursor
+// position reports (CSI r;c R), device attributes (CSI ? .. c / CSI > .. c),
+// DSR (CSI n n), DECRPM (CSI ? .. $y), XTWINOPS reports (CSI .. t), the kitty
+// keyboard-flags report (CSI ? .. u), OSC query responses (colors and the
+// like), DCS responses (XTGETTCAP/DECRQSS), and -- worst of all -- focus
+// reports CSI I / CSI O whenever an application enables focus tracking
+// (DECSET 1004; vim, neovim, and tmux commonly do). Merely focusing a browser
+// window would otherwise claim the size, which is exactly the phone-vs-
+// desktop fight this feature exists to stop; and an application's startup DA
+// query makes every attached emulator reply at once, letting an idle
+// bystander steal ownership.
+//
+// The scanner is a tiny state machine, not a full VT parser: it only needs to
+// find sequence boundaries and classify CSI final bytes. Its state lives on
+// the Client so a sequence split across MSG_DATA frames stays classified
+// correctly. An incomplete sequence at the end of a payload stays pending and
+// contributes no claim for that frame; a lone trailing ESC is pending too, so
+// a user who presses Esc and pauses claims on their NEXT input -- acceptable.
+//
+// Known acceptable loss: modified F1-F4 arrive as CSI 1;m P/Q/R/S, and the R
+// final (modified F3) collides with the cursor position report, so e.g.
+// Shift-F3 alone won't claim ownership. Harmless: the next keystroke will.
+//
+// Mouse input is split: CLICKS are deliberate interaction and claim, but
+// WHEEL events don't -- both the web and iOS clients translate scroll
+// gestures into SGR mouse reports, so idly scrolling a phone through a TUI
+// would steal the size (the original phone-vs-desktop complaint, minus the
+// keystroke). See the SGR classification at the 'M'/'m' final byte.
+// ----------------------------------------------------------------------------
+const InputScanner = struct {
+    // Bytes tolerated inside an OSC/DCS/SOS/PM/APC string before we assume
+    // the terminator was lost and bail back to ground. Without a cap, one
+    // stray unterminated OSC would classify everything the client ever sends
+    // afterwards as string body, permanently locking it out of claiming.
+    // Real query replies are tens of bytes (the largest common case, an
+    // XTGETTCAP response, stays well under 4 KiB); a user who has "typed"
+    // 8 KiB inside a broken OSC deserves to claim.
+    const MAX_STRING = 8 * 1024;
+
+    const State = enum {
+        ground, // plain bytes: keystrokes, UTF-8 text, control chars
+        esc, // saw ESC; the next byte decides what kind of sequence
+        ss3, // ESC O: one more byte completes an application-mode key
+        csi, // inside CSI, waiting for the final byte (0x40-0x7e)
+        x10, // legacy X10 mouse report: 3 raw bytes after CSI M
+        osc, // inside OSC, until BEL or ESC \
+        osc_esc, // saw ESC inside OSC (possible ST)
+        str, // inside DCS/SOS/PM/APC, until ESC \
+        str_esc, // saw ESC inside a string sequence (possible ST)
+    };
+
+    state: State = .ground,
+    // The CSI private-marker byte ('<'..'?'), or 0 if none. Tells the kitty
+    // flags REPORT (CSI ? .. u) from a kitty KEYPRESS (CSI .. u), and marks
+    // SGR mouse reports (CSI < .. M/m).
+    csi_private: u8 = 0,
+    // First numeric CSI parameter (digits before the first ';'), saturating.
+    // Only consulted for SGR mouse finals to tell wheel from click.
+    csi_param: u16 = 0,
+    // Set once the first parameter ended (at the first non-digit param byte).
+    csi_first_done: bool = false,
+    // Whether any parameter/intermediate byte followed the CSI (beyond a
+    // leading private marker). Distinguishes a bare CSI M (legacy X10 mouse
+    // prefix) from a parameterized report.
+    csi_seen_param: bool = false,
+    // Raw bytes still to swallow in the x10 state.
+    x10_left: u8 = 0,
+    // Bytes consumed so far in the current osc/str string (cap enforcement).
+    str_len: usize = 0,
+
+    /// Scan `payload` (a single pass, no allocation), advancing the
+    /// cross-frame state, and report whether any byte was genuine user
+    /// interaction (a keystroke, pasted text, a mouse click, ...) as opposed
+    /// to sequences the emulator generates on its own (query replies, focus
+    /// reports, wheel scrolling).
+    fn sawUserInput(self: *InputScanner, payload: []const u8) bool {
+        var user = false;
+        for (payload) |b| {
+            switch (self.state) {
+                .ground => {
+                    if (b == 0x1b) {
+                        self.state = .esc;
+                    } else {
+                        // Printable, UTF-8 continuation, CR, TAB, ^C, ...:
+                        // all genuine input.
+                        user = true;
+                    }
+                },
+                .esc => switch (b) {
+                    '[' => {
+                        self.state = .csi;
+                        self.csi_private = 0;
+                        self.csi_param = 0;
+                        self.csi_first_done = false;
+                        self.csi_seen_param = false;
+                    },
+                    ']' => {
+                        self.state = .osc;
+                        self.str_len = 0;
+                    },
+                    // DCS / SOS / PM / APC: string sequences ending in ST.
+                    'P', 'X', '^', '_' => {
+                        self.state = .str;
+                        self.str_len = 0;
+                    },
+                    'O' => self.state = .ss3,
+                    // ESC ESC: alt-Esc (user); the second ESC starts over.
+                    0x1b => user = true,
+                    // ESC + any other single byte: an alt-modified key.
+                    else => {
+                        user = true;
+                        self.state = .ground;
+                    },
+                },
+                // SS3 keys (application-mode arrows, F1-F4) are typing. A
+                // stray ESC here means the SS3 was aborted: count the ESC O
+                // as typing (it can only come from keys) but resume escape
+                // parsing so a following sequence is still classified right.
+                .ss3 => {
+                    user = true;
+                    self.state = if (b == 0x1b) .esc else .ground;
+                },
+                .csi => switch (b) {
+                    0x1b => self.state = .esc, // aborted sequence; restart
+                    // Final byte: classify the whole sequence.
+                    0x40...0x7e => {
+                        self.state = .ground;
+                        switch (b) {
+                            // CPR, DA1/DA2, DSR, XTWINOPS, DECRPM, focus
+                            // in/out: the emulator sent these, not the user.
+                            'R', 'c', 'n', 't', 'y', 'I', 'O' => {},
+                            // CSI ? .. u is the kitty flags report; a plain
+                            // CSI .. u is a kitty-protocol keypress.
+                            'u' => {
+                                if (self.csi_private != '?') user = true;
+                            },
+                            'M', 'm' => {
+                                if (self.csi_private == '<') {
+                                    // SGR mouse (DECSET 1006): CSI < Cb;Cx;Cy
+                                    // M (press) / m (release). In Cb, bits
+                                    // 0-1 select the button, bits 2/3/4 are
+                                    // shift/meta/ctrl modifiers, bit 5 (32)
+                                    // is motion, bit 6 (64) marks the wheel
+                                    // (values 64-67 = up/down/left/right,
+                                    // modifiers OR'd on top), and bit 7 (128)
+                                    // marks buttons 8-11 (back/forward).
+                                    // Wheel iff bit 6 set and bit 7 clear:
+                                    // scrolling never claims, clicking does
+                                    // (a click IS deliberate interaction).
+                                    if (self.csi_param & 64 == 0 or self.csi_param & 128 != 0)
+                                        user = true;
+                                } else if (b == 'M' and self.csi_private == 0 and !self.csi_seen_param) {
+                                    // Bare CSI M: legacy X10 mouse report
+                                    // prefix; 3 raw coordinate bytes follow
+                                    // and belong to the sequence. We can't
+                                    // cheaply tell wheel from click in X10
+                                    // encoding, and our clients all use SGR
+                                    // mode, so count the (exotic) X10 report
+                                    // as claiming interaction.
+                                    user = true;
+                                    self.state = .x10;
+                                    self.x10_left = 3;
+                                } else {
+                                    // Parameterized non-SGR M/m (e.g. urxvt
+                                    // 1015 mouse mode): deliberate enough.
+                                    user = true;
+                                }
+                            },
+                            // Arrows/Home/End/F-keys/'~', bracketed paste
+                            // markers, ...
+                            else => user = true,
+                        }
+                    },
+                    else => {
+                        // Parameter/intermediate bytes. Record a leading
+                        // private marker; after any parameter byte a marker
+                        // can't legitimately appear. Otherwise accumulate the
+                        // FIRST numeric parameter (digits up to the first
+                        // ';') -- all the mouse classification needs.
+                        if (self.csi_private == 0 and !self.csi_seen_param and b >= '<' and b <= '?') {
+                            self.csi_private = b;
+                        } else {
+                            self.csi_seen_param = true;
+                            if (!self.csi_first_done) {
+                                if (b >= '0' and b <= '9') {
+                                    self.csi_param = self.csi_param *| 10 +| (b - '0');
+                                } else {
+                                    self.csi_first_done = true;
+                                }
+                            }
+                        }
+                    },
+                },
+                // Legacy X10 mouse coordinate bytes: sequence body, not text.
+                .x10 => {
+                    self.x10_left -= 1;
+                    if (self.x10_left == 0) self.state = .ground;
+                },
+                .osc => switch (b) {
+                    0x07 => self.state = .ground, // BEL terminator
+                    0x1b => self.state = .osc_esc,
+                    else => self.bumpString(),
+                },
+                .osc_esc => self.state = if (b == '\\') .ground else .osc,
+                .str => {
+                    if (b == 0x1b) {
+                        self.state = .str_esc;
+                    } else {
+                        self.bumpString();
+                    }
+                },
+                .str_esc => self.state = if (b == '\\') .ground else .str,
+            }
+        }
+        return user;
+    }
+
+    // Enforce MAX_STRING inside osc/str: on overflow, assume the terminator
+    // was lost and return to ground so the client isn't classified as "inside
+    // a string" forever (see MAX_STRING).
+    fn bumpString(self: *InputScanner) void {
+        self.str_len += 1;
+        if (self.str_len > MAX_STRING) self.state = .ground;
+    }
+};
+
 const Client = struct {
     next: ?*Client = null,
     fd: c_int,
@@ -349,8 +592,85 @@ const Client = struct {
     rbuf: std.ArrayListUnmanaged(u8) = .empty, // inbound reassembly
     outq: std.ArrayListUnmanaged(u8) = .empty, // outbound queue
     saved_revents: c_short = 0, // poll revents snapshot for this iteration
+    // The last winsize this client advertised via MSG_WINCH, whether or not it
+    // was applied to the pty. All-zero until the first MSG_WINCH (an invalid
+    // size, so it's never applied by mistake). If the client later claims size
+    // ownership by typing, this is the size that takes effect (see MSG_DATA in
+    // handleFrame).
+    last_ws: c.Winsize = .{ .row = 0, .col = 0, .xpixel = 0, .ypixel = 0 },
+    // Cross-frame classifier state for this client's MSG_DATA stream: whether
+    // bytes are genuine typing (which claims size ownership) or terminal
+    // auto-replies (which never do). See InputScanner.
+    scan: InputScanner = .{},
 };
 var clients: ?*Client = null;
+
+// The size owner: the client whose window size the pty currently follows.
+// With several clients attached at once (phone + desktop browser on the same
+// session), applying every MSG_WINCH means last-write-wins: foregrounding the
+// phone snaps the desktop to phone size and vice versa. Instead, *typing
+// claims the size*: only the owner's resizes are applied (rule enforced in
+// handleFrame), and sending terminal input takes ownership. null means the
+// size is unowned -- a fresh session, or the owner detached/disconnected --
+// and the next MSG_WINCH from anyone applies and claims it.
+//
+// Invariant (enforced lazily): only an *attached* client should hold the
+// size. It can be violated transiently -- a client's first MSG_WINCH
+// precedes its MSG_ATTACH, so a claimant may not be attached yet, or ever --
+// but the MSG_WINCH rule treats a non-attached owner as no owner, so a stale
+// claimant can never lock real clients out. The pointer itself never
+// dangles: every path that detaches or destroys a client goes through
+// releaseSizeOwner (MSG_DETACH, dropClient, the MAX_OUTQ force-disconnect).
+var size_owner: ?*Client = null;
+
+/// Release size ownership if `p` holds it. Callers must clear `p.attached`
+/// (or unlink `p`) FIRST, so the departing client is not counted below.
+///
+/// Ownership is NOT auto-transferred when several attached clients remain --
+/// the choice would be ambiguous, so whoever resizes or types next claims
+/// it. But when exactly ONE attached client remains, it is entitled to the
+/// size (the same rule that lets a lone client's every WINCH apply), and we
+/// enforce that eagerly instead of waiting for its next WINCH -- because
+/// that WINCH may never come. The common case is a browser reload: the new
+/// attach client connects and sends its WINCH while the OLD client is still
+/// connected (the web frontend tears its half down asynchronously), so the
+/// WINCH is swallowed by the old ownership; when the old client then drops,
+/// nobody re-sends a size (the web client dedupes resizes against its local
+/// grid) and the pty would sit stale until the user typed.
+fn releaseSizeOwner(p: *Client) void {
+    if (size_owner != p) return;
+    size_owner = null;
+    const sole = soleAttachedClient() orelse return;
+    // Only with a real advertised size; a survivor that never sent a valid
+    // MSG_WINCH has nothing to apply (and must not own -- see MSG_DATA).
+    if (sole.last_ws.col == 0 or sole.last_ws.row == 0) return;
+    size_owner = sole;
+    if (sole.last_ws.col != the_pty.ws.col or sole.last_ws.row != the_pty.ws.row)
+        applyWinsize(sole.last_ws);
+}
+
+/// The single attached client, or null if there are zero or several.
+/// Connected-but-detached clients (and clients that haven't sent MSG_ATTACH
+/// yet) don't count: they have no screen to reflow.
+fn soleAttachedClient() ?*Client {
+    var sole: ?*Client = null;
+    var q = clients;
+    while (q) |cl| : (q = cl.next) {
+        if (cl.attached) {
+            if (sole != null) return null;
+            sole = cl;
+        }
+    }
+    return sole;
+}
+
+/// Set the pty (and scrollback mirror) to `ws`. The kernel delivers SIGWINCH
+/// to the foreground process group as a side effect of TIOCSWINSZ.
+fn applyWinsize(ws: c.Winsize) void {
+    the_pty.ws = ws;
+    _ = c.ioctl(the_pty.fd, c.TIOCSWINSZ, &the_pty.ws);
+    Mirror.resize(the_pty.ws.col, the_pty.ws.row);
+}
 
 // Socket bookkeeping. On exit we only unlink the socket if it's still the one
 // we created (its inode matches), so we don't clobber a replacement.
@@ -507,6 +827,11 @@ fn killPty(sig: c_int) void {
 }
 
 fn dropClient(p: *Client) void {
+    // A departing owner releases the size. Clear `attached` first so the
+    // sole-survivor logic in releaseSizeOwner doesn't count the client that
+    // is leaving (it is still on the list at this point).
+    p.attached = false;
+    releaseSizeOwner(p);
     _ = std.c.close(p.fd);
     // unlink from the singly linked list
     if (clients == p) {
@@ -527,10 +852,15 @@ fn dropClient(p: *Client) void {
 
 fn enqueue(p: *Client, typ: u8, payload: []const u8) void {
     if (p.outq.items.len + HDR + payload.len > MAX_OUTQ) {
-        // Stuck/slow client; disconnect it rather than grow unbounded.
+        // Stuck/slow client; disconnect it rather than grow unbounded. This is
+        // a forced detach (readClient will dropClient it once the shutdown
+        // surfaces as EOF), so release size ownership now rather than let a
+        // dead-in-the-water client pin the pty size until then. Detach before
+        // releasing so the sole-survivor logic doesn't count this client.
+        p.attached = false;
+        releaseSizeOwner(p);
         p.outq.clearRetainingCapacity();
         _ = std.c.shutdown(p.fd, 2);
-        p.attached = false;
         return;
     }
     // Reserve up front so a frame is enqueued all-or-nothing: a header without
@@ -573,13 +903,75 @@ fn sendSnapshot(p: *Client, mode: i32) void {
 fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
     switch (typ) {
         MSG_DATA => {
+            // Typing claims the size -- but only *typing*. Run every payload
+            // through the client's scanner and claim only if it contained
+            // genuine user input; terminal auto-replies (focus reports, DA/
+            // CPR/DSR responses, OSC/DCS answers -- see InputScanner) never
+            // claim. We always run the scanner, even when p already owns the
+            // size: skipping it would let its cross-frame state go stale
+            // mid-sequence, and resetting on ownership changes could
+            // misclassify a sequence spanning that boundary. A single
+            // branch-per-byte pass over keystroke-sized payloads with no
+            // allocation is cheap enough not to bother.
+            const typed = p.scan.sawUserInput(payload);
+            // Claim only when p is attached (only an attached client may own
+            // the size -- a pre-ATTACH typer would be an owner nobody can
+            // displace, see the MSG_WINCH rule) and only when p has a valid
+            // recorded size. The validity requirement matters in production:
+            // clients can legitimately type before their first resize reaches
+            // us (the web frontend forwards input regardless of resize
+            // ordering; iOS drops resizes sent before the stream opens), and
+            // a size-less owner would deadlock resizes for everyone else
+            // while contributing no size itself. Such a client just doesn't
+            // claim; its later MSG_WINCH will (or the owner's rules permit).
+            if (typed and size_owner != p and p.attached and
+                p.last_ws.col > 0 and p.last_ws.row > 0)
+            {
+                size_owner = p;
+                // Snap the pty to the claimant's recorded size if it differs
+                // from the current size. Compare cols/rows only: pixel fields
+                // are advisory and often zero, and differing pixels alone
+                // don't warrant a reflow.
+                if (p.last_ws.col != the_pty.ws.col or p.last_ws.row != the_pty.ws.row)
+                    applyWinsize(p.last_ws);
+            }
+            // Forward unmodified regardless of classification: the
+            // application still needs the auto-replies it asked for.
             writeAllFd(the_pty.fd, payload);
         },
         MSG_WINCH => {
             if (payload.len >= @sizeOf(c.Winsize)) {
-                @memcpy(@as([*]u8, @ptrCast(&the_pty.ws))[0..@sizeOf(c.Winsize)], payload[0..@sizeOf(c.Winsize)]);
-                _ = c.ioctl(the_pty.fd, c.TIOCSWINSZ, &the_pty.ws);
-                Mirror.resize(the_pty.ws.col, the_pty.ws.row);
+                // Always record the client's size, applied or not: if this
+                // client later types (claiming ownership), MSG_DATA above
+                // applies the recorded size.
+                @memcpy(@as([*]u8, @ptrCast(&p.last_ws))[0..@sizeOf(c.Winsize)], payload[0..@sizeOf(c.Winsize)]);
+                // Never claim or apply a degenerate size: TIOCSWINSZ happily
+                // sets 0x0 and (with ownership) nothing would overwrite it,
+                // wedging every application that divides by the size. The
+                // recorded last_ws keeps the zeros, which MSG_DATA's validity
+                // guard likewise refuses to apply.
+                if (p.last_ws.col == 0 or p.last_ws.row == 0) return;
+                // Apply if the size is unowned, this client owns it, or the
+                // current owner is not (or no longer, or not yet) attached.
+                // The non-attached-owner clause enforces the "only an
+                // attached client can hold the size" invariant lazily: a
+                // claimant's first WINCH precedes its MSG_ATTACH, so a
+                // connected-but-never-attached client (crashed mid-handshake,
+                // or pathological) could otherwise own forever and lock out
+                // every real client. It also subsumes the sole-client rule
+                // for WINCH: a lone attached client's owner is either itself
+                // or non-attached (two attached clients can't coexist with
+                // one being "sole"), so its every resize applies -- exactly
+                // the pre-ownership behavior. In every applying case
+                // ownership moves to p: a stale owner is displaced, and an
+                // unowned size is claimed (that's how the session creator
+                // becomes the initial owner -- its attach-time WINCH arrives
+                // while owner is null).
+                const owner_stale = if (size_owner) |o| !o.attached else true;
+                if (owner_stale or size_owner == p) {
+                    size_owner = p;
+                    applyWinsize(p.last_ws);
+                }
             }
         },
         MSG_ATTACH => {
@@ -587,7 +979,12 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
             if (mode != REPLAY_NONE) sendSnapshot(p, mode);
             p.attached = true;
         },
-        MSG_DETACH => p.attached = false,
+        MSG_DETACH => {
+            p.attached = false;
+            // A detaching owner releases the size; see releaseSizeOwner for
+            // why it is not handed to anyone else.
+            releaseSizeOwner(p);
+        },
         else => {}, // unknown: ignore (forward-compatible)
     }
 }
@@ -978,13 +1375,19 @@ fn attachLoop(s: c_int) i32 {
             }
         }
 
+        // Flush a pending resize BEFORE forwarding stdin: if a SIGWINCH and
+        // keystrokes race in the same wakeup, the server must record the new
+        // size before the input claims size ownership -- otherwise the claim
+        // applies a stale size and the key reaches the app pre-resize. A
+        // signal that lands after this check is not lost: its handler pokes
+        // the self-pipe, so the next poll() wakes immediately.
+        if (win_changed.swap(false, .seq_cst)) sendWinch(s);
+
         if (pfds[0].revents & c.POLLIN != 0) {
             const r = std.c.read(0, &rd, rd.len);
             if (r <= 0) return 1;
             sendFrame(s, MSG_DATA, rd[0..@intCast(r)]);
         }
-
-        if (win_changed.swap(false, .seq_cst)) sendWinch(s);
     }
 }
 

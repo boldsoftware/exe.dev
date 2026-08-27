@@ -34,6 +34,23 @@ kill -USR2 <pid-of-exe-scroll>
 
 The session keeps running; reattach later with the same command.
 
+### Multiple clients: typing claims the size
+
+Any number of clients can attach to one session, and their windows rarely
+agree on a size. Rather than letting every resize fight over the PTY
+(last-write-wins), the session tracks a *size owner*: the client whose window
+the PTY follows. Resizes from other clients are recorded but not applied —
+until one of them **types**, which claims ownership and applies its size.
+Only an attached client that has advertised a real (nonzero) size can own.
+Terminal auto-replies that share the input path (focus reports, cursor
+position / device attribute query responses, and the like) never claim
+ownership, and neither does mouse-wheel scrolling — clicking does.
+Initially the session creator owns the size; when the owner detaches the size
+is unowned and the next resize (or keystroke) claims it — unless exactly one
+attached client remains, in which case the PTY snaps to its size immediately
+(so e.g. reloading a browser tab never leaves the terminal at a stale size).
+With a single client attached, resizes always apply immediately.
+
 ### Telling the processes apart
 
 Each session involves a backgrounded *session server* (owns the pty and
