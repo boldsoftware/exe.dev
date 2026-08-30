@@ -316,6 +316,11 @@ const Mirror = struct {
         fmt.extra.screen.style = true;
         var aw = std.Io.Writer.Allocating.init(alloc);
         defer aw.deinit();
+        // TerminalFormatter's screen cursor option restores the position, not
+        // DECTCEM visibility. Emit both states explicitly: a reconnect may
+        // reuse a client emulator whose old visibility differs from the
+        // session, while a renderer remount starts from the visible default.
+        aw.writer.writeAll(if (t.modes.get(.cursor_visible)) "\x1b[?25h" else "\x1b[?25l") catch return null;
         fmt.format(&aw.writer) catch return null;
         return aw.toOwnedSlice() catch null;
     }

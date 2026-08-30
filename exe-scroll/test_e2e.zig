@@ -523,6 +523,56 @@ test "replay preserves color (SGR escapes)" {
     try testing.expect(contains(replay, "\x1b[")); // ...and so did SGR escapes
 }
 
+fn expectCursorVisibilityReplay(replay_mode: []const u8, script: []const u8, marker: []const u8, expected: []const u8, opposite: []const u8) !void {
+    const s = try sockPath(replay_mode);
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", script }, 24, 80);
+    const seen = try p.drainUntil(marker, 3000);
+    defer alloc.free(seen);
+    p.signal(c.SIGUSR2);
+    const detached = try p.drainUntil("detached", 2000);
+    alloc.free(detached);
+    p.kill();
+
+    var p2 = try spawn(&.{ s, "-R", replay_mode }, 24, 80);
+    defer p2.kill();
+    const replay = try p2.drainUntil(marker, 3000);
+    defer alloc.free(replay);
+
+    const state_at = std.mem.indexOf(u8, replay, expected);
+    const marker_at = std.mem.indexOf(u8, replay, marker);
+    try testing.expect(state_at != null);
+    try testing.expect(marker_at != null);
+    try testing.expect(state_at.? < marker_at.?);
+    try testing.expect(!contains(replay[state_at.? + expected.len .. marker_at.?], opposite));
+}
+
+test "replay preserves cursor visibility in every mode" {
+    // Claude Code hides the hardware cursor while it draws its own input line.
+    // Losing DECTCEM on reattach exposes the real cursor on Claude's scratch
+    // row, so it appears to jump below the text during edits. The visible case
+    // matters too: reconnects can reuse an emulator whose old state was hidden.
+    for ([_][]const u8{ "screen", "scrollback" }) |replay_mode| {
+        try expectCursorVisibilityReplay(
+            replay_mode,
+            "printf '\\033[?25lHIDDENCURSOR\\r\\n'; exec cat",
+            "HIDDENCURSOR",
+            "\x1b[?25l",
+            "\x1b[?25h",
+        );
+        try expectCursorVisibilityReplay(
+            replay_mode,
+            "printf '\\033[?25l\\033[?25hVISIBLECURSOR\\r\\n'; exec cat",
+            "VISIBLECURSOR",
+            "\x1b[?25h",
+            "\x1b[?25l",
+        );
+    }
+}
+
 test "socket recreation on SIGUSR1 (abduco-style)" {
     const s = try sockPath("recreate");
     defer alloc.free(s);
