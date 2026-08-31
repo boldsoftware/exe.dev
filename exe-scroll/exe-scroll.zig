@@ -234,6 +234,88 @@ fn dirOf(path: []const u8) []const u8 {
     return ".";
 }
 
+/// The final path component (everything after the last '/'). For a path with
+/// no '/', that's the whole path.
+fn baseOf(path: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, path, '/')) |i| return path[i + 1 ..];
+    return path;
+}
+
+// ----------------------------------------------------------------------------
+// Binding/connecting AF_UNIX sockets whose path is longer than sun_path.
+//
+// sun_path is a fixed, small array (104 bytes on macOS, 108 on Linux) and the
+// kernel copies the *literal* string we hand it -- it never resolves or
+// expands the path first. So a deep-but-legal socket path overflows sun_path
+// and bind()/connect() fail with ENAMETOOLONG even though every real syscall
+// that touches the file (stat/unlink/chmod/rename) accepts it fine. Shelley's
+// terminal sessions live under the on-disk DB directory, whose absolute path
+// on macOS routinely exceeds 104 bytes, so `exe-scroll` couldn't bind.
+//
+// The portable fix: chdir() into the socket's parent directory and bind/connect
+// using only the (short) basename, then chdir() back. The socket file still
+// lands at exactly the same absolute location on disk, so this changes nothing
+// observable -- existing sessions created with a full-path bind remain
+// reachable, since a client connecting via the basename hits the same inode.
+// exe-scroll is single-threaded and never otherwise changes its cwd, so the
+// transient chdir is safe.
+//
+// prepSockPath fills `sockun` for `path`. When the full path fits in sun_path
+// it is used verbatim (no chdir, byte-for-byte the old behavior). Otherwise we
+// chdir into the parent and copy just the basename; the returned fd is the old
+// cwd, which the caller must hand to restoreCwd() after bind()/connect().
+// Returns -1 with errno set on failure; the sentinel NO_RESTORE means success
+// with no chdir performed.
+const NO_RESTORE: c_int = -2;
+
+fn prepSockPath(sockun: *std.c.sockaddr.un, path: [:0]const u8) c_int {
+    sockun.family = c.AF_UNIX;
+    if (path.len <= sockun.path.len - 1) {
+        @memcpy(sockun.path[0..path.len], path[0..path.len]);
+        sockun.path[path.len] = 0;
+        return NO_RESTORE;
+    }
+    // Path too long for sun_path: chdir into its directory and use the basename.
+    const base = baseOf(path);
+    if (base.len == 0 or base.len > sockun.path.len - 1) {
+        c.setErrno(c.ENAMETOOLONG);
+        return -1;
+    }
+    const dir = dirOf(path);
+    var dirbuf: [std.fs.max_path_bytes]u8 = undefined;
+    if (dir.len >= dirbuf.len) {
+        c.setErrno(c.ENAMETOOLONG);
+        return -1;
+    }
+    @memcpy(dirbuf[0..dir.len], dir);
+    dirbuf[dir.len] = 0;
+
+    // Remember the current directory so we can return to it. O_DIRECTORY keeps
+    // us honest; O_CLOEXEC so the fd never leaks into the child command.
+    const saved = std.c.open(".", .{ .ACCMODE = .RDONLY, .DIRECTORY = true, .CLOEXEC = true });
+    if (saved < 0) return -1;
+    if (std.c.chdir(@ptrCast(&dirbuf)) < 0) {
+        const e = c.errno();
+        _ = std.c.close(saved);
+        c.setErrno(e);
+        return -1;
+    }
+    @memcpy(sockun.path[0..base.len], base[0..base.len]);
+    sockun.path[base.len] = 0;
+    return saved;
+}
+
+/// Undo the chdir performed by prepSockPath. `saved` is prepSockPath's return
+/// value; NO_RESTORE (or any negative fd) is a no-op. Preserves errno so it can
+/// be called on the failure path without clobbering the caller's error.
+fn restoreCwd(saved: c_int) void {
+    if (saved < 0) return; // NO_RESTORE or an error sentinel: nothing to undo.
+    const e = c.errno();
+    _ = std.c.fchdir(saved);
+    _ = std.c.close(saved);
+    c.setErrno(e);
+}
+
 // ----------------------------------------------------------------------------
 // Secure directory creation: mkdir -p with mode 0700 for any component we
 // create, so the socket's parents are never world/group accessible.
@@ -770,17 +852,57 @@ fn createListenSocket(name: [:0]const u8) c_int {
         c.setErrno(c.ENAMETOOLONG);
         return -1;
     };
-    if (tmp.len > sockun.path.len - 1 or name.len > sockun.path.len - 1) {
-        c.setErrno(c.ENAMETOOLONG);
-        return -1;
+
+    // If the temp path won't fit in sun_path, chdir into `dir` and operate on
+    // basenames instead (see the prepSockPath comment). We do the whole atomic
+    // bind+chmod+rename dance on basenames so it's correct whether `name` is
+    // absolute or relative. The socket still ends up at the same location.
+    var saved: c_int = NO_RESTORE;
+    var bind_name: [*:0]const u8 = tmp.ptr; // what bind()/chmod() see
+    var final_name: [*:0]const u8 = name.ptr; // rename() target
+    var tmp_base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var name_base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    if (tmp.len > sockun.path.len - 1) {
+        const tmp_base = baseOf(tmp);
+        const name_base = baseOf(name);
+        if (tmp_base.len > sockun.path.len - 1 or
+            tmp_base.len >= tmp_base_buf.len or name_base.len >= name_base_buf.len or
+            dir.len >= std.fs.max_path_bytes)
+        {
+            c.setErrno(c.ENAMETOOLONG);
+            return -1;
+        }
+        @memcpy(tmp_base_buf[0..tmp_base.len], tmp_base);
+        tmp_base_buf[tmp_base.len] = 0;
+        @memcpy(name_base_buf[0..name_base.len], name_base);
+        name_base_buf[name_base.len] = 0;
+
+        var dirbuf: [std.fs.max_path_bytes]u8 = undefined;
+        @memcpy(dirbuf[0..dir.len], dir);
+        dirbuf[dir.len] = 0;
+        saved = std.c.open(".", .{ .ACCMODE = .RDONLY, .DIRECTORY = true, .CLOEXEC = true });
+        if (saved < 0) return -1;
+        if (std.c.chdir(@ptrCast(&dirbuf)) < 0) {
+            const e = c.errno();
+            _ = std.c.close(saved);
+            c.setErrno(e);
+            return -1;
+        }
+        bind_name = @ptrCast(&tmp_base_buf);
+        final_name = @ptrCast(&name_base_buf);
     }
-    _ = std.c.unlink(tmp.ptr);
+
+    _ = std.c.unlink(bind_name);
 
     const s = std.c.socket(c.AF_UNIX, c.SOCK_STREAM, 0);
-    if (s < 0) return -1;
+    if (s < 0) {
+        restoreCwd(saved);
+        return -1;
+    }
     sockun.family = c.AF_UNIX;
-    @memcpy(sockun.path[0..tmp.len], tmp[0..tmp.len]);
-    sockun.path[tmp.len] = 0;
+    const bind_len = std.mem.len(bind_name);
+    @memcpy(sockun.path[0..bind_len], bind_name[0..bind_len]);
+    sockun.path[bind_len] = 0;
     // Tighten umask so the socket is created with no group/other access even
     // for the instant before the explicit chmod below (defends a socket placed
     // in a pre-existing world-accessible directory like /tmp).
@@ -788,17 +910,19 @@ fn createListenSocket(name: [:0]const u8) c_int {
     const bind_rc = std.c.bind(s, @ptrCast(&sockun), @sizeOf(@TypeOf(sockun)));
     _ = std.c.umask(old_umask);
     if (bind_rc < 0 or
-        std.c.chmod(tmp.ptr, 0o600) < 0 or
+        std.c.chmod(bind_name, 0o600) < 0 or
         std.c.listen(s, 128) < 0 or
         setnonblocking(s) < 0 or
-        std.c.rename(tmp.ptr, name.ptr) < 0)
+        std.c.rename(bind_name, final_name) < 0)
     {
         const e = c.errno();
         _ = std.c.close(s);
-        _ = std.c.unlink(tmp.ptr);
+        _ = std.c.unlink(bind_name);
+        restoreCwd(saved);
         c.setErrno(e);
         return -1;
     }
+    restoreCwd(saved);
     _ = std.c.fcntl(s, c.F_SETFD, c.FD_CLOEXEC);
     return s;
 }
@@ -1254,17 +1378,21 @@ fn winChange(sig: c_int) callconv(.c) void {
 
 fn connectSocket(name: [:0]const u8) c_int {
     var sockun: std.c.sockaddr.un = undefined;
-    const namelen = name.len;
-    if (namelen > sockun.path.len - 1) {
-        c.setErrno(c.ENAMETOOLONG);
-        return -1;
-    }
     const s = std.c.socket(c.AF_UNIX, c.SOCK_STREAM, 0);
     if (s < 0) return -1;
-    sockun.family = c.AF_UNIX;
-    @memcpy(sockun.path[0..namelen], name[0..namelen]);
-    sockun.path[namelen] = 0;
-    if (std.c.connect(s, @ptrCast(&sockun), @sizeOf(@TypeOf(sockun))) < 0) {
+    // prepSockPath uses the full path when it fits, else chdirs into the parent
+    // and puts the basename in sun_path (see its comment). restoreCwd undoes any
+    // chdir once connect() has captured the address.
+    const saved = prepSockPath(&sockun, name);
+    if (saved == -1) {
+        const e = c.errno();
+        _ = std.c.close(s);
+        c.setErrno(e);
+        return -1;
+    }
+    const rc = std.c.connect(s, @ptrCast(&sockun), @sizeOf(@TypeOf(sockun)));
+    restoreCwd(saved);
+    if (rc < 0) {
         const e = c.errno();
         _ = std.c.close(s);
         c.setErrno(e);

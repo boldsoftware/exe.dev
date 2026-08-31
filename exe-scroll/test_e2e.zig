@@ -25,9 +25,11 @@ const c = struct {
     extern "c" fn kill(pid: c_int, sig: c_int) c_int;
     extern "c" fn waitpid(pid: c_int, status: ?*c_int, options: c_int) c_int;
     extern "c" fn _exit(code: c_int) noreturn;
-    extern "c" fn __errno_location() *c_int;
+    // std.c._errno() resolves to the platform's errno location (__errno_location
+    // on glibc, __error on Darwin, etc.), so this builds everywhere rather than
+    // hardcoding the glibc symbol.
     fn errno() c_int {
-        return __errno_location().*;
+        return std.c._errno().*;
     }
 
     const SIGKILL = 9;
@@ -41,7 +43,13 @@ const c = struct {
     // Set the size of a pty via its master fd (what a terminal emulator does
     // on window resize). The kernel then delivers SIGWINCH to the pty's
     // foreground process group. Same encoding dance as exe-scroll.zig.
-    const TIOCSWINSZ: c_int = @bitCast(@as(u32, @intCast(std.c.T.IOCSWINSZ)));
+    // std.c.T only defines IOCSWINSZ for some platforms (notably it's missing
+    // on Darwin), so fill that gap the same way exe-scroll.zig does: it's
+    // _IOW('t', 103, struct winsize).
+    const TIOCSWINSZ: c_int = switch (@import("builtin").os.tag) {
+        .macos, .ios, .tvos, .watchos, .visionos => @bitCast(@as(u32, 0x80087467)),
+        else => @bitCast(@as(u32, @intCast(std.c.T.IOCSWINSZ))),
+    };
 };
 
 const alloc = std.heap.c_allocator;
