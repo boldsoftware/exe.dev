@@ -356,6 +356,11 @@ fn ensureParentDirs(path: []const u8) !void {
 const Mirror = struct {
     term: *vt.Terminal,
     stream: vt.TerminalStream,
+    // Raw bytes for a control/UTF-8 sequence that the parser has started but
+    // not completed. A reconnect must resume this parser state before later
+    // PTY output arrives; terminal cells and modes alone cannot represent it.
+    pending: std.ArrayListUnmanaged(u8) = .empty,
+    pending_valid: bool = true,
     cols: u16,
     rows: u16,
 
@@ -379,9 +384,86 @@ const Mirror = struct {
         };
     }
 
+    // Normal CSI/OSC state is tiny. Bound pathological clipboard/graphics
+    // sequences; reconnecting clients wait for those to terminate instead of
+    // making the session server retain arbitrary PTY output.
+    const max_pending_bytes = 16 * 1024;
+    const max_retained_pending_bytes = 4 * 1024;
+
+    fn parserPending(m: *const Mirror) bool {
+        return m.stream.parser.state != .ground or m.stream.utf8decoder.state != 0;
+    }
+
+    fn resetPending(m: *Mirror) void {
+        if (m.pending.capacity > max_retained_pending_bytes) {
+            m.pending.deinit(alloc);
+            m.pending = .empty;
+        } else {
+            m.pending.clearRetainingCapacity();
+        }
+        m.pending_valid = true;
+    }
+
+    fn appendPending(m: *Mirror, byte: u8, parser_state: @TypeOf(m.stream.parser.state)) void {
+        // Most C0 controls execute immediately while parsing CSI/OSC and their
+        // effects are already in the formatted snapshot. DCS/APC are the
+        // exception: their payload action includes C0 bytes, so a reconnecting
+        // client needs those bytes to resume the application protocol.
+        if (byte < 0x20 and byte != 0x1b and
+            parser_state != .dcs_passthrough and
+            parser_state != .sos_pm_apc_string) return;
+        if (!m.pending_valid) return;
+        if (m.pending.items.len >= max_pending_bytes) {
+            m.pending.deinit(alloc);
+            m.pending = .empty;
+            m.pending_valid = false;
+            return;
+        }
+        m.pending.append(alloc, byte) catch {
+            m.pending_valid = false;
+        };
+    }
+
     fn write(buf: []const u8) void {
         const m = &(instance orelse return);
-        m.stream.nextSlice(buf);
+        var fast_start: usize = 0;
+        var i: usize = 0;
+        while (i < buf.len) : (i += 1) {
+            // Plain ASCII cannot leave the parser between states, so preserve
+            // TerminalStream's SIMD path for the overwhelmingly common case.
+            // ESC and non-ASCII may begin a control or partial UTF-8 sequence
+            // and are tracked byte-by-byte until the parser returns to ground.
+            if (!parserPending(m) and buf[i] != 0x1b and buf[i] < 0x80) continue;
+            if (fast_start < i) m.stream.nextSlice(buf[fast_start..i]);
+
+            const parser_state_before = m.stream.parser.state;
+            const utf8_pending_before = m.stream.utf8decoder.state != 0;
+            const was_pending = parserPending(m);
+            // If an invalid UTF-8 continuation is retried as a fresh ESC or
+            // multibyte lead, the replacement character is already part of
+            // terminal state. Only the retried byte belongs to the new pending
+            // sequence; replaying the rejected prefix would duplicate U+FFFD.
+            var restarted_after_invalid_utf8 = false;
+            if (utf8_pending_before) {
+                var decoder_probe = m.stream.utf8decoder;
+                restarted_after_invalid_utf8 = !decoder_probe.next(buf[i])[1];
+            }
+            m.stream.next(buf[i]);
+            const is_pending = parserPending(m);
+            if (!was_pending and is_pending) {
+                resetPending(m);
+                appendPending(m, buf[i], parser_state_before);
+            } else if (was_pending) {
+                // ESC cancels/terminates the old parser construct and starts a
+                // new escape sequence. The formatted snapshot already holds
+                // any exit action, so only this new ESC remains pending.
+                if ((restarted_after_invalid_utf8 or buf[i] == 0x1b) and is_pending) resetPending(m);
+                appendPending(m, buf[i], parser_state_before);
+                if (!is_pending) resetPending(m);
+            }
+            fast_start = i + 1;
+        }
+        if (fast_start < buf.len) m.stream.nextSlice(buf[fast_start..]);
     }
 
     fn resize(cols: u16, rows: u16) void {
@@ -392,27 +474,206 @@ const Mirror = struct {
         m.rows = rows;
     }
 
+    fn normalizeReplayModes(t: *const vt.Terminal) vt.Terminal {
+        // Terminal.modes remembers every set bit, while the effective mouse
+        // event/format is last-write-wins in Terminal.flags. Canonicalize those
+        // mutually-exclusive groups so replaying modes in enum order cannot
+        // select a different protocol than the application is actually using.
+        var replay = t.*;
+        inline for (.{
+            vt.Mode.mouse_event_x10,
+            vt.Mode.mouse_event_normal,
+            vt.Mode.mouse_event_button,
+            vt.Mode.mouse_event_any,
+        }) |mode| replay.modes.set(mode, false);
+        switch (replay.flags.mouse_event) {
+            .none => {},
+            .x10 => replay.modes.set(.mouse_event_x10, true),
+            .normal => replay.modes.set(.mouse_event_normal, true),
+            .button => replay.modes.set(.mouse_event_button, true),
+            .any => replay.modes.set(.mouse_event_any, true),
+        }
+
+        inline for (.{
+            vt.Mode.mouse_format_utf8,
+            vt.Mode.mouse_format_sgr,
+            vt.Mode.mouse_format_urxvt,
+            vt.Mode.mouse_format_sgr_pixels,
+        }) |mode| replay.modes.set(mode, false);
+        switch (replay.flags.mouse_format) {
+            .x10 => {},
+            .utf8 => replay.modes.set(.mouse_format_utf8, true),
+            .sgr => replay.modes.set(.mouse_format_sgr, true),
+            .urxvt => replay.modes.set(.mouse_format_urxvt, true),
+            .sgr_pixels => replay.modes.set(.mouse_format_sgr_pixels, true),
+        }
+
+        // A client needs one canonical way into the active alternate screen,
+        // not every historical DECSET bit that happened to remain set. 1049
+        // preserves the primary cursor so any later 47l/1047l/1049l from the
+        // still-running application returns to the primary buffer we replay.
+        replay.modes.set(.alt_screen_legacy, false);
+        replay.modes.set(.alt_screen, false);
+        replay.modes.set(.alt_screen_save_cursor_clear_enter, replay.screens.active_key == .alternate);
+        return replay;
+    }
+
+    fn writeReplayCursor(t: *const vt.Terminal, screen: *const vt.Screen, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        var row = screen.cursor.y + 1;
+        var col = screen.cursor.x + 1;
+        if (t.modes.get(.origin)) {
+            row = screen.cursor.y -| t.scrolling_region.top + 1;
+            col = screen.cursor.x -| t.scrolling_region.left + 1;
+        }
+        try writer.print("\x1b[{d};{d}H", .{ row, col });
+    }
+
     fn formatTerminal(t: *const vt.Terminal) ?[]u8 {
-        var fmt = vt.formatter.TerminalFormatter.init(t, .{ .emit = .vt, .unwrap = false, .trim = true });
-        fmt.extra.screen.cursor = true;
-        fmt.extra.screen.style = true;
+        var replay = normalizeReplayModes(t);
+        const formatter_opts: vt.formatter.Options = .{ .emit = .vt, .unwrap = false, .trim = true };
         var aw = std.Io.Writer.Allocating.init(alloc);
         defer aw.deinit();
-        // TerminalFormatter's screen cursor option restores the position, not
-        // DECTCEM visibility. Emit both states explicitly: a reconnect may
-        // reuse a client emulator whose old visibility differs from the
-        // session, while a renderer remount starts from the visible default.
-        aw.writer.writeAll(if (t.modes.get(.cursor_visible)) "\x1b[?25h" else "\x1b[?25l") catch return null;
-        fmt.format(&aw.writer) catch return null;
+        // Terminal modes are interaction state, not just decoration. In
+        // particular full-screen TUIs rely on alternate-screen and mouse
+        // reporting modes so a reattached client sends wheel gestures back to
+        // the application instead of scrolling an empty local buffer.
+        // Cursor-visible is the default and would therefore be omitted, but a
+        // reconnect can reuse an emulator whose old state differs. Emit both
+        // directions up front; the formatter may repeat the hidden direction
+        // because it is non-default, which is harmless.
+        aw.writer.writeAll(if (replay.modes.get(.cursor_visible)) "\x1b[?25h" else "\x1b[?25l") catch return null;
+
+        // Palette and modes are emitted separately from cells so an active
+        // alternate screen can be reconstructed on top of its saved primary
+        // buffer. Apply every content-affecting mode before painting, but hold
+        // DECOM and the screen switch until the active screen is ready: DECOM
+        // homes the cursor, and 1049 must save the reconstructed primary
+        // cursor rather than that home position.
+        var palette_fmt = vt.formatter.TerminalFormatter.init(&replay, formatter_opts);
+        palette_fmt.content = .none;
+        palette_fmt.extra = .none;
+        palette_fmt.extra.palette = true;
+        palette_fmt.format(&aw.writer) catch return null;
+
+        var pre_modes = replay;
+        pre_modes.modes.set(.origin, false);
+        pre_modes.modes.set(.save_cursor, false);
+        pre_modes.modes.set(.synchronized_output, false);
+        pre_modes.modes.set(.alt_screen_legacy, false);
+        pre_modes.modes.set(.alt_screen, false);
+        pre_modes.modes.set(.alt_screen_save_cursor_clear_enter, false);
+        var modes_fmt = vt.formatter.TerminalFormatter.init(&pre_modes, formatter_opts);
+        modes_fmt.content = .none;
+        modes_fmt.extra = .none;
+        modes_fmt.extra.modes = true;
+        modes_fmt.format(&aw.writer) catch return null;
+
+        if (replay.screens.active_key == .alternate) {
+            // TerminalFormatter emits only the active screen. Replaying an
+            // alternate screen by itself would leave a fresh client with no
+            // saved primary buffer: when the application later leaves the
+            // alternate screen, its shell history would restore as blank.
+            const primary = replay.screens.get(.primary) orelse return null;
+            var primary_fmt = vt.formatter.ScreenFormatter.init(primary, formatter_opts);
+            primary_fmt.extra.cursor = true;
+            primary_fmt.extra.style = true;
+            primary_fmt.extra.hyperlink = true;
+            primary_fmt.format(&aw.writer) catch return null;
+
+            // Recreate the origin bit captured by the original 1049 save.
+            // The region is still the RIS default (the live active-screen
+            // region is restored later), so this CUP remains absolute while
+            // causing 1049 to save the correct DECOM state.
+            if (primary.saved_cursor) |saved| {
+                if (saved.origin) {
+                    aw.writer.print("\x1b[?6h\x1b[{d};{d}H", .{ saved.y + 1, saved.x + 1 }) catch return null;
+                }
+            }
+
+            // One canonical 1049 saves that primary cursor and creates a clean
+            // alternate buffer. 1049 inherits cursor/style, while the cell
+            // stream assumes origin/default style, so establish both.
+            aw.writer.writeAll("\x1b[?1049h\x1b[?6l\x1b[H\x1b[0m") catch return null;
+        }
+
+        var active_fmt = vt.formatter.ScreenFormatter.init(replay.screens.active, formatter_opts);
+        active_fmt.extra.style = true;
+        active_fmt.extra.hyperlink = true;
+        active_fmt.format(&aw.writer) catch return null;
+
+        if (replay.screens.active_key == .primary) {
+            // Legacy 47 mode preserves an inactive alternate buffer across
+            // switches. RIS removed any client-side copy, so reconstruct an
+            // initialized inactive buffer too; 47l returns to the still-intact
+            // primary cells, whose cursor/state we restore below.
+            if (replay.screens.get(.alternate)) |alternate| {
+                aw.writer.writeAll("\x1b[?47h\x1b[H\x1b[0m") catch return null;
+                var inactive_fmt = vt.formatter.ScreenFormatter.init(alternate, formatter_opts);
+                inactive_fmt.extra.cursor = true;
+                inactive_fmt.extra.style = true;
+                inactive_fmt.extra.hyperlink = true;
+                inactive_fmt.format(&aw.writer) catch return null;
+                aw.writer.writeAll("\x1b[?47l") catch return null;
+            }
+        }
+
+        // DECSTBM/DECSLRM and DECOM move the cursor, so restore those after
+        // painting and then put the active cursor back. ScreenFormatter's CUP
+        // is always absolute; writeReplayCursor converts it to region-relative
+        // coordinates when origin mode is active.
+        var region_fmt = vt.formatter.TerminalFormatter.init(&replay, formatter_opts);
+        region_fmt.content = .none;
+        region_fmt.extra = .none;
+        region_fmt.extra.scrolling_region = true;
+        region_fmt.extra.tabstops = true;
+        region_fmt.extra.keyboard = true;
+        region_fmt.extra.pwd = true;
+        region_fmt.format(&aw.writer) catch return null;
+        if (replay.modes.get(.origin)) aw.writer.writeAll("\x1b[?6h") catch return null;
+
+        var final_state_fmt = vt.formatter.ScreenFormatter.init(replay.screens.active, formatter_opts);
+        final_state_fmt.content = .none;
+        final_state_fmt.extra = .all;
+        final_state_fmt.extra.cursor = false;
+        final_state_fmt.format(&aw.writer) catch return null;
+        writeReplayCursor(&replay, replay.screens.active, &aw.writer) catch return null;
         return aw.toOwnedSlice() catch null;
+    }
+
+    const Snapshot = struct {
+        bytes: []u8,
+        // False means terminal state is usable but an oversized or allocation-
+        // failed parser prefix was omitted. Suppress live output and refresh
+        // this client once the mirror can serialize parser state again.
+        complete: bool,
+    };
+
+    fn appendPendingToSnapshot(m: *const Mirror, snapshot: []u8) Snapshot {
+        if (!m.pending_valid) return .{ .bytes = snapshot, .complete = false };
+        if (m.pending.items.len == 0) return .{ .bytes = snapshot, .complete = true };
+        const snapshot_len = snapshot.len;
+        const result = alloc.realloc(snapshot, snapshot_len + m.pending.items.len) catch
+            return .{ .bytes = snapshot, .complete = false };
+        @memcpy(result[snapshot_len..], m.pending.items);
+        return .{ .bytes = result, .complete = true };
+    }
+
+    fn replaySerializable() bool {
+        const m = &(instance orelse return false);
+        return m.pending_valid;
     }
 
     /// Build a VT replay snapshot. With `history` we include scrollback;
     /// otherwise we replay the full state through a throwaway scrollback-free
-    /// terminal so everything but the visible screen scrolls off. Caller frees.
-    fn serialize(history: bool) ?[]u8 {
+    /// terminal so everything but the visible screen scrolls off. Any partial
+    /// parser sequence is appended last so subsequent live output completes it
+    /// exactly as it would have without a disconnect. Caller frees.
+    fn serialize(history: bool) ?Snapshot {
         const m = &(instance orelse return null);
-        if (history) return formatTerminal(m.term);
+        if (history) {
+            const snapshot = formatTerminal(m.term) orelse return null;
+            return appendPendingToSnapshot(m, snapshot);
+        }
 
         const full = formatTerminal(m.term) orelse return null;
         defer alloc.free(full);
@@ -427,7 +688,8 @@ const Mirror = struct {
         var tmp_stream = vt.TerminalStream.initAlloc(alloc, tmp.vtHandler());
         defer tmp_stream.deinit();
         tmp_stream.nextSlice(full);
-        return formatTerminal(&tmp);
+        const snapshot = formatTerminal(&tmp) orelse return null;
+        return appendPendingToSnapshot(m, snapshot);
     }
 };
 
@@ -676,6 +938,11 @@ const Client = struct {
     next: ?*Client = null,
     fd: c_int,
     attached: bool = false,
+    // A replay attach can be marked for refresh when an oversized/incomplete
+    // terminal sequence cannot be included. It sees a stable snapshot while
+    // live output is suppressed, then ptyActivity replaces the snapshot once
+    // parser state is serializable again.
+    waiting_replay: ?i32 = null,
     rbuf: std.ArrayListUnmanaged(u8) = .empty, // inbound reassembly
     outq: std.ArrayListUnmanaged(u8) = .empty, // outbound queue
     saved_revents: c_short = 0, // poll revents snapshot for this iteration
@@ -1020,12 +1287,34 @@ fn flushOutq(p: *Client) bool {
     return false;
 }
 
-fn sendSnapshot(p: *Client, mode: i32) void {
+const SnapshotResult = enum { failed, degraded, complete };
+
+fn sendSnapshot(p: *Client, mode: i32) SnapshotResult {
     const history = (mode == REPLAY_SCROLLBACK);
-    const snap = Mirror.serialize(history) orelse return;
-    defer alloc.free(snap);
-    enqueue(p, MSG_DATA, "\x1b[H\x1b[2J\x1b[3J");
-    enqueue(p, MSG_DATA, snap);
+    const snap = Mirror.serialize(history) orelse return .failed;
+    defer alloc.free(snap.bytes);
+    // Reset to a deterministic primary/default terminal before reconstruction.
+    // Clearing cells alone leaves a reused emulator in stale alternate-screen,
+    // mouse, paste, or style state, and the formatter intentionally emits only
+    // modes that differ from defaults. RIS clears both screens/scrollback and
+    // modes; the snapshot then rebuilds the complete desired state.
+    enqueue(p, MSG_DATA, "\x1bc\x1b[3J");
+    enqueue(p, MSG_DATA, snap.bytes);
+    return if (snap.complete) .complete else .degraded;
+}
+
+fn finishAttach(p: *Client) void {
+    p.attached = true;
+    // A deferred attach may outlive the previous owner. Re-run the same
+    // ownership rule as MSG_WINCH so its recorded size is applied when the
+    // owner is now absent/stale, without stealing from a live attached owner.
+    if (p.last_ws.col == 0 or p.last_ws.row == 0) return;
+    const owner_stale = if (size_owner) |owner| !owner.attached else true;
+    if (owner_stale or size_owner == p) {
+        size_owner = p;
+        if (p.last_ws.col != the_pty.ws.col or p.last_ws.row != the_pty.ws.row)
+            applyWinsize(p.last_ws);
+    }
 }
 
 /// Process one fully-received frame from a client.
@@ -1105,10 +1394,19 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
         },
         MSG_ATTACH => {
             const mode: i32 = if (payload.len >= 1) payload[0] else REPLAY_SCROLLBACK;
-            if (mode != REPLAY_NONE) sendSnapshot(p, mode);
-            p.attached = true;
+            if (mode != REPLAY_NONE) switch (sendSnapshot(p, mode)) {
+                .failed => {
+                    p.waiting_replay = mode;
+                    p.attached = false;
+                    return;
+                },
+                .degraded => p.waiting_replay = mode,
+                .complete => p.waiting_replay = null,
+            } else p.waiting_replay = null;
+            finishAttach(p);
         },
         MSG_DETACH => {
+            p.waiting_replay = null;
             p.attached = false;
             // A detaching owner releases the size; see releaseSizeOwner for
             // why it is not handed to anyone else.
@@ -1275,7 +1573,24 @@ fn ptyActivity() void {
     Mirror.write(data);
     var p = clients;
     while (p) |cl| : (p = cl.next) {
-        if (cl.attached) enqueue(cl, MSG_DATA, data);
+        if (cl.attached and cl.waiting_replay == null) enqueue(cl, MSG_DATA, data);
+    }
+    // A degraded client already has a usable screen but must not receive the
+    // tail of an oversized sequence without its prefix. Once parser state is
+    // serializable again, replace that screen with a complete snapshot and
+    // resume live output on the next PTY read.
+    if (!Mirror.replaySerializable()) return;
+    p = clients;
+    while (p) |cl| : (p = cl.next) {
+        if (cl.waiting_replay) |mode| {
+            switch (sendSnapshot(cl, mode)) {
+                .failed, .degraded => {},
+                .complete => {
+                    cl.waiting_replay = null;
+                    if (!cl.attached) finishAttach(cl);
+                },
+            }
+        }
     }
 }
 

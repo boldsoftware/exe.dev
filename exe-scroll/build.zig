@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     tests.root_module.addImport("build_options", exe_opts.createModule());
+    tests.root_module.addImport("ghostty-vt", ghostty.module("ghostty-vt"));
 
     const run_tests = b.addRunArtifact(tests);
     run_tests.has_side_effects = true; // always re-run, even if inputs unchanged

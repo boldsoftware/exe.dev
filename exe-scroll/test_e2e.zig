@@ -9,6 +9,7 @@
 const std = @import("std");
 const opts = @import("build_options");
 const testing = std.testing;
+const vt = @import("ghostty-vt");
 
 // ----------------------------------------------------------------------------
 // libc bindings for the test harness (PTYs + process control).
@@ -254,6 +255,30 @@ fn contains(haystack: []const u8, needle: []const u8) bool {
     return std.mem.indexOf(u8, haystack, needle) != null;
 }
 
+/// Canonical VT fingerprint of terminal state, including both buffers. A
+/// reconnect-compatible transcript must produce the same fingerprint whether
+/// it is consumed uninterrupted or as snapshot + continuation.
+fn terminalFingerprint(t: *const vt.Terminal) ![]u8 {
+    var out = std.Io.Writer.Allocating.init(alloc);
+    defer out.deinit();
+
+    try out.writer.print("active={s}\n", .{@tagName(t.screens.active_key)});
+    const formatter_opts: vt.formatter.Options = .{ .emit = .vt, .unwrap = false, .trim = false };
+    var terminal_fmt = vt.formatter.TerminalFormatter.init(t, formatter_opts);
+    terminal_fmt.extra = .all;
+    try terminal_fmt.format(&out.writer);
+
+    inline for (.{ vt.ScreenSet.Key.primary, vt.ScreenSet.Key.alternate }) |key| {
+        try out.writer.print("\nscreen={s}\n", .{@tagName(key)});
+        if (t.screens.get(key)) |screen| {
+            var screen_fmt = vt.formatter.ScreenFormatter.init(screen, formatter_opts);
+            screen_fmt.extra = .all;
+            try screen_fmt.format(&out.writer);
+        }
+    }
+    return out.toOwnedSlice();
+}
+
 // A bare protocol client: a Unix-socket connection speaking exe-scroll's wire
 // framing directly, with no attach client (and no pty) in between. Lets tests
 // construct protocol states the real client can't be scripted into -- e.g. a
@@ -310,7 +335,11 @@ const RawClient = struct {
 
     /// MSG_ATTACH with replay disabled (tests want live output, not history).
     fn attach(self: *RawClient) void {
-        self.sendFrame(MSG_ATTACH, &.{0}); // REPLAY_NONE
+        self.attachReplay(0); // REPLAY_NONE
+    }
+
+    fn attachReplay(self: *RawClient, mode: u8) void {
+        self.sendFrame(MSG_ATTACH, &.{mode});
     }
 
     /// Send terminal input (as if typed).
@@ -578,6 +607,386 @@ test "replay preserves cursor visibility in every mode" {
             "\x1b[?25h",
             "\x1b[?25l",
         );
+    }
+}
+
+test "replay preserves terminal modes in every mode" {
+    // Full-screen TUI views (vim, Claude Code, and Codex overlays) use the
+    // alternate screen and mouse reporting so wheel gestures navigate their
+    // application-owned history.
+    // Replaying only the painted cells makes the screen look right but leaves
+    // a fresh emulator on its primary screen with mouse reporting disabled:
+    // the wheel then scrolls an empty local buffer and the TUI never hears it.
+    for ([_][]const u8{ "screen", "scrollback" }) |replay_mode| {
+        const s = try sockPath(replay_mode);
+        defer alloc.free(s);
+        defer cleanup(s);
+        defer killServer(s);
+
+        var p = try spawn(&.{
+            s,
+            "--",
+            "sh",
+            "-c",
+            "printf 'PRIMARYMODEMARKER\\033[4;7H\\033[31m\\033[?6h\\033[4;7H\\033[?1048h\\033[>4;2m\\033[?1049h\\033[?6l\\033[H\\033[0m\\033[?1003h\\033[?1000h\\033[?1006h\\033[?2004h\\033[?2026hALTMODEMARKER\\033[3;20r\\033[?6h\\033[2;3H'; exec cat",
+        }, 24, 80);
+        const seen = try p.drainUntil("ALTMODEMARKER", 3000);
+        defer alloc.free(seen);
+        p.signal(c.SIGUSR2);
+        const detached = try p.drainUntil("detached", 2000);
+        alloc.free(detached);
+        p.kill();
+
+        var p2 = try spawn(&.{ s, "-R", replay_mode }, 24, 80);
+        defer p2.kill();
+        const replay_head = try p2.drainUntil("ALTMODEMARKER", 3000);
+        defer alloc.free(replay_head);
+        const replay_tail = try p2.drain(300);
+        defer alloc.free(replay_tail);
+        const replay = try alloc.alloc(u8, replay_head.len + replay_tail.len);
+        defer alloc.free(replay);
+        @memcpy(replay[0..replay_head.len], replay_head);
+        @memcpy(replay[replay_head.len..], replay_tail);
+
+        const reset_at = std.mem.indexOf(u8, replay, "\x1bc");
+        const primary_at = std.mem.indexOf(u8, replay, "PRIMARYMODEMARKER");
+        const alt_at = std.mem.indexOf(u8, replay, "ALTMODEMARKER");
+        const enter_alt_at = std.mem.indexOf(u8, replay, "\x1b[?1049h");
+        try testing.expect(reset_at != null);
+        try testing.expect(primary_at != null);
+        try testing.expect(alt_at != null);
+        try testing.expect(enter_alt_at != null);
+        // Reset any reused-emulator state, reconstruct the saved primary
+        // buffer, then enter and paint the active alternate screen. Otherwise
+        // a later 1049l would restore blank history, and 1049's inherited
+        // primary cursor/style would offset or recolor the alternate content.
+        try testing.expect(reset_at.? < primary_at.?);
+        try testing.expect(primary_at.? < enter_alt_at.?);
+        try testing.expect(enter_alt_at.? < alt_at.?);
+        const alt_paint_prefix = replay[enter_alt_at.? + "\x1b[?1049h".len .. alt_at.?];
+        try testing.expect(contains(alt_paint_prefix, "\x1b[?6l\x1b[H\x1b[0m"));
+        for ([_][]const u8{
+            "\x1b[?1049h", // alternate screen
+            "\x1b[?1000h", // last-set mouse event mode wins
+            "\x1b[?1006h", // SGR mouse encoding
+            "\x1b[?2004h", // bracketed paste
+        }) |mode_sequence| {
+            const mode_at = std.mem.indexOf(u8, replay, mode_sequence);
+            try testing.expect(mode_at != null);
+            try testing.expect(mode_at.? < alt_at.?);
+        }
+        try testing.expect(!contains(replay, "\x1b[?1003h"));
+        // DEC 1048 is an action (save now), not passive state. Replaying it
+        // after RIS would save the wrong cursor; 1049 gets its own correctly
+        // reconstructed save immediately before the alternate switch.
+        try testing.expect(!contains(replay, "\x1b[?1048h"));
+        // Synchronized output is a begin/end frame delimiter, not durable
+        // state. Replaying a stranded BEGIN would leave xterm.js blank until
+        // its watchdog fired because the snapshot has no matching END.
+        try testing.expect(!contains(replay, "\x1b[?2026h"));
+        try testing.expect(contains(replay, "\x1b[>4;2m"));
+
+        // Apply the real replay to a deliberately dirty client emulator. This
+        // catches byte streams that contain the right markers in the wrong
+        // terminal state or at the wrong cursor origin.
+        var client = try vt.Terminal.init(alloc, .{
+            .cols = 80,
+            .rows = 24,
+            .max_scrollback = 1024 * 1024,
+        });
+        defer client.deinit(alloc);
+        var client_stream = vt.TerminalStream.initAlloc(alloc, client.vtHandler());
+        defer client_stream.deinit();
+        client_stream.nextSlice("\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?2004hSTALECLIENT");
+        client_stream.nextSlice(replay);
+
+        try testing.expectEqual(vt.ScreenSet.Key.alternate, client.screens.active_key);
+        try testing.expectEqual(@as(@TypeOf(client.flags.mouse_event), .normal), client.flags.mouse_event);
+        try testing.expectEqual(@as(@TypeOf(client.flags.mouse_format), .sgr), client.flags.mouse_format);
+        try testing.expect(client.modes.get(.bracketed_paste));
+        try testing.expect(client.flags.modify_other_keys_2);
+        try testing.expect(client.modes.get(.origin));
+        try testing.expectEqual(@as(usize, 2), client.scrolling_region.top);
+        try testing.expectEqual(@as(usize, 19), client.scrolling_region.bottom);
+        try testing.expectEqual(@as(usize, 2), client.screens.active.cursor.x);
+        try testing.expectEqual(@as(usize, 3), client.screens.active.cursor.y);
+
+        const alternate = try client.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+        defer alloc.free(alternate);
+        try testing.expect(std.mem.startsWith(u8, alternate, "ALTMODEMARKER"));
+        try testing.expect(!contains(alternate, "STALECLIENT"));
+
+        const primary = client.screens.get(.primary) orelse return error.MissingPrimaryScreen;
+        const primary_text = try primary.dumpStringAlloc(alloc, .{ .screen = .{} });
+        defer alloc.free(primary_text);
+        try testing.expect(contains(primary_text, "PRIMARYMODEMARKER"));
+
+        client_stream.nextSlice("\x1b[?1049l");
+        try testing.expectEqual(vt.ScreenSet.Key.primary, client.screens.active_key);
+        try testing.expect(client.modes.get(.origin));
+        try testing.expectEqual(@as(usize, 6), client.screens.active.cursor.x);
+        try testing.expectEqual(@as(usize, 3), client.screens.active.cursor.y);
+        const restored = try client.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+        defer alloc.free(restored);
+        try testing.expect(contains(restored, "PRIMARYMODEMARKER"));
+    }
+}
+
+test "interrupted terminal sequences remain compatible across reconnect" {
+    // Real disconnects can land between any two PTY bytes, including halfway
+    // through CSI, OSC, charset, UTF-8, and synchronized-output sequences. Run
+    // each prefix through the real server, reconnect, append the suffix, and
+    // compare the resulting Ghostty terminal state with uninterrupted output.
+    const Case = struct {
+        name: []const u8,
+        prefix: []const u8,
+        suffix: []const u8,
+        marker: []const u8,
+        replay: []const u8,
+        pending_needle: ?[]const u8 = null,
+    };
+    const cases = [_]Case{
+        .{
+            .name = "sgr",
+            .prefix = "\x1bcBASE\x1b[38;2;12;34",
+            .suffix = ";56mCOLOR\x1b[0m DONE-SGR",
+            .marker = "DONE-SGR",
+            .replay = "scrollback",
+        },
+        .{
+            .name = "csi-control",
+            .prefix = "\x1bcBASE\x1b[31\n",
+            .suffix = "mCOLOR\x1b[0m DONE-CONTROL",
+            .marker = "DONE-CONTROL",
+            .replay = "screen",
+        },
+        .{
+            .name = "alternate",
+            .prefix = "\x1bcBASE-PRIMARY\x1b[?104",
+            .suffix = "9hALT DONE-ALT",
+            .marker = "DONE-ALT",
+            .replay = "scrollback",
+        },
+        .{
+            .name = "charset",
+            .prefix = "\x1bcBASE\x1b(",
+            .suffix = "0lqqk\x1b(B DONE-CHARSET",
+            .marker = "DONE-CHARSET",
+            .replay = "screen",
+        },
+        .{
+            .name = "utf8",
+            .prefix = "\x1bcBASE-UTF8:\xe2\x98",
+            .suffix = "\x83 DONE-UTF8",
+            .marker = "DONE-UTF8",
+            .replay = "scrollback",
+        },
+        .{
+            .name = "utf8-rollover",
+            .prefix = "\x1bcBASE\xe2\x1b[",
+            .suffix = "31mCOLOR\x1b[0m DONE-ROLLOVER",
+            .marker = "DONE-ROLLOVER",
+            .replay = "screen",
+        },
+        .{
+            .name = "dcs-control",
+            .prefix = "\x1bcBASE\x1bPqABC\x01",
+            .suffix = "DEF\x1b\\ DONE-DCS",
+            .marker = "DONE-DCS",
+            .replay = "scrollback",
+            .pending_needle = "\x1bPqABC\x01",
+        },
+        .{
+            .name = "hyperlink",
+            .prefix = "\x1bcBASE\x1b]8;id=x;https://example",
+            .suffix = ".com\x1b\\LINK\x1b]8;;\x1b\\ DONE-LINK",
+            .marker = "DONE-LINK",
+            .replay = "screen",
+        },
+        .{
+            .name = "sync-output",
+            .prefix = "\x1bcBASE\x1b[?202",
+            .suffix = "6hSYNC\x1b[?2026l DONE-SYNC",
+            .marker = "DONE-SYNC",
+            .replay = "scrollback",
+        },
+    };
+
+    for (cases) |case| {
+        const s = try sockPath(case.name);
+        defer alloc.free(s);
+        defer cleanup(s);
+        defer killServer(s);
+
+        var p = try spawn(&.{
+            s,
+            "--",
+            "sh",
+            "-c",
+            "stty raw -echo; printf '\\033cREADY'; exec cat",
+        }, 24, 80);
+        defer p.kill();
+        const ready = try p.drainUntil("READY", 3000);
+        alloc.free(ready);
+
+        p.write(case.prefix);
+        const prefix = try p.drainUntil(case.prefix, 3000);
+        defer alloc.free(prefix);
+        try testing.expect(contains(prefix, case.prefix));
+        // Simulate a browser/network loss rather than a cooperative detach.
+        // The PTY child and session server remain alive behind the socket.
+        p.kill();
+
+        // Wait for replayed content before typing so the attach client has
+        // put its local pty into raw mode. Bytes after BASE (including the
+        // partial sequence) remain ordered ahead of the live suffix.
+        var p2 = try spawn(&.{ s, "-R", case.replay }, 24, 80);
+        defer p2.kill();
+        const replay_head = try p2.drainUntil("BASE", 3000);
+        defer alloc.free(replay_head);
+        p2.write(case.suffix);
+        const replay_tail = try p2.drainUntil(case.marker, 3000);
+        defer alloc.free(replay_tail);
+        try testing.expect(contains(replay_tail, case.marker));
+        const reconnected_bytes = try alloc.alloc(u8, replay_head.len + replay_tail.len);
+        defer alloc.free(reconnected_bytes);
+        @memcpy(reconnected_bytes[0..replay_head.len], replay_head);
+        @memcpy(reconnected_bytes[replay_head.len..], replay_tail);
+        if (case.pending_needle) |needle| try testing.expect(contains(reconnected_bytes, needle));
+
+        var uninterrupted = try vt.Terminal.init(alloc, .{
+            .cols = 80,
+            .rows = 24,
+            .max_scrollback = 1024 * 1024,
+        });
+        defer uninterrupted.deinit(alloc);
+        var uninterrupted_stream = vt.TerminalStream.initAlloc(alloc, uninterrupted.vtHandler());
+        defer uninterrupted_stream.deinit();
+        uninterrupted_stream.nextSlice(case.prefix);
+        uninterrupted_stream.nextSlice(case.suffix);
+
+        var reconnected = try vt.Terminal.init(alloc, .{
+            .cols = 80,
+            .rows = 24,
+            .max_scrollback = 1024 * 1024,
+        });
+        defer reconnected.deinit(alloc);
+        var reconnected_stream = vt.TerminalStream.initAlloc(alloc, reconnected.vtHandler());
+        defer reconnected_stream.deinit();
+        reconnected_stream.nextSlice(reconnected_bytes);
+
+        const want = try terminalFingerprint(&uninterrupted);
+        defer alloc.free(want);
+        const got = try terminalFingerprint(&reconnected);
+        defer alloc.free(got);
+        try testing.expectEqualStrings(want, got);
+    }
+}
+
+test "oversized interrupted sequence shows a stable snapshot then refreshes" {
+    const s = try sockPath("oversized-sequence");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // Exceed Mirror's bounded pending-sequence storage while remaining inside
+    // DCS. The current client sees the bytes live, but a new client cannot be
+    // safely attached until the sequence terminates.
+    var p = try spawn(&.{
+        s,
+        "--",
+        "sh",
+        "-c",
+        "stty raw -echo; printf '\\033cBASE\\033Pq'; dd if=/dev/zero bs=32768 count=1 2>/dev/null | tr '\\000' A; printf TAILPENDING; dd bs=1 count=1 of=/dev/null 2>/dev/null; printf '\\033\\\\READY-OVERSIZE'; dd bs=1 count=1 of=/dev/null 2>/dev/null; stty size; exec cat",
+    }, 24, 80);
+    defer p.kill();
+    const oversized = try p.drainUntil("TAILPENDING", 10000);
+    defer alloc.free(oversized);
+    try testing.expect(contains(oversized, "TAILPENDING"));
+    var client = try RawClient.connect(s);
+    defer client.close();
+    client.sendWinch(30, 100);
+    client.attachReplay(2); // REPLAY_SCROLLBACK
+    // The partial DCS is too large to resume, but reconnect must not hang on
+    // a blank screen. Show the stable state and suppress unsafe live suffixes.
+    try testing.expect(client.drainUntil("BASE", 3000));
+
+    // The old owner disappears while this attach is waiting for a refresh.
+    // Completing the DCS must replace the degraded snapshot while preserving
+    // B's recorded 30x100 size ownership.
+    p.kill();
+    client.sendData("x");
+    try testing.expect(client.drainUntil("READY-OVERSIZE", 5000));
+    client.sendData("y");
+    try testing.expect(client.drainUntil("30 100", 5000));
+
+    var terminal = try vt.Terminal.init(alloc, .{
+        .cols = 80,
+        .rows = 24,
+        .max_scrollback = 1024 * 1024,
+    });
+    defer terminal.deinit(alloc);
+    var stream = vt.TerminalStream.initAlloc(alloc, terminal.vtHandler());
+    defer stream.deinit();
+    stream.nextSlice(client.data.items);
+
+    const rendered = try terminal.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+    defer alloc.free(rendered);
+    try testing.expect(contains(rendered, "BASE"));
+    try testing.expect(contains(rendered, "30 100"));
+    try testing.expect(!contains(rendered, "TAILPENDING"));
+}
+
+test "replay preserves an inactive legacy alternate screen" {
+    // DEC 47 keeps the alternate buffer when switching back to primary. RIS
+    // gives replays a deterministic baseline, so reconstruct an initialized
+    // inactive buffer too rather than losing it until the next 47h.
+    for ([_][]const u8{ "screen", "scrollback" }) |replay_mode| {
+        const s = try sockPath(replay_mode);
+        defer alloc.free(s);
+        defer cleanup(s);
+        defer killServer(s);
+
+        var p = try spawn(&.{
+            s,
+            "--",
+            "sh",
+            "-c",
+            "printf 'PRIMARY-ACTIVE\\033[5;1HPRIMARY-KEEP\\033[?47h\\033[HALTERNATE-KEEP\\033[?47l\\033[HPRIMARY-ACTIVE'; exec cat",
+        }, 24, 80);
+        const seen = try p.drainUntil("ALTERNATE-KEEP", 3000);
+        defer alloc.free(seen);
+        p.signal(c.SIGUSR2);
+        const detached = try p.drainUntil("detached", 2000);
+        alloc.free(detached);
+        p.kill();
+
+        var p2 = try spawn(&.{ s, "-R", replay_mode }, 24, 80);
+        defer p2.kill();
+        const replay = try p2.drain(1200);
+        defer alloc.free(replay);
+
+        var client = try vt.Terminal.init(alloc, .{
+            .cols = 80,
+            .rows = 24,
+            .max_scrollback = 1024 * 1024,
+        });
+        defer client.deinit(alloc);
+        var client_stream = vt.TerminalStream.initAlloc(alloc, client.vtHandler());
+        defer client_stream.deinit();
+        client_stream.nextSlice(replay);
+
+        try testing.expectEqual(vt.ScreenSet.Key.primary, client.screens.active_key);
+        const primary = try client.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+        defer alloc.free(primary);
+        try testing.expect(contains(primary, "PRIMARY-ACTIVE"));
+        try testing.expect(contains(primary, "PRIMARY-KEEP"));
+
+        client_stream.nextSlice("\x1b[?47h");
+        try testing.expectEqual(vt.ScreenSet.Key.alternate, client.screens.active_key);
+        const alternate = try client.screens.active.dumpStringAlloc(alloc, .{ .screen = .{} });
+        defer alloc.free(alternate);
+        try testing.expect(contains(alternate, "ALTERNATE-KEEP"));
     }
 }
 
