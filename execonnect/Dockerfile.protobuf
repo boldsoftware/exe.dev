@@ -1,0 +1,27 @@
+FROM golang:1.27.1-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b AS build
+# The digest prevents generator formatting from depending on when an agent
+# last resolved the version tag.
+
+ARG TARGETARCH
+ARG PROTOC_VERSION=34.0
+RUN set -e; \
+    case "$TARGETARCH" in \
+      amd64) ARCH=x86_64 ;; \
+      arm64) ARCH=aarch_64 ;; \
+      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    apt-get update && apt-get install -y unzip; \
+    wget -qO protoc.zip "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-${ARCH}.zip"; \
+    unzip protoc.zip -d /usr/local; \
+    rm protoc.zip
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+RUN go install github.com/containerd/protobuild/cmd/go-fix-acronym@v0.3.0
+COPY api /src/api
+WORKDIR /src/api
+RUN mkdir -p pkg/api
+RUN find . -name "*.proto" | while read p; do if ! protoc $p --go_out=pkg/api --go_opt=paths=source_relative --go-grpc_out=pkg/api --go-grpc_opt=paths=source_relative; then exit 1; fi; done
+RUN find pkg/api -type f -name '*.pb.go' -exec go-fix-acronym -w -a 'S(sh)|M(ac)Address|N(tp)Server|I(p)V4|V(m)Config|C(pu)s|(Id|Ip|Tcp|Http|Udp|Io|Ssh|Uri)$$' {} \;
+
+FROM scratch
+COPY --from=build /src/api/pkg /

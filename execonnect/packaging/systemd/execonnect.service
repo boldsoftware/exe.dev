@@ -1,0 +1,25 @@
+[Unit]
+Description=execonnect External Connection daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=execonnect
+Group=execonnect
+StateDirectory=execonnect
+StateDirectoryMode=0700
+RuntimeDirectory=execonnect
+RuntimeDirectoryMode=0770
+ExecStart=/usr/local/bin/execonnect --state-dir /var/lib/execonnect --socket /run/execonnect/control.sock serve
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

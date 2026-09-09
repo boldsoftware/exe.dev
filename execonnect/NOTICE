@@ -1,0 +1,9 @@
+execonnect
+Copyright 2026 Bold Software, Inc.
+
+vpctunnel/nstun/nstun.go is adapted from tun/netstack/tun.go in
+https://github.com/tailscale/wireguard-go/tree/b48af7099cad
+Copyright (C) 2017-2023 WireGuard LLC. All Rights Reserved.
+That file remains under the MIT license in LICENSES/WireGuard-MIT.txt.
+Local changes adapt the TUN to the pinned gVisor API, limit the network to
+TCP helpers, and adjust configuration validation and lifecycle handling.

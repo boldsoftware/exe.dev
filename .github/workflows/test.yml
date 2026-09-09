@@ -33,11 +33,14 @@ jobs:
       - name: Test all Go modules
         run: |
           for dir in */; do
-            if [ -f "$dir/go.mod" ]; then
+            if [ "$dir" != "execonnect/" ] && [ -f "$dir/go.mod" ]; then
               echo "=== testing $dir ==="
               (cd "$dir" && go test ./...)
             fi
           done
+
+      - name: Check execonnect
+        run: make -C execonnect check
 
   auto-tag:
     runs-on: ubuntu-latest

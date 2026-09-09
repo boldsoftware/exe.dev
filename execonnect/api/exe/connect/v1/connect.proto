@@ -1,0 +1,155 @@
+// Package exe.connect.v1 defines enrollment and control-plane messages for
+// External Connection connectors.
+syntax = "proto3";
+
+package exe.connect.v1;
+
+option go_package = "github.com/boldsoftware/exe.dev/execonnect/pkg/api/exe/connect/v1";
+
+// ExternalConnectionService enrolls execonnect processes and maintains their
+// long-lived control streams with exed.
+service ExternalConnectionService {
+  // Enroll exchanges a one-time UI-generated token for durable connector
+  // credentials.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+
+  // Connect maintains one connector's ordered control stream. The connector
+  // must send ConnectorHello first and may then send EndpointSnapshot updates.
+  // Exed sends a WireGuardAssignment initially and whenever failover changes
+  // it. The caller authenticates with connector_secret as a Bearer credential
+  // in gRPC metadata.
+  rpc Connect(stream ConnectorMessage) returns (stream ControlMessage);
+}
+
+// EnrollRequest contains the one-time token of a new execonnect process.
+message EnrollRequest {
+  // enrollment_token is generated when a user creates an External Connection.
+  string enrollment_token = 1;
+}
+
+// EnrollResponse contains the durable credentials stored by execonnect.
+message EnrollResponse {
+  // external_connection_id identifies the enrolled External Connection.
+  string external_connection_id = 1;
+
+  // connector_secret authenticates future Connect streams and must be stored
+  // alongside the connector's WireGuard private key.
+  string connector_secret = 2;
+}
+
+// ConnectorMessage is one ordered message sent from execonnect to exed.
+message ConnectorMessage {
+  // payload selects the connector state carried by this message.
+  oneof payload {
+    // hello identifies a newly opened authenticated stream.
+    ConnectorHello hello = 1;
+
+    // endpoint_snapshot replaces the connector's complete published endpoint
+    // set.
+    EndpointSnapshot endpoint_snapshot = 2;
+  }
+}
+
+// ConnectorHello identifies the stream and reports the connector's current
+// WireGuard public key. The stream itself is authenticated by gRPC metadata.
+message ConnectorHello {
+  // external_connection_id is returned by Enroll.
+  string external_connection_id = 1;
+
+  // wireguard_public_key is the connector's current Tailscale node public key
+  // in its typed text encoding.
+  string wireguard_public_key = 2;
+
+  // capability_version advertises connector protocol compatibility. Zero is
+  // the legacy/unversioned client value. One is the initial versioned connector
+  // protocol baseline.
+  uint32 capability_version = 3;
+
+  // build_version is the connector build identifier for diagnostics only.
+  string build_version = 4;
+}
+
+// EndpointSnapshot is the connector's complete published endpoint set. It may
+// be empty to withdraw every endpoint.
+message EndpointSnapshot {
+  // endpoints contains each endpoint currently available through execonnect.
+  repeated PublishedEndpoint endpoints = 1;
+}
+
+// PublishedEndpoint describes one connector-local endpoint. Its target host
+// and port are visible only through owner-scoped External Connection APIs.
+message PublishedEndpoint {
+  // key is the stable DNS-label identifier selected by integrations.
+  string key = 1;
+
+  // display_name is the user-facing endpoint name.
+  string display_name = 2;
+
+  // target_port is the connector-local TCP port. execonnect verifies this port
+  // on every flow before dialing the private target.
+  uint32 target_port = 3;
+
+  // protocol describes the application protocol available at the endpoint.
+  EndpointProtocol protocol = 4;
+
+  // tls_server_name is the private upstream TLS server name. It is required
+  // for HTTPS, optional for TLS over raw TCP, and empty for plaintext HTTP.
+  string tls_server_name = 5;
+
+  // target_host is the normalized connector-local hostname or IP address,
+  // without brackets or a port. Older connectors may omit it.
+  string target_host = 6;
+}
+
+// EndpointProtocol describes how integrations may use a published endpoint.
+enum EndpointProtocol {
+  // ENDPOINT_PROTOCOL_UNSPECIFIED is invalid for a published endpoint.
+  ENDPOINT_PROTOCOL_UNSPECIFIED = 0;
+
+  // ENDPOINT_PROTOCOL_TCP exposes an arbitrary TCP byte stream.
+  ENDPOINT_PROTOCOL_TCP = 1;
+
+  // ENDPOINT_PROTOCOL_HTTP exposes plaintext HTTP.
+  ENDPOINT_PROTOCOL_HTTP = 2;
+
+  // ENDPOINT_PROTOCOL_HTTPS exposes HTTP over TLS.
+  ENDPOINT_PROTOCOL_HTTPS = 3;
+}
+
+// ControlMessage is one ordered state update sent from exed to execonnect.
+message ControlMessage {
+  // payload selects the control-plane state carried by this message.
+  oneof payload {
+    // wireguard_assignment replaces the connector's current WireGuard peer and
+    // tunnel address.
+    WireGuardAssignment wireguard_assignment = 1;
+
+    // wireguard_rehandshake requests a fresh handshake with the current server
+    // peer without replacing the tunnel.
+    WireGuardRehandshake wireguard_rehandshake = 2;
+  }
+}
+
+// WireGuardRehandshake requests an idempotent handshake with the current peer.
+message WireGuardRehandshake {}
+
+// WireGuardAssignment contains the complete WireGuard state execonnect needs
+// to reach the current anycast tunnel service.
+message WireGuardAssignment {
+  // connector_tunnel_address is assigned to execonnect's userspace network.
+  string connector_tunnel_address = 1;
+
+  // server_tunnel_address is the remote tunnel address. execonnect derives the
+  // server peer's single-address allowed prefix from this value.
+  string server_tunnel_address = 2;
+
+  // peer_public_key is the server's Tailscale node public key in its typed text
+  // encoding.
+  string peer_public_key = 3;
+
+  // peer_endpoint is the server's UDP host and port.
+  string peer_endpoint = 4;
+
+  // mtu is the tunnel MTU.
+  uint32 mtu = 5;
+}
