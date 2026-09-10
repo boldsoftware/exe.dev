@@ -98,14 +98,14 @@ await t("parseVmResponse: accepts legacy `name` field", () => {
 await t("parseVmResponse: prefers structured ssh_host/ssh_user", () => {
   const json = JSON.stringify({
     vm_name: "jetpack-gray",
-    ssh_command: "ssh vm+jetpack-gray@exe.dev",
-    ssh_dest: "vm+jetpack-gray@exe.dev",
-    ssh_host: "exe.dev",
+    ssh_command: "ssh vm+jetpack-gray@vm.exe.xyz",
+    ssh_dest: "vm+jetpack-gray@vm.exe.xyz",
+    ssh_host: "vm.exe.xyz",
     ssh_user: "vm+jetpack-gray",
   });
   assert.deepEqual(parseVmResponse(json), {
     name: "jetpack-gray",
-    host: "exe.dev",
+    host: "vm.exe.xyz",
     username: "vm+jetpack-gray",
   });
 });
@@ -115,11 +115,11 @@ await t(
   () => {
     const json = JSON.stringify({
       vm_name: "jetpack-gray",
-      ssh_dest: "vm+jetpack-gray@exe.dev",
+      ssh_dest: "vm+jetpack-gray@vm.exe.xyz",
     });
     assert.deepEqual(parseVmResponse(json), {
       name: "jetpack-gray",
-      host: "exe.dev",
+      host: "vm.exe.xyz",
       username: "vm+jetpack-gray",
     });
   },
