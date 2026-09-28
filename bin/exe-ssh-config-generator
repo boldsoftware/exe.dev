@@ -12,6 +12,8 @@ Usage:
 If no keys are specified, uses the default keys:
     ~/.ssh/id_ed25519, ~/.ssh/id_ed25519-two, ~/.ssh/id_rsa
 (only those that exist on disk).
+
+Set EXE_SSH_OUTPUT_DIR to generate files there without changing ~/.ssh.
 """
 
 import json
@@ -23,6 +25,9 @@ CONFIG_FILE = os.path.expanduser("~/.ssh/exe-dev-config")
 KNOWN_HOSTS_FILE = os.path.expanduser("~/.ssh/exe-dev-known-hosts")
 SSH_CONFIG = os.path.expanduser("~/.ssh/config")
 INCLUDE_LINE = "Include ~/.ssh/exe-dev-config"
+OUTPUT_DIR = os.environ.get("EXE_SSH_OUTPUT_DIR")
+OUTPUT_CONFIG_FILE = os.path.join(OUTPUT_DIR, "exe-dev-config") if OUTPUT_DIR else CONFIG_FILE
+OUTPUT_KNOWN_HOSTS_FILE = os.path.join(OUTPUT_DIR, "exe-dev-known-hosts") if OUTPUT_DIR else KNOWN_HOSTS_FILE
 
 DEFAULT_KEYS = [
     "~/.ssh/id_ed25519",
@@ -33,6 +38,14 @@ DEFAULT_KEYS = [
 
 def expand_key(path):
     return os.path.expanduser(path)
+
+
+def key_in_existing_config(key_path):
+    try:
+        with open(CONFIG_FILE) as f:
+            return any(line.strip() == f"IdentityFile {key_path}" for line in f)
+    except FileNotFoundError:
+        return False
 
 
 def parse_dest(ssh_dest):
@@ -51,14 +64,13 @@ def parse_dest(ssh_dest):
 
 
 def discover_vms(key_path):
-    """Run ssh -i <key> exe.dev ls --json and return list of VM dicts."""
+    """Return the VM list for a key, or None if discovery fails."""
     try:
         result = subprocess.run(
             [
                 "ssh",
                 "-i", key_path,
                 "-F", "/dev/null",
-                "-o", "IdentityAgent=none",
                 "-o", "IdentitiesOnly=yes",
                 "-o", "PreferredAuthentications=publickey",
                 "-o", "PubkeyAuthentication=yes",
@@ -78,17 +90,17 @@ def discover_vms(key_path):
         )
     except subprocess.TimeoutExpired:
         print(f"  timeout connecting with {key_path}", file=sys.stderr)
-        return []
+        return None
 
     if result.returncode != 0:
         print(f"  ssh failed with {key_path}: {result.stderr.strip()}", file=sys.stderr)
-        return []
+        return None
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         print(f"  invalid JSON from {key_path}", file=sys.stderr)
-        return []
+        return None
 
     return data.get("vms", [])
 
@@ -139,9 +151,9 @@ def write_known_hosts(vm_key_map, host_key):
         seen.add(host)
         lines.append(f"{host} {key_type} {key_data}")
 
-    with open(KNOWN_HOSTS_FILE, "w") as f:
+    with open(OUTPUT_KNOWN_HOSTS_FILE, "w") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"wrote {len(seen)} entries to {KNOWN_HOSTS_FILE}")
+    print(f"wrote {len(seen)} entries to {OUTPUT_KNOWN_HOSTS_FILE}")
 
 
 def generate_config(vm_key_map, have_known_hosts):
@@ -161,7 +173,6 @@ def generate_config(vm_key_map, have_known_hosts):
             lines.append(f"    User {user}")
         lines.append(f"    IdentityFile {key_path}")
         lines.append(f"    IdentitiesOnly yes")
-        lines.append(f"    IdentityAgent none")
         lines.append(f"    PreferredAuthentications publickey")
         lines.append(f"    PubkeyAuthentication yes")
         lines.append(f"    PasswordAuthentication no")
@@ -232,6 +243,11 @@ def main():
     for key in keys:
         print(f"querying exe.dev with {key} ...")
         vms = discover_vms(key)
+        if vms is None:
+            # Keep the existing config if a key that owns entries is unavailable.
+            if key_in_existing_config(key):
+                sys.exit(1)
+            continue
         new = 0
         for vm in vms:
             name = vm.get("vm_name")
@@ -255,11 +271,12 @@ def main():
         print("  warning: skipping host key pinning", file=sys.stderr)
 
     config = generate_config(vm_key_map, have_known_hosts)
-    with open(CONFIG_FILE, "w") as f:
+    with open(OUTPUT_CONFIG_FILE, "w") as f:
         f.write(config)
-    print(f"wrote {len(vm_key_map)} entries to {CONFIG_FILE}")
+    print(f"wrote {len(vm_key_map)} entries to {OUTPUT_CONFIG_FILE}")
 
-    ensure_include()
+    if not OUTPUT_DIR:
+        ensure_include()
     print("done")
 
 
