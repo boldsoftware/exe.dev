@@ -72,6 +72,7 @@ const c = struct {
     const SIGTERM = std.c.SIG.TERM;
     const SIGWINCH = std.c.SIG.WINCH;
     const SIG_IGN: usize = @intFromPtr(std.c.SIG.IGN);
+    const SIG_DFL: usize = @intFromPtr(std.c.SIG.DFL);
 
     // fcntl
     const F_GETFL = std.c.F.GETFL;
@@ -1093,7 +1094,11 @@ fn initPty(statusfd: c_int) c_int {
     the_pty.pid = c.forkpty(&the_pty.fd, null, null, &the_pty.ws);
     if (the_pty.pid < 0) return -1;
     if (the_pty.pid == 0) {
-        // Child: exec the program.
+        // Child: exec the program. The server ignores SIGHUP and SIGPIPE, and
+        // ignored signals stay ignored across exec. A command that inherited
+        // SIGHUP would outlive its session.
+        _ = c.signal(c.SIGHUP, c.SIG_DFL);
+        _ = c.signal(c.SIGPIPE, c.SIG_DFL);
         _ = c.execvp(child_argv[0].?, child_argv.ptr);
         if (statusfd != -1) _ = std.c.dup2(statusfd, 2);
         printErr("{s}: could not execute {s}: errno {d}\r\n", .{ progname, std.mem.span(child_argv[0].?), c.errno() });

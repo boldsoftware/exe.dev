@@ -34,6 +34,7 @@ const c = struct {
     }
 
     const SIGKILL = 9;
+    const SIGTERM = 15;
     const SIGUSR1 = 10;
     const SIGUSR2 = 12;
     const EINTR = 4;
@@ -437,6 +438,74 @@ test "create and interact" {
     const echo = try p.drainUntil("PINGABC", 2000);
     defer alloc.free(echo);
     try testing.expect(contains(echo, "PINGABC")); // interactive echo
+}
+
+// The session server ignores SIGHUP and SIGPIPE, and ignored dispositions
+// survive exec. A command that inherited them would outlive its session:
+// every size-ownership test below used to leave its `stty size` loop running
+// forever. A session's end must take its command with it, however it ends.
+const PID_THEN_LOOP = "echo PID=$$; while :; do sleep 0.1; done";
+
+fn commandPid(out: []const u8) !c_int {
+    const i = std.mem.indexOf(u8, out, "PID=") orelse return error.NoPid;
+    var j = i + 4;
+    while (j < out.len and std.ascii.isDigit(out[j])) j += 1;
+    return std.fmt.parseInt(c_int, out[i + 4 .. j], 10);
+}
+
+fn waitGone(pid: c_int, ms: i64) bool {
+    const deadline = std.time.milliTimestamp() + ms;
+    while (std.time.milliTimestamp() < deadline) {
+        if (c.kill(pid, 0) != 0) return true;
+        std.Thread.sleep(10 * std.time.ns_per_ms);
+    }
+    return false;
+}
+
+fn expectSessionEndKillsCommand(name: []const u8, sig: c_int) !void {
+    const s = try sockPath(name);
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", PID_THEN_LOOP }, 24, 80);
+    defer p.kill();
+    const out = try p.drainUntil("PID=", 3000);
+    defer alloc.free(out);
+    const out2 = try p.drain(200); // the rest of the number
+    defer alloc.free(out2);
+    const all = try std.mem.concat(alloc, u8, &.{ out, out2 });
+    defer alloc.free(all);
+    const pid = try commandPid(all);
+    defer _ = c.kill(pid, c.SIGKILL); // don't leak it if the test fails
+
+    const server = try findServer(s, p.pid);
+    try testing.expect(server > 0);
+    _ = c.kill(server, sig);
+    try testing.expect(waitGone(pid, 3000));
+}
+
+test "a killed session takes its command with it" {
+    try expectSessionEndKillsCommand("end-kill", c.SIGKILL);
+}
+
+test "a terminated session takes its command with it" {
+    try expectSessionEndKillsCommand("end-term", c.SIGTERM);
+}
+
+test "commands get the default SIGPIPE" {
+    const s = try sockPath("sigpipe");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // With SIGPIPE ignored, yes gets EPIPE instead and complains about it.
+    var p = try spawn(&.{ s, "--", "sh", "-c", "yes | head -c 2 >/dev/null; echo PIPE-DONE; exec cat" }, 24, 80);
+    defer p.kill();
+    const out = try p.drainUntil("PIPE-DONE", 3000);
+    defer alloc.free(out);
+    try testing.expect(contains(out, "PIPE-DONE"));
+    try testing.expect(!contains(out, "Broken pipe"));
 }
 
 test "secure parent dirs are created 0700" {
