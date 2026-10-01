@@ -34,22 +34,24 @@ kill -USR2 <pid-of-exe-scroll>
 
 The session keeps running; reattach later with the same command.
 
-### Multiple clients: typing claims the size
+### Multiple clients: attaching or typing claims the size
 
 Any number of clients can attach to one session, and their windows rarely
 agree on a size. Rather than letting every resize fight over the PTY
 (last-write-wins), the session tracks a *size owner*: the client whose window
-the PTY follows. Resizes from other clients are recorded but not applied —
-until one of them **types**, which claims ownership and applies its size.
-Only an attached client that has advertised a real (nonzero) size can own.
-Terminal auto-replies that share the input path (focus reports, cursor
-position / device attribute query responses, and the like) never claim
-ownership, and neither does mouse-wheel scrolling — clicking does.
-Initially the session creator owns the size; when the owner detaches the size
-is unowned and the next resize (or keystroke) claims it — unless exactly one
-attached client remains, in which case the PTY snaps to its size immediately
-(so e.g. reloading a browser tab never leaves the terminal at a stale size).
-With a single client attached, resizes always apply immediately.
+the PTY follows. A client that **attaches** or **types** claims ownership and
+applies its size; resizes from other clients are recorded but not applied
+until one of them does the same. Attaching claims because a client narrower
+than the PTY is unusable — programs lay out text for the PTY's width — so the
+terminal you just opened should fit; a wider bystander merely sees a narrower
+layout until it types. Only a client that has advertised a real (nonzero)
+size can own. Terminal auto-replies that share the input path (focus reports,
+cursor position / device attribute query responses, and the like) never claim
+ownership, and neither does mouse-wheel scrolling — clicking does. When the
+owner detaches the size is unowned and the next resize (or keystroke) claims
+it — unless exactly one attached client remains, in which case the PTY snaps
+to its size immediately. With a single client attached, resizes always apply
+immediately.
 
 ### Telling the processes apart
 
@@ -71,7 +73,7 @@ So the `session` line is the one to send `SIGUSR1` (recreate socket), and an
 | flag | meaning |
 |------|---------|
 | `-R none\|screen\|scrollback` | what to replay on attach (default `scrollback`) |
-| `--version` | print version and exit |
+| `--version` | print the source version, `0.<commits>.9<tree>`, and exit (see `sourceVersion` in build.zig) |
 | `-h`, `--help` | help |
 
 Options may appear before or after the socket path.

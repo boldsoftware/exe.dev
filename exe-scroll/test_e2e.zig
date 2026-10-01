@@ -420,6 +420,21 @@ fn killServer(socket: []const u8) void {
 // Tests.
 // ----------------------------------------------------------------------------
 
+test "--version names the source" {
+    const r = try std.process.Child.run(.{ .allocator = alloc, .argv = &.{ opts.exe_path, "--version" } });
+    defer alloc.free(r.stdout);
+    defer alloc.free(r.stderr);
+    try testing.expectEqualStrings(
+        try std.fmt.allocPrint(alloc, "{s} {s}\n", .{ opts.exe_path, opts.version }),
+        r.stdout,
+    );
+    // exed's `exe-scroll install` and the e1e tests want 0.<count>.<n>.
+    var parts = std.mem.splitScalar(u8, opts.version, '.');
+    var n: usize = 0;
+    while (parts.next()) |part| : (n += 1) _ = try std.fmt.parseInt(u64, part, 10);
+    try testing.expectEqual(3, n);
+}
+
 test "create and interact" {
     const s = try sockPath("create");
     defer alloc.free(s);
@@ -1117,6 +1132,56 @@ test "socket recreation on SIGUSR1 (abduco-style)" {
 // ----------------------------------------------------------------------------
 const SIZE_PRINTER = "while :; do stty size; sleep 0.2; done";
 
+/// Make `p` the size owner by typing, and wait until the pty reports `size`.
+/// Ownership tests use this to turn a freshly attached client (which claims
+/// the size by attaching) back into a bystander.
+fn reclaim(p: *Proc, size: []const u8) !void {
+    p.write("x");
+    const out = try p.drainUntil(size, 3000);
+    defer alloc.free(out);
+    try testing.expect(contains(out, size));
+}
+
+/// Discard `p`'s buffered output so later checks see only fresh size lines.
+fn flush(p: *Proc) !void {
+    alloc.free(try p.drain(500));
+}
+
+test "size ownership: attaching claims the size" {
+    const s = try sockPath("own-attach");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A (say, a wide desktop browser) creates the session and owns the size.
+    var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 46, 196);
+    defer a.kill();
+    const a0 = try a.drainUntil("46 196", 3000);
+    defer alloc.free(a0);
+    try testing.expect(contains(a0, "46 196"));
+
+    // B (a phone) attaches while A is still attached. Opening a terminal is a
+    // claim: B must get its own size without typing anything. Otherwise the
+    // application keeps drawing for A's 196 columns into B's 50, and B shows
+    // garbage until the user happens to type.
+    var b = try spawn(&.{s}, 39, 50);
+    defer b.kill();
+    const b0 = try b.drainUntil("39 50", 3000);
+    defer alloc.free(b0);
+    try testing.expect(contains(b0, "39 50"));
+
+    // A is now a bystander: its resizes are recorded, not applied...
+    try flush(&a);
+    a.resize(46, 161);
+    const a1 = try a.drain(1000);
+    defer alloc.free(a1);
+    try testing.expect(contains(a1, "39 50"));
+    try testing.expect(!contains(a1, "46 161"));
+
+    // ...until A types, which claims the size back at A's latest size.
+    try reclaim(&a, "46 161");
+}
+
 test "size ownership: typing claims the size" {
     const s = try sockPath("own-type");
     defer alloc.free(s);
@@ -1130,27 +1195,31 @@ test "size ownership: typing claims the size" {
     defer alloc.free(a0);
     try testing.expect(contains(a0, "24 80"));
 
-    // B attaches at 30x100. Its attach-time WINCH must NOT resize the PTY:
-    // A owns the size and B hasn't typed anything yet.
+    // B attaches at 30x100, which claims the size; A types to take it back.
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
+    const b_attach = try b.drainUntil("30 100", 3000);
+    alloc.free(b_attach);
+    try reclaim(&a, "24 80");
+
+    // B resizes to 32x104 while A owns: recorded, not applied.
+    try flush(&b);
+    b.resize(32, 104);
     const b0 = try b.drain(1000);
     defer alloc.free(b0);
     try testing.expect(contains(b0, "24 80")); // still A's size
-    try testing.expect(!contains(b0, "30 100")); // B's WINCH was not applied
+    try testing.expect(!contains(b0, "32 104")); // B's WINCH was not applied
 
-    // B types: that claims ownership and applies B's recorded 30x100.
-    b.write("x");
-    const b1 = try b.drainUntil("30 100", 3000);
-    defer alloc.free(b1);
-    try testing.expect(contains(b1, "30 100"));
+    // B types: that claims ownership and applies B's recorded 32x104.
+    try reclaim(&b, "32 104");
 
     // A resizes to 40x120. B owns the size now, so A's WINCH is recorded but
     // not applied.
+    try flush(&a);
     a.resize(40, 120);
     const a1 = try a.drain(1000);
     defer alloc.free(a1);
-    try testing.expect(contains(a1, "30 100")); // still B's size
+    try testing.expect(contains(a1, "32 104")); // still B's size
     try testing.expect(!contains(a1, "40 120")); // A's WINCH was not applied
 
     // A types: ownership moves back to A and its recorded 40x120 applies.
@@ -1166,8 +1235,8 @@ test "size ownership: owner detach releases the size" {
     defer cleanup(s);
     defer killServer(s);
 
-    // A creates (and owns) the session; B and C attach at other sizes, which
-    // must not disturb the PTY.
+    // A creates the session; B and C attach at other sizes (each claiming
+    // the size), then A types to own it again.
     var a = try spawn(&.{ s, "--", "sh", "-c", SIZE_PRINTER }, 24, 80);
     const a0 = try a.drainUntil("24 80", 3000);
     defer alloc.free(a0);
@@ -1175,13 +1244,11 @@ test "size ownership: owner detach releases the size" {
 
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
+    alloc.free(try b.drainUntil("30 100", 3000));
     var cc = try spawn(&.{s}, 35, 110);
     defer cc.kill();
-    const b0 = try b.drain(1000);
-    defer alloc.free(b0);
-    try testing.expect(contains(b0, "24 80"));
-    try testing.expect(!contains(b0, "30 100"));
-    try testing.expect(!contains(b0, "35 110"));
+    alloc.free(try cc.drainUntil("35 110", 3000));
+    try reclaim(&a, "24 80");
 
     // The owner detaches: the size becomes unowned. Nobody inherits it
     // automatically -- the next WINCH (or input) claims it.
@@ -1200,6 +1267,7 @@ test "size ownership: owner detach releases the size" {
     try testing.expect(contains(b1, "50 150"));
 
     // C's resize must now be ignored: B owns the size (and C never typed).
+    try flush(&cc);
     cc.resize(60, 160);
     const c0 = try cc.drain(1000);
     defer alloc.free(c0);
@@ -1245,11 +1313,13 @@ test "size ownership: terminal auto-replies do not claim" {
     defer alloc.free(a0);
     try testing.expect(contains(a0, "24 80"));
 
-    // B attaches at 30x100 (recorded, not applied).
+    // B attaches at 30x100 (claiming the size); A types to take it back,
+    // leaving B a bystander.
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
-    const settle = try b.drain(600);
-    alloc.free(settle);
+    alloc.free(try b.drainUntil("30 100", 3000));
+    try reclaim(&a, "24 80");
+    try flush(&b);
 
     // Emulator auto-replies riding the input path: focus-in report, a DA1
     // response, and a cursor position report. None of these are typing, so
@@ -1287,12 +1357,12 @@ test "size ownership: abrupt owner disconnect snaps to the sole survivor" {
     defer alloc.free(a0);
     try testing.expect(contains(a0, "24 80"));
 
+    // B attaches (claiming the size), then A types to own it again.
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
-    const b0 = try b.drain(800);
-    defer alloc.free(b0);
-    try testing.expect(contains(b0, "24 80"));
-    try testing.expect(!contains(b0, "30 100")); // A owns; B's WINCH ignored
+    alloc.free(try b.drainUntil("30 100", 3000));
+    try reclaim(&a, "24 80");
+    try flush(&b);
 
     // Kill the owner outright: no MSG_DETACH is ever sent -- the server only
     // sees the connection close (EOF) and must release ownership in the
@@ -1347,7 +1417,7 @@ test "size ownership: never-attached owner is displaced by a real client" {
     std.Thread.sleep(500 * std.time.ns_per_ms); // let a "50 150" line print
 
     // B attaches at 30x100. Its attach-time WINCH displaces the stale
-    // (never-attached) owner immediately.
+    // (never-attached) owner immediately (and attaching would claim anyway).
     var b = try spawn(&.{ s, "-R", "scrollback" }, 30, 100);
     defer b.kill();
     const b0 = try b.drainUntil("30 100", 3000);
@@ -1439,8 +1509,9 @@ test "size ownership: mouse wheel does not claim, click does" {
 
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
-    const settle = try b.drain(600);
-    alloc.free(settle);
+    alloc.free(try b.drainUntil("30 100", 3000));
+    try reclaim(&a, "24 80");
+    try flush(&b);
 
     // SGR mouse wheel reports (what web/iOS turn scroll gestures into):
     // wheel-up press, wheel-down with the release final, shift+wheel-up
@@ -1474,8 +1545,9 @@ test "size ownership: unterminated OSC cannot lock a client out" {
 
     var b = try spawn(&.{s}, 30, 100);
     defer b.kill();
-    const settle = try b.drain(600);
-    alloc.free(settle);
+    alloc.free(try b.drainUntil("30 100", 3000));
+    try reclaim(&a, "24 80");
+    try flush(&b);
 
     // An OSC that never terminates: everything after it, keystrokes
     // included, is string body to the scanner -- so this must NOT claim...

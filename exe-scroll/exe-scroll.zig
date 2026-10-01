@@ -15,11 +15,11 @@
 //!
 //! When several clients are attached at once (say a phone and a desktop
 //! browser), they would otherwise fight over the pty size: every resize from
-//! any client used to win. Instead, *typing claims the size*: the session
-//! keeps a size owner (initially the creator), only the owner's resizes are
-//! applied, and sending input makes you the owner (applying your latest
-//! advertised size). Only an attached client with a real (nonzero) advertised
-//! size can own. Terminal auto-replies that travel the input path (focus
+//! any client used to win. Instead, *attaching or typing claims the size*: the
+//! session keeps a size owner, only the owner's resizes are applied, and
+//! attaching or sending input makes you the owner (applying your latest
+//! advertised size). Only a client with a real (nonzero) advertised size can
+//! own. Terminal auto-replies that travel the input path (focus
 //! reports, cursor-position/device-attribute query responses, ...) and mouse
 //! wheel scrolling are recognized and never claim -- see InputScanner; mouse
 //! clicks do. A lone attached client always controls the size: its resizes
@@ -121,7 +121,8 @@ const c = struct {
 // ----------------------------------------------------------------------------
 // Build metadata.
 // ----------------------------------------------------------------------------
-const VERSION = "0.1.0";
+// Names the source this was built from; see sourceVersion in build.zig.
+const VERSION = @import("build_info").version;
 const BUGREPORT = "support@exe.dev";
 
 const BUFSIZE = 4096;
@@ -950,8 +951,8 @@ const Client = struct {
     // The last winsize this client advertised via MSG_WINCH, whether or not it
     // was applied to the pty. All-zero until the first MSG_WINCH (an invalid
     // size, so it's never applied by mistake). If the client later claims size
-    // ownership by typing, this is the size that takes effect (see MSG_DATA in
-    // handleFrame).
+    // ownership by attaching or typing, this is the size that takes effect
+    // (see claimSize).
     last_ws: c.Winsize = .{ .row = 0, .col = 0, .xpixel = 0, .ypixel = 0 },
     // Cross-frame classifier state for this client's MSG_DATA stream: whether
     // bytes are genuine typing (which claims size ownership) or terminal
@@ -963,11 +964,20 @@ var clients: ?*Client = null;
 // The size owner: the client whose window size the pty currently follows.
 // With several clients attached at once (phone + desktop browser on the same
 // session), applying every MSG_WINCH means last-write-wins: foregrounding the
-// phone snaps the desktop to phone size and vice versa. Instead, *typing
-// claims the size*: only the owner's resizes are applied (rule enforced in
-// handleFrame), and sending terminal input takes ownership. null means the
-// size is unowned -- a fresh session, or the owner detached/disconnected --
-// and the next MSG_WINCH from anyone applies and claims it.
+// phone snaps the desktop to phone size and vice versa. Instead, *attaching
+// or typing claims the size*: only the owner's resizes are applied (rule
+// enforced in handleFrame), and attaching or sending terminal input takes
+// ownership. null means the size is unowned -- a fresh session, or the owner
+// detached/disconnected -- and the next MSG_WINCH from anyone applies and
+// claims it.
+//
+// Attaching claims because opening a terminal is as clear a signal as typing
+// that this is the window the user is looking at, and a client narrower than
+// the pty is unusable: full-screen and redraw-heavy programs (Claude Code,
+// say) position text for the pty's width, so a phone attaching to a session a
+// desktop owns at 196 columns would show garbage until the user typed. The
+// opposite mismatch is benign -- a wider client just sees a narrower layout
+// until it types -- so the most recently attached client is the right default.
 //
 // Invariant (enforced lazily): only an *attached* client should hold the
 // size. It can be violated transiently -- a client's first MSG_WINCH
@@ -995,13 +1005,24 @@ var size_owner: ?*Client = null;
 fn releaseSizeOwner(p: *Client) void {
     if (size_owner != p) return;
     size_owner = null;
-    const sole = soleAttachedClient() orelse return;
-    // Only with a real advertised size; a survivor that never sent a valid
-    // MSG_WINCH has nothing to apply (and must not own -- see MSG_DATA).
-    if (sole.last_ws.col == 0 or sole.last_ws.row == 0) return;
-    size_owner = sole;
-    if (sole.last_ws.col != the_pty.ws.col or sole.last_ws.row != the_pty.ws.row)
-        applyWinsize(sole.last_ws);
+    claimSize(soleAttachedClient() orelse return);
+}
+
+/// Make `p` the size owner and snap the pty to its recorded size. Callers
+/// decide *when* a client may claim; this only refuses a client that has
+/// never advertised a real size: a size-less owner would block everyone
+/// else's resizes while contributing no size itself. That is reachable in
+/// production -- clients can attach or type before their first resize
+/// reaches us (the web frontend forwards input regardless of resize
+/// ordering) -- and such a client simply doesn't claim; its later MSG_WINCH
+/// will (if the ownership rules permit).
+fn claimSize(p: *Client) void {
+    if (p.last_ws.col == 0 or p.last_ws.row == 0) return;
+    size_owner = p;
+    // Compare cols/rows only: pixel fields are advisory and often zero, and
+    // differing pixels alone don't warrant a reflow.
+    if (p.last_ws.col != the_pty.ws.col or p.last_ws.row != the_pty.ws.row)
+        applyWinsize(p.last_ws);
 }
 
 /// The single attached client, or null if there are zero or several.
@@ -1310,16 +1331,10 @@ fn sendSnapshot(p: *Client, mode: i32) SnapshotResult {
 
 fn finishAttach(p: *Client) void {
     p.attached = true;
-    // A deferred attach may outlive the previous owner. Re-run the same
-    // ownership rule as MSG_WINCH so its recorded size is applied when the
-    // owner is now absent/stale, without stealing from a live attached owner.
-    if (p.last_ws.col == 0 or p.last_ws.row == 0) return;
-    const owner_stale = if (size_owner) |owner| !owner.attached else true;
-    if (owner_stale or size_owner == p) {
-        size_owner = p;
-        if (p.last_ws.col != the_pty.ws.col or p.last_ws.row != the_pty.ws.row)
-            applyWinsize(p.last_ws);
-    }
+    // Attaching claims the size (see size_owner). MSG_ATTACH already claimed
+    // before taking its snapshot; claim again for a deferred attach, which
+    // only now becomes attached and may have lost the size meanwhile.
+    claimSize(p);
 }
 
 /// Process one fully-received frame from a client.
@@ -1337,27 +1352,11 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
             // branch-per-byte pass over keystroke-sized payloads with no
             // allocation is cheap enough not to bother.
             const typed = p.scan.sawUserInput(payload);
-            // Claim only when p is attached (only an attached client may own
+            // Claim only when p is attached: only an attached client may own
             // the size -- a pre-ATTACH typer would be an owner nobody can
-            // displace, see the MSG_WINCH rule) and only when p has a valid
-            // recorded size. The validity requirement matters in production:
-            // clients can legitimately type before their first resize reaches
-            // us (the web frontend forwards input regardless of resize
-            // ordering; iOS drops resizes sent before the stream opens), and
-            // a size-less owner would deadlock resizes for everyone else
-            // while contributing no size itself. Such a client just doesn't
-            // claim; its later MSG_WINCH will (or the owner's rules permit).
-            if (typed and size_owner != p and p.attached and
-                p.last_ws.col > 0 and p.last_ws.row > 0)
-            {
-                size_owner = p;
-                // Snap the pty to the claimant's recorded size if it differs
-                // from the current size. Compare cols/rows only: pixel fields
-                // are advisory and often zero, and differing pixels alone
-                // don't warrant a reflow.
-                if (p.last_ws.col != the_pty.ws.col or p.last_ws.row != the_pty.ws.row)
-                    applyWinsize(p.last_ws);
-            }
+            // displace, see the MSG_WINCH rule. claimSize refuses a client
+            // without a valid recorded size.
+            if (typed and size_owner != p and p.attached) claimSize(p);
             // Forward unmodified regardless of classification: the
             // application still needs the auto-replies it asked for.
             writeAllFd(the_pty.fd, payload);
@@ -1398,6 +1397,10 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
             }
         },
         MSG_ATTACH => {
+            // Attaching claims the size (see size_owner). Claim before the
+            // snapshot so the replay is already reflowed to this client's
+            // grid rather than the previous owner's.
+            claimSize(p);
             const mode: i32 = if (payload.len >= 1) payload[0] else REPLAY_SCROLLBACK;
             if (mode != REPLAY_NONE) switch (sendSnapshot(p, mode)) {
                 .failed => {
