@@ -28,6 +28,10 @@ scp file.txt <vm>.exe.xyz:~/ # transfer file
 
 Every VM gets `https://<vm>.exe.xyz/` with automatic TLS.
 
+## Naming
+
+VM names are globally unique across all exe.dev customers. If `new --name=<n>` errors with `"this VM name is not available"`, the slug is taken (by you or someone else) — pick another. Generic names like `app`, `staging`, `demo` are mostly gone; add a suffix (`<purpose>-<yyyymmdd>` or a short random) for any new VM you intend to keep.
+
 ## A tale of two SSH destinations
 
 - **`ssh exe.dev <command>`** — the exe.dev lobby. A REPL for VM lifecycle, sharing, and configuration. Does not support scp, sftp, or arbitrary shell commands.
@@ -48,3 +52,17 @@ Host exe.dev *.exe.xyz
   IdentitiesOnly yes
   IdentityFile ~/.ssh/id_ed25519
 ```
+
+**Multi-line commands**: Heredocs and embedded newlines collapse when passed inside a quoted argument to `ssh <vm>.exe.xyz "<cmd>"` from many shells (`\n` flattens to spaces, breaking scripts). Feed multi-line scripts via `bash -s` over stdin instead:
+
+```
+ssh <vm>.exe.xyz 'bash -s' <<'EOF'
+set -e
+sudo apt-get update
+# ...
+EOF
+```
+
+For non-text content (binaries, anything sensitive to whitespace), base64-encode locally and decode on the VM.
+
+**Lobby-routed VM shell**: `ssh exe.dev ssh <vm> "<cmd>"` runs a shell command on the VM via the lobby. Convenient in non-interactive scripts — the lobby's host key is already trusted, so there's no per-VM `known_hosts` setup or `accept-new` prompt. (No scp/sftp through this path; use direct `<vm>.exe.xyz` for transfers.)
