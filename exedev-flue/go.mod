@@ -1,3 +1,3 @@
 module github.com/boldsoftware/exe.dev/exedev-flue
 
-go 1.27.1
+go 1.27.2
