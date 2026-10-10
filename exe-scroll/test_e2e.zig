@@ -644,6 +644,34 @@ test "replay preserves color (SGR escapes)" {
     try testing.expect(contains(replay, "\x1b[")); // ...and so did SGR escapes
 }
 
+test "replay keeps soft-wrapped lines joined" {
+    // A line that only wrapped because of the window width must replay as one
+    // line, so a client at a different width re-wraps it instead of breaking
+    // it again at the old width ("persi" / "s" / "tent"). The space at the
+    // wrap column must survive too, or re-wrapping shifts the text.
+    const s = try sockPath("unwrap");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // 20 columns: "AAAAAAAAAAAAAAAAAAA BBBBBBBBBBBBBBBBBBB WRAPEND", with the
+    // spaces landing on column 20 of the first two rows.
+    const line = "AAAAAAAAAAAAAAAAAAA BBBBBBBBBBBBBBBBBBB WRAPEND";
+    var p = try spawn(&.{ s, "--", "sh", "-c", "printf '" ++ line ++ "\\r\\n'; exec cat" }, 10, 20);
+    const seen = try p.drainUntil("WRAPEND", 3000);
+    defer alloc.free(seen);
+    p.signal(c.SIGUSR2);
+    const d1 = try p.drainUntil("detached", 2000);
+    alloc.free(d1);
+    p.kill();
+
+    var p2 = try spawn(&.{ s, "-R", "scrollback" }, 10, 20);
+    defer p2.kill();
+    const replay = try p2.drainUntil("WRAPEND", 3000);
+    defer alloc.free(replay);
+    try testing.expect(contains(replay, line));
+}
+
 fn expectCursorVisibilityReplay(replay_mode: []const u8, script: []const u8, marker: []const u8, expected: []const u8, opposite: []const u8) !void {
     const s = try sockPath(replay_mode);
     defer alloc.free(s);

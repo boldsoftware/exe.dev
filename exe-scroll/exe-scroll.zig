@@ -532,7 +532,9 @@ const Mirror = struct {
 
     fn formatTerminal(t: *const vt.Terminal) ?[]u8 {
         var replay = normalizeReplayModes(t);
-        const formatter_opts: vt.formatter.Options = .{ .emit = .vt, .unwrap = false, .trim = true };
+        // unwrap: a soft-wrapped line replays as one line, so a client at another
+        // width re-wraps it rather than breaking it again at our width.
+        const formatter_opts: vt.formatter.Options = .{ .emit = .vt, .unwrap = true, .trim = true };
         var aw = std.Io.Writer.Allocating.init(alloc);
         defer aw.deinit();
         // Terminal modes are interaction state, not just decoration. In
