@@ -34,6 +34,12 @@ const vt = @import("ghostty-vt");
 
 const alloc = std.heap.c_allocator;
 
+// The few std.Io calls (just stat, today) go through a single-threaded Io: the
+// rest of the program talks to libc directly, forks, and never needs
+// concurrency or cancelation from std.
+var io_impl: std.Io.Threaded = .init_single_threaded;
+const io = io_impl.io();
+
 // ----------------------------------------------------------------------------
 // libc bindings. Almost everything comes straight from `std.c`/`std.posix`, so
 // the ABI (termios layout, signal numbers, ioctl encodings, errno values, ...)
@@ -62,15 +68,22 @@ const c = struct {
         std.c._errno().* = v;
     }
 
-    // signal numbers
-    const SIGHUP = std.c.SIG.HUP;
-    const SIGINT = std.c.SIG.INT;
-    const SIGQUIT = std.c.SIG.QUIT;
-    const SIGUSR1 = std.c.SIG.USR1;
-    const SIGUSR2 = std.c.SIG.USR2;
-    const SIGPIPE = std.c.SIG.PIPE;
-    const SIGTERM = std.c.SIG.TERM;
-    const SIGWINCH = std.c.SIG.WINCH;
+    // signal numbers, as the plain ints signal() and its handlers deal in
+    // (std.c.SIG is an enum).
+    const SIGHUP = sigNum(.HUP);
+    const SIGINT = sigNum(.INT);
+    const SIGQUIT = sigNum(.QUIT);
+    const SIGUSR1 = sigNum(.USR1);
+    const SIGUSR2 = sigNum(.USR2);
+    const SIGPIPE = sigNum(.PIPE);
+    const SIGTERM = sigNum(.TERM);
+    const SIGWINCH = sigNum(.WINCH);
+    fn sigNum(sig: std.c.SIG) c_int {
+        return @intCast(@intFromEnum(sig));
+    }
+    fn kill(pid: std.c.pid_t, sig: c_int) c_int {
+        return std.c.kill(pid, @enumFromInt(sig));
+    }
     const SIG_IGN: usize = @intFromPtr(std.c.SIG.IGN);
     const SIG_DFL: usize = @intFromPtr(std.c.SIG.DFL);
 
@@ -166,6 +179,8 @@ var orig_term: c.Termios = undefined;
 var have_tty: bool = false;
 
 var child_argv: [:null]?[*:0]const u8 = undefined;
+// The process's argv, as handed to main. setProcTitle rewrites its strings.
+var proc_argv: []const [*:0]const u8 = &.{};
 
 // Rewrite the process's command line (what `ps` shows) to advertise this
 // process's role, e.g. "exe-scroll: session /tmp/work.sock". The portable way
@@ -174,7 +189,7 @@ var child_argv: [:null]?[*:0]const u8 = undefined;
 // the BSDs. `progname` must already be a copy that does not point into argv
 // (see main), since this clobbers argv[0]'s bytes.
 fn setProcTitle(role: []const u8) void {
-    const argv = std.os.argv;
+    const argv = proc_argv;
     if (argv.len == 0) return;
     // The strings argv[i] points at are laid out contiguously; find the span.
     var lo: usize = @intFromPtr(argv[0]);
@@ -195,8 +210,12 @@ fn setProcTitle(role: []const u8) void {
     @memset(dst[n..cap], 0);
 }
 
+// The Io the mirror terminals use (for Kitty graphics file transmission).
+// TinyIo is ghostty-vt's small blocking implementation for embedders.
+const term_io = vt.TinyIo.init.io();
+
 // Scrollback the session retains, as the byte budget ghostty-vt's
-// max_scrollback expects.
+// max_scrollback_bytes expects.
 const SCROLLBACK_BYTES: usize = 1024 * 1024;
 
 // ----------------------------------------------------------------------------
@@ -284,7 +303,7 @@ fn prepSockPath(sockun: *std.c.sockaddr.un, path: [:0]const u8) c_int {
         return -1;
     }
     const dir = dirOf(path);
-    var dirbuf: [std.fs.max_path_bytes]u8 = undefined;
+    var dirbuf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     if (dir.len >= dirbuf.len) {
         c.setErrno(c.ENAMETOOLONG);
         return -1;
@@ -326,7 +345,7 @@ fn ensureParentDirs(path: []const u8) !void {
     const dir = dirOf(path);
     if (dir.len == 0 or std.mem.eql(u8, dir, ".") or std.mem.eql(u8, dir, "/")) return;
 
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     if (dir.len >= buf.len) return error.NameTooLong;
     @memcpy(buf[0..dir.len], dir);
     buf[dir.len] = 0;
@@ -370,17 +389,17 @@ const Mirror = struct {
 
     fn init(cols: u16, rows: u16) void {
         const t = alloc.create(vt.Terminal) catch return;
-        t.* = vt.Terminal.init(alloc, .{
+        t.* = vt.Terminal.init(term_io, alloc, .{
             .cols = if (cols == 0) 80 else cols,
             .rows = if (rows == 0) 24 else rows,
-            .max_scrollback = SCROLLBACK_BYTES,
+            .max_scrollback_bytes = SCROLLBACK_BYTES,
         }) catch {
             alloc.destroy(t);
             return;
         };
         instance = .{
             .term = t,
-            .stream = vt.TerminalStream.initAlloc(alloc, t.vtHandler()),
+            .stream = t.vtStream(),
             .cols = if (cols == 0) 80 else cols,
             .rows = if (rows == 0) 24 else rows,
         };
@@ -471,7 +490,7 @@ const Mirror = struct {
     fn resize(cols: u16, rows: u16) void {
         const m = &(instance orelse return);
         if (cols == 0 or rows == 0) return;
-        m.term.resize(alloc, cols, rows) catch return;
+        m.term.resize(alloc, .{ .cols = cols, .rows = rows }) catch return;
         m.cols = cols;
         m.rows = rows;
     }
@@ -682,14 +701,14 @@ const Mirror = struct {
         const full = formatTerminal(m.term) orelse return null;
         defer alloc.free(full);
 
-        var tmp = vt.Terminal.init(alloc, .{
+        var tmp = vt.Terminal.init(term_io, alloc, .{
             .cols = m.cols,
             .rows = m.rows,
-            .max_scrollback = 0,
+            .max_scrollback_bytes = 0,
         }) catch return null;
         defer tmp.deinit(alloc);
 
-        var tmp_stream = vt.TerminalStream.initAlloc(alloc, tmp.vtHandler());
+        var tmp_stream = tmp.vtStream();
         defer tmp_stream.deinit();
         tmp_stream.nextSlice(full);
         const snapshot = formatTerminal(&tmp) orelse return null;
@@ -1109,7 +1128,7 @@ fn unlinkSocketAtexit() callconv(.c) void {
 }
 
 fn currentSocketInode() ?u64 {
-    const st = std.fs.cwd().statFile(sockname) catch return null;
+    const st = std.Io.Dir.cwd().statFile(io, sockname, .{}) catch return null;
     return st.inode;
 }
 
@@ -1138,7 +1157,7 @@ fn createListenSocket(name: [:0]const u8) c_int {
     var sockun: std.c.sockaddr.un = undefined;
 
     // temp path: "<dir>/.exe-scroll.<pid>.tmp" in the same directory as name.
-    var tmpbuf: [std.fs.max_path_bytes]u8 = undefined;
+    var tmpbuf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const dir = dirOf(name);
     const tmp = std.fmt.bufPrintZ(&tmpbuf, "{s}/.exe-scroll.{d}.tmp", .{
         if (std.mem.eql(u8, dir, ".")) "." else dir,
@@ -1155,14 +1174,14 @@ fn createListenSocket(name: [:0]const u8) c_int {
     var saved: c_int = NO_RESTORE;
     var bind_name: [*:0]const u8 = tmp.ptr; // what bind()/chmod() see
     var final_name: [*:0]const u8 = name.ptr; // rename() target
-    var tmp_base_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var name_base_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var tmp_base_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    var name_base_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     if (tmp.len > sockun.path.len - 1) {
         const tmp_base = baseOf(tmp);
         const name_base = baseOf(name);
         if (tmp_base.len > sockun.path.len - 1 or
             tmp_base.len >= tmp_base_buf.len or name_base.len >= name_base_buf.len or
-            dir.len >= std.fs.max_path_bytes)
+            dir.len >= std.Io.Dir.max_path_bytes)
         {
             c.setErrno(c.ENAMETOOLONG);
             return -1;
@@ -1172,7 +1191,7 @@ fn createListenSocket(name: [:0]const u8) c_int {
         @memcpy(name_base_buf[0..name_base.len], name_base);
         name_base_buf[name_base.len] = 0;
 
-        var dirbuf: [std.fs.max_path_bytes]u8 = undefined;
+        var dirbuf: [std.Io.Dir.max_path_bytes]u8 = undefined;
         @memcpy(dirbuf[0..dir.len], dir);
         dirbuf[dir.len] = 0;
         saved = std.c.open(".", .{ .ACCMODE = .RDONLY, .DIRECTORY = true, .CLOEXEC = true });
@@ -1247,7 +1266,7 @@ fn requestRecreate(sig: c_int) callconv(.c) void {
 }
 
 fn killPty(sig: c_int) void {
-    _ = std.c.kill(-the_pty.pid, sig);
+    _ = c.kill(-the_pty.pid, sig);
 }
 
 fn dropClient(p: *Client) void {
@@ -1652,7 +1671,7 @@ fn spawnServer() i32 {
     _ = std.c.close(fd[0]);
     if (n > 0) {
         writeAllFd(2, msg[0..@intCast(n)]);
-        _ = std.c.kill(pid, c.SIGTERM);
+        _ = c.kill(pid, c.SIGTERM);
         return 1;
     }
     // The listen fd belongs to the server now; the parent (about to become an
@@ -1903,12 +1922,13 @@ fn usage() noreturn {
     std.c.exit(0);
 }
 
-pub fn main() u8 {
-    const argv = std.os.argv;
+pub fn main(init: std.process.Init.Minimal) u8 {
+    const argv = init.args.vector;
+    proc_argv = argv;
     // Copy argv[0] out of the argv string region: setProcTitle overwrites that
     // region in place, and we still want progname for error messages.
     if (argv.len >= 1) progname = alloc.dupeZ(u8, std.mem.span(argv[0])) catch "exe-scroll";
-    const args: [][*:0]u8 = argv[0..];
+    const args = argv;
 
     var i: usize = 1;
     var cmd_start: ?usize = null;
@@ -1998,10 +2018,9 @@ pub fn main() u8 {
         const start: usize = cmd_start orelse args.len;
         if (start >= args.len) {
             // Default command: $SHELL or /bin/sh.
-            const shell = std.posix.getenv("SHELL") orelse "/bin/sh";
+            const shell = init.environ.getPosix("SHELL") orelse "/bin/sh";
             const buf = alloc.allocSentinel(?[*:0]const u8, 1, null) catch return 1;
-            buf[0] = @ptrCast(shell.ptr);
-            // ensure NUL-terminated: getenv strings are NUL-terminated.
+            buf[0] = shell.ptr;
             child_argv = buf;
         } else {
             const remaining = args.len - start;

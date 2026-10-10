@@ -2,7 +2,7 @@
     .name = .exe_scroll,
     .version = "0.1.0",
     .fingerprint = 0x8e7c6e2e100742c9,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .ghostty = .{ .path = "ghostty-src" },
     },

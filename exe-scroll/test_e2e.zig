@@ -55,6 +55,16 @@ const c = struct {
 };
 
 const alloc = std.heap.c_allocator;
+const io = testing.io;
+
+// Milliseconds on a monotonic clock, for deadlines.
+fn nowMs() i64 {
+    return std.Io.Clock.awake.now(io).toMilliseconds();
+}
+
+fn sleepMs(ms: i64) void {
+    io.sleep(.fromMilliseconds(ms), .awake) catch {};
+}
 
 // A spawned exe-scroll attach client: the pid of the foreground process and
 // the controlling-pty fd we talk to it through.
@@ -106,8 +116,8 @@ const Proc = struct {
     fn drain(self: *Proc, ms: i32) ![]u8 {
         var buf: std.ArrayListUnmanaged(u8) = .empty;
         errdefer buf.deinit(alloc);
-        const deadline = std.time.milliTimestamp() + ms;
-        while (std.time.milliTimestamp() < deadline) {
+        const deadline = nowMs() + ms;
+        while (nowMs() < deadline) {
             var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = c.POLLIN, .revents = 0 }};
             const n = std.c.poll(&pfd, 1, 50);
             if (n <= 0) continue;
@@ -126,8 +136,8 @@ const Proc = struct {
     fn drainUntil(self: *Proc, needle: []const u8, ms: i32) ![]u8 {
         var buf: std.ArrayListUnmanaged(u8) = .empty;
         errdefer buf.deinit(alloc);
-        const deadline = std.time.milliTimestamp() + ms;
-        while (std.time.milliTimestamp() < deadline) {
+        const deadline = nowMs() + ms;
+        while (nowMs() < deadline) {
             var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = c.POLLIN, .revents = 0 }};
             const n = std.c.poll(&pfd, 1, 50);
             if (n > 0) {
@@ -148,15 +158,15 @@ const Proc = struct {
     /// exited in time.
     fn waitExit(self: *Proc, ms: i32) bool {
         if (self.pid <= 0) return true;
-        const deadline = std.time.milliTimestamp() + ms;
+        const deadline = nowMs() + ms;
         while (true) {
             const r = c.waitpid(self.pid, null, c.WNOHANG);
             if (r == self.pid) {
                 self.pid = -1;
                 return true;
             }
-            if (std.time.milliTimestamp() >= deadline) return false;
-            std.Thread.sleep(10 * std.time.ns_per_ms);
+            if (nowMs() >= deadline) return false;
+            sleepMs(10);
         }
     }
 };
@@ -207,21 +217,21 @@ fn sockPath(name: []const u8) ![:0]u8 {
 }
 
 fn fileExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
+    std.Io.Dir.cwd().access(io, path, .{}) catch return false;
     return true;
 }
 
 fn cleanup(path: []const u8) void {
-    std.fs.cwd().deleteFile(path) catch {};
+    std.Io.Dir.cwd().deleteFile(io, path) catch {};
 }
 
 /// Poll for a path to (dis)appear, up to `ms`. Returns true if the predicate
 /// held before the deadline.
 fn waitFor(path: []const u8, want_exists: bool, ms: i32) bool {
-    const deadline = std.time.milliTimestamp() + ms;
-    while (std.time.milliTimestamp() < deadline) {
+    const deadline = nowMs() + ms;
+    while (nowMs() < deadline) {
         if (fileExists(path) == want_exists) return true;
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        sleepMs(10);
     }
     return fileExists(path) == want_exists;
 }
@@ -231,17 +241,17 @@ fn waitFor(path: []const u8, want_exists: bool, ms: i32) bool {
 /// setProcTitle in exe-scroll.zig), other than `exclude` (the foreground
 /// attach client). Returns 0 if none found.
 fn findServer(socket: []const u8, exclude: c_int) !c_int {
-    var dir = try std.fs.openDirAbsolute("/proc", .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.openDirAbsolute(io, "/proc", .{ .iterate = true });
+    defer dir.close(io);
     var needlebuf: [512]u8 = undefined;
     const needle = try std.fmt.bufPrint(&needlebuf, "exe-scroll: session {s}", .{socket});
     var it = dir.iterate();
-    while (try it.next()) |entry| {
+    while (try it.next(io)) |entry| {
         const pid = std.fmt.parseInt(c_int, entry.name, 10) catch continue;
         if (pid == exclude) continue;
         var pathbuf: [64]u8 = undefined;
         const cmdpath = std.fmt.bufPrint(&pathbuf, "/proc/{s}/cmdline", .{entry.name}) catch continue;
-        const data = std.fs.cwd().readFileAlloc(alloc, cmdpath, 64 * 1024) catch continue;
+        const data = readProcFile(cmdpath) catch continue;
         defer alloc.free(data);
         // The retitled command line is NUL-padded; the role + socket live in
         // the first NUL-terminated chunk.
@@ -250,6 +260,15 @@ fn findServer(socket: []const u8, exclude: c_int) !c_int {
         if (std.mem.eql(u8, arg0, needle)) return pid;
     }
     return 0;
+}
+
+/// Read a /proc file. These report a size of 0, so read them as a stream
+/// (Dir.readFileAlloc trusts the size and would return nothing). Caller frees.
+fn readProcFile(path: []const u8) ![]u8 {
+    var file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    var reader = file.readerStreaming(io, &.{});
+    return reader.interface.allocRemaining(alloc, .limited(64 * 1024));
 }
 
 fn contains(haystack: []const u8, needle: []const u8) bool {
@@ -352,10 +371,10 @@ const RawClient = struct {
     /// payloads or `ms` elapses. Returns true if found. Payloads accumulate
     /// across calls, so a needle already received is found immediately.
     fn drainUntil(self: *RawClient, needle: []const u8, ms: i32) bool {
-        const deadline = std.time.milliTimestamp() + ms;
+        const deadline = nowMs() + ms;
         while (true) {
             if (std.mem.indexOf(u8, self.data.items, needle) != null) return true;
-            const left = deadline - std.time.milliTimestamp();
+            const left = deadline - nowMs();
             if (left <= 0) return false;
             var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = c.POLLIN, .revents = 0 }};
             const n = std.c.poll(&pfd, 1, @intCast(@min(left, 50)));
@@ -409,10 +428,10 @@ fn killServer(socket: []const u8) void {
     const pid = findServer(socket, 0) catch return;
     if (pid <= 0) return;
     _ = c.kill(pid, c.SIGKILL);
-    const deadline = std.time.milliTimestamp() + 2000;
-    while (std.time.milliTimestamp() < deadline) {
+    const deadline = nowMs() + 2000;
+    while (nowMs() < deadline) {
         if ((findServer(socket, 0) catch 0) <= 0) return;
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        sleepMs(10);
     }
 }
 
@@ -421,7 +440,7 @@ fn killServer(socket: []const u8) void {
 // ----------------------------------------------------------------------------
 
 test "--version names the source" {
-    const r = try std.process.Child.run(.{ .allocator = alloc, .argv = &.{ opts.exe_path, "--version" } });
+    const r = try std.process.run(alloc, io, .{ .argv = &.{ opts.exe_path, "--version" } });
     defer alloc.free(r.stdout);
     defer alloc.free(r.stderr);
     try testing.expectEqualStrings(
@@ -469,10 +488,10 @@ fn commandPid(out: []const u8) !c_int {
 }
 
 fn waitGone(pid: c_int, ms: i64) bool {
-    const deadline = std.time.milliTimestamp() + ms;
-    while (std.time.milliTimestamp() < deadline) {
+    const deadline = nowMs() + ms;
+    while (nowMs() < deadline) {
         if (c.kill(pid, 0) != 0) return true;
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        sleepMs(10);
     }
     return false;
 }
@@ -527,8 +546,8 @@ test "secure parent dirs are created 0700" {
     seq += 1;
     const base = try std.fmt.allocPrint(alloc, "/tmp/exe-scroll-zt-{d}-{d}-dirs", .{ std.c.getpid(), seq });
     defer alloc.free(base);
-    std.fs.cwd().deleteTree(base) catch {};
-    defer std.fs.cwd().deleteTree(base) catch {};
+    std.Io.Dir.cwd().deleteTree(io, base) catch {};
+    defer std.Io.Dir.cwd().deleteTree(io, base) catch {};
 
     const s = try std.fmt.allocPrintSentinel(alloc, "{s}/a/b/c/session.sock", .{base}, 0);
     defer alloc.free(s);
@@ -544,8 +563,8 @@ test "secure parent dirs are created 0700" {
     for ([_][]const u8{ "a", "a/b", "a/b/c" }) |sub| {
         const d = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ base, sub });
         defer alloc.free(d);
-        const st = try std.fs.cwd().statFile(d);
-        try testing.expectEqual(@as(u16, 0o700), @as(u16, @intCast(st.mode & 0o777)));
+        const st = try std.Io.Dir.cwd().statFile(io, d, .{});
+        try testing.expectEqual(@as(u16, 0o700), @as(u16, @intCast(st.permissions.toMode() & 0o777)));
     }
 }
 
@@ -801,13 +820,13 @@ test "replay preserves terminal modes in every mode" {
         // Apply the real replay to a deliberately dirty client emulator. This
         // catches byte streams that contain the right markers in the wrong
         // terminal state or at the wrong cursor origin.
-        var client = try vt.Terminal.init(alloc, .{
+        var client = try vt.Terminal.init(io, alloc, .{
             .cols = 80,
             .rows = 24,
-            .max_scrollback = 1024 * 1024,
+            .max_scrollback_bytes = 1024 * 1024,
         });
         defer client.deinit(alloc);
-        var client_stream = vt.TerminalStream.initAlloc(alloc, client.vtHandler());
+        var client_stream = client.vtStream();
         defer client_stream.deinit();
         client_stream.nextSlice("\x1b[?1049h\x1b[?1000h\x1b[?1006h\x1b[?2004hSTALECLIENT");
         client_stream.nextSlice(replay);
@@ -966,24 +985,24 @@ test "interrupted terminal sequences remain compatible across reconnect" {
         @memcpy(reconnected_bytes[replay_head.len..], replay_tail);
         if (case.pending_needle) |needle| try testing.expect(contains(reconnected_bytes, needle));
 
-        var uninterrupted = try vt.Terminal.init(alloc, .{
+        var uninterrupted = try vt.Terminal.init(io, alloc, .{
             .cols = 80,
             .rows = 24,
-            .max_scrollback = 1024 * 1024,
+            .max_scrollback_bytes = 1024 * 1024,
         });
         defer uninterrupted.deinit(alloc);
-        var uninterrupted_stream = vt.TerminalStream.initAlloc(alloc, uninterrupted.vtHandler());
+        var uninterrupted_stream = uninterrupted.vtStream();
         defer uninterrupted_stream.deinit();
         uninterrupted_stream.nextSlice(case.prefix);
         uninterrupted_stream.nextSlice(case.suffix);
 
-        var reconnected = try vt.Terminal.init(alloc, .{
+        var reconnected = try vt.Terminal.init(io, alloc, .{
             .cols = 80,
             .rows = 24,
-            .max_scrollback = 1024 * 1024,
+            .max_scrollback_bytes = 1024 * 1024,
         });
         defer reconnected.deinit(alloc);
-        var reconnected_stream = vt.TerminalStream.initAlloc(alloc, reconnected.vtHandler());
+        var reconnected_stream = reconnected.vtStream();
         defer reconnected_stream.deinit();
         reconnected_stream.nextSlice(reconnected_bytes);
 
@@ -1032,13 +1051,13 @@ test "oversized interrupted sequence shows a stable snapshot then refreshes" {
     client.sendData("y");
     try testing.expect(client.drainUntil("30 100", 5000));
 
-    var terminal = try vt.Terminal.init(alloc, .{
+    var terminal = try vt.Terminal.init(io, alloc, .{
         .cols = 80,
         .rows = 24,
-        .max_scrollback = 1024 * 1024,
+        .max_scrollback_bytes = 1024 * 1024,
     });
     defer terminal.deinit(alloc);
-    var stream = vt.TerminalStream.initAlloc(alloc, terminal.vtHandler());
+    var stream = terminal.vtStream();
     defer stream.deinit();
     stream.nextSlice(client.data.items);
 
@@ -1078,13 +1097,13 @@ test "replay preserves an inactive legacy alternate screen" {
         const replay = try p2.drain(1200);
         defer alloc.free(replay);
 
-        var client = try vt.Terminal.init(alloc, .{
+        var client = try vt.Terminal.init(io, alloc, .{
             .cols = 80,
             .rows = 24,
-            .max_scrollback = 1024 * 1024,
+            .max_scrollback_bytes = 1024 * 1024,
         });
         defer client.deinit(alloc);
-        var client_stream = vt.TerminalStream.initAlloc(alloc, client.vtHandler());
+        var client_stream = client.vtStream();
         defer client_stream.deinit();
         client_stream.nextSlice(replay);
 
@@ -1120,19 +1139,19 @@ test "socket recreation on SIGUSR1 (abduco-style)" {
     const server = try findServer(s, p.pid);
     try testing.expect(server > 0); // found the detached session server
 
-    const ino_before = (try std.fs.cwd().statFile(s)).inode;
+    const ino_before = (try std.Io.Dir.cwd().statFile(io, s, .{})).inode;
 
     // Delete the socket out from under the live session.
     cleanup(s);
     try testing.expect(!fileExists(s));
     // The server must NOT recreate it on its own (no timer/watcher).
-    std.Thread.sleep(800 * std.time.ns_per_ms);
+    sleepMs(800);
     try testing.expect(!fileExists(s));
 
     // Signal the server: it should rebind a fresh socket.
     _ = c.kill(server, c.SIGUSR1);
     try testing.expect(waitFor(s, true, 2000));
-    const ino_after = (try std.fs.cwd().statFile(s)).inode;
+    const ino_after = (try std.Io.Dir.cwd().statFile(io, s, .{})).inode;
     try testing.expect(ino_after != ino_before); // fresh inode
 
     // Reattach to the still-running session and confirm continuity.
@@ -1285,7 +1304,7 @@ test "size ownership: owner detach releases the size" {
     defer alloc.free(bye);
     try testing.expect(a.waitExit(2000));
     a.kill();
-    std.Thread.sleep(200 * std.time.ns_per_ms); // let the server process it
+    sleepMs(200); // let the server process it
 
     // B's resize is the first WINCH after the release: it applies, and B
     // becomes the owner.
@@ -1358,7 +1377,7 @@ test "size ownership: terminal auto-replies do not claim" {
     // A CPR split across two input frames: the classifier state must carry
     // across MSG_DATA payloads for the second half to stay an auto-reply.
     b.write("\x1b[12;");
-    std.Thread.sleep(150 * std.time.ns_per_ms);
+    sleepMs(150);
     b.write("40R");
 
     const b0 = try b.drain(1000);
@@ -1435,14 +1454,14 @@ test "size ownership: never-attached owner is displaced by a real client" {
     defer alloc.free(bye);
     try testing.expect(a.waitExit(2000));
     a.kill();
-    std.Thread.sleep(200 * std.time.ns_per_ms);
+    sleepMs(200);
 
     // A raw protocol client claims the unowned size with a WINCH and never
     // attaches (frozen in the built-in client's WINCH-before-ATTACH window).
     var r = try RawClient.connect(s);
     defer r.close();
     r.sendWinch(50, 150);
-    std.Thread.sleep(500 * std.time.ns_per_ms); // let a "50 150" line print
+    sleepMs(500); // let a "50 150" line print
 
     // B attaches at 30x100. Its attach-time WINCH displaces the stale
     // (never-attached) owner immediately (and attaching would claim anyway).
@@ -1471,7 +1490,7 @@ test "size ownership: degenerate 0x0 winch neither claims nor applies" {
     defer alloc.free(bye);
     try testing.expect(a.waitExit(2000));
     a.kill();
-    std.Thread.sleep(200 * std.time.ns_per_ms);
+    sleepMs(200);
 
     // R1 attaches and advertises 0x0 (e.g. a hidden window). Before the
     // validity guard this claimed ownership AND set the pty to 0x0 via
@@ -1513,7 +1532,7 @@ test "size ownership: typing without a size never claims (no deadlock)" {
     defer r.close();
     r.attach();
     r.sendData("x");
-    std.Thread.sleep(300 * std.time.ns_per_ms); // let the server process it
+    sleepMs(300); // let the server process it
 
     // A (the owner) can still resize; had R claimed, this would be swallowed
     // (R is attached, so neither the stale-owner nor sole-client rule helps).

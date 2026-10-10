@@ -92,6 +92,6 @@ fn git(b: *std.Build, args: []const []const u8) ?[]const u8 {
         args,
     }) catch @panic("OOM");
     var code: u8 = undefined;
-    const out = b.runAllowFail(argv, &code, .Ignore) catch return null;
+    const out = b.runAllowFail(argv, &code, .ignore) catch return null;
     return std.mem.trim(u8, out, " \t\r\n");
 }
