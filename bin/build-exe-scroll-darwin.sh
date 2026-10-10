@@ -5,7 +5,7 @@ set -e
 ARCH="$1"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SRC="$ROOT/exe-scroll"
-GHOSTTY_REV="${GHOSTTY_REV:-48d3e972d839999745368b156df396d9512fd17b}"
+GHOSTTY_REV="${GHOSTTY_REV:-$(cat "$SRC/ghostty-rev")}"
 GHOSTTY_SRC="${GHOSTTY_SRC:-$HOME/.cache/exe-scroll-ci/ghostty-src}"
 OUT_DIR="${OUT_DIR:-$SRC/zig-out-$ARCH}"
 

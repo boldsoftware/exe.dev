@@ -13,8 +13,8 @@ ZIG ?= zig
 OPTIMIZE ?= ReleaseFast
 BIN := zig-out/bin/exe-scroll
 
-# Pinned Ghostty revision (kept in sync with build-static.sh).
-GHOSTTY_REV ?= 48d3e972d839999745368b156df396d9512fd17b
+# Pinned Ghostty revision; ./ghostty-rev is the one place it's recorded.
+GHOSTTY_REV ?= $(shell cat ghostty-rev)
 GHOSTTY_REPO_URL ?= https://github.com/ghostty-org/ghostty.git
 # Where `make` clones Ghostty when GHOSTTY_SRC isn't supplied.
 GHOSTTY_CACHE := .ghostty

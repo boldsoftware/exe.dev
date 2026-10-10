@@ -14,11 +14,11 @@ if [ -z "$ARCH" ]; then
     exit 1
 fi
 
-GHOSTTY_REV="${GHOSTTY_REV:-48d3e972d839999745368b156df396d9512fd17b}"
-GHOSTTY_REPO_URL="${GHOSTTY_REPO_URL:-https://github.com/ghostty-org/ghostty.git}"
-
 # Directory containing build.zig (this script's directory by default).
 SRC_DIR="${SRC_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}"
+
+GHOSTTY_REV="${GHOSTTY_REV:-$(cat "$SRC_DIR/ghostty-rev")}"
+GHOSTTY_REPO_URL="${GHOSTTY_REPO_URL:-https://github.com/ghostty-org/ghostty.git}"
 
 case "$ARCH" in
 amd64 | x86_64)
