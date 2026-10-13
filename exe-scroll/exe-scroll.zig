@@ -397,6 +397,10 @@ const Mirror = struct {
     pending_valid: bool = true,
     cols: u16,
     rows: u16,
+    // Terminal-wide, not screen-local. Kept in least-recently-updated order.
+    statuses: std.ArrayListUnmanaged(vt.osc.Command.ProgramStatus.Report) = .empty,
+
+    const max_status_records = 256;
 
     var instance: ?Mirror = null;
 
@@ -416,6 +420,73 @@ const Mirror = struct {
             .cols = if (cols == 0) 80 else cols,
             .rows = if (rows == 0) 24 else rows,
         };
+        const m = &(instance.?);
+        m.stream.handler.effects.program_status = &programStatus;
+        m.stream.handler.effects.semantic_prompt = &semanticPrompt;
+        // Leave write_pty unset: feature detection and replies still pass
+        // through the attached terminal, without duplicate local replies.
+    }
+
+    fn removeStatus(m: *Mirror, i: usize) void {
+        const old = m.statuses.orderedRemove(i);
+        alloc.free(old.data);
+    }
+
+    fn programStatus(_: *vt.TerminalStream.Handler, report: vt.osc.Command.ProgramStatus.Report) void {
+        const m = &(instance orelse return);
+        const id = report.readOption(.id) orelse "";
+        if (report.state == .clear) {
+            var i: usize = 0;
+            while (i < m.statuses.items.len) {
+                const old_id = m.statuses.items[i].readOption(.id) orelse "";
+                if (id.len == 0 or std.mem.eql(u8, old_id, id) or
+                    (std.mem.startsWith(u8, old_id, id) and old_id.len > id.len and old_id[id.len] == '/'))
+                {
+                    m.removeStatus(i);
+                } else i += 1;
+            }
+            return;
+        }
+
+        // Rebuild known, validated fields rather than retaining raw OSC bytes.
+        // Skipped malformed pairs and embedded C0 controls must not execute
+        // again during replay (their grid effects are already in the snapshot).
+        var body = std.Io.Writer.Allocating.init(alloc);
+        defer body.deinit();
+        body.writer.print("state={s}", .{@tagName(report.state)}) catch return;
+        inline for (.{ .id, .kind, .progress, .app, .title, .msg }) |option| {
+            if (report.readOption(option)) |value| {
+                body.writer.print(":" ++ @tagName(option) ++ "=", .{}) catch return;
+                switch (option) {
+                    .kind => body.writer.writeAll(@tagName(value)) catch return,
+                    .progress => body.writer.print("{d}", .{value}) catch return,
+                    else => body.writer.writeAll(value) catch return,
+                }
+            }
+        }
+        if (m.statuses.items.len < max_status_records)
+            m.statuses.ensureUnusedCapacity(alloc, 1) catch return;
+        const data = body.toOwnedSlice() catch return;
+        for (m.statuses.items, 0..) |old, i| {
+            if (std.mem.eql(u8, old.readOption(.id) orelse "", id)) {
+                m.removeStatus(i);
+                break;
+            }
+        }
+        if (m.statuses.items.len == max_status_records) m.removeStatus(0);
+        m.statuses.appendAssumeCapacity(.{ .state = report.state, .data = data });
+    }
+
+    fn semanticPrompt(_: *vt.TerminalStream.Handler, event: vt.SemanticPrompt) void {
+        if (event.kind != .prompt_start) return;
+        const m = &(instance orelse return);
+        var i: usize = 0;
+        while (i < m.statuses.items.len) {
+            switch (m.statuses.items[i].state) {
+                .working, .blocked => m.removeStatus(i),
+                else => i += 1,
+            }
+        }
     }
 
     // Normal CSI/OSC state is tiny. Bound pathological clipboard/graphics
@@ -684,14 +755,24 @@ const Mirror = struct {
         complete: bool,
     };
 
-    fn appendPendingToSnapshot(m: *const Mirror, snapshot: []u8) Snapshot {
-        if (!m.pending_valid) return .{ .bytes = snapshot, .complete = false };
-        if (m.pending.items.len == 0) return .{ .bytes = snapshot, .complete = true };
-        const snapshot_len = snapshot.len;
-        const result = alloc.realloc(snapshot, snapshot_len + m.pending.items.len) catch
+    fn appendStatusAndPendingToSnapshot(m: *const Mirror, snapshot: []u8) Snapshot {
+        const prefix = "\x1b]7501;";
+        const suffix = "\x1b\\";
+        var extra: usize = if (m.pending_valid) m.pending.items.len else 0;
+        for (m.statuses.items) |report| extra += prefix.len + report.data.len + suffix.len;
+        if (extra == 0) return .{ .bytes = snapshot, .complete = m.pending_valid };
+        const result = alloc.realloc(snapshot, snapshot.len + extra) catch
             return .{ .bytes = snapshot, .complete = false };
-        @memcpy(result[snapshot_len..], m.pending.items);
-        return .{ .bytes = result, .complete = true };
+        var writer = std.Io.Writer.fixed(result[snapshot.len..]);
+        for (m.statuses.items) |report| {
+            writer.writeAll(prefix) catch unreachable;
+            writer.writeAll(report.data) catch unreachable;
+            writer.writeAll(suffix) catch unreachable;
+        }
+        // Pending parser bytes must remain last: later live output resumes
+        // them, so inserting a status report after them would corrupt both.
+        if (m.pending_valid) writer.writeAll(m.pending.items) catch unreachable;
+        return .{ .bytes = result, .complete = m.pending_valid };
     }
 
     fn replaySerializable() bool {
@@ -708,7 +789,7 @@ const Mirror = struct {
         const m = &(instance orelse return null);
         if (history) {
             const snapshot = formatTerminal(m.term) orelse return null;
-            return appendPendingToSnapshot(m, snapshot);
+            return appendStatusAndPendingToSnapshot(m, snapshot);
         }
 
         const full = formatTerminal(m.term) orelse return null;
@@ -725,7 +806,7 @@ const Mirror = struct {
         defer tmp_stream.deinit();
         tmp_stream.nextSlice(full);
         const snapshot = formatTerminal(&tmp) orelse return null;
-        return appendPendingToSnapshot(m, snapshot);
+        return appendStatusAndPendingToSnapshot(m, snapshot);
     }
 };
 

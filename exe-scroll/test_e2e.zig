@@ -661,6 +661,301 @@ test "replay modes: none vs scrollback" {
     try testing.expect(contains(sb_out, "UNIQHISTORY"));
 }
 
+// A real PTY command loop, with no input echo or terminal auto-replies. Once
+// the initial Proc detaches, input stays connected but never sends ATTACH:
+// reports really are emitted while there are no attached clients. The file
+// barrier acknowledges each command without adding bytes to a partial OSC.
+const StatusSession = struct {
+    socket: [:0]u8,
+    done: []u8,
+    input: RawClient,
+    barrier_seq: usize = 0,
+
+    fn start(name: []const u8) !StatusSession {
+        const socket = try sockPath(name);
+        errdefer alloc.free(socket);
+        errdefer cleanup(socket);
+        errdefer killServer(socket);
+        const done = try std.fmt.allocPrint(alloc, "{s}.done", .{socket});
+        errdefer alloc.free(done);
+        errdefer cleanup(done);
+        var p = try spawn(&.{
+            socket,
+            "--",
+            "sh",
+            "-c",
+            "stty raw -echo; printf READY-7501; while IFS= read -r cmd; do eval \"$cmd\"; : > \"$1\"; done",
+            "sh",
+            done,
+        }, 24, 80);
+        defer p.kill();
+        const ready = try p.drainUntil("READY-7501", 3000);
+        defer alloc.free(ready);
+        try testing.expect(contains(ready, "READY-7501"));
+        p.signal(c.SIGUSR2);
+        const detached = try p.drainUntil("detached", 3000);
+        defer alloc.free(detached);
+        try testing.expect(contains(detached, "detached"));
+        try testing.expect(p.waitExit(3000));
+        return .{ .socket = socket, .done = done, .input = try RawClient.connect(socket) };
+    }
+
+    fn close(self: *StatusSession) void {
+        self.input.close();
+        killServer(self.socket);
+        cleanup(self.socket);
+        cleanup(self.done);
+        alloc.free(self.socket);
+        alloc.free(self.done);
+    }
+
+    fn run(self: *StatusSession, shell_command: []const u8) !void {
+        try self.runVia(&self.input, shell_command);
+    }
+
+    fn runVia(self: *StatusSession, client: *RawClient, shell_command: []const u8) !void {
+        cleanup(self.done);
+        client.sendData(shell_command);
+        client.sendData("\n");
+        try testing.expect(waitFor(self.done, true, 3000));
+    }
+
+    fn emit(self: *StatusSession, bytes: []const u8) !void {
+        var shell_command = std.Io.Writer.Allocating.init(alloc);
+        defer shell_command.deinit();
+        try shell_command.writer.writeAll("printf '%b' '");
+        for (bytes) |byte| try shell_command.writer.print("\\0{o:0>3}", .{byte});
+        try shell_command.writer.writeByte('\'');
+        try self.run(shell_command.written());
+    }
+
+    fn attach(self: *StatusSession, mode: u8) !RawClient {
+        var client = try RawClient.connect(self.socket);
+        client.sendWinch(24, 80);
+        client.attachReplay(mode);
+        return client;
+    }
+
+    // The live marker comes after the complete snapshot, including its
+    // trailing status reports. Never use this while an OSC is incomplete.
+    fn barrier(self: *StatusSession, client: *RawClient) !void {
+        self.barrier_seq += 1;
+        var marker_buf: [64]u8 = undefined;
+        const marker = try std.fmt.bufPrint(&marker_buf, "REPLAY-END-7501-{d}", .{self.barrier_seq});
+        var command_buf: [96]u8 = undefined;
+        try self.runVia(client, try std.fmt.bufPrint(&command_buf, "printf '{s}'", .{marker}));
+        try testing.expect(client.drainUntil(marker, 3000));
+    }
+
+    fn expectReplay(self: *StatusSession, bodies: []const []const u8) !void {
+        for ([_]u8{ 1, 2 }) |mode| { // screen and scrollback
+            var client = try self.attach(mode);
+            defer client.close();
+            // ATTACH can run before the readable PTY is serviced, so this
+            // first transcript may mix a stale snapshot with live output.
+            // The marker proves all earlier output has reached the mirror;
+            // assert a fresh snapshot, never that mixed transcript.
+            try self.barrier(&client);
+            client.clearData();
+            client.attachReplay(mode);
+            try self.barrier(&client);
+            try expectStatusBodies(client.data.items, bodies);
+        }
+    }
+};
+
+// Compare observable complete reports, not parser/storage internals. Bodies
+// are canonical known fields; accepting either OSC terminator keeps this
+// independent of BEL versus ST serialization. An unfinished tail is checked
+// separately by the continuation test.
+fn expectStatusBodies(bytes: []const u8, expected: []const []const u8) !void {
+    var rest = bytes;
+    var count: usize = 0;
+    while (std.mem.indexOf(u8, rest, "\x1b]7501;")) |start| {
+        const body = rest[start + "\x1b]7501;".len ..];
+        const bel = std.mem.indexOfScalar(u8, body, 7);
+        const st = std.mem.indexOf(u8, body, "\x1b\\");
+        const end = if (bel) |b| @min(b, st orelse b) else st orelse break;
+        try testing.expect(count < expected.len);
+        try testing.expectEqualStrings(expected[count], body[0..end]);
+        count += 1;
+        rest = body[end + (if (body[end] == 7) @as(usize, 1) else 2) ..];
+    }
+    try testing.expectEqual(expected.len, count);
+}
+
+test "OSC 7501 detached reports replay canonically but live bytes and queries stay transparent" {
+    var session = try StatusSession.start("7501-transparent");
+    defer session.close();
+    const raw =
+        "\x1b]7501;state=idle:app=host\x1b\\" ++
+        "\x1b]7501;app=ca\x01rgo:\nstate=working:id=build:progress=37:title=QnVpbGQ=:msg=Q29tcGlsaW5n:future=yes:broken\x07" ++
+        "\x1b]7501;state=working:id=bad//id\x1b\\" ++
+        "\x1b]7501;state=unknown:id=build\x1b\\" ++
+        "\x1b]7501;state=done:id=build:msg=a\x1b\\" ++
+        "\x1b]7501;state=done:id=build:msg=Cg==\x1b\\" ++
+        "\x1b]75010;state=done:id=wrong\x1b\\" ++
+        "\x1b]7501;?\x1b\\";
+    try session.emit(raw);
+    const current = "state=working:id=build:progress=37:app=cargo:title=QnVpbGQ=:msg=Q29tcGlsaW5n";
+    try session.expectReplay(&.{ "state=idle:app=host", current });
+
+    var live = try session.attach(0); // none must not replay status or grid
+    defer live.close();
+    try session.barrier(&live);
+    try expectStatusBodies(live.data.items, &.{});
+    try testing.expect(!contains(live.data.items, "READY-7501"));
+    live.clearData();
+    try session.emit(raw ++ "\x1b]7501;?\x07LIVE-7501");
+    try testing.expect(live.drainUntil("LIVE-7501", 3000));
+    try testing.expectEqualStrings(raw ++ "\x1b]7501;?\x07LIVE-7501", live.data.items);
+    // A synthesized query reply sent into the PTY would contaminate the next
+    // shell command. Only the actual terminal may handle feature detection.
+    try session.barrier(&live);
+    try session.expectReplay(&.{ "state=idle:app=host", current }); // queries are never retained
+}
+
+test "OSC 7501 replacement and clear respect record and tree boundaries" {
+    var session = try StatusSession.start("7501-tree");
+    defer session.close();
+    try session.emit(
+        "\x1b]7501;state=working:progress=70:app=old:title=T2xk:msg=b2xk\x1b\\" ++
+            "\x1b]7501;state=working:id=deploy:progress=10:app=ship\x1b\\" ++
+            "\x1b]7501;state=done:id=deploy/east\x1b\\" ++
+            "\x1b]7501;state=blocked:id=deploy/east/deep:kind=auth\x1b\\" ++
+            "\x1b]7501;state=error:id=deploying\x1b\\" ++
+            "\x1b]7501;state=idle:id=deploy-west\x1b\\" ++
+            "\x1b]7501;state=done\x1b\\" ++
+            "\x1b]7501;state=error:id=deploy\x1b\\",
+    );
+    // Replacing the root drops its old optional fields; replacing a parent
+    // does not clear its children. Updates move records to the end.
+    try session.expectReplay(&.{
+        "state=done:id=deploy/east",
+        "state=blocked:id=deploy/east/deep:kind=auth",
+        "state=error:id=deploying",
+        "state=idle:id=deploy-west",
+        "state=done",
+        "state=error:id=deploy",
+    });
+    try session.emit("\x1b]7501;state=clear:id=deploy/east\x1b\\");
+    try session.expectReplay(&.{
+        "state=error:id=deploying", "state=idle:id=deploy-west",
+        "state=done",               "state=error:id=deploy",
+    });
+    try session.emit("\x1b]7501;state=clear:id=deploy\x1b\\");
+    try session.expectReplay(&.{ "state=error:id=deploying", "state=idle:id=deploy-west", "state=done" });
+    // Descendants need not have a retained parent; a string prefix without
+    // a slash boundary must survive a hierarchical clear.
+    try session.emit(
+        "\x1b]7501;state=working:id=orphan/kid\x1b\\" ++
+            "\x1b]7501;state=done:id=orphans\x1b\\" ++
+            "\x1b]7501;state=clear:id=orphan\x1b\\",
+    );
+    try session.expectReplay(&.{
+        "state=error:id=deploying", "state=idle:id=deploy-west",
+        "state=done",               "state=done:id=orphans",
+    });
+    try session.emit("\x1b]7501;state=clear\x07");
+    try session.expectReplay(&.{});
+}
+
+test "OSC 7501 cap evicts least recently updated records rather than oldest ids" {
+    var session = try StatusSession.start("7501-cap");
+    defer session.close();
+    try session.run(
+        "i=0; while [ \"$i\" -lt 256 ]; do printf '\\033]7501;state=working:id=item/%s\\033\\\\' \"$i\"; i=$((i+1)); done",
+    );
+    try session.emit(
+        "\x1b]7501;state=done:id=item/0\x1b\\" ++
+            "\x1b]7501;state=idle:id=item/256\x1b\\" ++
+            "\x1b]7501;state=error:id=item/257\x1b\\",
+    );
+    var expected: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer {
+        for (expected.items) |body| alloc.free(body);
+        expected.deinit(alloc);
+    }
+    for (3..256) |id| {
+        const body = try std.fmt.allocPrint(alloc, "state=working:id=item/{d}", .{id});
+        try expected.append(alloc, body);
+    }
+    for ([_][]const u8{
+        "state=done:id=item/0", "state=idle:id=item/256", "state=error:id=item/257",
+    }) |body| try expected.append(alloc, try alloc.dupe(u8, body));
+    // Exactly 256 current reports, no stale working item/0, and no item/1
+    // or item/2. A replacement must not consume an additional slot.
+    try session.expectReplay(expected.items);
+}
+
+test "OSC 7501 DECSTR preserves reports and prompt and RIS have distinct lifetimes" {
+    var session = try StatusSession.start("7501-lifetimes");
+    defer session.close();
+    try session.emit(
+        "\x1b]7501;state=working:progress=5\x1b\\" ++
+            "\x1b]7501;state=blocked:id=auth:kind=permission:progress=8\x1b\\" ++
+            "\x1b]7501;state=working:id=task\x1b\\" ++
+            "\x1b[?1049h" ++
+            "\x1b]7501;state=done:id=task/child\x1b\\" ++
+            "\x1b[?1049l" ++
+            "\x1b]7501;state=idle:id=idle\x1b\\" ++
+            "\x1b]7501;state=error:id=error\x1b\\" ++
+            "\x1b[!p" ++ // DECSTR
+            "\x1b]133;B\x1b\\\x1b]133;C\x1b\\\x1b]133;D;0\x1b\\",
+    );
+    try session.expectReplay(&.{
+        "state=working:progress=5",
+        "state=blocked:id=auth:kind=permission:progress=8",
+        "state=working:id=task",
+        "state=done:id=task/child",
+        "state=idle:id=idle",
+        "state=error:id=error",
+    });
+    try session.emit("\x1b]133;A\x07");
+    try session.expectReplay(&.{
+        "state=done:id=task/child", "state=idle:id=idle", "state=error:id=error",
+    });
+    try session.emit("\x1bc");
+    try session.expectReplay(&.{});
+    try session.emit("\x1b]7501;state=idle:app=new\x1b\\");
+    try session.expectReplay(&.{"state=idle:app=new"});
+}
+
+test "OSC 7501 replay precedes partial OSC and completed continuation replaces the record" {
+    const old = "state=done:id=job:app=worker";
+    const current = "state=working:id=job:progress=50";
+    for ([_]struct { mode: u8, prefix: []const u8, suffix: []const u8, dispatched: bool = false }{
+        .{ .mode = 1, .prefix = "\x1b]7501;state=working:id=job:progress=", .suffix = "50\x1b\\" },
+        .{ .mode = 2, .prefix = "\x1b]7501;state=working:id=job:progress=50\x1b", .suffix = "\\", .dispatched = true },
+    }) |case| {
+        var session = try StatusSession.start("7501-partial");
+        defer session.close();
+        try session.emit("\x1b]7501;" ++ old ++ "\x07");
+        try session.emit(case.prefix);
+        var client = try session.attach(case.mode);
+        defer client.close();
+        try testing.expect(client.drainUntil(case.prefix, 3000));
+        // Seeing the whole prefix establishes that it has been parsed, even
+        // if the first attachment raced the child's file acknowledgement.
+        client.clearData();
+        client.attachReplay(case.mode);
+        try testing.expect(client.drainUntil(case.prefix, 3000));
+        // Ghostty dispatches OSC on ESC, before the final ST backslash. At
+        // that boundary the current report is retained and only ESC is pending.
+        try expectStatusBodies(client.data.items, if (case.dispatched) &.{current} else &.{old});
+        try testing.expect(std.mem.endsWith(u8, client.data.items, if (case.dispatched) "\x1b" else case.prefix));
+
+        const suffix = try std.mem.concat(alloc, u8, &.{ case.suffix, "CONTINUED-7501" });
+        defer alloc.free(suffix);
+        try session.emit(suffix);
+        try testing.expect(client.drainUntil("CONTINUED-7501", 3000));
+        try expectStatusBodies(client.data.items, if (case.dispatched) &.{current} else &.{ old, current });
+        // A second reconnect receives only the completed current report, not
+        // the former done report or another copy of the pending prefix.
+        try session.expectReplay(&.{current});
+    }
+}
+
 test "replay preserves color (SGR escapes)" {
     const s = try sockPath("color");
     defer alloc.free(s);
