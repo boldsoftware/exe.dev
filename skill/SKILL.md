@@ -67,7 +67,7 @@ tmux send-keys -t exe-signup '<email>' Enter
 
 **Recovery**
 
-- No plan or link expired: rerun the PTY session, hand over the welcome-tip link, and `exit`. Without that tip, `ssh exe.dev billing manage --json` returns a Stripe-only `{"url":...}`.
+- No plan or link expired: `ssh exe.dev billing activate --json` returns `{"url":...}`, the same Personal link as the welcome tip. Hand it over the same way, then rerun `ssh exe.dev new --json` once the human confirms. If it returns `{"error":...}` (exit 1), activation is unavailable for this account; `ssh exe.dev billing manage --json` returns a Stripe-only `{"url":...}` instead.
 - `Verification still pending.` or `Email verification timed out.`: the email link works for 15 minutes after sending. Once the human clicks it, rerun `ssh exe.dev new --json`. If it expired or never came, rerun the PTY session.
 - Your turn ends mid-wait: tell the human the link lasts 15 minutes and to tell you when done. Then rerun `ssh exe.dev new --json`.
 - No PTY tool: after the human agrees, `printf '%s\n' "$EMAIL" | ssh exe.dev` sends the email and exits with `Verification still pending.` It skips the plan prompt, so expect the no-plan error.
