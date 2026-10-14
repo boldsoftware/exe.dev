@@ -32,8 +32,8 @@ Every VM gets `https://<vm>.exe.xyz/` with automatic TLS.
 
 These outputs are not hangs or bugs:
 
-- `Please complete registration by running: ssh exe.dev` (plain text, exit 1): the SSH key has no account.
-- `{"error":"Choose a plan to start creating VMs.` ...: the account has no plan. See Recovery.
+- `{"error":"Registration is required.","action":{"type":"command","command":"ssh -t ..."}}` (exit 1): the SSH key has no account. Run `action.command` in a PTY after getting the human's email and consent.
+- `{"error":"Choose a plan to start creating VMs.` ..., `"action":{"type":"command","command":"ssh ... billing activate --json"}}`: the account has no plan. Run `action.command` and see Recovery.
 
 **Rules**
 
@@ -67,7 +67,7 @@ tmux send-keys -t exe-signup '<email>' Enter
 
 **Recovery**
 
-- No plan or link expired: `ssh exe.dev billing activate --json` returns `{"url":...}`, the same Personal link as the welcome tip. Hand it over the same way, then rerun `ssh exe.dev new --json` once the human confirms. If it returns `{"error":...}` (exit 1), activation is unavailable for this account; `ssh exe.dev billing manage --json` returns a Stripe-only `{"url":...}` instead.
+- No plan or link expired: run the error's `action.command`. `billing activate --json` returns `{"url":...}`, the same Personal link as the welcome tip. Hand it over the same way, then rerun `ssh exe.dev new --json` once the human confirms. If it returns `{"error":...}` (exit 1), activation is unavailable for this account; `ssh exe.dev billing manage --json` returns a Stripe-only `{"url":...}` instead.
 - `Verification still pending.` or `Email verification timed out.`: the email link works for 15 minutes after sending. Once the human clicks it, rerun `ssh exe.dev new --json`. If it expired or never came, rerun the PTY session.
 - Your turn ends mid-wait: tell the human the link lasts 15 minutes and to tell you when done. Then rerun `ssh exe.dev new --json`.
 - No PTY tool: after the human agrees, `printf '%s\n' "$EMAIL" | ssh exe.dev` sends the email and exits with `Verification still pending.` It skips the plan prompt, so expect the no-plan error.
