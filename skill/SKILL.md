@@ -85,10 +85,4 @@ Coding agents often run SSH in non-interactive shells or sandboxes. Common issue
 
 **Hung connections**: Non-interactive SSH can block on host key prompts with no visible output. Use `-o StrictHostKeyChecking=accept-new` on first connection to a new VM.
 
-**SSH config**: Check whether both destinations are configured to use the right key:
-
-```
-Host exe.dev *.exe.xyz
-  IdentitiesOnly yes
-  IdentityFile ~/.ssh/id_ed25519
-```
+**SSH authentication**: Use the user's existing SSH agent or host configuration. If authentication fails, ask the user to configure the appropriate identity for both `exe.dev` and `*.exe.xyz`. Never inspect, copy, or transmit a private key.
