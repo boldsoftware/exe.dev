@@ -1,0 +1,17 @@
+{
+  "name": "exe-dev",
+  "owner": {
+    "name": "exe.dev",
+    "url": "https://exe.dev"
+  },
+  "metadata": {
+    "description": "exe.dev's plugins for Claude: VMs with persistent disks, instant HTTPS and built-in auth, managed over SSH and MCP."
+  },
+  "plugins": [
+    {
+      "name": "exe-dev",
+      "source": "./exe-claude-plugin",
+      "description": "Manage your exe.dev VMs from Claude through exe.dev's hosted MCP server, with a skill that teaches Claude the exe.dev CLI."
+    }
+  ]
+}

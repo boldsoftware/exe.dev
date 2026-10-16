@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "exe-dev": {
+      "type": "http",
+      "url": "https://exe.dev/mcp/claude"
+    }
+  }
+}

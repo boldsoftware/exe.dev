@@ -1,0 +1,20 @@
+{
+  "name": "exe-dev",
+  "displayName": "exe.dev",
+  "version": "0.1.0",
+  "description": "Manage your exe.dev VMs from Claude: list and create VMs and run commands on them through exe.dev's hosted MCP server, with a skill that teaches Claude the exe.dev CLI.",
+  "author": {
+    "name": "exe.dev",
+    "url": "https://exe.dev"
+  },
+  "homepage": "https://exe.dev/docs/mcp",
+  "repository": "https://github.com/boldsoftware/exe.dev",
+  "license": "MIT",
+  "keywords": [
+    "exe.dev",
+    "virtual machines",
+    "cloud infrastructure",
+    "ssh",
+    "mcp"
+  ]
+}
