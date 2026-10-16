@@ -1,0 +1,48 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "exe-dev",
+  "version": "0.1.3",
+  "description": "Connect to exe.dev's official MCP server from ChatGPT.",
+  "author": {
+    "name": "exe.dev",
+    "url": "https://exe.dev"
+  },
+  "homepage": "https://exe.dev/mcp",
+  "keywords": [
+    "exe.dev",
+    "virtual machines",
+    "cloud infrastructure",
+    "MCP"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "exe.dev",
+        "shortDescription": "Manage exe.dev VMs and pools",
+        "longDescription": "Use exe.dev in ChatGPT to view and manage the resources available to your account. Available actions depend on the tools enabled for your authenticated exe.dev account.",
+        "developerName": "exe.dev",
+        "category": "Developer Tools",
+        "defaultPrompt": "Help me manage my exe.dev resources.",
+        "websiteURL": "https://exe.dev/mcp",
+        "supportURL": "https://exe.dev/docs/getting-help",
+        "privacyPolicyURL": "https://exe.dev/docs/privacy-notice",
+        "termsOfServiceURL": "https://exe.dev/docs/terms-of-service",
+        "brandColor": "#51463E",
+        "brandColorDark": "#DED7CC",
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png",
+        "logoDark": "./assets/logo-dark.png",
+        "composerIconDark": "./assets/logo-dark.png"
+      },
+      "review": {
+        "demo_recording_url": "https://cleanshot.com/share/P8PhJ9Md",
+        "commerce": true,
+        "commerce_description": "The plugin can create or change exe.dev VMs and pools, which may incur subscription or metered usage charges billed through the user's exe.dev account. Users manage payment through exe.dev billing."
+      },
+      "publication": {
+        "release_notes": "Added a reviewer walkthrough video for VM listing. Removed billing language from the listing description and clarified the account-dependent capabilities.",
+        "countries": []
+      }
+    }
+  }
+}
