@@ -34,6 +34,35 @@ kill -USR2 <pid-of-exe-scroll>
 
 The session keeps running; reattach later with the same command.
 
+### Scripting a session: send-keys and capture-pane
+
+Two commands drive a session without attaching to it, after the tmux commands
+of the same names. They need no terminal, so scripts and agents can use them:
+
+```sh
+# Type a command and press Enter.
+exe-scroll send-keys /tmp/work/session.sock 'make test' Enter
+
+# Print what the screen shows now.
+exe-scroll capture-pane /tmp/work/session.sock
+```
+
+`send-keys <socket> [-l] <key>...` follows tmux's rules: an argument that is
+one of tmux's key names (`Enter`, `Escape`, `Tab`, `BSpace`, `Up`, `F1`, ...;
+in any case), or a character with `C-`, `M-`, or `S-` modifiers, is pressed;
+anything else is text, sent as is. Arguments run together, so quote text
+with spaces. `-l` sends every argument as text. Keys are encoded the way the
+program has asked for them, as a terminal would (application cursor keys,
+the kitty keyboard protocol, and so on); under the kitty protocol, `C-c` is
+a key, so send `-l $'\x03'` to interrupt regardless.
+
+`capture-pane <socket> [-e] [-J] [-S start] [-E end]` prints the screen as
+text, a line for each row, like `tmux capture-pane -p`. `-e` keeps colors and
+styles as escape sequences, and `-J` joins lines that only wrapped because of
+the width. `-S` and `-E` choose the first and last lines: 0 is the top of the
+screen, negative lines reach back into scrollback, and `-` means the start of
+scrollback (`-S`) or the end of the screen (`-E`); `-S -` prints everything.
+
 ### Multiple clients: attaching or typing claims the size
 
 Any number of clients can attach to one session, and their windows rarely

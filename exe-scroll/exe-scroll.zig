@@ -157,6 +157,13 @@ const MSG_DATA = 1; // both directions: terminal bytes
 const MSG_WINCH = 2; // client->server: payload = Winsize (8 bytes)
 const MSG_ATTACH = 3; // client->server: payload = [replay:u8]
 const MSG_DETACH = 4; // client->server: no payload
+// Commands (send-keys, capture-pane), tmux style: the client ships the command
+// and its arguments, each NUL-terminated, and the server runs it against the
+// session. Its output comes back as MSG_DATA frames, then one MSG_DONE. A
+// server that predates commands ignores MSG_COMMAND, so the client half-closes
+// after sending and reads EOF instead of MSG_DONE.
+const MSG_COMMAND = 5; // client->server: payload = command NUL arg NUL ...
+const MSG_DONE = 6; // server->client: payload = [status:u8][error message]
 
 const REPLAY_NONE = 0;
 const REPLAY_SCREEN = 1;
@@ -222,6 +229,11 @@ const SCROLLBACK_BYTES: usize = 1024 * 1024;
 // Small libc helpers.
 // ----------------------------------------------------------------------------
 fn writeAllFd(fd: c_int, buf: []const u8) void {
+    _ = tryWriteAllFd(fd, buf);
+}
+
+/// Like writeAllFd, but returns false if a write failed (see errno).
+fn tryWriteAllFd(fd: c_int, buf: []const u8) bool {
     var off: usize = 0;
     while (off < buf.len) {
         const n = std.c.write(fd, buf.ptr + off, buf.len - off);
@@ -230,8 +242,9 @@ fn writeAllFd(fd: c_int, buf: []const u8) void {
             continue;
         }
         if (n < 0 and c.errno() == c.EINTR) continue;
-        break;
+        return false;
     }
+    return true;
 }
 
 fn printErr(comptime fmt: []const u8, args: anytype) void {
@@ -727,6 +740,45 @@ const Pty = struct {
 };
 var the_pty: Pty = .{};
 
+// Input for the pty, written as fast as the program reads it. The pty is
+// nonblocking: a blocking write could deadlock, since a program that echoes
+// or prints what it reads stops reading when its output backs up, and nobody
+// reads that output while the server is stuck writing.
+var pty_inq: std.ArrayListUnmanaged(u8) = .empty;
+// Past this much unwritten input, attached clients' keystrokes wait (in their
+// sockets) for the program to catch up.
+const MAX_PTY_INQ: usize = 1024 * 1024;
+
+/// Send `data` to the program, after any input still queued.
+fn writePty(data: []const u8) void {
+    pty_inq.appendSlice(alloc, data) catch return;
+    flushPtyInq();
+}
+
+fn flushPtyInq() void {
+    // On a fatal error the program is gone; ptyActivity sees that and exits.
+    if (!flushQueue(the_pty.fd, &pty_inq)) pty_inq.clearRetainingCapacity();
+}
+
+/// Write as much of `q` to the nonblocking `fd` as it takes now, removing it
+/// from the queue. Returns false on a fatal write error.
+fn flushQueue(fd: c_int, q: *std.ArrayListUnmanaged(u8)) bool {
+    while (q.items.len > 0) {
+        const n = std.c.write(fd, q.items.ptr, q.items.len);
+        if (n > 0) {
+            const wrote: usize = @intCast(n);
+            std.mem.copyForwards(u8, q.items[0 .. q.items.len - wrote], q.items[wrote..]);
+            q.items.len -= wrote;
+            continue;
+        }
+        const e = c.errno();
+        if (n < 0 and e == c.EINTR) continue;
+        if (n < 0 and (e == c.EAGAIN or e == c.EWOULDBLOCK)) return true;
+        return false;
+    }
+    return true;
+}
+
 // ----------------------------------------------------------------------------
 // Input classification. "Typing claims the size" (see size_owner below) needs
 // to know whether a MSG_DATA payload contains genuine user interaction --
@@ -961,6 +1013,9 @@ const Client = struct {
     next: ?*Client = null,
     fd: c_int,
     attached: bool = false,
+    // A command client whose reply is queued: stop reading, flush the
+    // queue, then drop it.
+    closing: bool = false,
     // A replay attach can be marked for refresh when an oversized/incomplete
     // terminal sequence cannot be included. It sees a stable snapshot while
     // live output is suppressed, then ptyActivity replaces the snapshot once
@@ -1317,21 +1372,9 @@ fn enqueue(p: *Client, typ: u8, payload: []const u8) void {
 
 /// Returns true if the client was dropped (fatal write error).
 fn flushOutq(p: *Client) bool {
-    while (p.outq.items.len > 0) {
-        const n = std.c.write(p.fd, p.outq.items.ptr, p.outq.items.len);
-        if (n > 0) {
-            const wrote: usize = @intCast(n);
-            std.mem.copyForwards(u8, p.outq.items[0 .. p.outq.items.len - wrote], p.outq.items[wrote..]);
-            p.outq.items.len -= wrote;
-            continue;
-        }
-        const e = c.errno();
-        if (n < 0 and e == c.EINTR) continue;
-        if (n < 0 and (e == c.EAGAIN or e == c.EWOULDBLOCK)) return false;
-        dropClient(p);
-        return true;
-    }
-    return false;
+    if (flushQueue(p.fd, &p.outq)) return false;
+    dropClient(p);
+    return true;
 }
 
 const SnapshotResult = enum { failed, degraded, complete };
@@ -1380,7 +1423,7 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
             if (typed and size_owner != p and p.attached) claimSize(p);
             // Forward unmodified regardless of classification: the
             // application still needs the auto-replies it asked for.
-            writeAllFd(the_pty.fd, payload);
+            writePty(payload);
         },
         MSG_WINCH => {
             if (payload.len >= @sizeOf(c.Winsize)) {
@@ -1441,6 +1484,7 @@ fn handleFrame(p: *Client, typ: u8, payload: []const u8) void {
             // why it is not handed to anyone else.
             releaseSizeOwner(p);
         },
+        MSG_COMMAND => runCommand(p, payload),
         else => {}, // unknown: ignore (forward-compatible)
     }
 }
@@ -1507,7 +1551,7 @@ fn serveLoop(statusfd: c_int) void {
     // abduco-style: SIGUSR1 asks us to recreate the socket if it's gone.
     _ = c.signal(c.SIGUSR1, @intFromPtr(&requestRecreate));
 
-    if (initPty(statusfd) < 0) {
+    if (initPty(statusfd) < 0 or setnonblocking(the_pty.fd) < 0) {
         printErr("{s}: could not allocate a pty: errno {d}\n", .{ progname, c.errno() });
         std.c.exit(1);
     }
@@ -1532,12 +1576,18 @@ fn serveLoop(statusfd: c_int) void {
         // Fixed slots: 0 = listen socket, 1 = pty, 2 = signal self-pipe.
         // Clients follow from slot 3.
         pollbuf.append(alloc, .{ .fd = listen_fd, .events = c.POLLIN, .revents = 0 }) catch std.c.exit(1);
-        pollbuf.append(alloc, .{ .fd = the_pty.fd, .events = c.POLLIN, .revents = 0 }) catch std.c.exit(1);
+        const pty_ev: c_short = if (pty_inq.items.len > 0) c.POLLIN | c.POLLOUT else c.POLLIN;
+        pollbuf.append(alloc, .{ .fd = the_pty.fd, .events = pty_ev, .revents = 0 }) catch std.c.exit(1);
         pollbuf.append(alloc, .{ .fd = sig_pipe[0], .events = c.POLLIN, .revents = 0 }) catch std.c.exit(1);
 
+        // Backlogged input stops attached clients' keystrokes until the
+        // program catches up (send-keys refuses instead; see sendKeys), and
+        // command clients still get in. Linux reports a hangup even with no
+        // events requested; macOS notices it once the backlog clears.
+        const backlogged = pty_inq.items.len > MAX_PTY_INQ;
         var p = clients;
         while (p) |cl| : (p = cl.next) {
-            var ev: c_short = c.POLLIN;
+            var ev: c_short = if (cl.closing or (backlogged and cl.attached)) 0 else c.POLLIN;
             if (cl.outq.items.len > 0) ev |= c.POLLOUT;
             pollbuf.append(alloc, .{ .fd = cl.fd, .events = ev, .revents = 0 }) catch std.c.exit(1);
         }
@@ -1562,6 +1612,7 @@ fn serveLoop(statusfd: c_int) void {
         const listen_ready = (pollbuf.items[0].revents & c.POLLIN) != 0;
         const pty_revents = pollbuf.items[1].revents;
         const pty_ready = (pty_revents & (c.POLLIN | c.POLLHUP | c.POLLERR | c.POLLNVAL)) != 0;
+        if (pty_revents & c.POLLOUT != 0) flushPtyInq();
 
         // Snapshot each client's revents BEFORE mutating the client list
         // (acceptClient prepends a node, which would desync the positional
@@ -1585,6 +1636,10 @@ fn serveLoop(statusfd: c_int) void {
             const re = cl.saved_revents;
             var dropped = false;
             if (re & c.POLLOUT != 0) dropped = flushOutq(cl);
+            if (!dropped and cl.closing and cl.outq.items.len == 0) {
+                dropClient(cl);
+                dropped = true;
+            }
             if (!dropped and (re & (c.POLLIN | c.POLLHUP | c.POLLERR | c.POLLNVAL)) != 0)
                 dropped = readClient(cl);
             p = next;
@@ -1597,6 +1652,7 @@ fn serveLoop(statusfd: c_int) void {
 fn ptyActivity() void {
     var buf: [BUFSIZE]u8 = undefined;
     const rn = std.c.read(the_pty.fd, &buf, buf.len);
+    if (rn < 0 and (c.errno() == c.EAGAIN or c.errno() == c.EINTR)) return;
     if (rn <= 0) std.c.exit(0); // child exited / pty closed
     const data = buf[0..@intCast(rn)];
     Mirror.write(data);
@@ -1621,6 +1677,313 @@ fn ptyActivity() void {
             }
         }
     }
+}
+
+// ----------------------------------------------------------------------------
+// Commands: `exe-scroll send-keys` and `exe-scroll capture-pane`, after the
+// tmux commands of the same names. As in tmux, the client is thin: it sends
+// the command line as MSG_COMMAND and the session server runs it, because the
+// server holds the terminal state both commands need -- capture-pane formats
+// the mirror, and send-keys encodes keys the way the program has asked for
+// them (application cursor keys, the kitty keyboard protocol, ...), just as a
+// real terminal would.
+// ----------------------------------------------------------------------------
+
+/// Run the command in a MSG_COMMAND payload and queue its reply.
+fn runCommand(p: *Client, payload: []const u8) void {
+    // An attached client's MSG_DATA is the terminal's output, which a
+    // command's output would be mixed into.
+    if (p.attached or p.waiting_replay != null)
+        return commandFailed(p, "commands need a connection of their own", .{});
+    // One command per connection: once the reply is queued, stop reading
+    // (the client has half-closed anyway), flush it, and hang up.
+    p.closing = true;
+    // Every word is NUL-terminated (argv strings can't contain NUL).
+    if (payload.len == 0) return commandFailed(p, "empty command", .{});
+    if (payload[payload.len - 1] != 0) return commandFailed(p, "malformed command", .{});
+    var words: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer words.deinit(alloc);
+    var it = std.mem.splitScalar(u8, payload[0 .. payload.len - 1], 0);
+    while (it.next()) |w| words.append(alloc, w) catch return commandFailed(p, "out of memory", .{});
+    const name = words.items[0];
+    const args = words.items[1..];
+    if (std.mem.eql(u8, name, "send-keys")) return sendKeys(p, args);
+    if (std.mem.eql(u8, name, "capture-pane")) return capturePane(p, args);
+    commandFailed(p, "unknown command '{s}'", .{name});
+}
+
+fn commandOutput(p: *Client, out: []const u8) void {
+    // Frames well under MAX_FRAME, which readers enforce.
+    var rest = out;
+    while (rest.len > 0) {
+        const n = @min(rest.len, 64 * 1024);
+        enqueue(p, MSG_DATA, rest[0..n]);
+        rest = rest[n..];
+    }
+}
+
+fn commandDone(p: *Client) void {
+    enqueue(p, MSG_DONE, &.{0});
+}
+
+fn commandFailed(p: *Client, comptime fmt: []const u8, args: anytype) void {
+    var buf: [512]u8 = undefined;
+    buf[0] = 1;
+    // A message too long for buf (it quotes an argument) is cut short.
+    var w: std.Io.Writer = .fixed(buf[1..]);
+    w.print(fmt, args) catch {};
+    enqueue(p, MSG_DONE, buf[0 .. 1 + w.end]);
+}
+
+// send-keys key names (matched case-insensitively, as tmux does).
+const NamedKey = struct { name: []const u8, key: vt.input.Key, shift: bool = false };
+const named_keys = [_]NamedKey{
+    .{ .name = "Enter", .key = .enter },
+    .{ .name = "Escape", .key = .escape },
+    .{ .name = "Esc", .key = .escape },
+    .{ .name = "Tab", .key = .tab },
+    .{ .name = "BTab", .key = .tab, .shift = true },
+    .{ .name = "BSpace", .key = .backspace },
+    .{ .name = "Backspace", .key = .backspace },
+    .{ .name = "Up", .key = .arrow_up },
+    .{ .name = "Down", .key = .arrow_down },
+    .{ .name = "Left", .key = .arrow_left },
+    .{ .name = "Right", .key = .arrow_right },
+    .{ .name = "Home", .key = .home },
+    .{ .name = "End", .key = .end },
+    .{ .name = "PageUp", .key = .page_up },
+    .{ .name = "PgUp", .key = .page_up },
+    .{ .name = "PPage", .key = .page_up },
+    .{ .name = "PageDown", .key = .page_down },
+    .{ .name = "PgDn", .key = .page_down },
+    .{ .name = "NPage", .key = .page_down },
+    .{ .name = "Delete", .key = .delete },
+    .{ .name = "DC", .key = .delete },
+    .{ .name = "Insert", .key = .insert },
+    .{ .name = "IC", .key = .insert },
+    .{ .name = "F1", .key = .f1 },
+    .{ .name = "F2", .key = .f2 },
+    .{ .name = "F3", .key = .f3 },
+    .{ .name = "F4", .key = .f4 },
+    .{ .name = "F5", .key = .f5 },
+    .{ .name = "F6", .key = .f6 },
+    .{ .name = "F7", .key = .f7 },
+    .{ .name = "F8", .key = .f8 },
+    .{ .name = "F9", .key = .f9 },
+    .{ .name = "F10", .key = .f10 },
+    .{ .name = "F11", .key = .f11 },
+    .{ .name = "F12", .key = .f12 },
+};
+
+/// `send-keys [-l] [--] key...`. As in tmux, each argument is a key or text:
+/// a key name (Enter, Up, F1, ...) or a single character, optionally with
+/// C- (ctrl), M- (meta), and S- (shift) prefixes (or ^ for ctrl), is pressed;
+/// anything else is typed as is. -l types every argument as is.
+fn sendKeys(p: *Client, args: []const []const u8) void {
+    var literal = false;
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const a = args[i];
+        if (std.mem.eql(u8, a, "--")) {
+            i += 1;
+            break;
+        }
+        if (a.len < 2 or a[0] != '-') break;
+        for (a[1..]) |f| switch (f) {
+            'l' => literal = true,
+            else => return commandFailed(p, "send-keys: unknown option -{c}", .{f}),
+        };
+    }
+
+    const opts: vt.input.KeyEncodeOptions = if (Mirror.instance) |*m| o: {
+        var o = vt.input.KeyEncodeOptions.fromTerminal(m.term);
+        // Terminal state can't say how macOS's Option key should behave;
+        // M- means meta, as everywhere else.
+        o.macos_option_as_alt = .true;
+        break :o o;
+    } else .default;
+
+    var out: std.Io.Writer.Allocating = .init(alloc);
+    defer out.deinit();
+    for (args[i..]) |word| {
+        (if (literal) out.writer.writeAll(word) else writeKey(&out.writer, word, opts)) catch
+            return commandFailed(p, "out of memory", .{});
+    }
+    // Past the backlog limit, refuse rather than queue without bound -- or
+    // go ahead of the keystrokes attached clients are holding back.
+    if (pty_inq.items.len > MAX_PTY_INQ)
+        return commandFailed(p, "send-keys: the program hasn't read earlier input yet", .{});
+    // Typing from a command never claims the size: it isn't an attached
+    // window, and an agent driving the session shouldn't reflow the user's.
+    // Success means queued for the program, as with typing.
+    writePty(out.written());
+    commandDone(p);
+}
+
+/// Write what pressing `word` sends (see sendKeys), or `word` itself if it
+/// doesn't name a key.
+fn writeKey(w: *std.Io.Writer, word: []const u8, opts: vt.input.KeyEncodeOptions) std.Io.Writer.Error!void {
+    if (word.len == 0) return;
+    var s = word;
+    var mods: vt.input.KeyMods = .{};
+    while (s.len > 2 and s[1] == '-') : (s = s[2..]) switch (s[0]) {
+        'C', 'c' => mods.ctrl = true,
+        'M', 'm' => mods.alt = true,
+        'S', 's' => mods.shift = true,
+        else => break,
+    };
+    if (s.len > 1 and s[0] == '^') {
+        mods.ctrl = true;
+        s = s[1..];
+    }
+
+    // One character with modifiers: press it. Without, it's text (below).
+    if (mods.int() != 0) if (singleCodepoint(s)) |cp| return pressChar(w, s, cp, mods, opts);
+
+    // Space is the space character's key.
+    if (std.ascii.eqlIgnoreCase(s, "Space")) return pressChar(w, " ", ' ', mods, opts);
+    for (named_keys) |k| {
+        if (!std.ascii.eqlIgnoreCase(s, k.name)) continue;
+        var ev: vt.input.KeyEvent = .{ .key = k.key, .mods = mods };
+        if (k.shift) ev.mods.shift = true;
+        return vt.input.encodeKey(w, ev, opts);
+    }
+
+    // Anything else is text, sent as is, as tmux does and as a terminal
+    // sends a paste or an input method's text. Encoding it as keystrokes
+    // would garble it whenever a program left a key mode on (say, xterm's
+    // modifyOtherKeys after vim was killed).
+    return w.writeAll(word);
+}
+
+/// Write what pressing the key for character `cp` (`utf8`) with `mods` sends.
+fn pressChar(w: *std.Io.Writer, utf8: []const u8, cp: u21, mods_: vt.input.KeyMods, opts: vt.input.KeyEncodeOptions) std.Io.Writer.Error!void {
+    var mods = mods_;
+    // C-m, C-i, and C-[ are how tmux spells Enter, Tab, and Escape
+    // (`send-keys 'ls' C-m`), but Ghostty, like kitty, encodes them as
+    // distinct keys. Press the key they're spelling.
+    if (mods.ctrl) {
+        const spelled: ?vt.input.Key = switch (cp) {
+            'm', 'M' => .enter,
+            'i', 'I' => .tab,
+            '[' => .escape,
+            else => null,
+        };
+        if (spelled) |key| {
+            mods.ctrl = false;
+            return vt.input.encodeKey(w, .{ .key = key, .mods = mods }, opts);
+        }
+    }
+    var ev: vt.input.KeyEvent = .{ .mods = mods, .utf8 = utf8, .unshifted_codepoint = cp };
+    var upper: [1]u8 = undefined;
+    if (cp < 0x80 and std.ascii.isAlphabetic(@intCast(cp))) {
+        // A letter's key is the lowercase one, whatever the case of the
+        // text, as in tmux: C-A is C-a, and M-A is ESC A.
+        ev.unshifted_codepoint = std.ascii.toLower(@intCast(cp));
+        if (mods.shift) {
+            // The text a shifted letter produces is the capital, and
+            // producing it consumed the shift.
+            upper[0] = std.ascii.toUpper(@intCast(cp));
+            ev.utf8 = &upper;
+            ev.consumed_mods = .{ .shift = true };
+        }
+    }
+    return vt.input.encodeKey(w, ev, opts);
+}
+
+/// The codepoint `s` encodes, if it is exactly one.
+fn singleCodepoint(s: []const u8) ?u21 {
+    const n = std.unicode.utf8ByteSequenceLength(s[0]) catch return null;
+    if (n != s.len) return null;
+    return std.unicode.utf8Decode(s) catch null;
+}
+
+/// `capture-pane [-p] [-e] [-J] [-S start] [-E end]`: print the screen as
+/// text, like tmux capture-pane -p (-p is accepted and implied). -e keeps
+/// colors and styles as escape sequences; -J joins soft-wrapped lines. -S
+/// and -E pick the first and last line: 0 is the top of the screen, negative
+/// numbers count back into scrollback, and '-' means the start of scrollback
+/// (for -S) or the bottom of the screen (for -E). The default is the screen.
+fn capturePane(p: *Client, args: []const []const u8) void {
+    var escapes = false;
+    var join = false;
+    // Line numbers: 0 is the top of the screen, so the defaults are the
+    // screen. Out-of-range numbers clamp, which is how '-' works too.
+    var start: i64 = 0;
+    var end: i64 = std.math.maxInt(i64);
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const a = args[i];
+        if (a.len < 2 or a[0] != '-') break;
+        var j: usize = 1;
+        while (j < a.len) : (j += 1) switch (a[j]) {
+            'p' => {},
+            'e' => escapes = true,
+            'J' => join = true,
+            'S', 'E' => |f| {
+                // The value is the rest of this word (-S-100) or the next.
+                const v = if (j + 1 < a.len) a[j + 1 ..] else blk: {
+                    i += 1;
+                    if (i >= args.len) return commandFailed(p, "capture-pane: -{c} needs a line", .{f});
+                    break :blk args[i];
+                };
+                const n: i64 = if (std.mem.eql(u8, v, "-"))
+                    (if (f == 'S') std.math.minInt(i64) else std.math.maxInt(i64))
+                else
+                    std.fmt.parseInt(i64, v, 10) catch
+                        return commandFailed(p, "capture-pane: bad line '{s}'", .{v});
+                if (f == 'S') start = n else end = n;
+                break;
+            },
+            else => |f| return commandFailed(p, "capture-pane: unknown option -{c}", .{f}),
+        };
+    }
+    if (i < args.len) return commandFailed(p, "capture-pane: unexpected argument '{s}'", .{args[i]});
+
+    const m = &(Mirror.instance orelse return commandFailed(p, "capture-pane: no screen", .{}));
+    const pages = &m.term.screens.active.pages;
+    // Rows of the whole screen, scrollback first: the screen proper is the
+    // last pages.rows of them.
+    const history: i64 = @intCast(pages.total_rows - pages.rows);
+    const last: i64 = @as(i64, @intCast(pages.total_rows)) - 1;
+    var top: u32 = @intCast(std.math.clamp(history +| start, 0, last));
+    var bottom: u32 = @intCast(std.math.clamp(history +| end, 0, last));
+    if (bottom < top) std.mem.swap(u32, &top, &bottom);
+
+    // A row at a time, so that every row in the range is a line, blank or
+    // not, and nothing outside the range is: the formatter skips trailing
+    // blank rows, and joining wrapped lines can carry it past the last one.
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    defer aw.deinit();
+    var pin = pages.pin(.{ .screen = .{ .y = top } }).?; // top is clamped
+    var y = top;
+    while (true) : (y += 1) {
+        // -J joins a row that wrapped to the next one, and, as in tmux,
+        // keeps trailing spaces the program printed (between words, they
+        // matter). Empty cells are never printed.
+        const joined = join and y < bottom and pin.rowAndCell().row.wrap;
+        var f = vt.formatter.PageListFormatter.init(pages, .{
+            .emit = if (escapes) .vt else .plain,
+            .unwrap = false,
+            .trim = !join,
+        });
+        f.top_left = pin;
+        f.bottom_right = pin;
+        f.bottom_right.?.x = pages.cols - 1;
+        const row_start = aw.written().len;
+        f.format(&aw.writer) catch return commandFailed(p, "out of memory", .{});
+        if (!join) {
+            // Styled output keeps trailing spaces the program printed. Drop
+            // the unstyled ones, as tmux does: they end the row unescaped.
+            const row_text = aw.written()[row_start..];
+            aw.shrinkRetainingCapacity(row_start + std.mem.trimEnd(u8, row_text, " ").len);
+        }
+        if (!joined) aw.writer.writeByte('\n') catch return commandFailed(p, "out of memory", .{});
+        if (y == bottom) break;
+        pin = pin.down(1) orelse break;
+    }
+    commandOutput(p, aw.written());
+    commandDone(p);
 }
 
 /// Fork a detached session server. Returns 0 on success (socket is ready),
@@ -1848,7 +2211,7 @@ fn attachLoop(s: c_int) i32 {
             } else {
                 // Reassemble frames; only MSG_DATA is expected server->client.
                 reasm.appendSlice(alloc, rd[0..@intCast(r)]) catch return 1;
-                drainFrames(&reasm);
+                _ = drainFrames(&reasm) catch {};
             }
         }
 
@@ -1870,20 +2233,24 @@ fn attachLoop(s: c_int) i32 {
 
 /// Parse complete frames out of `buf`, writing MSG_DATA payloads to stdout and
 /// removing the consumed bytes. Incomplete trailing bytes remain buffered.
-fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) void {
+/// Returns the payload of a MSG_DONE (the last frame of a command's reply) if
+/// one arrived, and fails if stdout couldn't be written (see errno).
+fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 {
     var pos: usize = 0;
+    var failed = false;
     const items = buf.items;
     while (items.len - pos >= HDR) {
         const len = std.mem.readInt(u32, items[pos + 1 .. pos + 5][0..4], .little);
         if (len > MAX_FRAME) {
             // Corrupt/hostile peer: stop parsing rather than buffer unbounded.
             buf.clearRetainingCapacity();
-            return;
+            return null;
         }
         if (items.len - pos < HDR + len) break;
         const typ = items[pos];
         const payload = items[pos + HDR .. pos + HDR + len];
-        if (typ == MSG_DATA) writeAllFd(1, payload);
+        if (typ == MSG_DATA and !tryWriteAllFd(1, payload)) failed = true;
+        if (typ == MSG_DONE) return if (failed) error.WriteFailed else payload;
         pos += HDR + len;
     }
     if (pos > 0) {
@@ -1891,6 +2258,75 @@ fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) void {
         std.mem.copyForwards(u8, buf.items[0..leftover], items[pos..]);
         buf.items.len = leftover;
     }
+    return if (failed) error.WriteFailed else null;
+}
+
+// ----------------------------------------------------------------------------
+// Command client: `exe-scroll <command> <socket> [args...]`. The session server
+// parses and runs the command (see runCommand); this just carries it there and
+// relays the reply. It needs no terminal, so scripts and agents can use it.
+// ----------------------------------------------------------------------------
+/// Run `args` = [command, socket, command args...]. Returns the exit code.
+fn commandClient(args: []const [*:0]const u8) u8 {
+    const cmd = std.mem.span(args[0]);
+    if (args.len < 2 or std.mem.span(args[1]).len == 0 or args[1][0] == '-') {
+        printErr("{s}: usage: {s} {s} <socket> [args...]\n", .{ progname, progname, cmd });
+        return 1;
+    }
+    sockname = std.mem.span(args[1]);
+
+    var payload: std.ArrayListUnmanaged(u8) = .empty;
+    defer payload.deinit(alloc);
+    for (args, 0..) |a, k| {
+        if (k == 1) continue; // the socket
+        payload.appendSlice(alloc, std.mem.span(a)) catch return 1;
+        payload.append(alloc, 0) catch return 1;
+    }
+    if (payload.items.len > MAX_FRAME) {
+        printErr("{s}: {s}: arguments too long\n", .{ progname, cmd });
+        return 1;
+    }
+
+    const s = connectSocket(sockname);
+    if (s < 0) {
+        const e = c.errno();
+        if (e == c.ENOENT or e == c.ECONNREFUSED) {
+            printErr("{s}: no session at {s}\n", .{ progname, sockname });
+        } else {
+            printErr("{s}: {s}: errno {d}\n", .{ progname, sockname, e });
+        }
+        return 1;
+    }
+    sendFrame(s, MSG_COMMAND, payload.items);
+    // Done sending. A server that predates commands ignores MSG_COMMAND and,
+    // on this EOF, hangs up without MSG_DONE -- rather than leave us waiting.
+    _ = std.c.shutdown(s, std.c.SHUT.WR);
+
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer buf.deinit(alloc);
+    var rd: [BUFSIZE]u8 = undefined;
+    // Whether this server ever answered: if so, it knows the command.
+    var answered = false;
+    while (true) {
+        const r = std.c.read(s, &rd, rd.len);
+        if (r < 0 and c.errno() == c.EINTR) continue;
+        if (r < 0) answered = true; // not a clean hangup
+        if (r <= 0) break;
+        answered = true;
+        buf.appendSlice(alloc, rd[0..@intCast(r)]) catch return 1;
+        const done = drainFrames(&buf) catch {
+            printErr("{s}: {s}: can't write output: errno {d}\n", .{ progname, cmd, c.errno() });
+            return 1;
+        } orelse continue;
+        if (done.len > 1) printErr("{s}: {s}\n", .{ progname, done[1..] });
+        return if (done.len > 0) done[0] else 1;
+    }
+    if (answered) {
+        printErr("{s}: the session at {s} hung up\n", .{ progname, sockname });
+    } else {
+        printErr("{s}: the session at {s} doesn't support {s}; it was started by an older exe-scroll\n", .{ progname, sockname, cmd });
+    }
+    return 1;
 }
 
 // ----------------------------------------------------------------------------
@@ -1909,6 +2345,17 @@ fn usage() noreturn {
         "      Detach (leaving the session running) by sending the attach client\n" ++
         "      SIGUSR2:  kill -USR2 <pid>\n" ++
         "\n" ++
+        "  {s} send-keys <socket> [-l] <key>...\n" ++
+        "      Type into the session, like tmux send-keys: key names (Enter,\n" ++
+        "      Escape, Up, F1, C-c, M-x, ...) are pressed, other words typed.\n" ++
+        "      -l types every word literally.\n" ++
+        "\n" ++
+        "  {s} capture-pane <socket> [-e] [-J] [-S start] [-E end]\n" ++
+        "      Print the screen as text, like tmux capture-pane -p. -e keeps\n" ++
+        "      colors, -J joins wrapped lines. -S/-E choose lines: 0 is the\n" ++
+        "      top of the screen, negative lines are scrollback, and - means\n" ++
+        "      the start of scrollback (-S) or the end of the screen (-E).\n" ++
+        "\n" ++
         "Options:\n" ++
         "  -R <mode>   Replay on attach: none | screen | scrollback (default).\n" ++
         "  --version   Print version and exit.\n" ++
@@ -1916,7 +2363,7 @@ fn usage() noreturn {
         "\nReport bugs to <{s}>.\n";
     var buf: [4096]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, text, .{
-        progname, VERSION, progname, BUGREPORT,
+        progname, VERSION, progname, progname, progname, BUGREPORT,
     }) catch "";
     writeAllFd(1, s);
     std.c.exit(0);
@@ -1929,6 +2376,10 @@ pub fn main(init: std.process.Init.Minimal) u8 {
     // region in place, and we still want progname for error messages.
     if (argv.len >= 1) progname = alloc.dupeZ(u8, std.mem.span(argv[0])) catch "exe-scroll";
     const args = argv;
+    if (args.len >= 2) {
+        const a = std.mem.span(args[1]);
+        if (std.mem.eql(u8, a, "send-keys") or std.mem.eql(u8, a, "capture-pane")) return commandClient(args[1..]);
+    }
 
     var i: usize = 1;
     var cmd_start: ?usize = null;

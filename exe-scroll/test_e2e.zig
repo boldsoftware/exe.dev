@@ -26,6 +26,7 @@ const c = struct {
     extern "c" fn kill(pid: c_int, sig: c_int) c_int;
     extern "c" fn waitpid(pid: c_int, status: ?*c_int, options: c_int) c_int;
     extern "c" fn _exit(code: c_int) noreturn;
+    extern "c" fn alarm(seconds: c_uint) c_uint;
     // std.c._errno() resolves to the platform's errno location (__errno_location
     // on glibc, __error on Darwin, etc.), so this builds everywhere rather than
     // hardcoding the glibc symbol.
@@ -310,9 +311,13 @@ const RawClient = struct {
     const MSG_WINCH = 2;
     const MSG_ATTACH = 3;
 
+    const MSG_COMMAND = 5;
+    const MSG_DONE = 6;
+
     fd: c_int,
     rbuf: std.ArrayListUnmanaged(u8) = .empty, // raw inbound bytes
     data: std.ArrayListUnmanaged(u8) = .empty, // reassembled MSG_DATA payloads
+    done: ?[]u8 = null, // the MSG_DONE payload, once one arrives
 
     fn connect(path: []const u8) !RawClient {
         var sa: std.c.sockaddr.un = undefined;
@@ -371,9 +376,21 @@ const RawClient = struct {
     /// payloads or `ms` elapses. Returns true if found. Payloads accumulate
     /// across calls, so a needle already received is found immediately.
     fn drainUntil(self: *RawClient, needle: []const u8, ms: i32) bool {
+        return self.drainFor(needle, ms);
+    }
+
+    /// Read server frames until a MSG_DONE arrives (see `done`) or `ms`
+    /// elapses. Returns true if one did.
+    fn waitDone(self: *RawClient, ms: i32) bool {
+        return self.drainFor(null, ms);
+    }
+
+    fn drainFor(self: *RawClient, needle: ?[]const u8, ms: i32) bool {
         const deadline = nowMs() + ms;
         while (true) {
-            if (std.mem.indexOf(u8, self.data.items, needle) != null) return true;
+            if (needle) |n| {
+                if (std.mem.indexOf(u8, self.data.items, n) != null) return true;
+            } else if (self.done != null) return true;
             const left = deadline - nowMs();
             if (left <= 0) return false;
             var pfd = [_]std.c.pollfd{.{ .fd = self.fd, .events = c.POLLIN, .revents = 0 }};
@@ -389,8 +406,12 @@ const RawClient = struct {
                 while (self.rbuf.items.len - pos >= 5) {
                     const len = std.mem.readInt(u32, self.rbuf.items[pos + 1 ..][0..4], .little);
                     if (self.rbuf.items.len - pos < 5 + len) break;
+                    const payload = self.rbuf.items[pos + 5 .. pos + 5 + len];
                     if (self.rbuf.items[pos] == MSG_DATA)
-                        self.data.appendSlice(alloc, self.rbuf.items[pos + 5 .. pos + 5 + len]) catch return false;
+                        self.data.appendSlice(alloc, payload) catch return false;
+                    if (self.rbuf.items[pos] == MSG_DONE and self.done == null) {
+                        self.done = alloc.dupe(u8, payload) catch return false;
+                    }
                     pos += 5 + len;
                 }
                 if (pos > 0) {
@@ -417,6 +438,7 @@ const RawClient = struct {
         }
         self.rbuf.deinit(alloc);
         self.data.deinit(alloc);
+        if (self.done) |d| alloc.free(d);
     }
 };
 
@@ -1616,4 +1638,469 @@ test "size ownership: unterminated OSC cannot lock a client out" {
     const b1 = try b.drainUntil("30 100", 5000);
     defer alloc.free(b1);
     try testing.expect(contains(b1, "30 100"));
+}
+
+// ----------------------------------------------------------------------------
+// Commands: send-keys and capture-pane. They run with no terminal, the way
+// scripts and agents use them.
+// ----------------------------------------------------------------------------
+const Ran = struct {
+    code: u8,
+    stdout: []u8,
+    stderr: []u8,
+
+    fn deinit(self: Ran) void {
+        alloc.free(self.stdout);
+        alloc.free(self.stderr);
+    }
+};
+
+/// Run `exe-scroll args...` to completion, without a terminal. A command
+/// that takes over 20 seconds is killed and exits 124.
+fn command(args: []const []const u8) !Ran {
+    var argv: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer argv.deinit(alloc);
+    try argv.appendSlice(alloc, &.{ "timeout", "20", opts.exe_path });
+    try argv.appendSlice(alloc, args);
+    const r = try std.process.run(alloc, io, .{ .argv = argv.items });
+    const code: u8 = switch (r.term) {
+        .exited => |code| code,
+        else => 255,
+    };
+    return .{ .code = code, .stdout = r.stdout, .stderr = r.stderr };
+}
+
+/// Run `exe-scroll cmd socket args...`.
+fn run(cmd: []const u8, s: []const u8, args: []const []const u8) !Ran {
+    var argv: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer argv.deinit(alloc);
+    try argv.appendSlice(alloc, &.{ cmd, s });
+    try argv.appendSlice(alloc, args);
+    return command(argv.items);
+}
+
+/// capture-pane (with `args`) until the capture contains `needle`, and
+/// return it.
+fn captureUntil(s: []const u8, args: []const []const u8, needle: []const u8, ms: i64) ![]u8 {
+    const deadline = nowMs() + ms;
+    while (true) {
+        const r = try run("capture-pane", s, args);
+        alloc.free(r.stderr);
+        if (contains(r.stdout, needle)) return r.stdout;
+        alloc.free(r.stdout);
+        if (nowMs() >= deadline) return error.Timeout;
+        sleepMs(20);
+    }
+}
+
+fn expectCapture(s: []const u8, args: []const []const u8, want: []const u8) !void {
+    const r = try run("capture-pane", s, args);
+    defer r.deinit();
+    try testing.expectEqualStrings("", r.stderr);
+    try testing.expectEqual(0, r.code);
+    try testing.expectEqualStrings(want, r.stdout);
+}
+
+fn expectCommandFails(args: []const []const u8, msg: []const u8) !void {
+    try expectFails(try command(args), msg);
+}
+
+fn expectFails(r: Ran, msg: []const u8) !void {
+    defer r.deinit();
+    try testing.expectEqual(1, r.code);
+    if (!contains(r.stderr, msg)) {
+        std.debug.print("stderr [{s}] lacks [{s}]\n", .{ r.stderr, msg });
+        return error.TestUnexpectedResult;
+    }
+}
+
+fn sendKeys(s: []const u8, keys: []const []const u8) !void {
+    const r = try run("send-keys", s, keys);
+    defer r.deinit();
+    try testing.expectEqualStrings("", r.stderr);
+    try testing.expectEqual(0, r.code);
+}
+
+/// Expect the session's next hex dump (see the readers below) to be `hex`.
+fn expectBytes(p: *Proc, hex: []const u8) !void {
+    const out = try p.drainUntil(" END", 3000);
+    defer alloc.free(out);
+    const want = try std.fmt.allocPrint(alloc, "{s} END", .{hex});
+    defer alloc.free(want);
+    if (!contains(out, want)) {
+        std.debug.print("got [{s}], want [{s}]\n", .{ out, want });
+        return error.TestUnexpectedResult;
+    }
+}
+
+// Hex-dumps what it reads: `head -c N | od` for each count, in raw mode so
+// every byte arrives untranslated.
+const HEX = " | od -An -tx1 | tr -d '\\n'; printf ' END\\r\\n'";
+
+test "send-keys presses named keys and types the rest" {
+    const s = try sockPath("send-keys");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", "stty raw -echo; printf 'READY\\r\\n'; head -c 27" ++ HEX ++ "; head -c 10" ++ HEX ++ "; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try p.drainUntil("READY", 3000));
+
+    // tmux's rules: words naming keys (in any case, with C-/M-/S-/^
+    // modifiers) are pressed; other words are typed. C-m is Enter.
+    try sendKeys(s, &.{ "hi there", "C-m", "up", "C-c", "M-x", "BTab", "Escape", "BSpace", "^b", "S-a", "F5" });
+    try expectBytes(&p, " 68 69 20 74 68 65 72 65 0d 1b 5b 41 03 1b 78 1b 5b 5a 1b 7f 02 41 1b 5b 31 35 7e");
+
+    // -l types every word as is; -- ends the options.
+    try sendKeys(s, &.{ "-l", "Enter", "C-c" });
+    try sendKeys(s, &.{ "--", "-l" });
+    try expectBytes(&p, " 45 6e 74 65 72 43 2d 63 2d 6c");
+}
+
+test "send-keys encodes keys the way the program asked for them" {
+    const s = try sockPath("send-keys-modes");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // Cursor keys in normal mode, then application mode (DECCKM), then the
+    // kitty keyboard protocol's disambiguate flag.
+    var p = try spawn(&.{ s, "--", "sh", "-c", "stty raw -echo; printf 'NORMAL\\r\\n'; head -c 3" ++ HEX ++
+        "; printf '\\033[?1hAPPCURSOR\\r\\n'; head -c 6" ++ HEX ++
+        "; printf '\\033[?1l\\033[>1uKITTY\\r\\n'; head -c 13" ++ HEX ++
+        "; printf '\\033[>9uREPORTALL\\r\\n'; head -c 15" ++ HEX ++ "; exec cat" }, 24, 80);
+    defer p.kill();
+
+    alloc.free(try p.drainUntil("NORMAL", 3000));
+    try sendKeys(s, &.{"Up"});
+    try expectBytes(&p, " 1b 5b 41");
+
+    alloc.free(try p.drainUntil("APPCURSOR", 3000));
+    try sendKeys(s, &.{ "Up", "Home" });
+    try expectBytes(&p, " 1b 4f 41 1b 4f 48");
+
+    alloc.free(try p.drainUntil("KITTY", 3000));
+    try sendKeys(s, &.{ "Escape", "C-c", "Enter" });
+    try expectBytes(&p, " 1b 5b 32 37 75 1b 5b 39 39 3b 35 75 0d");
+
+    // Asked to report every key, keys are reported; text is still text,
+    // as from a paste or an input method.
+    alloc.free(try p.drainUntil("REPORTALL", 3000));
+    try sendKeys(s, &.{ "Space", "a", "Hi", "C-a" });
+    try expectBytes(&p, " 1b 5b 33 32 75 61 48 69 1b 5b 39 37 3b 35 75");
+}
+
+test "capture-pane prints the screen and scrollback" {
+    const s = try sockPath("capture");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // 5 rows of 20 columns: L1..L11 scroll off into scrollback.
+    var p = try spawn(&.{
+        s, "--", "sh", "-c",
+        \\while [ "$(stty size)" != "5 20" ]; do sleep 0.05; done
+        \\i=1; while [ $i -le 12 ]; do echo L$i; i=$((i+1)); done
+        \\echo AAAAAAAAAAAAAAAAAAA BBBBBBBBBBBBBBBBBBB WRAPEND
+        \\printf '\033[1;32mGREEN\033[0m'
+        \\exec cat
+    }, 5, 20);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "GREEN", 3000));
+
+    try expectCapture(s, &.{}, "L12\nAAAAAAAAAAAAAAAAAAA\nBBBBBBBBBBBBBBBBBBB\nWRAPEND\nGREEN\n");
+    try expectCapture(s, &.{"-p"}, "L12\nAAAAAAAAAAAAAAAAAAA\nBBBBBBBBBBBBBBBBBBB\nWRAPEND\nGREEN\n");
+    try expectCapture(s, &.{"-J"}, "L12\nAAAAAAAAAAAAAAAAAAA BBBBBBBBBBBBBBBBBBB WRAPEND\nGREEN\n");
+    // Negative lines reach into scrollback, '-' to its start, and lines
+    // past either end are clamped. As in tmux, start and end may be swapped.
+    try expectCapture(s, &.{ "-S", "-2", "-E", "0" }, "L10\nL11\nL12\n");
+    try expectCapture(s, &.{ "-pJ", "-S-2", "-E0" }, "L10\nL11\nL12\n");
+    try expectCapture(s, &.{ "-S", "-1000", "-E", "-1000" }, "L1\n");
+    try expectCapture(s, &.{ "-S", "1", "-E", "0" }, "L12\nAAAAAAAAAAAAAAAAAAA\n");
+    try expectCapture(s, &.{ "-S", "3", "-E", "100" }, "WRAPEND\nGREEN\n");
+    try expectCapture(s, &.{ "-S", "-", "-E", "-10" }, "L1\nL2\n");
+    {
+        const r = try command(&.{ "capture-pane", s, "-S", "-" });
+        defer r.deinit();
+        try testing.expect(std.mem.startsWith(u8, r.stdout, "L1\nL2\nL3\n"));
+        try testing.expect(std.mem.endsWith(u8, r.stdout, "L12\nAAAAAAAAAAAAAAAAAAA\nBBBBBBBBBBBBBBBBBBB\nWRAPEND\nGREEN\n"));
+    }
+    {
+        // -e keeps styles as escape sequences; lines still end in \n.
+        const r = try command(&.{ "capture-pane", s, "-e" });
+        defer r.deinit();
+        try testing.expectEqual(0, r.code);
+        try testing.expect(contains(r.stdout, "\x1b[1m"));
+        try testing.expect(contains(r.stdout, "GREEN"));
+        try testing.expect(!contains(r.stdout, "\r"));
+        try testing.expect(std.mem.endsWith(u8, r.stdout, "\n"));
+    }
+
+    try expectCommandFails(&.{ "capture-pane", s, "-x" }, "capture-pane: unknown option -x");
+    try expectCommandFails(&.{ "capture-pane", s, "extra" }, "capture-pane: unexpected argument 'extra'");
+    try expectCommandFails(&.{ "capture-pane", s, "-S" }, "capture-pane: -S needs a line");
+    try expectCommandFails(&.{ "capture-pane", s, "-E", "end" }, "capture-pane: bad line 'end'");
+    try expectCommandFails(&.{ "send-keys", s, "-x", "a" }, "send-keys: unknown option -x");
+    const long = "1" ** 600;
+    try expectCommandFails(&.{ "capture-pane", s, "-S", long }, "capture-pane: bad line '111");
+}
+
+test "capture-pane prints a line for every row" {
+    const s = try sockPath("capture-rows");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // 6 rows of 20 columns. Row 0 is 19 A's and the wide 界, which doesn't
+    // fit in the last column and so wraps to row 1.
+    var p = try spawn(&.{
+        s, "--", "sh", "-c",
+        \\while [ "$(stty size)" != "6 20" ]; do sleep 0.05; done
+        \\printf 'AAAAAAAAAAAAAAAAAAA\347\225\214X\n\nMID   \n'
+        \\exec cat
+    }, 6, 20);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "MID", 3000));
+
+    // Blank rows are lines too, as in tmux, down to the bottom of the screen.
+    try expectCapture(s, &.{}, "AAAAAAAAAAAAAAAAAAA\n界X\n\nMID\n\n\n");
+    try expectCapture(s, &.{"-e"}, "AAAAAAAAAAAAAAAAAAA\n界X\n\nMID\n\n\n");
+    try expectCapture(s, &.{ "-S", "2", "-E", "2" }, "\n");
+    try expectCapture(s, &.{ "-S", "4", "-E", "5" }, "\n\n");
+    // -J joins only within the range.
+    // -J keeps trailing spaces the program printed, as tmux does.
+    try expectCapture(s, &.{"-J"}, "AAAAAAAAAAAAAAAAAAA界X\n\nMID   \n\n\n");
+    try expectCapture(s, &.{ "-J", "-S", "0", "-E", "0" }, "AAAAAAAAAAAAAAAAAAA\n");
+    try expectCapture(s, &.{ "-J", "-S", "1", "-E", "1" }, "界X\n");
+}
+
+test "send-keys delivers more input than the pty holds" {
+    // The pty echoes the input and tee prints it back, so tee stops reading
+    // when nobody reads the pty. The server must keep reading the pty while
+    // it writes. wc counts what got through.
+    const s = try sockPath("send-keys-big");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", "echo READY; tee /dev/tty | wc -c; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "READY", 3000));
+
+    // 64 KiB of lines (a quarter of that used to hang the session), then
+    // end-of-file.
+    const word = try alloc.alloc(u8, 32 * 1024);
+    defer alloc.free(word);
+    for (word, 0..) |*b, k| b.* = if (k % 64 == 63) '\n' else 'x';
+    try sendKeys(s, &.{ "-l", word, word });
+    try sendKeys(s, &.{"C-d"});
+    alloc.free(try captureUntil(s, &.{}, "65536", 30000));
+}
+
+test "send-keys refuses input past a backlog" {
+    const s = try sockPath("send-keys-backlog");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A program that never reads.
+    var p = try spawn(&.{ s, "--", "sh", "-c", "stty raw -echo; echo ASLEEP; exec sleep 1000" }, 24, 80);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "ASLEEP", 3000));
+
+    const word = try alloc.alloc(u8, 120 * 1024);
+    defer alloc.free(word);
+    @memset(word, 'x');
+    // 600 KB at a time: queued, queued, then refused past 1 MB.
+    const big: []const []const u8 = &.{ "-l", word, word, word, word, word };
+    try sendKeys(s, big);
+    try sendKeys(s, big);
+    try expectFails(try run("send-keys", s, big), "send-keys: the program hasn't read earlier input yet");
+    // The session still answers.
+    alloc.free(try captureUntil(s, &.{}, "ASLEEP", 3000));
+}
+
+test "input that never quite drains doesn't pile up" {
+    const s = try sockPath("pty-inq-mem");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // A program reading 16 MiB in 16 KiB gulps, with a pause between, so a
+    // client typing as fast as it can stays ahead of it the whole time.
+    var p = try spawn(&.{ s, "--", "sh", "-c", "stty raw -echo; echo READY; i=0; while [ $i -lt 1024 ]; do head -c 16384 >/dev/null; i=$((i+1)); done; echo DRAINED; exec sleep 1000" }, 24, 80);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "READY", 3000));
+    const server = try findServer(s, p.pid);
+    const before = try rssKb(server);
+
+    var cl = try RawClient.connect(s);
+    defer cl.close();
+    cl.sendWinch(24, 80);
+    cl.attach();
+    var chunk: [4096]u8 = undefined;
+    @memset(&chunk, 'x');
+    var sent: usize = 0;
+    while (sent < 16 * 1024 * 1024) : (sent += chunk.len) cl.sendData(&chunk);
+
+    // Sent, so all but the last 1 MiB or so has been written to the
+    // program; that's all the queue may still hold.
+    const after = try rssKb(server);
+    alloc.free(try captureUntil(s, &.{}, "DRAINED", 60000));
+    if (after > before + 8 * 1024) {
+        std.debug.print("server RSS grew from {d} kB to {d} kB\n", .{ before, after });
+        return error.TestUnexpectedResult;
+    }
+}
+
+fn rssKb(pid: c_int) !usize {
+    var pathbuf: [64]u8 = undefined;
+    const path = try std.fmt.bufPrint(&pathbuf, "/proc/{d}/status", .{pid});
+    const status = try readProcFile(path);
+    defer alloc.free(status);
+    var lines = std.mem.splitScalar(u8, status, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "VmRSS:")) continue;
+        const v = std.mem.trim(u8, line["VmRSS:".len..], " \tkB");
+        return std.fmt.parseInt(usize, v, 10);
+    }
+    return error.NoRss;
+}
+
+test "capture-pane delivers a reply larger than the socket buffer" {
+    // The client half-closes as soon as it has sent its command, so the
+    // server reads EOF while most of a big reply is still queued. It must
+    // finish sending before it hangs up.
+    const s = try sockPath("capture-big");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // Lines of alternating colors: as escape sequences, 500 of them come to
+    // some 700 KB.
+    var p = try spawn(&.{
+        s, "--", "sh", "-c",
+        \\while [ "$(stty size)" != "5 100" ]; do sleep 0.05; done
+        \\l=''; i=0; while [ $i -lt 50 ]; do l="$l\033[31mx\033[32my"; i=$((i+1)); done
+        \\i=0; while [ $i -lt 500 ]; do printf "$l\n"; i=$((i+1)); done
+        \\echo BIGDONE
+        \\exec cat
+    }, 5, 100);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "BIGDONE", 10000));
+
+    const r = try command(&.{ "capture-pane", s, "-e", "-S", "-" });
+    defer r.deinit();
+    try testing.expectEqualStrings("", r.stderr);
+    try testing.expectEqual(0, r.code);
+    try testing.expect(r.stdout.len > 512 * 1024);
+    // All of it: the last line too, then the blank one the cursor is on.
+    try testing.expect(std.mem.endsWith(u8, r.stdout, "BIGDONE\x1b[0m\n\n"));
+}
+
+test "commands explain a missing or outdated session" {
+    try expectCommandFails(&.{"send-keys"}, "usage:");
+    try expectCommandFails(&.{ "capture-pane", "-e" }, "usage:");
+
+    const s = try sockPath("no-session");
+    defer alloc.free(s);
+    try expectCommandFails(&.{ "capture-pane", s }, "no session at");
+
+    // A session server from before commands existed ignores MSG_COMMAND
+    // and hangs up when the client does.
+    {
+        const old = try sockPath("old-session");
+        defer alloc.free(old);
+        defer cleanup(old);
+        const pid = try fakeSession(old, "");
+        defer _ = c.waitpid(pid, null, 0);
+        try expectCommandFails(&.{ "send-keys", old, "x" }, "doesn't support send-keys; it was started by an older exe-scroll");
+    }
+    // One that hangs up partway through a reply is no such thing.
+    {
+        const gone = try sockPath("gone-session");
+        defer alloc.free(gone);
+        defer cleanup(gone);
+        const pid = try fakeSession(gone, "\x01\x04\x00\x00\x00part");
+        defer _ = c.waitpid(pid, null, 0);
+        const msg = try std.fmt.allocPrint(alloc, "the session at {s} hung up", .{gone});
+        defer alloc.free(msg);
+        try expectCommandFails(&.{ "capture-pane", gone }, msg);
+    }
+}
+
+/// Stand in for a session server at `path` that answers one connection with
+/// `reply` and hangs up -- or, with no reply, reads until the client hangs
+/// up. Returns the pid; it exits after that connection, or 10 seconds.
+fn fakeSession(path: []const u8, reply: []const u8) !c_int {
+    const l = std.c.socket(std.c.AF.UNIX, std.c.SOCK.STREAM, 0);
+    try testing.expect(l >= 0);
+    defer _ = std.c.close(l);
+    var sa: std.c.sockaddr.un = undefined;
+    sa.family = std.c.AF.UNIX;
+    @memcpy(sa.path[0..path.len], path);
+    sa.path[path.len] = 0;
+    try testing.expect(std.c.bind(l, @ptrCast(&sa), @sizeOf(@TypeOf(sa))) == 0);
+    try testing.expect(std.c.listen(l, 1) == 0);
+    const pid = std.c.fork();
+    if (pid == 0) {
+        _ = c.alarm(10);
+        const conn = std.c.accept(l, null, null);
+        _ = std.c.write(conn, reply.ptr, reply.len);
+        var buf: [4096]u8 = undefined;
+        if (reply.len == 0) while (std.c.read(conn, &buf, buf.len) > 0) {};
+        c._exit(0);
+    }
+    return pid;
+}
+
+test "commands need a well-formed payload and their own connection" {
+    const s = try sockPath("cmd-proto");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", "echo SCREEN; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try p.drainUntil("SCREEN", 3000));
+
+    // Every word ends in NUL: a last word without one is an error, not
+    // silently dropped.
+    {
+        var cl = try RawClient.connect(s);
+        defer cl.close();
+        cl.sendFrame(RawClient.MSG_COMMAND, "send-keys\x00oops");
+        try testing.expect(cl.waitDone(3000));
+        try testing.expectEqualStrings("\x01malformed command", cl.done.?);
+    }
+    // An attached client's MSG_DATA is the terminal's output, so a command's
+    // output has nowhere to go.
+    {
+        var cl = try RawClient.connect(s);
+        defer cl.close();
+        cl.sendWinch(24, 80);
+        cl.attach();
+        cl.sendFrame(RawClient.MSG_COMMAND, "capture-pane\x00");
+        try testing.expect(cl.waitDone(3000));
+        try testing.expectEqualStrings("\x01commands need a connection of their own", cl.done.?);
+        try testing.expect(!contains(cl.data.items, "SCREEN"));
+    }
+}
+
+test "capture-pane fails when it can't write its output" {
+    const s = try sockPath("capture-full");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    var p = try spawn(&.{ s, "--", "sh", "-c", "echo SCREEN; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try captureUntil(s, &.{}, "SCREEN", 3000));
+
+    const r = try std.process.run(alloc, io, .{ .argv = &.{ "sh", "-c", "exec \"$0\" capture-pane \"$1\" >/dev/full", opts.exe_path, s } });
+    defer alloc.free(r.stdout);
+    defer alloc.free(r.stderr);
+    try testing.expectEqual(std.process.Child.Term{ .exited = 1 }, r.term);
+    try testing.expect(contains(r.stderr, "capture-pane: can't write output"));
 }
