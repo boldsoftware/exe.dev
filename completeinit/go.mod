@@ -1,6 +1,6 @@
 module github.com/boldsoftware/exe.dev/completeinit
 
-go 1.27.2
+go 1.27.3
 
 require golang.org/x/tools v0.41.0
 
