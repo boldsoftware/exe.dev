@@ -36,7 +36,7 @@ esac
 # Zig is a cross-compiler: it emits a fully static musl binary for either
 # target from any host (Linux x86_64/arm64, macOS, ...), so there's no uname
 # gate and no need for buildx/qemu. This is what lets the exelet rovol bake
-# build exe-scroll in place alongside exe-init/exe-ssh, on whatever machine
+# build exe-scroll in place alongside exe-init, on whatever machine
 # `make exelet-fs`/`make exe-scroll` runs on.
 echo "Building exe-scroll for $ARCH (zig target $ZIG_TARGET)..."
 
