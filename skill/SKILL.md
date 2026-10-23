@@ -53,7 +53,7 @@ tmux send-keys -t exe-signup '<email>' Enter
 **Tell the human**
 
 - `Verification email sent to:`: click the link in the email from exe.dev.
-- `Verify with Google:` or `Verify with <provider>:`: open that URL.
+- `Click here to verify:` or `Verify with <provider>:`: open that URL.
 - `Choose a plan to start creating VMs:`: ask Personal (one person), Work (a team), or Later. Type `personal`, `work`, or `later`.
 - `Open this link to activate`: give the URL. It works once and expires in 15 minutes. Personal offers a free 7-day trial by linking a paid ChatGPT subscription (no card), or a Stripe subscription. Work is a Stripe team subscription.
 - `Connect a paid ChatGPT subscription or subscribe with Stripe:` in the welcome tips: a Personal link. Hand it over the same way.
