@@ -1,0 +1,22 @@
+# pnpm reads its settings here; .npmrc is for npm, and pnpm 11 and later read
+# only registry and auth settings from it. bin/check-npm-hardening.sh requires
+# these.
+ignoreScripts: true
+frozenLockfile: true
+# Don't install packages published less than 7 days ago (in minutes), to keep
+# compromised or malicious new releases out.
+minimumReleaseAge: 10080
+# Don't make pnpm enforce packageManager: it would record itself in
+# pnpm-lock.yaml as a first YAML document, the only one GitHub's dependency
+# graph reads (dependabot/dependabot-core#15904). bin/with-node and
+# bin/check-npm-hardening.sh hold the pnpm version instead.
+pmOnFail: ignore
+# Dependencies whose build scripts may run, though ignoreScripts runs none.
+allowBuilds:
+  cpu-features: true
+  esbuild: true
+  ssh2: true
+  "@google/genai": false
+  "@mongodb-js/zstd": false
+  node-liblzma: false
+  protobufjs: false
