@@ -1,0 +1,29 @@
+/* Page basics, and the few non-PrimeVue tokens the terminal components use,
+   as aliases over PrimeVue's --p-* theme tokens. Embedders may define their
+   own. */
+html {
+  font-size: 13px;
+}
+:root {
+  --text-color: var(--p-text-color);
+  --text-color-muted: var(--p-text-muted-color);
+  --surface-card: var(--p-content-background);
+  --surface-border: var(--p-content-border-color);
+  --surface-hover: var(--p-content-hover-background);
+  --surface-subtle: var(--p-surface-100);
+  --surface-ground: var(--p-surface-50);
+}
+html.app-dark {
+  --surface-subtle: var(--p-surface-800);
+  --surface-ground: var(--p-surface-950);
+}
+body {
+  margin: 0;
+  font-family:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-color);
+  background: var(--surface-ground);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,17 @@
+# pnpm reads its settings here; pnpm 11 and later read only registry and auth
+# settings from .npmrc.
+ignoreScripts: true
+frozenLockfile: true
+# Don't install packages published less than 7 days ago (in minutes), to keep
+# compromised or malicious new releases out.
+minimumReleaseAge: 10080
+# Don't make pnpm enforce packageManager: it would record itself in
+# pnpm-lock.yaml as a first YAML document, the only one GitHub's dependency
+# graph reads (dependabot/dependabot-core#15904). ../mise.toml pins pnpm.
+pmOnFail: ignore
+# Allow recent @xterm betas (kitty keyboard protocol support not yet in a
+# stable release).
+minimumReleaseAgeExclude:
+  - "@xterm/xterm"
+  - "@xterm/addon-fit"
+  - "@xterm/addon-web-links"

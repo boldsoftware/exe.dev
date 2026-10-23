@@ -1,0 +1,9 @@
+# Toolchain pins for exe-tty. The Makefile runs everything through `mise exec`,
+# which installs these on first use; mise.lock pins per-platform checksums.
+[tools]
+go = "1.27.3"
+node = "26.12.1"
+"aqua:pnpm/pnpm" = "12.14.0"
+
+[settings]
+lockfile = true
