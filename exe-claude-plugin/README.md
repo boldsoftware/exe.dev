@@ -23,7 +23,7 @@ Then sign in: open `/mcp` in Claude Code, pick **exe-dev**, and your browser ope
 
 Nothing runs on your machine. The plugin has no hooks, scripts, local commands, or bundled code. The only network traffic it causes goes to exe.dev, and only through the MCP server above. What a tool can do is bounded by the exe.dev account you sign in with.
 
-Developers who want the full exe.dev CLI as a single `exec` tool can add the general endpoint instead, as [the MCP docs](https://exe.dev/docs/mcp) describe:
+Developers who want the full exe.dev CLI as an `exec` tool can add the general endpoint instead, as [the MCP docs](https://exe.dev/docs/mcp) describe:
 
 ```
 claude mcp add --transport http exe https://exe.dev/mcp
