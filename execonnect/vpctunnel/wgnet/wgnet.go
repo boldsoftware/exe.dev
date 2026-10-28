@@ -14,8 +14,8 @@ import (
 
 	"github.com/boldsoftware/exe.dev/execonnect/vpctunnel/nstun"
 
-	"github.com/tailscale/wireguard-go/conn"
-	"github.com/tailscale/wireguard-go/device"
+	"golang.zx2c4.com/wireguard/conn"
+	"golang.zx2c4.com/wireguard/device"
 	"tailscale.com/types/key"
 )
 
@@ -160,17 +160,24 @@ func (d *Device) UpsertPeer(config Peer) error {
 	publicKey := device.NoisePublicKey(config.PublicKey.Raw32())
 	d.peerMu.Lock()
 	defer d.peerMu.Unlock()
-	wireGuardPeer, ok := d.device.LookupActivePeer(publicKey)
-	if !ok {
+	wireGuardPeer := d.device.LookupPeer(publicKey)
+	if wireGuardPeer == nil {
 		wireGuardPeer, err = d.device.NewPeer(publicKey)
 		if err != nil {
 			return fmt.Errorf("create WireGuard peer: %w", err)
 		}
 	}
-	wireGuardPeer.SetAllowedIPs(allowedIPs)
+	publicKeyBytes := config.PublicKey.Raw32()
+	var allowedIPConfig strings.Builder
+	fmt.Fprintf(&allowedIPConfig, "public_key=%s\nreplace_allowed_ips=true\n", hex.EncodeToString(publicKeyBytes[:]))
+	for _, prefix := range allowedIPs {
+		fmt.Fprintf(&allowedIPConfig, "allowed_ip=%s\n", prefix)
+	}
+	if err := d.device.IpcSet(allowedIPConfig.String()); err != nil {
+		return fmt.Errorf("set allowed IPs: %w", err)
+	}
 	wireGuardPeer.SetEndpointFromPacket(endpoint)
 	wireGuardPeer.Start()
-	publicKeyBytes := config.PublicKey.Raw32()
 	if err := d.device.IpcSet(fmt.Sprintf(
 		"public_key=%s\npersistent_keepalive_interval=%d\n",
 		hex.EncodeToString(publicKeyBytes[:]),
@@ -188,8 +195,8 @@ func (d *Device) ForceHandshake(publicKey key.NodePublic) error {
 	}
 	d.peerMu.Lock()
 	defer d.peerMu.Unlock()
-	peer, ok := d.device.LookupActivePeer(device.NoisePublicKey(publicKey.Raw32()))
-	if !ok {
+	peer := d.device.LookupPeer(device.NoisePublicKey(publicKey.Raw32()))
+	if peer == nil {
 		return errors.New("WireGuard peer not found")
 	}
 	peer.ExpireCurrentKeypairs()

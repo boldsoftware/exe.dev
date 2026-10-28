@@ -5,10 +5,10 @@ go 1.27.3
 require (
 	github.com/creack/pty v1.1.24
 	github.com/pires/go-proxyproto v0.15.0
-	github.com/tailscale/wireguard-go v0.0.0-20260527010701-b48af7099cad
 	github.com/urfave/cli/v2 v2.27.7
 	golang.org/x/sys v0.47.0
 	golang.org/x/term v0.45.0
+	golang.zx2c4.com/wireguard v0.0.0-20261024220952-b3bc704ef0ee
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8

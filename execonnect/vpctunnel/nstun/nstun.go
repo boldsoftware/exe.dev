@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (C) 2017-2023 WireGuard LLC. All Rights Reserved.
 //
-// Adapted from tailscale/wireguard-go tun/netstack/tun.go at b48af7099cad.
+// Adapted from golang.zx2c4.com/wireguard tun/netstack/tun.go.
 // Local changes support the pinned gVisor API and TCP-only helpers.
 // See ../../LICENSES/WireGuard-MIT.txt.
 
@@ -18,7 +18,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/tailscale/wireguard-go/tun"
+	"golang.zx2c4.com/wireguard/tun"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
