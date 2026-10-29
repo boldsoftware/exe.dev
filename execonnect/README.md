@@ -29,7 +29,7 @@ In another terminal, enroll it and add a private endpoint:
 
 ```sh
 bin/execonnect enroll
-bin/execonnect endpoint add database tcp://db.internal.example:5432
+bin/execonnect endpoint add api https://api.internal.example
 bin/execonnect status
 ```
 
