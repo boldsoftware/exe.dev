@@ -1,5 +1,6 @@
 [Unit]
 Description=execonnect External Connection daemon
+Documentation=https://exe.dev/docs/integrations-external-connections
 After=network-online.target
 Wants=network-online.target
 
