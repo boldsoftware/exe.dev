@@ -256,9 +256,9 @@ func TestGlobalPathOptionsReportMissingValues(t *testing.T) {
 	}
 }
 
-func TestVersionLabelsBuildRevision(t *testing.T) {
+func TestVersionLabelsBuildVersion(t *testing.T) {
 	stdout, stderr, err := runForTest(t, strings.NewReader(""), "--version")
-	want := "execonnect version " + execonnect.BuildRevision() + "\n"
+	want := "execonnect version " + execonnect.BuildVersion() + "\n"
 	if err != nil || stderr != "" || stdout != want {
 		t.Fatalf("version stdout=%q stderr=%q err=%v, want %q", stdout, stderr, err, want)
 	}

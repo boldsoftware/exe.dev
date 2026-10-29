@@ -12,7 +12,9 @@ make check
 make build
 ```
 
-The binary is written to `bin/execonnect`.
+The binary is written to `bin/execonnect`. Each `execonnect/v*` GitHub release has
+Linux and macOS binaries, plus Linux tarballs with the systemd unit and
+installer.
 
 ## Run without root
 

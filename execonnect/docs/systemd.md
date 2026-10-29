@@ -4,6 +4,17 @@ This installation path supports Linux systems running systemd with GNU shadow's
 `useradd` and `groupadd`. Alpine/BusyBox account tools are not supported.
 macOS uses foreground `execonnect serve` instead.
 
+## Install a release
+
+Each `execonnect/v*` GitHub release has `execonnect-linux-ARCH.tar.gz`, which
+holds the binary, unit, and installer:
+
+```sh
+tar -xzf execonnect-linux-amd64.tar.gz
+cd execonnect-linux-amd64
+sudo ./install.sh ./execonnect
+```
+
 ## Build and install
 
 From the standalone `execonnect` module root:
@@ -47,7 +58,8 @@ Start a new login session after changing group membership.
 
 ## Upgrade
 
-Build or obtain the replacement binary, rerun the installer, then restart:
+Build the replacement binary or extract a newer release tarball, rerun its
+installer, then restart:
 
 ```sh
 sudo ./packaging/systemd/install.sh ./bin/execonnect

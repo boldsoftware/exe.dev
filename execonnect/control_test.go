@@ -105,7 +105,7 @@ func TestRunControlStreamAuthenticatesPublishesAndReplaysAfterReconnect(t *testi
 			t.Fatalf("current capability = %d, want WireGuard re-handshake capability %d", connectapi.CurrentCapabilityVersion, connectapi.WireGuardRehandshakeCapabilityVersion)
 		}
 		for _, hello := range service.hellos {
-			if hello.GetExternalConnectionID() != "ec_test" || hello.GetWireguardPublicKey() != "nodekey:connector" || hello.GetCapabilityVersion() != connectapi.CurrentCapabilityVersion || hello.GetBuildVersion() != BuildRevision() {
+			if hello.GetExternalConnectionID() != "ec_test" || hello.GetWireguardPublicKey() != "nodekey:connector" || hello.GetCapabilityVersion() != connectapi.CurrentCapabilityVersion || hello.GetBuildVersion() != BuildVersion() {
 				t.Fatalf("hello = %#v", hello)
 			}
 		}

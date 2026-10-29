@@ -145,7 +145,7 @@ func runControlStreamOnce(
 		ExternalConnectionID: credentials.ExternalConnectionID,
 		WireguardPublicKey:   wireGuardPublicKey,
 		CapabilityVersion:    connectapi.CurrentCapabilityVersion,
-		BuildVersion:         BuildRevision(),
+		BuildVersion:         BuildVersion(),
 	}}}); err != nil {
 		return latest, resolveInitialControlSendError(streamContext, stream, handleControl, fmt.Errorf("send connector hello: %w", err))
 	}

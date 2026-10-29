@@ -166,3 +166,26 @@ jobs:
           curl -fsSL https://mise.run | sh
           export PATH="$HOME/.local/bin:$PATH"
           exe-tty/release.sh
+
+  release-execonnect:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    concurrency:
+      group: release-execonnect
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    needs: [test, auto-tag]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: execonnect/go.mod
+
+      - name: Build and release execonnect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: execonnect/release.sh

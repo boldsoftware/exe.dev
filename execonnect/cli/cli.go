@@ -69,7 +69,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 func newApp(stdin io.Reader, stdout, stderr io.Writer) *urfave.App {
 	app := urfave.NewApp()
 	app.Name = "execonnect"
-	app.Version = execonnect.BuildRevision()
+	app.Version = execonnect.BuildVersion()
 	app.Usage = "connects private services to exe.dev through an External Connection"
 	app.UsageText = "execonnect [global options] COMMAND [command options]"
 	app.Description = rootDescription()
