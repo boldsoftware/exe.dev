@@ -1,7 +1,7 @@
 #!/bin/sh
 # Download and install the latest execonnect release:
 #
-#   curl -fsSL https://raw.githubusercontent.com/boldsoftware/exe.dev/main/execonnect/install.sh | sh
+#   curl -fsSL https://exe.dev/execonnect/install.sh | sh
 #
 # Set EXECONNECT_VERSION=v0.N.9xxx to install a specific release.
 #

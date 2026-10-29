@@ -9,7 +9,7 @@ macOS uses foreground `execonnect serve` instead.
 Download, verify, and install the latest release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/boldsoftware/exe.dev/main/execonnect/install.sh | sh
+curl -fsSL https://exe.dev/execonnect/install.sh | sh
 ```
 
 Set `EXECONNECT_VERSION=v0.N.9xxx` to pick a release. Rerunning it upgrades

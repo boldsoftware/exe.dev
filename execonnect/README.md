@@ -43,7 +43,7 @@ both under `~/Library/Application Support/execonnect`.
 To install the latest release on Linux (or the binary on macOS):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/boldsoftware/exe.dev/main/execonnect/install.sh | sh
+curl -fsSL https://exe.dev/execonnect/install.sh | sh
 ```
 
 To install a local build:
