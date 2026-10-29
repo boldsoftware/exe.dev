@@ -6,8 +6,17 @@ macOS uses foreground `execonnect serve` instead.
 
 ## Install a release
 
-Each `execonnect/v*` GitHub release has `execonnect-linux-ARCH.tar.gz`, which
-holds the binary, unit, and installer:
+Download, verify, and install the latest release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/boldsoftware/exe.dev/main/execonnect/install.sh | sh
+```
+
+Set `EXECONNECT_VERSION=v0.N.9xxx` to pick a release. Rerunning it upgrades
+and restarts a running service.
+
+Or do it by hand: each `execonnect/v*` GitHub release has
+`execonnect-linux-ARCH.tar.gz`, which holds the binary, unit, and installer:
 
 ```sh
 tar -xzf execonnect-linux-amd64.tar.gz

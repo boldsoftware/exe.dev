@@ -40,6 +40,14 @@ both under `~/Library/Application Support/execonnect`.
 
 ## Install with systemd
 
+To install the latest release on Linux (or the binary on macOS):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/boldsoftware/exe.dev/main/execonnect/install.sh | sh
+```
+
+To install a local build:
+
 ```sh
 sudo ./packaging/systemd/install.sh ./bin/execonnect
 sudo systemctl enable --now execonnect
