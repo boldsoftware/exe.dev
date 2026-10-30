@@ -29,6 +29,11 @@ import {
   type MouseReportFormat,
   type TerminalScrollModes,
 } from "./terminalScrollPolicy";
+import {
+  installGhosttyWrappedUrls,
+  type GhosttyLinkTerminal,
+  type UrlRegexProviderCtor,
+} from "./ghosttyLinks";
 
 export type RendererKind = "ghostty" | "xterm";
 
@@ -169,7 +174,7 @@ export function loadTerminalBackend(forceKind?: RendererKind): Promise<TerminalB
         const GhosttyTerminal = mod.Terminal as unknown as {
           prototype: TerminalLike;
         } & TerminalCtor;
-        patchGhosttyPrototype(GhosttyTerminal.prototype);
+        patchGhosttyPrototype(GhosttyTerminal.prototype, mod.UrlRegexProvider);
         // Callers do `new backend.Terminal(opts)` without knowing about the
         // shared ghostty instance; bind it in via a thin subclass so the
         // pre-loaded WASM is injected transparently.
@@ -716,7 +721,14 @@ function installGhosttyInputFocus(term: TerminalLike, host: HTMLElement) {
   redirect(); // open() may have already focused the host before our hook ran.
 }
 
-export function patchGhosttyPrototype(prototype: TerminalLike) {
+/**
+ * `UrlRegexProvider` is ghostty-web's export of its built-in URL link
+ * provider, which open() swaps for one that follows soft wraps.
+ */
+export function patchGhosttyPrototype(
+  prototype: TerminalLike,
+  UrlRegexProvider?: UrlRegexProviderCtor,
+) {
   const proto = prototype as unknown as {
     attachCustomKeyEventHandler: TerminalLike["attachCustomKeyEventHandler"];
     open: TerminalLike["open"];
@@ -763,6 +775,13 @@ export function patchGhosttyPrototype(prototype: TerminalLike) {
       installGhosttyInputFocus(this, parent);
     } catch (err) {
       console.warn("[terminalRenderer] Ghostty rendering/input policy not installed", err);
+    }
+    if (UrlRegexProvider) {
+      try {
+        installGhosttyWrappedUrls(this as unknown as GhosttyLinkTerminal, UrlRegexProvider);
+      } catch (err) {
+        console.warn("[terminalRenderer] wrapped URL links not installed", err);
+      }
     }
     // Per instance, guarded like the wheel policy: a second open() must not
     // wrap the gate twice and leave dispose() restoring the first wrapper.

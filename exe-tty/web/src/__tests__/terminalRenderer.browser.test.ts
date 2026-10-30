@@ -32,9 +32,9 @@ beforeAll(async () => {
           <link rel="stylesheet" href="/xterm.css">
           <div id="term" style="position:relative;width:320px;height:160px"></div>
           <script type="module">
-          import {Ghostty, Terminal} from '/ghostty.js';
+          import {Ghostty, Terminal, UrlRegexProvider} from '/ghostty.js';
           import {patchGhosttyPrototype} from '/lib/terminalRenderer';
-          patchGhosttyPrototype(Terminal.prototype);
+          patchGhosttyPrototype(Terminal.prototype, UrlRegexProvider);
           const ghostty = await Ghostty.load('/ghostty.wasm');
           window.term = new Terminal({ghostty,cols:20,rows:8,cursorBlink:true,fontSize:15});
           window.sent = []; term.onData(data => sent.push(data));
@@ -231,6 +231,59 @@ for (const browserType of [chromium, webkit]) {
         await expect
           .poll(() => page.evaluate("sent.join('')"))
           .toBe(`${ESC}[200~paste line one\n界🙂 line two${ESC}[201~`);
+      });
+    });
+
+    // ghostty-web finds URLs a row at a time: on a URL that soft-wraps (an
+    // OAuth sign-in link), Ctrl/Cmd+click on the first row opened that row's
+    // part of it, and on the others nothing.
+    it("opens the whole of a wrapped URL from any of its rows", async () => {
+      await withTerminal(async (page) => {
+        await page.evaluate(() => {
+          const opened: string[] = [];
+          Object.assign(window, { opened });
+          window.open = (url?: string | URL) => (opened.push(String(url)), null);
+        });
+        const url = "https://example.com/abcdefghijklmnopqrstuvwxyz";
+        const box = (await page.locator("#term canvas").boundingBox())!;
+        const modifier = process.platform === "darwin" ? "Meta" : "Control";
+        const click = async (row: number) => {
+          await page.evaluate("opened.length = 0");
+          const x = box.x + 4.5 * (box.width / 20);
+          const y = box.y + (row + 0.5) * (box.height / 8);
+          await page.mouse.move(x, y);
+          await page.keyboard.down(modifier);
+          await page.mouse.click(x, y);
+          await page.keyboard.up(modifier);
+          await frames(page);
+          return page.evaluate("opened");
+        };
+        await write(page, `${ESC}[0m${ESC}[H${ESC}[2Jgo ${url} then\r\nnext`);
+        await frames(page);
+        for (const row of [0, 1, 2]) expect(await click(row)).toEqual([url]);
+        expect(await click(3)).toEqual([]);
+        // An OSC 8 hyperlink whose text is that URL opens its own target,
+        // whichever row is clicked first.
+        const target = "https://target.example/";
+        await write(
+          page,
+          `${ESC}[H${ESC}[2J${ESC}]8;;${target}${ESC}\\go ${url} then${ESC}]8;;${ESC}\\`,
+        );
+        await frames(page);
+        for (const row of [1, 0, 2]) expect(await click(row)).toEqual([target]);
+        // A resize reflows the URL onto one row, and a link found before it
+        // no longer covers the row below, though nothing has been written.
+        await write(page, `${ESC}[H${ESC}[2Jgo ${url} then\r\nnext`);
+        expect(await click(1)).toEqual([url]);
+        await page.evaluate("term.resize(60, 8)");
+        await frames(page);
+        expect(
+          await page.evaluate(
+            "term.wasmTerm.getLine(1).map(c => String.fromCodePoint(c.codepoint || 32)).join('').trim()",
+          ),
+        ).toBe("next");
+        expect(await click(1)).toEqual([]);
+        expect(await click(0)).toEqual([url]);
       });
     });
 
