@@ -25,13 +25,16 @@ function deferred<T>() {
 }
 
 const mountedRenderers: RendererKind[] = [];
+const terminals: TerminalLike[] = [];
 function backend(kind: RendererKind): TerminalBackend {
   return {
     kind,
     Terminal: class implements TerminalLike {
       cols = 80;
       rows = 24;
-      constructor(public options: Record<string, unknown>) {}
+      constructor(public options: Record<string, unknown>) {
+        terminals.push(this);
+      }
       loadAddon() {}
       open() {
         mountedRenderers.push(kind);
@@ -103,6 +106,7 @@ beforeEach(() => {
   sockets.length = 0;
   socketURLs.length = 0;
   mountedRenderers.length = 0;
+  terminals.length = 0;
   vi.mocked(loadTerminalBackend).mockImplementation((kind = "ghostty") => {
     const load = { kind, ...deferred<TerminalBackend>() };
     loads.push(load);
@@ -349,6 +353,33 @@ describe("working directory (?d=)", () => {
 
 // The session-list toggle is a tab counter: the number of sessions in an
 // outlined box.
+describe("theme changes", () => {
+  it.each(["ghostty", "xterm"] as const)("recolor the live %s terminal in place", async (kind) => {
+    localStorage.setItem("exe:terminal:renderer", kind);
+    history.replaceState({}, "", "?name=thistle");
+    const wrapper = mountTerminal();
+    await flushPromises();
+    finishLoad(0);
+    await flushPromises();
+    expect(terminals).toHaveLength(1);
+    const theme = () => (terminals[0]!.options.theme as { background: string }).background;
+    expect(theme()).toBe("#ffffff");
+
+    wrapper.getComponent(SettingsMenu).vm.$emit("update:themeMode", "dark");
+    await flushPromises();
+    expect(theme()).toBe("#0d1117");
+    wrapper.getComponent(SettingsMenu).vm.$emit("update:themeMode", "light");
+    await flushPromises();
+    expect(theme()).toBe("#ffffff");
+
+    // The same terminal and session throughout: no remount, no reconnect.
+    expect(terminals).toHaveLength(1);
+    expect(mountedRenderers).toEqual([kind]);
+    expect(sockets).toEqual(["thistle"]);
+    wrapper.unmount();
+  });
+});
+
 describe("session list toggle", () => {
   async function start() {
     history.replaceState({}, "", "?name=thistle");

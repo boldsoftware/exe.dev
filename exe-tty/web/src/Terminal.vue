@@ -851,7 +851,7 @@ watch(rendererKind, async (kind) => {
 
 // Diagnostics store (keydown / composition / onData / PTY-latency log). Off by
 // default; toggled from the SettingsMenu. Lives here so it survives terminal
-// rebuilds (renderer/theme switches) within the same session.
+// rebuilds (renderer switches) within the same session.
 const diag = createTerminalDiagnostics();
 
 // Session actions surfaced inside the hamburger SettingsMenu (the old toolbar
@@ -1466,9 +1466,8 @@ function probeConnection() {
   }, probeTimeoutMs);
 }
 
-// Theme actually live in the current `term` instance. Used so a
-// theme-mode change can detect whether the canvas needs a rebuild (the
-// ghostty-web backend doesn't honor runtime theme updates as of 0.4.0).
+// Theme live in the current `term` instance, so a theme-mode change
+// repaints only when the effective theme actually changed.
 let appliedTermTheme: "light" | "dark" | null = null;
 
 function applyTermTheme() {
@@ -1480,16 +1479,8 @@ function applyTermTheme() {
   termEl.value.style.setProperty("--xterm-bg", themes[t].background);
   if (!term) return;
   if (appliedTermTheme === t) return;
-  // xterm.js honors options.theme at runtime and repaints. ghostty-web,
-  // as of 0.4.0, logs a warning and leaves the already-rendered palette
-  // alone (buildWasmConfig builds the palette at open() time). For
-  // ghostty we tear the canvas down and remount; the session server
-  // resends a screen snapshot on reconnect so the user sees only a
-  // brief blink. For xterm.js we update in place.
-  if (termKind === "ghostty") {
-    void rebuildTerminal();
-    return;
-  }
+  // Both backends honor options.theme at runtime and repaint in place:
+  // the screen, scrollback, and session all survive a theme change.
   term.options.theme = themes[t];
   appliedTermTheme = t;
 }
@@ -1499,11 +1490,10 @@ async function rebuildTerminal() {
   await nextTick();
   if (destroyed) return;
   const generation = await mountTerminal();
-  // rebuildTerminal runs automatically on theme changes (incl. an OS
-  // dark/light flip with no user interaction). After the shell has exited we
-  // must NOT reconnect here -- that would silently spawn a fresh shell,
-  // defeating the sessionEnded latch. Leave the remounted (idle) terminal and
-  // the "Session ended" status as-is; a deliberate user action reconnects.
+  // After the shell has exited we must NOT reconnect here -- that would
+  // silently spawn a fresh shell, defeating the sessionEnded latch. Leave the
+  // remounted (idle) terminal and the "Session ended" status as-is; a
+  // deliberate user action reconnects.
   if (sessionEnded) return;
   await connectMountedTerminal(generation);
 }
