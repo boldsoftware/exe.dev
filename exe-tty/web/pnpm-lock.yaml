@@ -23,9 +23,6 @@ importers:
       '@xterm/xterm':
         specifier: 6.1.0-beta.213
         version: 6.1.0-beta.213
-      ghostty-web:
-        specifier: 0.4.0-next.14.g6a1a50d
-        version: 0.4.0-next.14.g6a1a50d
       primeicons:
         specifier: ^7.0.0
         version: 7.0.0
@@ -661,9 +658,6 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
-
-  ghostty-web@0.4.0-next.14.g6a1a50d:
-    resolution: {integrity: sha512-01H59pAKq43Y8ZZiIhH98cu0ahZaoGoPQPtW4KnZPT0JFdQYen2djsXrOnt27JnMv64D4eLeAq8D6h72mo52xQ==}
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
@@ -1478,8 +1472,6 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
-
-  ghostty-web@0.4.0-next.14.g6a1a50d: {}
 
   glob@10.5.0:
     dependencies:

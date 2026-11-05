@@ -1,0 +1,4 @@
+# The Zig that builds the pinned ghostty revision's WASM (its
+# minimum_zig_version). build.sh installs it with mise.
+[tools]
+zig = "0.15.2"

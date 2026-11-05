@@ -2,10 +2,11 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { stripGhosttyInlineWasm } from "./vite-plugins";
+import { ghosttyWebAliases } from "./vite-plugins";
 
 export default defineConfig({
-  plugins: [stripGhosttyInlineWasm(), vue()],
+  plugins: [vue()],
+  resolve: { alias: ghosttyWebAliases() },
   build: {
     outDir: "dist",
     emptyOutDir: true,

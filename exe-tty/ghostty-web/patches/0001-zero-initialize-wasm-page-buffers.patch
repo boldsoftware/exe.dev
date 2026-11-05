@@ -1,0 +1,146 @@
+From 1579bbd58e6eb28e57ab690e1730bfd7cf60af43 Mon Sep 17 00:00:00 2001
+From: Sauyon Lee <git@sjle.co>
+Date: Sun, 22 Mar 2026 06:27:43 -0700
+Subject: [PATCH] fix: zero-initialize WASM page buffers to prevent memory
+ corruption
+
+PageList only zeroed page buffers in debug/safe builds, relying on the OS
+to guarantee zeroed memory in release builds. On WASM there is no OS
+guarantee: the allocator reuses freed memory as-is. This caused two bugs:
+
+1. Stale cell data from freed terminals appearing in newly created ones
+2. WASM memory corruption after freeing terminals that processed
+   multi-codepoint grapheme clusters, crashing all subsequent writes
+
+The fix makes @memset(page_buf, 0) unconditional on WASM in both
+initPages and createPageExt.
+
+Upstream: https://github.com/coder/ghostty-web/pull/142 (commits 19ce9f3
+and 0bcc546, squashed).
+
+Co-authored-by: Shelley <shelley@exe.dev>
+---
+ lib/terminal.test.ts           | 58 ++++++++++++++++++++++++++++++++++
+ patches/ghostty-wasm-api.patch | 42 ++++++++++++++++++++++++
+ 2 files changed, 100 insertions(+)
+
+diff --git a/lib/terminal.test.ts b/lib/terminal.test.ts
+index d56011e..d06c7c3 100644
+--- a/lib/terminal.test.ts
++++ b/lib/terminal.test.ts
+@@ -2989,4 +2989,62 @@ describe('Synchronous open()', () => {
+ 
+     term.dispose();
+   });
++
++  test('new terminal should not contain stale data from freed terminal', async () => {
++    if (!container) return;
++
++    // Create first terminal and write content
++    const term1 = await createIsolatedTerminal({ cols: 80, rows: 24 });
++    term1.open(container);
++    term1.write('Hello stale data');
++
++    // Access the Ghostty instance to create a second raw terminal
++    const ghostty = (term1 as any).ghostty;
++    const wasmTerm1 = term1.wasmTerm!;
++
++    // Free the first WASM terminal and create a new one through the same instance
++    wasmTerm1.free();
++    const wasmTerm2 = ghostty.createTerminal(80, 24);
++
++    // New terminal should have clean grid
++    const line = wasmTerm2.getLine(0);
++    expect(line).not.toBeNull();
++    for (const cell of line!) {
++      expect(cell.codepoint).toBe(0);
++    }
++    expect(wasmTerm2.getScrollbackLength()).toBe(0);
++    wasmTerm2.free();
++
++    term1.dispose();
++  });
++
++  // https://github.com/coder/ghostty-web/issues/141
++  test('freeing terminal after writing multi-codepoint grapheme clusters should not corrupt WASM memory', async () => {
++    if (!container) return;
++
++    const term1 = await createIsolatedTerminal({ cols: 80, rows: 24 });
++    term1.open(container);
++    const ghostty = (term1 as any).ghostty;
++    const wasmTerm1 = term1.wasmTerm!;
++
++    // Write multi-codepoint grapheme clusters (flag emoji, skin tone, ZWJ sequence)
++    wasmTerm1.write('\u{1F1FA}\u{1F1F8}'); // 🇺🇸 regional indicator pair
++    wasmTerm1.write('\u{1F44B}\u{1F3FD}'); // 👋🏽 wave + skin tone modifier
++    wasmTerm1.write('\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'); // 👨‍👩‍👧 ZWJ family
++
++    // Free the terminal that processed grapheme clusters
++    wasmTerm1.free();
++
++    // Creating and writing to a new terminal on the same instance should not crash
++    const wasmTerm2 = ghostty.createTerminal(80, 24);
++    expect(() => wasmTerm2.write('Hello')).not.toThrow();
++
++    // Verify the write actually worked
++    const line = wasmTerm2.getLine(0);
++    expect(line).not.toBeNull();
++    expect(line![0].codepoint).toBe('H'.codePointAt(0)!);
++
++    wasmTerm2.free();
++    term1.dispose();
++  });
+ });
+diff --git a/patches/ghostty-wasm-api.patch b/patches/ghostty-wasm-api.patch
+index bd3feb9..b354683 100644
+--- a/patches/ghostty-wasm-api.patch
++++ b/patches/ghostty-wasm-api.patch
+@@ -368,6 +368,48 @@ index 03a883e20..1336676d7 100644
+  
+          // On Wasm we need to export our allocator convenience functions.
+          if (builtin.target.cpu.arch.isWasm()) {
++diff --git a/src/terminal/PageList.zig b/src/terminal/PageList.zig
++index 29f414e03..6b5ab19ab 100644
++--- a/src/terminal/PageList.zig
+++++ b/src/terminal/PageList.zig
++@@ -5,6 +5,7 @@ const PageList = @This();
++ 
++ const std = @import("std");
++ const build_options = @import("terminal_options");
+++const builtin = @import("builtin");
++ const Allocator = std.mem.Allocator;
++ const assert = @import("../quirks.zig").inlineAssert;
++ const fastmem = @import("../fastmem.zig");
++@@ -338,10 +339,10 @@ fn initPages(
++         const page_buf = try pool.pages.create();
++         // no errdefer because the pool deinit will clean these up
++ 
++-        // In runtime safety modes we have to memset because the Zig allocator
++-        // interface will always memset to 0xAA for undefined. In non-safe modes
++-        // we use a page allocator and the OS guarantees zeroed memory.
++-        if (comptime std.debug.runtime_safety) @memset(page_buf, 0);
+++        // On WASM, the allocator reuses freed memory without zeroing, so we must
+++        // always zero page buffers. On other platforms, only required with runtime
+++        // safety (allocators init to 0xAA); in release the OS guarantees zeroed memory.
+++        if (comptime builtin.target.cpu.arch.isWasm() or std.debug.runtime_safety) @memset(page_buf, 0);
++ 
++         // Initialize the first set of pages to contain our viewport so that
++         // the top of the first page is always the active area.
++@@ -2673,9 +2674,11 @@ inline fn createPageExt(
++     else
++         page_alloc.free(page_buf);
++ 
++-    // Required only with runtime safety because allocators initialize
++-    // to undefined, 0xAA.
++-    if (comptime std.debug.runtime_safety) @memset(page_buf, 0);
+++    // On WASM, the allocator reuses freed memory without zeroing, so we must
+++    // always zero page buffers to prevent stale grapheme/style data from
+++    // corrupting the terminal state after a free+realloc cycle.
+++    // On other platforms, only required with runtime safety (allocators init to 0xAA).
+++    if (comptime builtin.target.cpu.arch.isWasm() or std.debug.runtime_safety) @memset(page_buf, 0);
++ 
++     page.* = .{
++         .data = .initBuf(.init(page_buf), layout),
+ diff --git a/src/terminal/c/main.zig b/src/terminal/c/main.zig
+ index bc92597f5..d0ee49c1b 100644
+ --- a/src/terminal/c/main.zig

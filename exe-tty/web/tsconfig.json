@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "ghostty-web": ["./ghostty-web/lib/index.ts"] }
   },
   "include": ["src/**/*.ts", "src/**/*.vue"]
 }
