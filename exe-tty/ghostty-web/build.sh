@@ -30,7 +30,10 @@ if ! command -v mise >/dev/null 2>&1; then
     curl -fsSL https://mise.run | sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
+# mise also reads ../mise.toml, exe-tty's, and refuses to run while any
+# config it reads is untrusted.
 mise trust --quiet "$SRC_DIR/mise.toml"
+mise trust --quiet "$SRC_DIR/../mise.toml"
 mise install --quiet --cd "$SRC_DIR" zig
 ZIG_BIN="$(mise bin-paths --cd "$SRC_DIR" zig)"
 
