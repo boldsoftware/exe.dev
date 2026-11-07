@@ -182,6 +182,7 @@ async function exeApi(token: string, command: string): Promise<string> {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
+      "User-Agent": "exedev-flue",
       "Content-Type": "text/plain",
     },
     body: command,

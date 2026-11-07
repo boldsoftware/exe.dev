@@ -12,6 +12,7 @@ import {
   ExeDevError,
   ExeDevSandboxApi,
   resolveAuth,
+  exedev,
 } from "../exedev";
 
 interface FakeSsh {
@@ -271,6 +272,24 @@ await t(
     assert.equal(opens.length, 2);
   },
 );
+
+await t("HTTPS API requests identify the connector", async () => {
+  const realFetch = globalThis.fetch;
+  let userAgent: string | null = null;
+  globalThis.fetch = async (_url, init) => {
+    userAgent = new Headers(init?.headers).get("User-Agent");
+    return new Response("nope", { status: 401 });
+  };
+  try {
+    await assert.rejects(
+      exedev({ createVm: true, apiToken: "t" }).createSessionEnv({ id: "x" }),
+      ExeDevError,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.equal(userAgent, "exedev-flue");
+});
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);
