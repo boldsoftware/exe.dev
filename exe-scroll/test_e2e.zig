@@ -38,6 +38,8 @@ const c = struct {
     const SIGTERM = 15;
     const SIGUSR1 = 10;
     const SIGUSR2 = 12;
+    const SIGCONT = 18;
+    const SIGSTOP = 19;
     const EINTR = 4;
     const EAGAIN = 11;
     const POLLIN: c_short = 0x001;
@@ -174,12 +176,30 @@ const Proc = struct {
 
 /// Spawn `exe-scroll args...` on a fresh pty of the given size.
 fn spawn(args: []const []const u8, rows: u16, cols: u16) !Proc {
+    return spawnWith(args, rows, cols, .{});
+}
+
+const SpawnOptions = struct {
+    /// argv[0], if not the binary's path.
+    argv0: ?[:0]const u8 = null,
+    /// The directory to run in, if not ours.
+    cwd: ?[:0]const u8 = null,
+    /// $SHELL, the session's default command, if not ours.
+    shell: ?[:0]const u8 = null,
+    /// The whole environment, if not ours.
+    env: ?[]const [:0]const u8 = null,
+};
+
+fn spawnWith(args: []const []const u8, rows: u16, cols: u16, o: SpawnOptions) !Proc {
     // Build a NUL-terminated argv: [exe_path, args..., null].
     var argv: std.ArrayListUnmanaged(?[*:0]const u8) = .empty;
     defer argv.deinit(alloc);
-    const exe0 = try alloc.dupeZ(u8, opts.exe_path);
-    defer alloc.free(exe0);
-    try argv.append(alloc, exe0.ptr);
+    // Absolute, since the child may run elsewhere (see SpawnOptions.cwd).
+    var exe_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const exe_rel = try alloc.dupeZ(u8, opts.exe_path);
+    defer alloc.free(exe_rel);
+    const exe0: [*:0]const u8 = std.c.realpath(exe_rel, &exe_buf) orelse return error.NoExe;
+    try argv.append(alloc, if (o.argv0) |a| a.ptr else exe0);
     var owned: std.ArrayListUnmanaged([:0]u8) = .empty;
     defer {
         for (owned.items) |s| alloc.free(s);
@@ -192,13 +212,35 @@ fn spawn(args: []const []const u8, rows: u16, cols: u16) !Proc {
     }
     try argv.append(alloc, null);
 
+    // The environment, with $SHELL replaced. Built before forking: the child
+    // of a threaded process mustn't allocate.
+    var envp: std.ArrayListUnmanaged(?[*:0]const u8) = .empty;
+    defer envp.deinit(alloc);
+    var shell_var: ?[:0]u8 = null;
+    defer if (shell_var) |v| alloc.free(v);
+    if (o.shell) |sh| {
+        shell_var = try std.fmt.allocPrintSentinel(alloc, "SHELL={s}", .{sh}, 0);
+        try envp.append(alloc, shell_var.?.ptr);
+    }
+    if (o.env) |env| {
+        for (env) |e| try envp.append(alloc, e.ptr);
+    } else {
+        var i: usize = 0;
+        while (std.c.environ[i]) |e| : (i += 1) {
+            if (o.shell == null or !std.mem.startsWith(u8, std.mem.span(e), "SHELL=")) try envp.append(alloc, e);
+        }
+    }
+    try envp.append(alloc, null);
+
     const ws = c.Winsize{ .ws_row = rows, .ws_col = cols };
     var master: c_int = -1;
     const pid = c.forkpty(&master, null, null, &ws);
     if (pid < 0) return error.ForkptyFailed;
     if (pid == 0) {
+        if (o.cwd) |d| if (std.c.chdir(d) != 0) c._exit(127);
         const argv_z: [:null]const ?[*:0]const u8 = argv.items[0 .. argv.items.len - 1 :null];
-        _ = c.execvp(exe0.ptr, argv_z.ptr);
+        const envp_z: [:null]const ?[*:0]const u8 = envp.items[0 .. envp.items.len - 1 :null];
+        _ = std.c.execve(exe0, argv_z.ptr, envp_z.ptr);
         c._exit(127);
     }
     return .{ .pid = pid, .fd = master };
@@ -2398,4 +2440,230 @@ test "capture-pane fails when it can't write its output" {
     defer alloc.free(r.stderr);
     try testing.expectEqual(std.process.Child.Term{ .exited = 1 }, r.term);
     try testing.expect(contains(r.stderr, "capture-pane: can't write output"));
+}
+
+// ----------------------------------------------------------------------------
+// title and list.
+// ----------------------------------------------------------------------------
+
+/// Run `title` on the session at `s` until it prints `want`.
+fn titleUntil(s: []const u8, want: []const u8, ms: i64) !void {
+    const deadline = nowMs() + ms;
+    while (true) {
+        const r = try run("title", s, &.{});
+        defer r.deinit();
+        try testing.expectEqualStrings("", r.stderr);
+        try testing.expectEqual(0, r.code);
+        if (std.mem.eql(u8, r.stdout, want)) return;
+        if (nowMs() >= deadline) {
+            std.debug.print("title is [{s}], want [{s}]\n", .{ r.stdout, want });
+            return error.Timeout;
+        }
+        sleepMs(20);
+    }
+}
+
+test "title prints the title the program set" {
+    const s = try sockPath("title");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+
+    // Each line typed becomes the title: by OSC 2, then by OSC 0 ended
+    // with ST rather than BEL.
+    var p = try spawn(&.{ s, "--", "sh", "-c", "echo READY; read a; printf '\\033]2;%s\\007' \"$a\"; echo SET; read b; printf '\\033]0;%s\\033\\\\' \"$b\"; echo ZET; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try p.drainUntil("READY", 3000));
+    try titleUntil(s, "\n", 0);
+
+    try sendKeys(s, &.{ "vim README.md", "Enter" });
+    alloc.free(try p.drainUntil("SET", 3000));
+    try titleUntil(s, "vim README.md\n", 0);
+
+    try sendKeys(s, &.{ "-l", "say \"hi\" ✓" });
+    try sendKeys(s, &.{"Enter"});
+    alloc.free(try p.drainUntil("ZET", 3000));
+    try titleUntil(s, "say \"hi\" ✓\n", 0);
+
+    try expectCommandFails(&.{"title"}, "usage:");
+    try expectCommandFails(&.{ "title", s, "x" }, "title: unexpected argument 'x'");
+}
+
+/// Expect `table` to have a row for `socket` whose title, `title`, starts in
+/// the TITLE column.
+fn expectRow(table: []const u8, socket: []const u8, title: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, table, '\n');
+    const header = lines.first();
+    const column = std.mem.indexOf(u8, header, "TITLE") orelse return error.NoTitleColumn;
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, socket)) continue;
+        if (line.len > socket.len and line[socket.len] != ' ') continue;
+        if (title.len == 0) return testing.expectEqualStrings(socket, line);
+        if (line.len < column) return error.TestUnexpectedResult;
+        try testing.expectEqualStrings(title, line[column..]);
+        return testing.expectEqualStrings(" " ** 2, line[column - 2 .. column]);
+    }
+    std.debug.print("no row for {s} in:\n{s}", .{ socket, table });
+    return error.TestUnexpectedResult;
+}
+
+test "list shows the sockets and titles of the user's sessions" {
+    // A session created by a relative path, from a command line that leaves
+    // the server's title no room: it must still name the socket in full.
+    seq += 1;
+    const dir = try std.fmt.allocPrintSentinel(alloc, "/tmp/exe-scroll-zt-{d}-{d}-list", .{ std.c.getpid(), seq }, 0);
+    defer alloc.free(dir);
+    try testing.expectEqual(0, std.c.mkdir(dir, 0o700));
+    defer _ = std.c.rmdir(dir);
+    const a = try std.fmt.allocPrint(alloc, "{s}/a.sock", .{dir});
+    defer alloc.free(a);
+    defer cleanup(a);
+    defer killServer(a);
+    var pa = try spawnWith(&.{"./a.sock"}, 24, 80, .{ .argv0 = "es", .cwd = dir, .shell = "cat" });
+    defer pa.kill();
+    try testing.expect(waitFor(a, true, 3000));
+    // cat prints the line typed, OSC 2 and all.
+    try sendKeys(a, &.{ "-l", "\x1b]2;first session\x07" });
+    try sendKeys(a, &.{"Enter"});
+    try titleUntil(a, "first session\n", 3000);
+
+    const b = try sockPath("list-b");
+    defer alloc.free(b);
+    defer cleanup(b);
+    defer killServer(b);
+    var pb = try spawn(&.{ b, "--", "sh", "-c", "printf '\\033]2;say \"hi\" ✓\\007'; echo READY; exec cat" }, 24, 80);
+    defer pb.kill();
+    alloc.free(try pb.drainUntil("READY", 3000));
+
+    const untitled = try sockPath("list-untitled");
+    defer alloc.free(untitled);
+    defer cleanup(untitled);
+    defer killServer(untitled);
+    var pc = try spawn(&.{ untitled, "--", "sh", "-c", "echo READY; exec cat" }, 24, 80);
+    defer pc.kill();
+    alloc.free(try pc.drainUntil("READY", 3000));
+
+    {
+        const r = try command(&.{"list"});
+        defer r.deinit();
+        try testing.expectEqualStrings("", r.stderr);
+        try testing.expectEqual(0, r.code);
+        try testing.expect(std.mem.startsWith(u8, r.stdout, "SOCKET "));
+        try expectRow(r.stdout, a, "first session");
+        try expectRow(r.stdout, b, "say \"hi\" ✓");
+        try expectRow(r.stdout, untitled, "");
+    }
+    {
+        const r = try command(&.{ "list", "--json" });
+        defer r.deinit();
+        try testing.expectEqualStrings("", r.stderr);
+        try testing.expectEqual(0, r.code);
+        const Row = struct { socket: []const u8, title: ?[]const u8 };
+        const parsed = try std.json.parseFromSlice([]Row, alloc, r.stdout, .{});
+        defer parsed.deinit();
+        var found: usize = 0;
+        for (parsed.value) |row| {
+            const want: []const u8 = if (std.mem.eql(u8, row.socket, a))
+                "first session"
+            else if (std.mem.eql(u8, row.socket, b))
+                "say \"hi\" ✓"
+            else if (std.mem.eql(u8, row.socket, untitled))
+                ""
+            else
+                continue;
+            try testing.expectEqualStrings(want, row.title orelse return error.NoTitle);
+            found += 1;
+        }
+        try testing.expectEqual(3, found);
+    }
+
+    // Once a session ends, it's gone from the list.
+    killServer(b);
+    {
+        const r = try command(&.{ "list", "--json" });
+        defer r.deinit();
+        try testing.expect(!contains(r.stdout, b));
+        try testing.expect(contains(r.stdout, a));
+    }
+
+    try expectCommandFails(&.{ "list", "x" }, "usage: ");
+}
+
+test "list names a session's socket in full even when its title is cramped" {
+    // So small an environment leaves the server's title (see setProcTitle) no
+    // room for its socket's absolute path, only for the relative one it got.
+    seq += 1;
+    const dir = try std.fmt.allocPrintSentinel(alloc, "/tmp/exe-scroll-zt-{d}-{d}-cramped", .{ std.c.getpid(), seq }, 0);
+    defer alloc.free(dir);
+    try testing.expectEqual(0, std.c.mkdir(dir, 0o700));
+    defer _ = std.c.rmdir(dir);
+    const s = try std.fmt.allocPrint(alloc, "{s}/a.sock", .{dir});
+    defer alloc.free(s);
+    defer cleanup(s);
+    var p = try spawnWith(&.{"a.sock"}, 24, 80, .{
+        .argv0 = "es",
+        .cwd = dir,
+        .env = &.{ "SHELL=/bin/cat", "PAD=xxxx" },
+    });
+    defer p.kill();
+    try testing.expect(waitFor(s, true, 3000));
+    // killServer can't find a server by its relative title; end cat instead.
+    defer {
+        if (run("send-keys", s, &.{"C-d"})) |r| r.deinit() else |_| {}
+        _ = waitFor(s, false, 3000);
+    }
+    try sendKeys(s, &.{ "-l", "\x1b]2;cramped\x07" });
+    try sendKeys(s, &.{"Enter"});
+    try titleUntil(s, "cramped\n", 3000);
+
+    const r = try command(&.{"list"});
+    defer r.deinit();
+    try testing.expectEqualStrings("", r.stderr);
+    try expectRow(r.stdout, s, "cramped");
+}
+
+test "list doesn't wait for a session that won't answer" {
+    const s = try sockPath("list-stopped");
+    defer alloc.free(s);
+    defer cleanup(s);
+    defer killServer(s);
+    var p = try spawn(&.{ s, "--", "sh", "-c", "echo READY; exec cat" }, 24, 80);
+    defer p.kill();
+    alloc.free(try p.drainUntil("READY", 3000));
+
+    const pid = try findServer(s, 0);
+    try testing.expect(pid > 0);
+    try testing.expectEqual(0, c.kill(pid, c.SIGSTOP));
+    defer _ = c.kill(pid, c.SIGCONT);
+    // Fill its listen queue too, so that connecting would wait.
+    var queued: std.ArrayListUnmanaged(c_int) = .empty;
+    defer {
+        for (queued.items) |fd| _ = std.c.close(fd);
+        queued.deinit(alloc);
+    }
+    var sa: std.c.sockaddr.un = .{ .path = undefined };
+    @memcpy(sa.path[0..s.len], s);
+    sa.path[s.len] = 0;
+    while (queued.items.len < 4096) {
+        const fd = std.c.socket(std.c.AF.UNIX, std.c.SOCK.STREAM | std.c.SOCK.NONBLOCK, 0);
+        try testing.expect(fd >= 0);
+        if (std.c.connect(fd, @ptrCast(&sa), @sizeOf(@TypeOf(sa))) < 0) {
+            _ = std.c.close(fd);
+            break;
+        }
+        try queued.append(alloc, fd);
+    } else return error.QueueNeverFilled;
+
+    const r = try command(&.{ "list", "--json" });
+    defer r.deinit();
+    try testing.expectEqualStrings("", r.stderr);
+    try testing.expectEqual(0, r.code);
+    const Row = struct { socket: []const u8, title: ?[]const u8 };
+    const parsed = try std.json.parseFromSlice([]Row, alloc, r.stdout, .{});
+    defer parsed.deinit();
+    for (parsed.value) |row| {
+        if (!std.mem.eql(u8, row.socket, s)) continue;
+        return testing.expectEqual(null, row.title);
+    }
+    return error.NotListed;
 }

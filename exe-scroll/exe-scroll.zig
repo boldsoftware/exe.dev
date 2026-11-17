@@ -186,12 +186,15 @@ var orig_term: c.Termios = undefined;
 var have_tty: bool = false;
 
 var child_argv: [:null]?[*:0]const u8 = undefined;
-// The process's argv, as handed to main. setProcTitle rewrites its strings.
+// The process's argv, as handed to main. setProcTitle rewrites its strings,
+// and the environment's that follow them up to proc_strings_end.
 var proc_argv: []const [*:0]const u8 = &.{};
+var proc_strings_end: usize = 0;
 
 // Rewrite the process's command line (what `ps` shows) to advertise this
-// process's role, e.g. "exe-scroll: session /tmp/work.sock". The portable way
-// to do this is to overwrite the contiguous argv string region in place and
+// process's role and socket, e.g. "exe-scroll: session /tmp/work.sock"
+// (`exe-scroll list` finds sessions by it). The portable way to
+// do this is to overwrite the contiguous argv string region in place and
 // NUL-pad the remainder; `ps` reads the title from there on Linux, macOS, and
 // the BSDs. `progname` must already be a copy that does not point into argv
 // (see main), since this clobbers argv[0]'s bytes.
@@ -200,21 +203,64 @@ fn setProcTitle(role: []const u8) void {
     if (argv.len == 0) return;
     // The strings argv[i] points at are laid out contiguously; find the span.
     var lo: usize = @intFromPtr(argv[0]);
-    var hi: usize = lo;
-    for (argv) |a| {
-        const s = @intFromPtr(a);
-        if (s < lo) lo = s;
-        const e = s + std.mem.len(a) + 1; // include the NUL
-        if (e > hi) hi = e;
-    }
+    for (argv) |a| lo = @min(lo, @intFromPtr(a));
+    const hi = @max(argvEnd(argv), proc_strings_end);
     const cap = hi - lo;
     if (cap < 2) return;
-    var buf: [256]u8 = undefined;
-    const title = std.fmt.bufPrint(&buf, "exe-scroll: {s} {s}", .{ role, sockname }) catch buf[0..0];
+    var cwd: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const dir: []const u8 = if (sockname.len > 0 and sockname[0] == '/') "" else d: {
+        const p = std.c.getcwd(&cwd, cwd.len) orelse break :d "";
+        break :d std.mem.span(@as([*:0]u8, @ptrCast(p)));
+    };
+    const abs = joinPath(dir, sockname) catch return;
+    defer alloc.free(abs);
+    // Name the socket by its absolute path if there's room, else as we got it
+    // (`list` resolves that against our directory), else not at all: a path
+    // cut short would name some other file.
+    const title = for ([_][]const u8{ abs, sockname }) |path| {
+        const t = std.fmt.allocPrint(alloc, "exe-scroll: {s} {s}", .{ role, path }) catch return;
+        if (t.len < cap) break t;
+        alloc.free(t);
+    } else std.fmt.allocPrint(alloc, "exe-scroll: {s}", .{role}) catch return;
+    defer alloc.free(title);
     const dst: [*]u8 = @ptrFromInt(lo);
     const n = @min(title.len, cap - 1);
     @memcpy(dst[0..n], title[0..n]);
     @memset(dst[n..cap], 0);
+}
+
+/// `name` in directory `dir`, or just `name` if `dir` is empty.
+fn joinPath(dir: []const u8, name: []const u8) error{OutOfMemory}![]u8 {
+    if (dir.len == 0) return alloc.dupe(u8, name);
+    var rest = name;
+    while (std.mem.startsWith(u8, rest, "./")) rest = std.mem.trimStart(u8, rest[1..], "/");
+    const sep = if (std.mem.endsWith(u8, dir, "/")) "" else "/";
+    return std.fmt.allocPrint(alloc, "{s}{s}{s}", .{ dir, sep, rest });
+}
+
+/// Where the strings `argv` points at end, past the last one's NUL.
+fn argvEnd(argv: []const [*:0]const u8) usize {
+    var hi: usize = 0;
+    for (argv) |a| hi = @max(hi, @intFromPtr(a) + std.mem.len(a) + 1);
+    return hi;
+}
+
+/// `exe-scroll /tmp/work.sock` leaves setProcTitle too little room in argv's
+/// strings, so give it the environment's strings that directly follow them
+/// (as Linux, macOS, and the BSDs lay them out), too: copy them to the heap
+/// and point the environment at the copies. That must happen before anyone
+/// takes pointers into the environment (std caches some variables' values).
+fn claimEnviron(environ: std.process.Environ) void {
+    if (proc_argv.len == 0) return;
+    const env = @constCast(environ.block.slice);
+    var hi = argvEnd(proc_argv);
+    for (env) |*e| {
+        if (@intFromPtr(e.*.?) != hi) continue;
+        const len = std.mem.len(e.*.?);
+        e.* = (alloc.dupeZ(u8, e.*.?[0..len]) catch break).ptr;
+        hi += len + 1;
+    }
+    proc_strings_end = hi;
 }
 
 // The Io the mirror terminals use (for Kitty graphics file transmission).
@@ -1790,6 +1836,7 @@ fn runCommand(p: *Client, payload: []const u8) void {
     const args = words.items[1..];
     if (std.mem.eql(u8, name, "send-keys")) return sendKeys(p, args);
     if (std.mem.eql(u8, name, "capture-pane")) return capturePane(p, args);
+    if (std.mem.eql(u8, name, "title")) return printTitle(p, args);
     commandFailed(p, "unknown command '{s}'", .{name});
 }
 
@@ -2067,6 +2114,18 @@ fn capturePane(p: *Client, args: []const []const u8) void {
     commandDone(p);
 }
 
+/// `title`: print the title the program last set (OSC 0 or 2), the one a
+/// terminal shows in its tab or title bar.
+fn printTitle(p: *Client, args: []const []const u8) void {
+    if (args.len > 0) return commandFailed(p, "title: unexpected argument '{s}'", .{args[0]});
+    const m = &(Mirror.instance orelse return commandFailed(p, "title: no screen", .{}));
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    defer aw.deinit();
+    aw.writer.print("{s}\n", .{m.term.getTitle() orelse ""}) catch return commandFailed(p, "out of memory", .{});
+    commandOutput(p, aw.written());
+    commandDone(p);
+}
+
 /// Fork a detached session server. Returns 0 on success (socket is ready),
 /// nonzero on failure (message already printed).
 fn spawnServer() i32 {
@@ -2164,10 +2223,14 @@ fn winChange(sig: c_int) callconv(.c) void {
     notifySigPipe();
 }
 
-fn connectSocket(name: [:0]const u8) c_int {
+/// Connect to the socket at `name`. If `nonblocking`, fail rather than wait for
+/// a server that's fallen behind accepting connections, and leave the
+/// connection nonblocking.
+fn connectSocket(name: [:0]const u8, nonblocking: bool) c_int {
     var sockun: std.c.sockaddr.un = undefined;
     const s = std.c.socket(c.AF_UNIX, c.SOCK_STREAM, 0);
     if (s < 0) return -1;
+    if (nonblocking) _ = std.c.fcntl(s, std.c.F.SETFL, @as(c_int, @bitCast(std.c.O{ .NONBLOCK = true })));
     // prepSockPath uses the full path when it fits, else chdirs into the parent
     // and puts the basename in sun_path (see its comment). restoreCwd undoes any
     // chdir once connect() has captured the address.
@@ -2292,7 +2355,7 @@ fn attachLoop(s: c_int) i32 {
             } else {
                 // Reassemble frames; only MSG_DATA is expected server->client.
                 reasm.appendSlice(alloc, rd[0..@intCast(r)]) catch return 1;
-                _ = drainFrames(&reasm) catch {};
+                _ = drainFrames(&reasm, null) catch {};
             }
         }
 
@@ -2312,11 +2375,12 @@ fn attachLoop(s: c_int) i32 {
     }
 }
 
-/// Parse complete frames out of `buf`, writing MSG_DATA payloads to stdout and
-/// removing the consumed bytes. Incomplete trailing bytes remain buffered.
-/// Returns the payload of a MSG_DONE (the last frame of a command's reply) if
-/// one arrived, and fails if stdout couldn't be written (see errno).
-fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 {
+/// Parse complete frames out of `buf`, appending MSG_DATA payloads to `out`
+/// (or writing them to stdout, if it's null) and removing the consumed bytes.
+/// Incomplete trailing bytes remain buffered. Returns the payload of a
+/// MSG_DONE (the last frame of a command's reply) if one arrived, and fails if
+/// the output couldn't be written (see errno).
+fn drainFrames(buf: *std.ArrayListUnmanaged(u8), out: ?*std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 {
     var pos: usize = 0;
     var failed = false;
     const items = buf.items;
@@ -2330,7 +2394,13 @@ fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 
         if (items.len - pos < HDR + len) break;
         const typ = items[pos];
         const payload = items[pos + HDR .. pos + HDR + len];
-        if (typ == MSG_DATA and !tryWriteAllFd(1, payload)) failed = true;
+        if (typ == MSG_DATA) {
+            if (out) |o| {
+                o.appendSlice(alloc, payload) catch {
+                    failed = true;
+                };
+            } else if (!tryWriteAllFd(1, payload)) failed = true;
+        }
         if (typ == MSG_DONE) return if (failed) error.WriteFailed else payload;
         pos += HDR + len;
     }
@@ -2342,6 +2412,39 @@ fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 
     return if (failed) error.WriteFailed else null;
 }
 
+const ConverseError = error{ WriteFailed, OutOfMemory, HungUp, Unsupported, TimedOut };
+
+/// Run the command in `payload` (see runCommand) on the session at the other
+/// end of `s`, and relay its output to `out` (stdout, if it's null). Gives up
+/// on a session that's silent for `timeout_ms` (-1 waits forever). Returns the
+/// reply's MSG_DONE payload, [status][error message], which lives in `buf`.
+fn converse(s: c_int, payload: []const u8, out: ?*std.ArrayListUnmanaged(u8), buf: *std.ArrayListUnmanaged(u8), timeout_ms: i32) ConverseError![]const u8 {
+    sendFrame(s, MSG_COMMAND, payload);
+    // Done sending. A server that predates commands ignores MSG_COMMAND and,
+    // on this EOF, hangs up without MSG_DONE -- rather than leave us waiting.
+    _ = std.c.shutdown(s, std.c.SHUT.WR);
+
+    var rd: [BUFSIZE]u8 = undefined;
+    // Whether this server ever answered: if so, it knows the command.
+    var answered = false;
+    while (true) {
+        if (timeout_ms >= 0) {
+            var pfd = [_]std.c.pollfd{.{ .fd = s, .events = c.POLLIN, .revents = 0 }};
+            const n = std.c.poll(&pfd, 1, timeout_ms);
+            if (n < 0 and c.errno() == c.EINTR) continue;
+            if (n == 0) return error.TimedOut;
+        }
+        const r = std.c.read(s, &rd, rd.len);
+        if (r < 0 and c.errno() == c.EINTR) continue;
+        if (r < 0) answered = true; // not a clean hangup
+        if (r <= 0) break;
+        answered = true;
+        try buf.appendSlice(alloc, rd[0..@intCast(r)]);
+        if (try drainFrames(buf, out)) |done| return done;
+    }
+    return if (answered) error.HungUp else error.Unsupported;
+}
+
 // ----------------------------------------------------------------------------
 // Command client: `exe-scroll <command> <socket> [args...]`. The session server
 // parses and runs the command (see runCommand); this just carries it there and
@@ -2351,7 +2454,8 @@ fn drainFrames(buf: *std.ArrayListUnmanaged(u8)) error{WriteFailed}!?[]const u8 
 fn commandClient(args: []const [*:0]const u8) u8 {
     const cmd = std.mem.span(args[0]);
     if (args.len < 2 or std.mem.span(args[1]).len == 0 or args[1][0] == '-') {
-        printErr("{s}: usage: {s} {s} <socket> [args...]\n", .{ progname, progname, cmd });
+        const rest = if (std.mem.eql(u8, cmd, "title")) "" else " [args...]";
+        printErr("{s}: usage: {s} {s} <socket>{s}\n", .{ progname, progname, cmd, rest });
         return 1;
     }
     sockname = std.mem.span(args[1]);
@@ -2368,7 +2472,7 @@ fn commandClient(args: []const [*:0]const u8) u8 {
         return 1;
     }
 
-    const s = connectSocket(sockname);
+    const s = connectSocket(sockname, false);
     if (s < 0) {
         const e = c.errno();
         if (e == c.ENOENT or e == c.ECONNREFUSED) {
@@ -2378,36 +2482,280 @@ fn commandClient(args: []const [*:0]const u8) u8 {
         }
         return 1;
     }
-    sendFrame(s, MSG_COMMAND, payload.items);
-    // Done sending. A server that predates commands ignores MSG_COMMAND and,
-    // on this EOF, hangs up without MSG_DONE -- rather than leave us waiting.
-    _ = std.c.shutdown(s, std.c.SHUT.WR);
 
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     defer buf.deinit(alloc);
-    var rd: [BUFSIZE]u8 = undefined;
-    // Whether this server ever answered: if so, it knows the command.
-    var answered = false;
-    while (true) {
-        const r = std.c.read(s, &rd, rd.len);
-        if (r < 0 and c.errno() == c.EINTR) continue;
-        if (r < 0) answered = true; // not a clean hangup
-        if (r <= 0) break;
-        answered = true;
-        buf.appendSlice(alloc, rd[0..@intCast(r)]) catch return 1;
-        const done = drainFrames(&buf) catch {
-            printErr("{s}: {s}: can't write output: errno {d}\n", .{ progname, cmd, c.errno() });
+    const done = converse(s, payload.items, null, &buf, -1) catch |err| {
+        switch (err) {
+            error.WriteFailed => printErr("{s}: {s}: can't write output: errno {d}\n", .{ progname, cmd, c.errno() }),
+            error.OutOfMemory => printErr("{s}: out of memory\n", .{progname}),
+            error.HungUp, error.TimedOut => printErr("{s}: the session at {s} hung up\n", .{ progname, sockname }),
+            error.Unsupported => printErr("{s}: the session at {s} doesn't support {s}; it was started by an older exe-scroll\n", .{ progname, sockname, cmd }),
+        }
+        return 1;
+    };
+    if (done.len > 1) printErr("{s}: {s}\n", .{ progname, done[1..] });
+    return if (done.len > 0) done[0] else 1;
+}
+
+// ----------------------------------------------------------------------------
+// `exe-scroll list [--json]`: the current user's sessions and their titles.
+// A session server's command line names its socket (see setProcTitle), so we
+// find the sockets among the user's processes, then ask each for its title.
+// ----------------------------------------------------------------------------
+const Session = struct {
+    socket: []const u8,
+    /// Null if the session didn't say: it's too old, or not answering.
+    title: ?[]const u8,
+};
+
+fn listSessions(args: []const [*:0]const u8) u8 {
+    var json = false;
+    for (args) |a| {
+        if (!std.mem.eql(u8, std.mem.span(a), "--json")) {
+            printErr("{s}: usage: {s} list [--json]\n", .{ progname, progname });
             return 1;
-        } orelse continue;
-        if (done.len > 1) printErr("{s}: {s}\n", .{ progname, done[1..] });
-        return if (done.len > 0) done[0] else 1;
+        }
+        json = true;
     }
-    if (answered) {
-        printErr("{s}: the session at {s} hung up\n", .{ progname, sockname });
-    } else {
-        printErr("{s}: the session at {s} doesn't support {s}; it was started by an older exe-scroll\n", .{ progname, sockname, cmd });
+    // A session that goes away while we ask it shouldn't take us with it.
+    _ = c.signal(c.SIGPIPE, c.SIG_IGN);
+
+    var sockets: std.ArrayListUnmanaged([]const u8) = .empty;
+    findSessions(&sockets) catch |err| {
+        printErr("{s}: list: can't find sessions: {s}\n", .{ progname, @errorName(err) });
+        return 1;
+    };
+    std.mem.sort([]const u8, sockets.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    var sessions: std.ArrayListUnmanaged(Session) = .empty;
+    for (sockets.items, 0..) |sock, i| {
+        // A server whose socket was replaced still names it; one row will do.
+        if (i > 0 and std.mem.eql(u8, sock, sockets.items[i - 1])) continue;
+        // Nor is a socket that's gone (or that an older exe-scroll's title
+        // cut short) any use.
+        const st = std.Io.Dir.cwd().statFile(io, sock, .{}) catch continue;
+        if (st.kind != .unix_domain_socket) continue;
+        const title = askTitle(sock);
+        const session: Session = .{
+            .socket = utf8Lossy(sock) catch return outOfMemory(),
+            .title = if (title) |t| utf8Lossy(t) catch return outOfMemory() else null,
+        };
+        sessions.append(alloc, session) catch return outOfMemory();
     }
+
+    var aw: std.Io.Writer.Allocating = .init(alloc);
+    defer aw.deinit();
+    (if (json) writeSessionsJson(&aw.writer, sessions.items) else writeSessionsTable(&aw.writer, sessions.items)) catch
+        return outOfMemory();
+    if (!tryWriteAllFd(1, aw.written())) {
+        printErr("{s}: list: can't write output: errno {d}\n", .{ progname, c.errno() });
+        return 1;
+    }
+    return 0;
+}
+
+fn outOfMemory() u8 {
+    printErr("{s}: out of memory\n", .{progname});
     return 1;
+}
+
+/// The title of the session at `sock`, or null if it doesn't say in time.
+fn askTitle(sock: []const u8) ?[]const u8 {
+    const z = alloc.dupeZ(u8, sock) catch return null;
+    defer alloc.free(z);
+    const s = connectSocket(z, true);
+    if (s < 0) return null;
+    defer _ = std.c.close(s);
+    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    defer buf.deinit(alloc);
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    const done = converse(s, "title\x00", &out, &buf, 2000) catch return null;
+    if (done.len == 0 or done[0] != 0) return null;
+    // The title, then a newline.
+    if (out.items.len > 0) out.items.len -= 1;
+    return out.items;
+}
+
+fn writeSessionsTable(w: *std.Io.Writer, sessions: []const Session) std.Io.Writer.Error!void {
+    if (sessions.len == 0) return;
+    const header = "SOCKET";
+    var width: usize = header.len;
+    for (sessions) |s| width = @max(width, columns(s.socket));
+    try w.writeAll(header);
+    try w.splatByteAll(' ', width - header.len + 2);
+    try w.writeAll("TITLE\n");
+    for (sessions) |s| {
+        try writePrintable(w, s.socket);
+        const title = s.title orelse "";
+        if (title.len > 0) {
+            try w.splatByteAll(' ', width - columns(s.socket) + 2);
+            try writePrintable(w, title);
+        }
+        try w.writeByte('\n');
+    }
+}
+
+/// About how many columns `s` (UTF-8) takes on a terminal.
+fn columns(s: []const u8) usize {
+    return std.unicode.utf8CountCodepoints(s) catch s.len;
+}
+
+/// Write `s` (UTF-8) with its control characters, which would garble the table
+/// (or the terminal showing it), as '?'.
+fn writePrintable(w: *std.Io.Writer, s: []const u8) std.Io.Writer.Error!void {
+    var it = std.unicode.Utf8View.initUnchecked(s).iterator();
+    while (it.nextCodepointSlice()) |b| {
+        const cp = std.unicode.utf8Decode(b) catch 0;
+        try w.writeAll(if (cp < 0x20 or (cp >= 0x7f and cp < 0xa0)) "?" else b);
+    }
+}
+
+fn writeSessionsJson(w: *std.Io.Writer, sessions: []const Session) std.Io.Writer.Error!void {
+    try std.json.Stringify.value(sessions, .{}, w);
+    try w.writeByte('\n');
+}
+
+/// `s`, with what isn't UTF-8 replaced by U+FFFD: the table and JSON are
+/// UTF-8, but paths and titles needn't be.
+fn utf8Lossy(s: []const u8) error{OutOfMemory}![]const u8 {
+    return std.fmt.allocPrint(alloc, "{f}", .{std.unicode.fmtUtf8(s)});
+}
+
+const session_title_prefix = "exe-scroll: session ";
+
+/// The socket a session server's command line (its argv strings) names, or
+/// null if it isn't a session server's.
+fn sessionSocket(cmdline: []const u8) ?[]const u8 {
+    // Without a NUL, the title may be cut short (Linux shows just a page of
+    // one longer than argv was), and so its socket wrong.
+    const arg0 = cmdline[0 .. std.mem.indexOfScalar(u8, cmdline, 0) orelse return null];
+    if (!std.mem.startsWith(u8, arg0, session_title_prefix)) return null;
+    const sock = arg0[session_title_prefix.len..];
+    return if (sock.len > 0) sock else null;
+}
+
+/// The socket session server `pid` names `sock`, by its absolute path: a
+/// relative one (see setProcTitle) is relative to the server's directory.
+/// Null if that's unknown.
+fn absoluteSocket(pid: std.c.pid_t, sock: []const u8) error{OutOfMemory}!?[]const u8 {
+    if (sock[0] == '/') return try alloc.dupe(u8, sock);
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const dir = processDir(pid, &buf) orelse return null;
+    return try joinPath(dir, sock);
+}
+
+/// Process `pid`'s current directory, or null if it's unknown.
+fn processDir(pid: std.c.pid_t, buf: *[std.Io.Dir.max_path_bytes]u8) ?[]const u8 {
+    switch (builtin.os.tag) {
+        .linux => {
+            var pathbuf: [64]u8 = undefined;
+            const path = std.fmt.bufPrintZ(&pathbuf, "/proc/{d}/cwd", .{pid}) catch return null;
+            const n = std.c.readlink(path, buf, buf.len);
+            return if (n > 0) buf[0..@intCast(n)] else null;
+        },
+        .macos => {
+            var info: darwin.proc_vnodepathinfo = undefined;
+            const size = @sizeOf(darwin.proc_vnodepathinfo);
+            if (darwin.proc_pidinfo(pid, darwin.PROC_PIDVNODEPATHINFO, 0, &info, size) != size) return null;
+            const dir = std.mem.sliceTo(&info.cdir_path, 0);
+            if (dir.len == 0 or dir.len > buf.len) return null;
+            @memcpy(buf[0..dir.len], dir);
+            return buf[0..dir.len];
+        },
+        else => return null,
+    }
+}
+
+/// Append the socket of each of the current user's session servers.
+fn findSessions(out: *std.ArrayListUnmanaged([]const u8)) !void {
+    switch (builtin.os.tag) {
+        .linux => try findSessionsProc(out),
+        .macos => try findSessionsSysctl(out),
+        else => return error.Unsupported,
+    }
+}
+
+fn findSessionsProc(out: *std.ArrayListUnmanaged([]const u8)) !void {
+    const uid = std.c.getuid();
+    var dir = try std.Io.Dir.openDirAbsolute(io, "/proc", .{ .iterate = true });
+    defer dir.close(io);
+    var cmdline: [std.Io.Dir.max_path_bytes + 64]u8 = undefined;
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        const pid = std.fmt.parseInt(std.c.pid_t, entry.name, 10) catch continue;
+        var pathbuf: [64]u8 = undefined;
+        const proc_dir = std.fmt.bufPrintZ(&pathbuf, "/proc/{s}", .{entry.name}) catch continue;
+        var st: std.os.linux.Statx = undefined;
+        if (std.c.statx(std.c.AT.FDCWD, proc_dir, 0, .{ .UID = true }, &st) != 0 or st.uid != uid) continue;
+        const path = std.fmt.bufPrintZ(&pathbuf, "/proc/{s}/cmdline", .{entry.name}) catch continue;
+        const fd = std.c.open(path, .{ .ACCMODE = .RDONLY, .CLOEXEC = true });
+        if (fd < 0) continue;
+        defer _ = std.c.close(fd);
+        var n: usize = 0;
+        while (n < cmdline.len) {
+            const r = std.c.read(fd, cmdline[n..].ptr, cmdline.len - n);
+            if (r < 0 and c.errno() == c.EINTR) continue;
+            if (r <= 0) break;
+            n += @intCast(r);
+        }
+        const sock = sessionSocket(cmdline[0..n]) orelse continue;
+        try out.append(alloc, try absoluteSocket(pid, sock) orelse continue);
+    }
+}
+
+const darwin = struct {
+    extern "c" fn proc_listpids(kind: u32, typeinfo: u32, buffer: ?*anyopaque, buffersize: c_int) c_int;
+    const PROC_UID_ONLY = 4;
+    const CTL_KERN = 1;
+    const KERN_ARGMAX = 8;
+    const KERN_PROCARGS2 = 49;
+    extern "c" fn proc_pidinfo(pid: c_int, flavor: c_int, arg: u64, buffer: ?*anyopaque, buffersize: c_int) c_int;
+    const PROC_PIDVNODEPATHINFO = 9;
+    /// The current and root directories, each a struct vnode_info and then
+    /// its path.
+    const proc_vnodepathinfo = extern struct {
+        cdir_info: [152]u8,
+        cdir_path: [1024]u8,
+        rdir_info: [152]u8,
+        rdir_path: [1024]u8,
+    };
+};
+
+fn findSessionsSysctl(out: *std.ArrayListUnmanaged([]const u8)) !void {
+    const uid = std.c.getuid();
+    const size = darwin.proc_listpids(darwin.PROC_UID_ONLY, uid, null, 0);
+    if (size <= 0) return error.ProcListPidsFailed;
+    // With room for processes started since.
+    const pids = try alloc.alloc(c_int, @as(usize, @intCast(size)) / @sizeOf(c_int) + 64);
+    defer alloc.free(pids);
+    const got = darwin.proc_listpids(darwin.PROC_UID_ONLY, uid, pids.ptr, @intCast(pids.len * @sizeOf(c_int)));
+    if (got <= 0) return error.ProcListPidsFailed;
+
+    var argmax: c_int = 0;
+    var len: usize = @sizeOf(c_int);
+    const argmax_mib = [_]c_int{ darwin.CTL_KERN, darwin.KERN_ARGMAX };
+    if (std.c.sysctl(&argmax_mib, argmax_mib.len, &argmax, &len, null, 0) != 0 or argmax <= 0) return error.ArgMaxFailed;
+    const buf = try alloc.alloc(u8, @intCast(argmax));
+    defer alloc.free(buf);
+
+    for (pids[0..@min(pids.len, @as(usize, @intCast(got)) / @sizeOf(c_int))]) |pid| {
+        if (pid <= 0) continue;
+        const mib = [_]c_int{ darwin.CTL_KERN, darwin.KERN_PROCARGS2, pid };
+        var n: usize = buf.len;
+        if (std.c.sysctl(&mib, mib.len, buf.ptr, &n, null, 0) != 0) continue;
+        // argc, the executable's path, NUL padding, then the argv strings.
+        if (n <= @sizeOf(c_int)) continue;
+        var rest = buf[@sizeOf(c_int)..n];
+        rest = rest[std.mem.indexOfScalar(u8, rest, 0) orelse continue ..];
+        rest = rest[std.mem.indexOfNone(u8, rest, &.{0}) orelse continue ..];
+        const sock = sessionSocket(rest) orelse continue;
+        try out.append(alloc, try absoluteSocket(pid, sock) orelse continue);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -2437,6 +2785,12 @@ fn usage() noreturn {
         "      top of the screen, negative lines are scrollback, and - means\n" ++
         "      the start of scrollback (-S) or the end of the screen (-E).\n" ++
         "\n" ++
+        "  {s} title <socket>\n" ++
+        "      Print the title the program set (OSC 0/2): a terminal's tab name.\n" ++
+        "\n" ++
+        "  {s} list [--json]\n" ++
+        "      List your sessions: their sockets and titles.\n" ++
+        "\n" ++
         "Options:\n" ++
         "  -R <mode>   Replay on attach: none | screen | scrollback (default).\n" ++
         "  --version   Print version and exit.\n" ++
@@ -2444,7 +2798,7 @@ fn usage() noreturn {
         "\nReport bugs to <{s}>.\n";
     var buf: [4096]u8 = undefined;
     const s = std.fmt.bufPrint(&buf, text, .{
-        progname, VERSION, progname, progname, progname, BUGREPORT,
+        progname, VERSION, progname, progname, progname, progname, progname, BUGREPORT,
     }) catch "";
     writeAllFd(1, s);
     std.c.exit(0);
@@ -2453,13 +2807,15 @@ fn usage() noreturn {
 pub fn main(init: std.process.Init.Minimal) u8 {
     const argv = init.args.vector;
     proc_argv = argv;
+    claimEnviron(init.environ);
     // Copy argv[0] out of the argv string region: setProcTitle overwrites that
     // region in place, and we still want progname for error messages.
     if (argv.len >= 1) progname = alloc.dupeZ(u8, std.mem.span(argv[0])) catch "exe-scroll";
     const args = argv;
     if (args.len >= 2) {
         const a = std.mem.span(args[1]);
-        if (std.mem.eql(u8, a, "send-keys") or std.mem.eql(u8, a, "capture-pane")) return commandClient(args[1..]);
+        if (std.mem.eql(u8, a, "send-keys") or std.mem.eql(u8, a, "capture-pane") or std.mem.eql(u8, a, "title")) return commandClient(args[1..]);
+        if (std.mem.eql(u8, a, "list")) return listSessions(args[2..]);
     }
 
     var i: usize = 1;
@@ -2567,7 +2923,7 @@ pub fn main(init: std.process.Init.Minimal) u8 {
     // socket isn't there. (If a session server is alive but its socket file
     // was removed, send it SIGUSR1 to recreate the socket -- see the server's
     // signal handler -- before reconnecting.)
-    var s = connectSocket(sockname);
+    var s = connectSocket(sockname, false);
     if (s < 0) {
         const e = c.errno();
         if (e != c.ENOENT and e != c.ECONNREFUSED) {
@@ -2579,7 +2935,7 @@ pub fn main(init: std.process.Init.Minimal) u8 {
             return 1;
         };
         if (spawnServer() != 0) return 1;
-        s = connectSocket(sockname);
+        s = connectSocket(sockname, false);
         if (s < 0) {
             printErr("{s}: cannot connect to new session {s}: errno {d}\n", .{ progname, sockname, c.errno() });
             return 1;

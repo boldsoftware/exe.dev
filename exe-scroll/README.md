@@ -63,6 +63,29 @@ the width. `-S` and `-E` choose the first and last lines: 0 is the top of the
 screen, negative lines reach back into scrollback, and `-` means the start of
 scrollback (`-S`) or the end of the screen (`-E`); `-S -` prints everything.
 
+### Titles and listing sessions
+
+Programs title their terminal (OSC 0 and 2) for its tab or title bar; shells
+often set it to the running command or the directory. `title` prints the
+title a session's program set last, or an empty line if none:
+
+```sh
+$ exe-scroll title /tmp/work/session.sock
+vim README.md
+```
+
+`list` finds your sessions, from their servers' process titles (see below),
+and prints each socket and title. `--json` prints them as a JSON array of
+`{"socket": ..., "title": ...}` objects instead, with a null title for a
+session too old to say or not answering. It works on Linux and macOS.
+
+```sh
+$ exe-scroll list
+SOCKET                  TITLE
+/tmp/work/session.sock  vim README.md
+/tmp/work/build.sock    make test
+```
+
 ### Multiple clients: attaching or typing claims the size
 
 Any number of clients can attach to one session, and their windows rarely
@@ -86,7 +109,8 @@ immediately.
 
 Each session involves a backgrounded *session server* (owns the pty and
 scrollback) and one *attach client* per attachment. They rewrite their command
-line so `ps` shows which is which:
+line, naming the socket (by its absolute path, room permitting), so `ps` shows
+which is which:
 
 ```
 $ ps -o pid,command
