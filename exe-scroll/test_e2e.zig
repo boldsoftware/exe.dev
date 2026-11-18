@@ -469,7 +469,7 @@ test "--version names the source" {
         try std.fmt.allocPrint(alloc, "{s} {s}\n", .{ opts.exe_path, opts.version }),
         r.stdout,
     );
-    // exed's `exe-scroll install` and the e1e tests want 0.<count>.<n>.
+    // Installers want 0.<count>.<n>.
     var parts = std.mem.splitScalar(u8, opts.version, '.');
     var n: usize = 0;
     while (parts.next()) |part| : (n += 1) _ = try std.fmt.parseInt(u64, part, 10);

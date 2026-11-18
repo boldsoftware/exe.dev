@@ -67,10 +67,10 @@ pub fn build(b: *std.Build) void {
 // whether this directory is built from the exe.dev monorepo or its oss mirror,
 // and unrelated commits don't change it, so the bytes stay reproducible.
 //
-// The shape stays purely numeric because exed's `exe-scroll install` and the
-// e1e tests parse it. Builds whose source git can't vouch for get a 0 in that
-// slot: modified tracked files give 0.<count>.0, shallow clones (whose counts
-// are wrong) 0.0.9<tree>, and no git at all 0.0.0.
+// The shape stays purely numeric because installers parse it. Builds whose
+// source git can't vouch for get a 0 in that slot: modified tracked files
+// give 0.<count>.0, shallow clones (whose counts are wrong) 0.0.9<tree>, and
+// no git at all 0.0.0.
 fn sourceVersion(b: *std.Build) []const u8 {
     const tree = git(b, &.{ "rev-parse", "HEAD:./" }) orelse return "0.0.0";
     const tree24 = std.fmt.parseInt(u32, tree[0..@min(tree.len, 6)], 16) catch return "0.0.0";
