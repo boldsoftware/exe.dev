@@ -40,6 +40,7 @@ import sys
 import termios
 import time
 import tty
+import unicodedata
 from urllib.parse import urlencode
 
 TOKEN_TTL_SECONDS = 300
@@ -84,20 +85,56 @@ YELLOW = "\x1b[33m"
 _RESET = "\x1b[0m"
 
 
+# Terminal rows taken by the banner just above the cursor (0 if anything else
+# was printed since), and the terminal width they were counted at, so the
+# next banner can redraw over it instead of stacking status lines.
+_banner_rows = 0
+_banner_cols = 0
+
+
 def log(msg):
+    global _banner_rows
+    _banner_rows = 0
     sys.stderr.write("\r\x1b[2K" + msg + "\r\n")
     sys.stderr.flush()
 
 
-def banner(msg, color=""):
+def term_cols():
+    try:
+        return os.get_terminal_size(sys.stderr.fileno()).columns
+    except (OSError, ValueError):
+        return 80
+
+
+def screen_rows(text, cols):
+    """How many terminal rows text fills, counting wraps and wide glyphs."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    width = sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+    return max(1, -(-width // max(cols, 1)))
+
+
+def banner(msg, color="", replace=False, note=""):
     """A status line that stands out from shell output: bold, reverse-video,
     and color when stderr is a terminal. Used for reconnection state so the
-    user can plainly see the link dropped and came back."""
-    if color and sys.stderr.isatty():
+    user can plainly see the link dropped and came back. A note goes on a
+    plain line above it. With replace, both redraw over the previous banner
+    (and its note) if nothing else was printed since."""
+    global _banner_rows, _banner_cols
+    isatty = sys.stderr.isatty()
+    if color and isatty:
         msg = f"{color}\x1b[1m\x1b[7m exe-ssh: {msg} {_RESET}"
     else:
         msg = f"exe-ssh: {msg}"
-    log(msg)
+    lines = [f"exe-ssh: {note}", msg] if note else [msg]
+    cols = term_cols()
+    # After a resize the old banner may have reflowed; don't guess.
+    if replace and _banner_rows and isatty and cols == _banner_cols:
+        # Up to the old banner's first row, then erase it and everything below.
+        sys.stderr.write(f"\x1b[{_banner_rows}A\r\x1b[J")
+    for line in lines:
+        log(line)
+    _banner_rows = sum(screen_rows(line, cols) for line in lines)
+    _banner_cols = cols
 
 
 def b64url(data: bytes) -> str:
@@ -148,7 +185,8 @@ def generate_token(key_path, namespace):
     except FileNotFoundError:
         sys.exit("error: ssh-keygen not found on PATH")
     except subprocess.CalledProcessError as e:
-        sys.exit(f"error: ssh-keygen sign failed: {e.stderr.decode().strip()}")
+        stderr = e.stderr.decode(errors="replace").strip()
+        raise SignError(f"ssh-keygen sign failed: {stderr}", stderr)
 
     # Strip the PEM armor (-----BEGIN/END SSH SIGNATURE-----) and decode.
     lines = [ln for ln in armored.splitlines() if ln and not ln.startswith("-----")]
@@ -159,6 +197,15 @@ def generate_token(key_path, namespace):
 
 class WSError(Exception):
     pass
+
+
+class SignError(Exception):
+    def __init__(self, msg, stderr=""):
+        super().__init__(msg)
+        # ssh-keygen's last stderr line is the most specific one, e.g.
+        # "Signing (stdin) failed: agent refused operation".
+        lines = stderr.splitlines()
+        self.reason = lines[-1].strip() if lines else ""
 
 
 class WebSocket:
@@ -703,6 +750,31 @@ def suspend(stdin_fd, old_termios):
         tty.setraw(stdin_fd, termios.TCSADRAIN)
 
 
+# Ctrl-C as sent by a terminal still in the kitty keyboard protocol
+# (CSI 99;5u, or 69/133/197 with Caps/Num Lock) or xterm modifyOtherKeys
+# (CSI 27;5;99~) mode, which a remote program like nvim may have enabled
+# before the link dropped.
+_CTRL_C_CSI = re.compile(
+    rb"\x1b\[(?:99(?::[0-9]*)*;(?:5|69|133|197)(?::[0-9]+)?u|27;5;99~)")
+
+
+def wait_for_retry(stdin_fd, reason=""):
+    """Show the signing-failed prompt (with ssh-keygen's reason, if any) over
+    the previous banner, then block until the user presses r (retry, returns
+    True) or Ctrl-C (quit, returns False). The terminal is raw, so Ctrl-C
+    arrives as input, not as a signal."""
+    banner("\U0001f511 signing failed \u2014 press r to retry (Ctrl-C to quit)",
+           color=YELLOW, replace=True, note=reason)
+    # Only a fresh keypress answers the prompt, not typeahead.
+    termios.tcflush(stdin_fd, termios.TCIFLUSH)
+    while True:
+        data = os.read(stdin_fd, 64)
+        if data and not data.strip(b"rR"):
+            return True
+        if not data or b"\x03" in data or _CTRL_C_CSI.search(data):
+            return False
+
+
 def handle_server_message(payload):
     try:
         msg = json.loads(payload)
@@ -784,7 +856,7 @@ def main():
     if args.list:
         try:
             names = fetch_sessions()
-        except (OSError, WSError, ssl.SSLError, ValueError) as e:
+        except (OSError, WSError, SignError, ssl.SSLError, ValueError) as e:
             sys.exit(f"error: could not list sessions: {e}")
         if names:
             for n in names:
@@ -805,6 +877,9 @@ def main():
         existing = []
         try:
             existing = fetch_sessions()
+        except SignError as e:
+            # Fail now rather than sign again (another touch) to connect.
+            sys.exit(f"error: {e}")
         except (OSError, WSError, ssl.SSLError, ValueError):
             pass  # best-effort; fall back to a plain random name
         session = random_session_name(avoid=existing)
@@ -838,8 +913,8 @@ def main():
         while True:
             # Re-sign a fresh token per (re)connect so long sessions don't
             # outlive their token's short TTL.
-            headers = auth_headers()
             try:
+                headers = auth_headers()
                 ws = WebSocket.connect(host, args.port, path, headers,
                                        insecure, plaintext=args.plaintext,
                                        connect_host=args.connect_host)
@@ -852,6 +927,16 @@ def main():
                 log(f"exe-ssh: reconnect failed ({e}); retrying in {backoff:.1f}s")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 10)
+                continue
+            except SignError as e:
+                if first:
+                    termios.tcsetattr(stdin_fd, termios.TCSADRAIN, old_termios)
+                    sys.exit(f"error: {e}")
+                # A refusing agent (e.g. a hardware key wanting a touch) is
+                # expected; only show ssh-keygen's reason for anything else.
+                note = "" if "agent refused operation" in e.reason else e.reason
+                if not wait_for_retry(stdin_fd, note):
+                    break
                 continue
 
             backoff = 0.5
